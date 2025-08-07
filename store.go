@@ -486,6 +486,246 @@ func (s *SQLiteStore) ListDocuments(ctx context.Context) ([]string, error) {
 	return docIDs, nil
 }
 
+// GetByDocID returns all embeddings for a specific document ID
+func (s *SQLiteStore) GetByDocID(ctx context.Context, docID string) ([]*Embedding, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.closed {
+		return nil, wrapError("get_by_doc_id", ErrStoreClosed)
+	}
+
+	if docID == "" {
+		return nil, wrapError("get_by_doc_id", fmt.Errorf("doc ID cannot be empty"))
+	}
+
+	query := "SELECT id, vector, content, doc_id, metadata FROM embeddings WHERE doc_id = ? ORDER BY created_at"
+	rows, err := s.db.QueryContext(ctx, query, docID)
+	if err != nil {
+		return nil, wrapError("get_by_doc_id", fmt.Errorf("failed to query embeddings: %w", err))
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			_ = closeErr // Explicitly ignore error to satisfy staticcheck
+		}
+	}()
+
+	var embeddings []*Embedding
+	for rows.Next() {
+		embedding, err := s.scanEmbeddingForGet(rows)
+		if err != nil {
+			continue // Skip invalid embeddings
+		}
+		embeddings = append(embeddings, embedding)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, wrapError("get_by_doc_id", fmt.Errorf("error iterating rows: %w", err))
+	}
+
+	return embeddings, nil
+}
+
+// scanEmbeddingForGet scans a row into an embedding for Get methods
+func (s *SQLiteStore) scanEmbeddingForGet(rows *sql.Rows) (*Embedding, error) {
+	var id, content, docID, metadataJSON string
+	var vectorBytes []byte
+
+	if err := rows.Scan(&id, &vectorBytes, &content, &docID, &metadataJSON); err != nil {
+		return nil, fmt.Errorf("failed to scan row: %w", err)
+	}
+
+	vector, err := decodeVector(vectorBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode vector: %w", err)
+	}
+
+	metadata, err := decodeMetadata(metadataJSON)
+	if err != nil {
+		metadata = nil // Continue with nil metadata
+	}
+
+	return &Embedding{
+		ID:       id,
+		Vector:   vector,
+		Content:  content,
+		DocID:    docID,
+		Metadata: metadata,
+	}, nil
+}
+
+// GetDocumentsByType returns documents filtered by metadata type
+func (s *SQLiteStore) GetDocumentsByType(ctx context.Context, docType string) ([]*Embedding, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.closed {
+		return nil, wrapError("get_documents_by_type", ErrStoreClosed)
+	}
+
+	if docType == "" {
+		return nil, wrapError("get_documents_by_type", fmt.Errorf("doc type cannot be empty"))
+	}
+
+	query := "SELECT id, vector, content, doc_id, metadata FROM embeddings ORDER BY created_at"
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, wrapError("get_documents_by_type", fmt.Errorf("failed to query embeddings: %w", err))
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			_ = closeErr // Explicitly ignore error to satisfy staticcheck
+		}
+	}()
+
+	var embeddings []*Embedding
+	for rows.Next() {
+		embedding, err := s.scanEmbeddingForGet(rows)
+		if err != nil {
+			continue // Skip invalid embeddings
+		}
+
+		// Filter by type in metadata
+		if embedding.Metadata != nil && embedding.Metadata["type"] == docType {
+			embeddings = append(embeddings, embedding)
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, wrapError("get_documents_by_type", fmt.Errorf("error iterating rows: %w", err))
+	}
+
+	return embeddings, nil
+}
+
+// Clear removes all embeddings from the store
+func (s *SQLiteStore) Clear(ctx context.Context) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.closed {
+		return wrapError("clear", ErrStoreClosed)
+	}
+
+	_, err := s.db.ExecContext(ctx, "DELETE FROM embeddings")
+	if err != nil {
+		return wrapError("clear", fmt.Errorf("failed to clear embeddings: %w", err))
+	}
+
+	return nil
+}
+
+// ClearByDocID removes all embeddings for specific document IDs
+func (s *SQLiteStore) ClearByDocID(ctx context.Context, docIDs []string) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.closed {
+		return wrapError("clear_by_doc_id", ErrStoreClosed)
+	}
+
+	if len(docIDs) == 0 {
+		return nil // Nothing to clear
+	}
+
+	// Start transaction for batch deletion
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return wrapError("clear_by_doc_id", fmt.Errorf("failed to begin transaction: %w", err))
+	}
+	defer func() {
+		if rollErr := tx.Rollback(); rollErr != nil {
+			_ = rollErr // Explicitly ignore error to satisfy staticcheck
+		}
+	}()
+
+	// Prepare statement for deletion
+	stmt, err := tx.PrepareContext(ctx, "DELETE FROM embeddings WHERE doc_id = ?")
+	if err != nil {
+		return wrapError("clear_by_doc_id", fmt.Errorf("failed to prepare statement: %w", err))
+	}
+	defer func() {
+		if closeErr := stmt.Close(); closeErr != nil {
+			_ = closeErr // Explicitly ignore error to satisfy staticcheck
+		}
+	}()
+
+	// Execute deletion for each doc ID
+	for _, docID := range docIDs {
+		if docID == "" {
+			continue // Skip empty doc IDs
+		}
+		_, err = stmt.ExecContext(ctx, docID)
+		if err != nil {
+			return wrapError("clear_by_doc_id", fmt.Errorf("failed to delete embeddings for doc_id %s: %w", docID, err))
+		}
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return wrapError("clear_by_doc_id", fmt.Errorf("failed to commit transaction: %w", err))
+	}
+
+	return nil
+}
+
+// ListDocumentsWithInfo returns detailed information about documents
+func (s *SQLiteStore) ListDocumentsWithInfo(ctx context.Context) ([]DocumentInfo, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.closed {
+		return nil, wrapError("list_documents_with_info", ErrStoreClosed)
+	}
+
+	query := `
+	SELECT 
+		doc_id,
+		COUNT(*) as embedding_count,
+		MIN(created_at) as first_created,
+		MAX(created_at) as last_updated
+	FROM embeddings 
+	WHERE doc_id IS NOT NULL AND doc_id != '' 
+	GROUP BY doc_id 
+	ORDER BY doc_id
+	`
+
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, wrapError("list_documents_with_info", fmt.Errorf("failed to query document info: %w", err))
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			_ = closeErr // Explicitly ignore error to satisfy staticcheck
+		}
+	}()
+
+	var documents []DocumentInfo
+	for rows.Next() {
+		var docID, firstCreated, lastUpdated string
+		var embeddingCount int
+
+		if err := rows.Scan(&docID, &embeddingCount, &firstCreated, &lastUpdated); err != nil {
+			return nil, wrapError("list_documents_with_info", fmt.Errorf("failed to scan row: %w", err))
+		}
+
+		docInfo := DocumentInfo{
+			DocID:          docID,
+			EmbeddingCount: embeddingCount,
+			FirstCreated:   &firstCreated,
+			LastUpdated:    &lastUpdated,
+		}
+
+		documents = append(documents, docInfo)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, wrapError("list_documents_with_info", fmt.Errorf("error iterating rows: %w", err))
+	}
+
+	return documents, nil
+}
+
 // Stats returns statistics about the store
 func (s *SQLiteStore) Stats(ctx context.Context) (StoreStats, error) {
 	s.mu.RLock()

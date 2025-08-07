@@ -558,6 +558,300 @@ func TestErrorHandling(t *testing.T) {
 	}
 }
 
+func TestGetByDocID(t *testing.T) {
+	dbPath := "test_get_by_doc_id_" + time.Now().Format("20060102_150405") + ".db"
+	defer func() {
+		if err := os.Remove(dbPath); err != nil {
+			_ = err
+		}
+	}()
+
+	store, err := New(dbPath, 2)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			_ = err
+		}
+	}()
+
+	ctx := context.Background()
+	if err := store.Init(ctx); err != nil {
+		t.Fatalf("Failed to initialize store: %v", err)
+	}
+
+	// Insert test data
+	embeddings := []Embedding{
+		{ID: "emb1", Vector: []float32{1.0, 0.0}, Content: "Content 1", DocID: "doc1"},
+		{ID: "emb2", Vector: []float32{0.0, 1.0}, Content: "Content 2", DocID: "doc1"},
+		{ID: "emb3", Vector: []float32{1.0, 1.0}, Content: "Content 3", DocID: "doc2"},
+	}
+
+	embPtrs := make([]*Embedding, len(embeddings))
+	for i := range embeddings {
+		embPtrs[i] = &embeddings[i]
+	}
+	if err := store.UpsertBatch(ctx, embPtrs); err != nil {
+		t.Fatalf("Failed to insert test data: %v", err)
+	}
+
+	// Test getting embeddings by doc ID
+	results, err := store.GetByDocID(ctx, "doc1")
+	if err != nil {
+		t.Fatalf("Failed to get embeddings by doc ID: %v", err)
+	}
+
+	if len(results) != 2 {
+		t.Errorf("Expected 2 embeddings for doc1, got %d", len(results))
+	}
+
+	// Verify content
+	for _, emb := range results {
+		if emb.DocID != "doc1" {
+			t.Errorf("Expected DocID = doc1, got %s", emb.DocID)
+		}
+	}
+
+	// Test non-existent doc ID
+	results, err = store.GetByDocID(ctx, "nonexistent")
+	if err != nil {
+		t.Fatalf("Failed to get embeddings for non-existent doc: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("Expected 0 embeddings for non-existent doc, got %d", len(results))
+	}
+
+	// Test empty doc ID
+	_, err = store.GetByDocID(ctx, "")
+	if err == nil {
+		t.Error("Expected error for empty doc ID")
+	}
+}
+
+func TestGetDocumentsByType(t *testing.T) {
+	dbPath := "test_get_by_type_" + time.Now().Format("20060102_150405") + ".db"
+	defer func() {
+		if err := os.Remove(dbPath); err != nil {
+			_ = err
+		}
+	}()
+
+	store, err := New(dbPath, 2)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			_ = err
+		}
+	}()
+
+	ctx := context.Background()
+	if err := store.Init(ctx); err != nil {
+		t.Fatalf("Failed to initialize store: %v", err)
+	}
+
+	// Insert test data with different types
+	embeddings := []Embedding{
+		{
+			ID: "emb1", Vector: []float32{1.0, 0.0}, Content: "Article content", DocID: "doc1",
+			Metadata: map[string]string{"type": "article"},
+		},
+		{
+			ID: "emb2", Vector: []float32{0.0, 1.0}, Content: "Book content", DocID: "doc2",
+			Metadata: map[string]string{"type": "book"},
+		},
+		{
+			ID: "emb3", Vector: []float32{1.0, 1.0}, Content: "Another article", DocID: "doc3",
+			Metadata: map[string]string{"type": "article"},
+		},
+	}
+
+	embPtrs := make([]*Embedding, len(embeddings))
+	for i := range embeddings {
+		embPtrs[i] = &embeddings[i]
+	}
+	if err := store.UpsertBatch(ctx, embPtrs); err != nil {
+		t.Fatalf("Failed to insert test data: %v", err)
+	}
+
+	// Test getting documents by type
+	articles, err := store.GetDocumentsByType(ctx, "article")
+	if err != nil {
+		t.Fatalf("Failed to get documents by type: %v", err)
+	}
+
+	if len(articles) != 2 {
+		t.Errorf("Expected 2 articles, got %d", len(articles))
+	}
+
+	for _, emb := range articles {
+		if emb.Metadata["type"] != "article" {
+			t.Errorf("Expected type = article, got %s", emb.Metadata["type"])
+		}
+	}
+
+	// Test non-existent type
+	results, err := store.GetDocumentsByType(ctx, "nonexistent")
+	if err != nil {
+		t.Fatalf("Failed to get documents for non-existent type: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("Expected 0 documents for non-existent type, got %d", len(results))
+	}
+
+	// Test empty type
+	_, err = store.GetDocumentsByType(ctx, "")
+	if err == nil {
+		t.Error("Expected error for empty type")
+	}
+}
+
+func TestClearOperations(t *testing.T) {
+	dbPath := "test_clear_" + time.Now().Format("20060102_150405") + ".db"
+	defer func() {
+		if err := os.Remove(dbPath); err != nil {
+			_ = err
+		}
+	}()
+
+	store, err := New(dbPath, 2)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			_ = err
+		}
+	}()
+
+	ctx := context.Background()
+	if err := store.Init(ctx); err != nil {
+		t.Fatalf("Failed to initialize store: %v", err)
+	}
+
+	// Insert test data
+	embeddings := []Embedding{
+		{ID: "emb1", Vector: []float32{1.0, 0.0}, Content: "Content 1", DocID: "doc1"},
+		{ID: "emb2", Vector: []float32{0.0, 1.0}, Content: "Content 2", DocID: "doc2"},
+		{ID: "emb3", Vector: []float32{1.0, 1.0}, Content: "Content 3", DocID: "doc3"},
+	}
+
+	embPtrs := make([]*Embedding, len(embeddings))
+	for i := range embeddings {
+		embPtrs[i] = &embeddings[i]
+	}
+	if err := store.UpsertBatch(ctx, embPtrs); err != nil {
+		t.Fatalf("Failed to insert test data: %v", err)
+	}
+
+	// Test ClearByDocID
+	if err := store.ClearByDocID(ctx, []string{"doc1", "doc2"}); err != nil {
+		t.Fatalf("Failed to clear by doc IDs: %v", err)
+	}
+
+	// Verify deletion
+	stats, err := store.Stats(ctx)
+	if err != nil {
+		t.Fatalf("Failed to get stats: %v", err)
+	}
+	if stats.Count != 1 {
+		t.Errorf("Expected 1 embedding remaining, got %d", stats.Count)
+	}
+
+	// Test Clear (remove all)
+	if err := store.Clear(ctx); err != nil {
+		t.Fatalf("Failed to clear store: %v", err)
+	}
+
+	// Verify all embeddings are gone
+	stats, err = store.Stats(ctx)
+	if err != nil {
+		t.Fatalf("Failed to get stats after clear: %v", err)
+	}
+	if stats.Count != 0 {
+		t.Errorf("Expected 0 embeddings after clear, got %d", stats.Count)
+	}
+
+	// Test ClearByDocID with empty slice
+	if err := store.ClearByDocID(ctx, []string{}); err != nil {
+		t.Errorf("ClearByDocID with empty slice should not error: %v", err)
+	}
+}
+
+func TestListDocumentsWithInfo(t *testing.T) {
+	dbPath := "test_list_with_info_" + time.Now().Format("20060102_150405") + ".db"
+	defer func() {
+		if err := os.Remove(dbPath); err != nil {
+			_ = err
+		}
+	}()
+
+	store, err := New(dbPath, 2)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			_ = err
+		}
+	}()
+
+	ctx := context.Background()
+	if err := store.Init(ctx); err != nil {
+		t.Fatalf("Failed to initialize store: %v", err)
+	}
+
+	// Insert test data
+	embeddings := []Embedding{
+		{ID: "emb1", Vector: []float32{1.0, 0.0}, Content: "Content 1", DocID: "doc1"},
+		{ID: "emb2", Vector: []float32{0.0, 1.0}, Content: "Content 2", DocID: "doc1"},
+		{ID: "emb3", Vector: []float32{1.0, 1.0}, Content: "Content 3", DocID: "doc2"},
+	}
+
+	embPtrs := make([]*Embedding, len(embeddings))
+	for i := range embeddings {
+		embPtrs[i] = &embeddings[i]
+	}
+	if err := store.UpsertBatch(ctx, embPtrs); err != nil {
+		t.Fatalf("Failed to insert test data: %v", err)
+	}
+
+	// Test getting document info
+	docInfos, err := store.ListDocumentsWithInfo(ctx)
+	if err != nil {
+		t.Fatalf("Failed to list documents with info: %v", err)
+	}
+
+	if len(docInfos) != 2 {
+		t.Errorf("Expected 2 documents, got %d", len(docInfos))
+	}
+
+	// Check doc1 info
+	var doc1Info *DocumentInfo
+	for i := range docInfos {
+		if docInfos[i].DocID == "doc1" {
+			doc1Info = &docInfos[i]
+			break
+		}
+	}
+
+	if doc1Info == nil {
+		t.Error("doc1 not found in document info")
+	} else {
+		if doc1Info.EmbeddingCount != 2 {
+			t.Errorf("Expected 2 embeddings for doc1, got %d", doc1Info.EmbeddingCount)
+		}
+		if doc1Info.FirstCreated == nil {
+			t.Error("FirstCreated should not be nil")
+		}
+		if doc1Info.LastUpdated == nil {
+			t.Error("LastUpdated should not be nil")
+		}
+	}
+}
+
 func TestVectorValidation(t *testing.T) {
 	tests := []struct {
 		name    string
