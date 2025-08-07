@@ -31,12 +31,20 @@ type StoreStats struct {
 	Size       int64 `json:"size"`
 }
 
+// DocumentInfo provides information about a document in the store
+type DocumentInfo struct {
+	DocID          string  `json:"docId"`
+	EmbeddingCount int     `json:"embeddingCount"`
+	FirstCreated   *string `json:"firstCreated,omitempty"`
+	LastUpdated    *string `json:"lastUpdated,omitempty"`
+}
+
 // Config represents configuration options for the vector store
 type Config struct {
-	Path         string        `json:"path"`
-	VectorDim    int          `json:"vectorDim"`
-	MaxConns     int          `json:"maxConns,omitempty"`
-	BatchSize    int          `json:"batchSize,omitempty"`
+	Path         string         `json:"path"`
+	VectorDim    int            `json:"vectorDim"`
+	MaxConns     int            `json:"maxConns,omitempty"`
+	BatchSize    int            `json:"batchSize,omitempty"`
 	SimilarityFn SimilarityFunc `json:"-"`
 }
 
@@ -53,25 +61,25 @@ func DefaultConfig() Config {
 type Store interface {
 	// Init initializes the store and creates necessary tables
 	Init(ctx context.Context) error
-	
+
 	// Upsert inserts or updates a single embedding
 	Upsert(ctx context.Context, emb *Embedding) error
-	
+
 	// UpsertBatch inserts or updates multiple embeddings in a batch
 	UpsertBatch(ctx context.Context, embs []*Embedding) error
-	
+
 	// Search performs vector similarity search
 	Search(ctx context.Context, query []float32, opts SearchOptions) ([]ScoredEmbedding, error)
-	
+
 	// Delete removes an embedding by ID
 	Delete(ctx context.Context, id string) error
-	
+
 	// DeleteByDocID removes all embeddings for a document
 	DeleteByDocID(ctx context.Context, docID string) error
-	
+
 	// Close closes the store and releases resources
 	Close() error
-	
+
 	// Stats returns statistics about the store
 	Stats(ctx context.Context) (StoreStats, error)
 }
