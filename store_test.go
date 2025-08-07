@@ -103,7 +103,7 @@ func TestVectorEncoding(t *testing.T) {
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Fatalf("encodeVector() error = %v", err)
 			}
@@ -209,7 +209,7 @@ func TestSQLiteStore(t *testing.T) {
 	}()
 
 	ctx := context.Background()
-	
+
 	// Test initialization
 	if err := store.Init(ctx); err != nil {
 		t.Fatalf("Failed to initialize store: %v", err)
@@ -401,6 +401,98 @@ func TestDeleteOperations(t *testing.T) {
 	}
 }
 
+func TestListDocuments(t *testing.T) {
+	dbPath := "test_list_docs_" + time.Now().Format("20060102_150405") + ".db"
+	defer func() {
+		if err := os.Remove(dbPath); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
+
+	store, err := New(dbPath, 2)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
+
+	ctx := context.Background()
+	if err := store.Init(ctx); err != nil {
+		t.Fatalf("Failed to initialize store: %v", err)
+	}
+
+	// Test with empty store
+	docs, err := store.ListDocuments(ctx)
+	if err != nil {
+		t.Fatalf("Failed to list documents: %v", err)
+	}
+	if len(docs) != 0 {
+		t.Errorf("Expected 0 documents in empty store, got %d", len(docs))
+	}
+
+	// Insert test data with various doc IDs
+	embeddings := []Embedding{
+		{ID: "emb1", Vector: []float32{1.0, 0.0}, Content: "Content 1", DocID: "doc1"},
+		{ID: "emb2", Vector: []float32{0.0, 1.0}, Content: "Content 2", DocID: "doc1"}, // Same doc
+		{ID: "emb3", Vector: []float32{1.0, 1.0}, Content: "Content 3", DocID: "doc2"},
+		{ID: "emb4", Vector: []float32{0.5, 0.5}, Content: "Content 4", DocID: "doc3"},
+		{ID: "emb5", Vector: []float32{0.2, 0.8}, Content: "Content 5", DocID: ""}, // Empty doc ID
+		{ID: "emb6", Vector: []float32{0.8, 0.2}, Content: "Content 6"},            // No doc ID
+	}
+
+	embPtrs := make([]*Embedding, len(embeddings))
+	for i := range embeddings {
+		embPtrs[i] = &embeddings[i]
+	}
+	if err := store.UpsertBatch(ctx, embPtrs); err != nil {
+		t.Fatalf("Failed to insert test data: %v", err)
+	}
+
+	// Test listing documents
+	docs, err = store.ListDocuments(ctx)
+	if err != nil {
+		t.Fatalf("Failed to list documents: %v", err)
+	}
+
+	expectedDocs := []string{"doc1", "doc2", "doc3"}
+	if len(docs) != len(expectedDocs) {
+		t.Errorf("Expected %d unique documents, got %d", len(expectedDocs), len(docs))
+	}
+
+	// Check if all expected docs are present and sorted
+	for i, expectedDoc := range expectedDocs {
+		if i >= len(docs) || docs[i] != expectedDoc {
+			t.Errorf("Expected doc[%d] = %s, got %s", i, expectedDoc, docs[i])
+		}
+	}
+
+	// Test after deleting a document
+	if err := store.DeleteByDocID(ctx, "doc2"); err != nil {
+		t.Fatalf("Failed to delete doc2: %v", err)
+	}
+
+	docs, err = store.ListDocuments(ctx)
+	if err != nil {
+		t.Fatalf("Failed to list documents after deletion: %v", err)
+	}
+
+	expectedDocsAfterDelete := []string{"doc1", "doc3"}
+	if len(docs) != len(expectedDocsAfterDelete) {
+		t.Errorf("Expected %d unique documents after delete, got %d", len(expectedDocsAfterDelete), len(docs))
+	}
+
+	for i, expectedDoc := range expectedDocsAfterDelete {
+		if i >= len(docs) || docs[i] != expectedDoc {
+			t.Errorf("Expected doc[%d] = %s after delete, got %s", i, expectedDoc, docs[i])
+		}
+	}
+}
+
 func TestErrorHandling(t *testing.T) {
 	// Test invalid configuration
 	_, err := New("", 128)
@@ -444,7 +536,7 @@ func TestErrorHandling(t *testing.T) {
 
 	// Test operations on closed store
 	emb := Embedding{ID: "test", Vector: []float32{1, 2, 3}, Content: "test"}
-	
+
 	err = store.Upsert(ctx, &emb)
 	if err == nil {
 		t.Error("Expected error when upserting to closed store")
@@ -458,6 +550,11 @@ func TestErrorHandling(t *testing.T) {
 	_, err = store.Stats(ctx)
 	if err == nil {
 		t.Error("Expected error when getting stats from closed store")
+	}
+
+	_, err = store.ListDocuments(ctx)
+	if err == nil {
+		t.Error("Expected error when listing documents from closed store")
 	}
 }
 
@@ -507,12 +604,12 @@ func TestVectorValidation(t *testing.T) {
 func BenchmarkCosineSimilarity(b *testing.B) {
 	vector1 := make([]float32, 768)
 	vector2 := make([]float32, 768)
-	
+
 	for i := range vector1 {
 		vector1[i] = float32(i) * 0.1
 		vector2[i] = float32(i) * 0.2
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = CosineSimilarity(vector1, vector2)
@@ -524,7 +621,7 @@ func BenchmarkVectorEncoding(b *testing.B) {
 	for i := range vector {
 		vector[i] = float32(i) * 0.1
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		encoded, _ := encodeVector(vector)

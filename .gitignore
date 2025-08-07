@@ -27,8 +27,8 @@ go.work
 *.db
 *.sqlite
 *.sqlite3
-*.db-shm
-*.db-wal
+**/*.db-shm
+**/*.db-wal
 
 # OS generated files
 .DS_Store
