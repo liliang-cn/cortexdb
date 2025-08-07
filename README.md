@@ -167,17 +167,20 @@ store, err := sqvect.NewWithConfig(config)
 sqvect provides three built-in similarity functions:
 
 ### Cosine Similarity (Default)
+
 ```go
 store := sqvect.New("data.db", 768)
 // Uses cosine similarity by default
 ```
 
 Best for:
+
 - Text embeddings
 - When vector magnitude doesn't matter
 - Most embedding models (OpenAI, Sentence Transformers, etc.)
 
 ### Dot Product
+
 ```go
 config := sqvect.DefaultConfig()
 config.SimilarityFn = sqvect.DotProduct
@@ -185,10 +188,12 @@ store, _ := sqvect.NewWithConfig(config)
 ```
 
 Best for:
+
 - When vectors are already normalized
 - Faster computation than cosine similarity
 
 ### Euclidean Distance
+
 ```go
 config := sqvect.DefaultConfig()
 config.SimilarityFn = sqvect.EuclideanDist
@@ -196,6 +201,7 @@ store, _ := sqvect.NewWithConfig(config)
 ```
 
 Best for:
+
 - When vector magnitude matters
 - Image embeddings
 - Spatial data
@@ -204,12 +210,12 @@ Best for:
 
 Performance on Apple M2 Pro with 768-dimensional vectors:
 
-| Operation | Performance |
-|-----------|-------------|
-| Cosine Similarity | ~1.2M ops/sec |
-| Vector Encoding/Decoding | ~38K ops/sec |
-| Single Upsert | ~20K ops/sec |
-| Batch Search (1K vectors) | ~60 ops/sec |
+| Operation                 | Performance   |
+| ------------------------- | ------------- |
+| Cosine Similarity         | ~1.2M ops/sec |
+| Vector Encoding/Decoding  | ~38K ops/sec  |
+| Single Upsert             | ~20K ops/sec  |
+| Batch Search (1K vectors) | ~60 ops/sec   |
 
 ### Optimization Tips
 
@@ -247,6 +253,35 @@ results, err := store.Search(ctx, query, sqvect.SearchOptions{
 })
 ```
 
+### Document Management
+
+```go
+// List all documents
+docIDs, err := store.ListDocuments(ctx)
+
+// Get all embeddings for a specific document
+embeddings, err := store.GetByDocID(ctx, "document_123")
+
+// Get documents by type
+articles, err := store.GetDocumentsByType(ctx, "article")
+
+// Get detailed document information
+docInfos, err := store.ListDocumentsWithInfo(ctx)
+for _, info := range docInfos {
+    fmt.Printf("Document %s has %d embeddings\n", info.DocID, info.EmbeddingCount)
+}
+```
+
+### Bulk Operations
+
+```go
+// Clear specific documents
+err := store.ClearByDocID(ctx, []string{"doc1", "doc2", "doc3"})
+
+// Clear entire store
+err := store.Clear(ctx)
+```
+
 ### Statistics
 
 ```go
@@ -256,7 +291,7 @@ if err != nil {
 }
 
 fmt.Printf("Embeddings: %d\n", stats.Count)
-fmt.Printf("Dimensions: %d\n", stats.Dimensions) 
+fmt.Printf("Dimensions: %d\n", stats.Dimensions)
 fmt.Printf("DB Size: %d bytes\n", stats.Size)
 ```
 
@@ -266,7 +301,7 @@ fmt.Printf("DB Size: %d bytes\n", stats.Size)
 
 See [examples/basic](examples/basic) for a simple 3D vector example.
 
-### Advanced Features  
+### Advanced Features
 
 See [examples/advanced](examples/advanced) for batch operations, metadata filtering, and performance comparisons.
 
@@ -328,6 +363,7 @@ Contributions are welcome! Please ensure:
 ## 📚 Use Cases
 
 ### RAG Applications
+
 ```go
 // Store document chunks with embeddings
 store.UpsertBatch(ctx, documentChunks)
@@ -337,6 +373,7 @@ results, _ := store.Search(ctx, queryEmbedding, sqvect.SearchOptions{TopK: 3})
 ```
 
 ### Semantic Search
+
 ```go
 // Index product descriptions
 store.Upsert(ctx, sqvect.Embedding{
@@ -351,6 +388,7 @@ results, _ := store.Search(ctx, searchQueryEmbedding, sqvect.SearchOptions{TopK:
 ```
 
 ### Document Clustering
+
 ```go
 // Find similar documents
 allEmbeddings := getAllDocumentEmbeddings()
@@ -374,5 +412,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Vector database research that inspired this implementation
 
 ---
-
-**sqvect** - Simple, fast, embeddable vector storage for Go applications.
