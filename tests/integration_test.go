@@ -133,6 +133,58 @@ func TestIntegrationFullWorkflow(t *testing.T) {
 			if finalStats.Count >= stats.Count {
 				t.Error("Expected fewer embeddings after deletion")
 			}
+
+			// Test new methods added in recent updates
+
+			// Test ListDocuments
+			docs, err := store.ListDocuments(ctx)
+			if err != nil {
+				t.Fatalf("Failed to list documents: %v", err)
+			}
+
+			// Test GetByDocID
+			if len(docs) > 0 {
+				docEmbs, err := store.GetByDocID(ctx, docs[0])
+				if err != nil {
+					t.Fatalf("Failed to get embeddings by doc ID: %v", err)
+				}
+				if len(docEmbs) == 0 {
+					t.Error("Expected at least one embedding for document")
+				}
+			}
+
+			// Test ListDocumentsWithInfo
+			docInfos, err := store.ListDocumentsWithInfo(ctx)
+			if err != nil {
+				t.Fatalf("Failed to list documents with info: %v", err)
+			}
+			if len(docInfos) != len(docs) {
+				t.Errorf("Document info count mismatch: expected %d, got %d", len(docs), len(docInfos))
+			}
+
+			// Test GetDocumentsByType
+			typeEmbs, err := store.GetDocumentsByType(ctx, "test")
+			if err != nil {
+				t.Fatalf("Failed to get documents by type: %v", err)
+			}
+			// Should have some embeddings since we set type="test" in metadata
+			if len(typeEmbs) == 0 {
+				t.Error("Expected some embeddings with type='test'")
+			}
+
+			// Test Clear method (at the end so it doesn't affect other tests)
+			if err := store.Clear(ctx); err != nil {
+				t.Fatalf("Failed to clear store: %v", err)
+			}
+
+			// Verify all embeddings are gone
+			clearStats, err := store.Stats(ctx)
+			if err != nil {
+				t.Fatalf("Failed to get stats after clear: %v", err)
+			}
+			if clearStats.Count != 0 {
+				t.Errorf("Expected 0 embeddings after clear, got %d", clearStats.Count)
+			}
 		})
 	}
 }
@@ -179,7 +231,7 @@ func TestIntegrationConcurrency(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func(id int) {
 			defer func() { done <- true }()
-			
+
 			query := embeddings[id%len(embeddings)].Vector
 			_, err := store.Search(ctx, query, sqvect.SearchOptions{TopK: 5})
 			if err != nil {
@@ -197,14 +249,14 @@ func TestIntegrationConcurrency(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		go func(id int) {
 			defer func() { done <- true }()
-			
+
 			emb := sqvect.Embedding{
 				ID:      "concurrent_" + string(rune('A'+id)),
 				Vector:  createRandomVector(64),
 				Content: "Concurrent content",
 				DocID:   "concurrent_doc",
 			}
-			
+
 			if err := store.Upsert(ctx, &emb); err != nil {
 				t.Errorf("Concurrent upsert %d failed: %v", id, err)
 			}
@@ -318,7 +370,7 @@ func TestIntegrationLargeDataset(t *testing.T) {
 // Helper functions
 func createTestEmbeddings(dim, count int) []sqvect.Embedding {
 	embeddings := make([]sqvect.Embedding, count)
-	
+
 	for i := 0; i < count; i++ {
 		docID := "doc_" + string(rune((i%5)+1+'0'))
 		embeddings[i] = sqvect.Embedding{
@@ -328,12 +380,12 @@ func createTestEmbeddings(dim, count int) []sqvect.Embedding {
 			DocID:   docID,
 			Metadata: map[string]string{
 				"type":  "test",
-				"batch": string(rune((i/10)+'A')),
-				"index": string(rune(i+'0')),
+				"batch": string(rune((i / 10) + 'A')),
+				"index": string(rune(i + '0')),
 			},
 		}
 	}
-	
+
 	return embeddings
 }
 
@@ -342,7 +394,7 @@ func createRandomVector(dim int) []float32 {
 	for i := range vector {
 		vector[i] = float32((i+1)*dim) * 0.001 // Simple deterministic "random" values
 	}
-	
+
 	// Normalize to unit length for better similarity testing
 	var norm float32
 	for _, v := range vector {
@@ -352,6 +404,6 @@ func createRandomVector(dim int) []float32 {
 	for i := range vector {
 		vector[i] *= norm
 	}
-	
+
 	return vector
 }
