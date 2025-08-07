@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run library tests
+        run: go test -v -race -coverprofile=coverage.out .
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.out
+          fail_ci_if_error: false
+
+      - name: Verify library can be imported
+        run: go list -m github.com/liliang-cn/sqvect
+
+      - name: Check examples compile (without running)
+        run: |
+          for dir in examples/*/; do
+            echo "Checking $dir"
+            cd "$dir"
+            go build -o /dev/null .
+            cd - > /dev/null
+          done
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --exclude-dirs=examples
