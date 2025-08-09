@@ -31,7 +31,11 @@ func main() {
 		fmt.Printf("\n%s (%dd, %d vectors)\n", cfg.name, cfg.dim, cfg.count)
 		fmt.Println(repeat("-", len(cfg.name)+20))
 		
-		benchmarkConfiguration(cfg.dim, cfg.count, cfg.batchSize)
+		fmt.Println("  Linear Search (Original):")
+		benchmarkConfiguration(cfg.dim, cfg.count, cfg.batchSize, false)
+		
+		fmt.Println("  HNSW Search (Optimized):")
+		benchmarkConfiguration(cfg.dim, cfg.count, cfg.batchSize, true)
 	}
 
 	// Similarity function benchmarks
@@ -42,10 +46,29 @@ func main() {
 	fmt.Println("\n✓ Benchmark suite completed!")
 }
 
-func benchmarkConfiguration(dim, count, batchSize int) {
-	dbPath := fmt.Sprintf("benchmark_%dd_%d.db", dim, count)
+func benchmarkConfiguration(dim, count, batchSize int, enableHNSW bool) {
+	suffix := "linear"
+	if enableHNSW {
+		suffix = "hnsw"
+	}
+	dbPath := fmt.Sprintf("benchmark_%s_%dd_%d.db", suffix, dim, count)
 	
-	store, err := sqvect.New(dbPath, dim)
+	var store *sqvect.SQLiteStore
+	var err error
+	
+	if enableHNSW {
+		config := sqvect.DefaultConfig()
+		config.Path = dbPath
+		config.VectorDim = dim
+		config.HNSW.Enabled = true
+		config.HNSW.M = 16
+		config.HNSW.EfConstruction = 200
+		config.HNSW.EfSearch = 50
+		store, err = sqvect.NewWithConfig(config)
+	} else {
+		store, err = sqvect.New(dbPath, dim)
+	}
+	
 	if err != nil {
 		log.Fatal(err)
 	}

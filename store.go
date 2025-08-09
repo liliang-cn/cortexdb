@@ -5,9 +5,13 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/fogfish/hnsw"
+	"github.com/fogfish/hnsw/vector"
+	surface "github.com/kshard/vector"
 	_ "github.com/mattn/go-sqlite3" // SQLite driver
 )
 
@@ -18,6 +22,10 @@ type SQLiteStore struct {
 	mu           sync.RWMutex
 	closed       bool
 	similarityFn SimilarityFunc
+	hnswIndex    *hnsw.HNSW[vector.VF32] // HNSW index for fast search
+	idToKey      map[string]uint32       // Maps string IDs to uint32 keys
+	keyToID      map[uint32]string       // Maps uint32 keys to string IDs
+	nextKey      uint32                  // Next available key
 }
 
 // New creates a new SQLite vector store with the given configuration
@@ -46,9 +54,30 @@ func NewWithConfig(config Config) (*SQLiteStore, error) {
 	store := &SQLiteStore{
 		config:       config,
 		similarityFn: config.SimilarityFn,
+		idToKey:      make(map[string]uint32),
+		keyToID:      make(map[uint32]string),
+		nextKey:      1,
 	}
 
 	return store, nil
+}
+
+// getOrCreateKey gets or creates a uint32 key for a string ID
+func (s *SQLiteStore) getOrCreateKey(id string) uint32 {
+	if key, exists := s.idToKey[id]; exists {
+		return key
+	}
+	key := s.nextKey
+	s.nextKey++
+	s.idToKey[id] = key
+	s.keyToID[key] = id
+	return key
+}
+
+// getIDFromKey gets string ID from uint32 key
+func (s *SQLiteStore) getIDFromKey(key uint32) (string, bool) {
+	id, exists := s.keyToID[key]
+	return id, exists
 }
 
 // Init initializes the SQLite database and creates necessary tables
@@ -78,6 +107,11 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 		return wrapError("init", err)
 	}
 
+	// Initialize HNSW index if enabled
+	if err := s.initHNSWIndex(ctx); err != nil {
+		return wrapError("init", err)
+	}
+
 	return nil
 }
 
@@ -103,6 +137,61 @@ func (s *SQLiteStore) createTables(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// initHNSWIndex initializes the HNSW index if enabled in configuration
+func (s *SQLiteStore) initHNSWIndex(ctx context.Context) error {
+	if !s.config.HNSW.Enabled {
+		return nil
+	}
+
+	// Create HNSW index with cosine similarity (default)
+	s.hnswIndex = hnsw.New(
+		vector.SurfaceVF32(surface.Cosine()),
+		hnsw.WithM(s.config.HNSW.M),
+		hnsw.WithEfConstruction(s.config.HNSW.EfConstruction),
+	)
+
+	// Load existing vectors into HNSW index
+	return s.rebuildHNSWIndex(ctx)
+}
+
+// rebuildHNSWIndex rebuilds the HNSW index from existing vectors in the database
+func (s *SQLiteStore) rebuildHNSWIndex(ctx context.Context) error {
+	if s.hnswIndex == nil {
+		return nil
+	}
+
+	// Query all vectors from database
+	rows, err := s.db.QueryContext(ctx, "SELECT id, vector FROM embeddings")
+	if err != nil {
+		return fmt.Errorf("failed to query existing vectors: %w", err)
+	}
+	defer rows.Close()
+
+	// Insert each vector into HNSW index
+	for rows.Next() {
+		var id string
+		var vectorBytes []byte
+		
+		if err := rows.Scan(&id, &vectorBytes); err != nil {
+			continue // Skip invalid entries
+		}
+
+		vec, err := decodeVector(vectorBytes)
+		if err != nil {
+			continue // Skip invalid vectors
+		}
+
+		// Get or create key for this ID and insert into HNSW index
+		key := s.getOrCreateKey(id)
+		s.hnswIndex.Insert(vector.VF32{
+			Key: key,
+			Vec: vec,
+		})
+	}
+
+	return rows.Err()
 }
 
 // Upsert inserts or updates a single embedding
@@ -138,6 +227,15 @@ func (s *SQLiteStore) Upsert(ctx context.Context, emb *Embedding) error {
 	_, err = s.db.ExecContext(ctx, query, emb.ID, vectorBytes, emb.Content, emb.DocID, metadataJSON)
 	if err != nil {
 		return wrapError("upsert", fmt.Errorf("failed to insert embedding: %w", err))
+	}
+
+	// Update HNSW index if enabled
+	if s.config.HNSW.Enabled && s.hnswIndex != nil {
+		key := s.getOrCreateKey(emb.ID)
+		s.hnswIndex.Insert(vector.VF32{
+			Key: key,
+			Vec: emb.Vector,
+		})
 	}
 
 	return nil
@@ -212,6 +310,17 @@ func (s *SQLiteStore) UpsertBatch(ctx context.Context, embs []*Embedding) error 
 		return wrapError("upsert_batch", fmt.Errorf("failed to commit transaction: %w", err))
 	}
 
+	// Update HNSW index if enabled
+	if s.config.HNSW.Enabled && s.hnswIndex != nil {
+		for _, emb := range embs {
+			key := s.getOrCreateKey(emb.ID)
+			s.hnswIndex.Insert(vector.VF32{
+				Key: key,
+				Vec: emb.Vector,
+			})
+		}
+	}
+
 	return nil
 }
 
@@ -228,6 +337,12 @@ func (s *SQLiteStore) Search(ctx context.Context, query []float32, opts SearchOp
 		return nil, wrapError("search", err)
 	}
 
+	// Use HNSW index if available and enabled
+	if s.config.HNSW.Enabled && s.hnswIndex != nil {
+		return s.searchWithHNSW(ctx, query, opts)
+	}
+
+	// Fallback to linear search
 	candidates, err := s.fetchCandidates(ctx, opts)
 	if err != nil {
 		return nil, wrapError("search", err)
@@ -235,6 +350,106 @@ func (s *SQLiteStore) Search(ctx context.Context, query []float32, opts SearchOp
 
 	results := s.scoreCandidates(query, candidates, opts)
 	return results, nil
+}
+
+// searchWithHNSW performs vector search using HNSW index
+func (s *SQLiteStore) searchWithHNSW(ctx context.Context, query []float32, opts SearchOptions) ([]ScoredEmbedding, error) {
+	if opts.TopK <= 0 {
+		opts.TopK = 10
+	}
+
+	// Search HNSW index for nearest neighbors
+	neighbors := s.hnswIndex.Search(
+		vector.VF32{Key: 0, Vec: query}, // Key doesn't matter for search query
+		opts.TopK*2, // Get more candidates to account for filtering
+		s.config.HNSW.EfSearch,
+	)
+
+	var candidateIDs []string
+	for _, neighbor := range neighbors {
+		if id, exists := s.getIDFromKey(neighbor.Key); exists {
+			candidateIDs = append(candidateIDs, id)
+		}
+	}
+
+	if len(candidateIDs) == 0 {
+		return []ScoredEmbedding{}, nil
+	}
+
+	// Fetch full embedding data from database for the candidate IDs
+	candidates, err := s.fetchEmbeddingsByIDs(ctx, candidateIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch candidates: %w", err)
+	}
+
+	// Apply filters and calculate final scores
+	var results []ScoredEmbedding
+	for _, candidate := range candidates {
+		// Apply metadata filters
+		if !s.matchesFilter(candidate.Embedding, opts.Filter) {
+			continue
+		}
+
+		// Calculate similarity score
+		score := s.similarityFn(query, candidate.Vector)
+		
+		// Apply threshold filter
+		if opts.Threshold > 0 && score < opts.Threshold {
+			continue
+		}
+
+		results = append(results, ScoredEmbedding{
+			Embedding: candidate.Embedding,
+			Score:     score,
+		})
+	}
+
+	// Sort by score (descending)
+	s.sortByScore(results)
+
+	// Return top-k results
+	if len(results) > opts.TopK {
+		results = results[:opts.TopK]
+	}
+
+	return results, nil
+}
+
+// fetchEmbeddingsByIDs fetches embeddings by their IDs
+func (s *SQLiteStore) fetchEmbeddingsByIDs(ctx context.Context, ids []string) ([]ScoredEmbedding, error) {
+	if len(ids) == 0 {
+		return []ScoredEmbedding{}, nil
+	}
+
+	// Build IN clause for SQL query
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(
+		"SELECT id, vector, content, doc_id, metadata FROM embeddings WHERE id IN (%s)",
+		strings.Join(placeholders, ","),
+	)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query embeddings by IDs: %w", err)
+	}
+	defer rows.Close()
+
+	var candidates []ScoredEmbedding
+	for rows.Next() {
+		candidate, err := s.scanEmbedding(rows)
+		if err != nil {
+			continue // Skip invalid embeddings
+		}
+		candidates = append(candidates, candidate)
+	}
+
+	return candidates, rows.Err()
 }
 
 // validateSearchInput validates search input parameters

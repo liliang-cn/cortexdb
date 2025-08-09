@@ -39,6 +39,24 @@ type DocumentInfo struct {
 	LastUpdated    *string `json:"lastUpdated,omitempty"`
 }
 
+// HNSWConfig represents configuration options for HNSW indexing
+type HNSWConfig struct {
+	Enabled        bool `json:"enabled"`
+	M              int  `json:"m"`              // Maximum connections per node (default: 16)
+	EfConstruction int  `json:"efConstruction"` // Candidates during construction (default: 200)
+	EfSearch       int  `json:"efSearch"`       // Candidates during search (default: 50)
+}
+
+// DefaultHNSWConfig returns default HNSW configuration
+func DefaultHNSWConfig() HNSWConfig {
+	return HNSWConfig{
+		Enabled:        false,
+		M:              16,
+		EfConstruction: 200,
+		EfSearch:       50,
+	}
+}
+
 // Config represents configuration options for the vector store
 type Config struct {
 	Path         string         `json:"path"`
@@ -46,6 +64,7 @@ type Config struct {
 	MaxConns     int            `json:"maxConns,omitempty"`
 	BatchSize    int            `json:"batchSize,omitempty"`
 	SimilarityFn SimilarityFunc `json:"-"`
+	HNSW         HNSWConfig     `json:"hnsw,omitempty"`
 }
 
 // DefaultConfig returns a default configuration
@@ -54,6 +73,7 @@ func DefaultConfig() Config {
 		MaxConns:     10,
 		BatchSize:    100,
 		SimilarityFn: CosineSimilarity,
+		HNSW:         DefaultHNSWConfig(),
 	}
 }
 
