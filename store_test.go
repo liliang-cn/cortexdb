@@ -968,6 +968,184 @@ func BenchmarkUpsert(b *testing.B) {
 	}
 }
 
+func TestSearchWithFilter(t *testing.T) {
+	dbPath := "test_search_filter_" + time.Now().Format("20060102_150405") + ".db"
+	defer func() {
+		if err := os.Remove(dbPath); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
+
+	store, err := New(dbPath, 3)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
+
+	ctx := context.Background()
+	if err := store.Init(ctx); err != nil {
+		t.Fatalf("Failed to initialize store: %v", err)
+	}
+
+	// Insert test data with different metadata (as strings since that's what the struct expects)
+	embeddings := []*Embedding{
+		{
+			ID:      "test1",
+			Vector:  []float32{1.0, 0.0, 0.0},
+			Content: "Test content 1",
+			Metadata: map[string]string{
+				"category": "docs",
+				"version":  "1",
+				"active":   "true",
+			},
+		},
+		{
+			ID:      "test2",
+			Vector:  []float32{0.0, 1.0, 0.0},
+			Content: "Test content 2",
+			Metadata: map[string]string{
+				"category": "api",
+				"version":  "2",
+				"active":   "false",
+			},
+		},
+		{
+			ID:      "test3",
+			Vector:  []float32{0.0, 0.0, 1.0},
+			Content: "Test content 3",
+			Metadata: map[string]string{
+				"category": "docs",
+				"version":  "1",
+				"active":   "true",
+			},
+		},
+	}
+
+	if err := store.UpsertBatch(ctx, embeddings); err != nil {
+		t.Fatalf("Failed to insert test data: %v", err)
+	}
+
+	t.Run("filter by string metadata", func(t *testing.T) {
+		query := []float32{1.0, 0.0, 0.0}
+		filters := map[string]interface{}{
+			"category": "docs",
+		}
+
+		results, err := store.SearchWithFilter(ctx, query, SearchOptions{TopK: 10}, filters)
+		if err != nil {
+			t.Fatalf("SearchWithFilter failed: %v", err)
+		}
+
+		if len(results) != 2 {
+			t.Errorf("Expected 2 results, got %d", len(results))
+		}
+
+		for _, result := range results {
+			if result.Metadata["category"] != "docs" {
+				t.Errorf("Expected category=docs, got %v", result.Metadata["category"])
+			}
+		}
+	})
+
+	t.Run("filter by numeric metadata as string", func(t *testing.T) {
+		query := []float32{0.0, 1.0, 0.0}
+		filters := map[string]interface{}{
+			"version": "1",
+		}
+
+		results, err := store.SearchWithFilter(ctx, query, SearchOptions{TopK: 10}, filters)
+		if err != nil {
+			t.Fatalf("SearchWithFilter failed: %v", err)
+		}
+
+		if len(results) != 2 {
+			t.Errorf("Expected 2 results, got %d", len(results))
+		}
+
+		for _, result := range results {
+			if result.Metadata["version"] != "1" {
+				t.Errorf("Expected version=1, got %v", result.Metadata["version"])
+			}
+		}
+	})
+
+	t.Run("filter by boolean metadata as string", func(t *testing.T) {
+		query := []float32{0.0, 0.0, 1.0}
+		filters := map[string]interface{}{
+			"active": "true",
+		}
+
+		results, err := store.SearchWithFilter(ctx, query, SearchOptions{TopK: 10}, filters)
+		if err != nil {
+			t.Fatalf("SearchWithFilter failed: %v", err)
+		}
+
+		if len(results) != 2 {
+			t.Errorf("Expected 2 results, got %d", len(results))
+		}
+
+		for _, result := range results {
+			if result.Metadata["active"] != "true" {
+				t.Errorf("Expected active=true, got %v", result.Metadata["active"])
+			}
+		}
+	})
+
+	t.Run("filter by multiple metadata", func(t *testing.T) {
+		query := []float32{1.0, 0.0, 0.0}
+		filters := map[string]interface{}{
+			"category": "docs",
+			"version":  "1",
+			"active":   "true",
+		}
+
+		results, err := store.SearchWithFilter(ctx, query, SearchOptions{TopK: 10}, filters)
+		if err != nil {
+			t.Fatalf("SearchWithFilter failed: %v", err)
+		}
+
+		if len(results) != 2 {
+			t.Errorf("Expected 2 results, got %d", len(results))
+		}
+	})
+
+	t.Run("no matching metadata", func(t *testing.T) {
+		query := []float32{1.0, 0.0, 0.0}
+		filters := map[string]interface{}{
+			"category": "nonexistent",
+		}
+
+		results, err := store.SearchWithFilter(ctx, query, SearchOptions{TopK: 10}, filters)
+		if err != nil {
+			t.Fatalf("SearchWithFilter failed: %v", err)
+		}
+
+		if len(results) != 0 {
+			t.Errorf("Expected 0 results, got %d", len(results))
+		}
+	})
+
+	t.Run("empty filters should return all results", func(t *testing.T) {
+		query := []float32{1.0, 0.0, 0.0}
+		filters := map[string]interface{}{}
+
+		results, err := store.SearchWithFilter(ctx, query, SearchOptions{TopK: 10}, filters)
+		if err != nil {
+			t.Fatalf("SearchWithFilter failed: %v", err)
+		}
+
+		if len(results) != 3 {
+			t.Errorf("Expected 3 results, got %d", len(results))
+		}
+	})
+}
+
 func BenchmarkSearch(b *testing.B) {
 	dbPath := "search_bench_" + time.Now().Format("20060102_150405") + ".db"
 	defer func() {
