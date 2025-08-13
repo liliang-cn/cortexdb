@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -605,6 +606,165 @@ func (s *SQLiteStore) scoreCandidates(query []float32, candidates []ScoredEmbedd
 	}
 
 	return candidates
+}
+
+// SearchWithFilter performs vector similarity search with advanced metadata filtering
+func (s *SQLiteStore) SearchWithFilter(ctx context.Context, query []float32, opts SearchOptions, metadataFilters map[string]interface{}) ([]ScoredEmbedding, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.closed {
+		return nil, wrapError("searchWithFilter", ErrStoreClosed)
+	}
+
+	if err := s.validateSearchInput(query, opts); err != nil {
+		return nil, wrapError("searchWithFilter", err)
+	}
+
+	// First perform the standard search
+	var candidates []ScoredEmbedding
+	var err error
+
+	// Use HNSW index if available and enabled
+	if s.config.HNSW.Enabled && s.hnswIndex != nil {
+		candidates, err = s.searchWithHNSW(ctx, query, opts)
+	} else {
+		// Fallback to linear search
+		candidates, err = s.fetchCandidates(ctx, opts)
+		if err != nil {
+			return nil, wrapError("searchWithFilter", err)
+		}
+		candidates = s.scoreCandidates(query, candidates, opts)
+	}
+
+	if err != nil {
+		return nil, wrapError("searchWithFilter", err)
+	}
+
+	// Apply advanced metadata filtering
+	if len(metadataFilters) > 0 {
+		filtered, err := s.filterByMetadata(candidates, metadataFilters)
+		if err != nil {
+			return nil, wrapError("searchWithFilter", err)
+		}
+		candidates = filtered
+	}
+
+	return candidates, nil
+}
+
+// filterByMetadata filters candidates based on metadata criteria
+func (s *SQLiteStore) filterByMetadata(candidates []ScoredEmbedding, filters map[string]interface{}) ([]ScoredEmbedding, error) {
+	if len(filters) == 0 {
+		return candidates, nil
+	}
+
+	var filtered []ScoredEmbedding
+	for _, candidate := range candidates {
+		if candidate.Metadata == nil {
+			continue
+		}
+
+		match := true
+		for key, expectedValue := range filters {
+			actualValue, exists := candidate.Metadata[key]
+			if !exists {
+				match = false
+				break
+			}
+
+			// Type-safe comparison
+			if !s.compareMetadataValues(actualValue, expectedValue) {
+				match = false
+				break
+			}
+		}
+
+		if match {
+			filtered = append(filtered, candidate)
+		}
+	}
+
+	return filtered, nil
+}
+
+// compareMetadataValues compares two metadata values with type checking
+func (s *SQLiteStore) compareMetadataValues(actual, expected interface{}) bool {
+	if actual == nil && expected == nil {
+		return true
+	}
+	if actual == nil || expected == nil {
+		return false
+	}
+
+	// Handle string comparison (the primary case since metadata is stored as map[string]string)
+	if actualStr, ok := actual.(string); ok {
+		// Compare with another string
+		if expectedStr, ok := expected.(string); ok {
+			return actualStr == expectedStr
+		}
+		
+		// Handle numeric comparisons by converting expected value to string
+		if expectedInt, ok := expected.(int); ok {
+			return actualStr == fmt.Sprintf("%d", expectedInt)
+		}
+		
+		if expectedFloat, ok := expected.(float64); ok {
+			return actualStr == fmt.Sprintf("%g", expectedFloat)
+		}
+		
+		// Handle boolean comparison by converting expected value to string
+		if expectedBool, ok := expected.(bool); ok {
+			return actualStr == fmt.Sprintf("%t", expectedBool)
+		}
+	}
+
+	// Handle numeric comparisons when actual is numeric
+	if actualFloat, ok := actual.(float64); ok {
+		if expectedFloat, ok := expected.(float64); ok {
+			return actualFloat == expectedFloat
+		}
+		if expectedInt, ok := expected.(int); ok {
+			return actualFloat == float64(expectedInt)
+		}
+		// Try to parse expected string as float
+		if expectedStr, ok := expected.(string); ok {
+			if parsedFloat, err := strconv.ParseFloat(expectedStr, 64); err == nil {
+				return actualFloat == parsedFloat
+			}
+		}
+	}
+
+	if actualInt, ok := actual.(int); ok {
+		if expectedInt, ok := expected.(int); ok {
+			return actualInt == expectedInt
+		}
+		if expectedFloat, ok := expected.(float64); ok {
+			return float64(actualInt) == expectedFloat
+		}
+		// Try to parse expected string as int
+		if expectedStr, ok := expected.(string); ok {
+			if parsedInt, err := strconv.Atoi(expectedStr); err == nil {
+				return actualInt == parsedInt
+			}
+		}
+	}
+
+	// Handle boolean comparison when actual is boolean
+	if actualBool, ok := actual.(bool); ok {
+		if expectedBool, ok := expected.(bool); ok {
+			return actualBool == expectedBool
+		}
+		// Try to parse expected string as bool
+		if expectedStr, ok := expected.(string); ok {
+			if parsedBool, err := strconv.ParseBool(expectedStr); err == nil {
+				return actualBool == parsedBool
+			}
+		}
+	}
+
+	// Fallback to direct comparison
+	return actual == expected
 }
 
 // sortByScore sorts embeddings by score in descending order
