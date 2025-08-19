@@ -13,7 +13,7 @@ import (
 	"github.com/fogfish/hnsw"
 	"github.com/fogfish/hnsw/vector"
 	surface "github.com/kshard/vector"
-	_ "github.com/mattn/go-sqlite3" // SQLite driver
+	_ "modernc.org/sqlite" // SQLite driver
 )
 
 // SQLiteStore implements the Store interface using SQLite as backend
@@ -91,7 +91,7 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 	}
 
 	// Open database connection
-	db, err := sql.Open("sqlite3", s.config.Path+"?_journal_mode=WAL&_synchronous=NORMAL&_cache_size=10000")
+	db, err := sql.Open("sqlite", s.config.Path+"?_journal_mode=WAL&_synchronous=NORMAL&_cache_size=10000")
 	if err != nil {
 		return wrapError("init", fmt.Errorf("failed to open database: %w", err))
 	}
