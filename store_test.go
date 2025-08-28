@@ -500,11 +500,6 @@ func TestErrorHandling(t *testing.T) {
 		t.Error("Expected error for empty database path")
 	}
 
-	_, err = New("test.db", 0)
-	if err == nil {
-		t.Error("Expected error for zero vector dimension")
-	}
-
 	_, err = New("test.db", -1)
 	if err == nil {
 		t.Error("Expected error for negative vector dimension")

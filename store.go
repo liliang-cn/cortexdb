@@ -27,6 +27,7 @@ type SQLiteStore struct {
 	idToKey      map[string]uint32       // Maps string IDs to uint32 keys
 	keyToID      map[uint32]string       // Maps uint32 keys to string IDs
 	nextKey      uint32                  // Next available key
+	adapter      *DimensionAdapter       // Dimension adaptation handler
 }
 
 // New creates a new SQLite vector store with the given configuration
@@ -44,8 +45,9 @@ func NewWithConfig(config Config) (*SQLiteStore, error) {
 		return nil, wrapError("init", fmt.Errorf("database path cannot be empty"))
 	}
 
-	if config.VectorDim <= 0 {
-		return nil, wrapError("init", fmt.Errorf("vector dimension must be positive"))
+	// Allow VectorDim = 0 for auto-detection
+	if config.VectorDim < 0 {
+		return nil, wrapError("init", fmt.Errorf("vector dimension must be non-negative"))
 	}
 
 	if config.SimilarityFn == nil {
@@ -58,6 +60,7 @@ func NewWithConfig(config Config) (*SQLiteStore, error) {
 		idToKey:      make(map[string]uint32),
 		keyToID:      make(map[uint32]string),
 		nextKey:      1,
+		adapter:      NewDimensionAdapter(config.AutoDimAdapt),
 	}
 
 	return store, nil
@@ -96,9 +99,9 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 		return wrapError("init", fmt.Errorf("failed to open database: %w", err))
 	}
 
-	// Configure connection pool
-	db.SetMaxOpenConns(s.config.MaxConns)
-	db.SetMaxIdleConns(s.config.MaxConns)
+	// Configure connection pool with sensible defaults
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(time.Hour)
 
 	s.db = db
@@ -198,15 +201,45 @@ func (s *SQLiteStore) rebuildHNSWIndex(ctx context.Context) error {
 // Upsert inserts or updates a single embedding
 func (s *SQLiteStore) Upsert(ctx context.Context, emb *Embedding) error {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
+	currentDim := s.config.VectorDim
+	s.mu.RUnlock()
 
 	if s.closed {
 		return wrapError("upsert", ErrStoreClosed)
 	}
 
-	if err := validateEmbedding(*emb, s.config.VectorDim); err != nil {
+	incomingDim := len(emb.Vector)
+
+	// Auto-detect dimension on first insert
+	if currentDim == 0 {
+		s.mu.Lock()
+		if s.config.VectorDim == 0 { // Double-check after acquiring write lock
+			s.config.VectorDim = incomingDim
+			currentDim = incomingDim
+		} else {
+			currentDim = s.config.VectorDim
+		}
+		s.mu.Unlock()
+	}
+
+	// Handle dimension mismatch
+	if incomingDim != currentDim {
+		adaptedVector, err := s.adapter.AdaptVector(emb.Vector, incomingDim, currentDim)
+		if err != nil {
+			return wrapError("upsert", err)
+		}
+		s.adapter.logDimensionEvent("adapt", incomingDim, currentDim, emb.ID)
+		emb.Vector = adaptedVector
+	}
+
+	// Validate adapted embedding
+	if err := validateEmbedding(*emb, currentDim); err != nil {
 		return wrapError("upsert", err)
 	}
+
+	// Re-acquire read lock for database operations
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	// Encode vector and metadata
 	vectorBytes, err := encodeVector(emb.Vector)
@@ -328,11 +361,27 @@ func (s *SQLiteStore) UpsertBatch(ctx context.Context, embs []*Embedding) error 
 // Search performs vector similarity search
 func (s *SQLiteStore) Search(ctx context.Context, query []float32, opts SearchOptions) ([]ScoredEmbedding, error) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
+	storeDim := s.config.VectorDim
+	s.mu.RUnlock()
 
 	if s.closed {
 		return nil, wrapError("search", ErrStoreClosed)
 	}
+
+	queryDim := len(query)
+
+	// Auto-adapt query vector if dimensions don't match
+	if storeDim > 0 && queryDim != storeDim {
+		adaptedQuery, err := s.adapter.AdaptVector(query, queryDim, storeDim)
+		if err != nil {
+			return nil, wrapError("search", fmt.Errorf("query adaptation failed: %w", err))
+		}
+		s.adapter.logDimensionEvent("search_adapt", queryDim, storeDim, "query_vector")
+		query = adaptedQuery
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	if err := s.validateSearchInput(query, opts); err != nil {
 		return nil, wrapError("search", err)
