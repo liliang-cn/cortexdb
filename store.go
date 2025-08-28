@@ -508,6 +508,11 @@ func (s *SQLiteStore) validateSearchInput(query []float32, opts SearchOptions) e
 		return fmt.Errorf("invalid query vector: %w", err)
 	}
 
+	// Skip dimension check in auto-detect mode when database is empty
+	if s.config.VectorDim == 0 {
+		return nil
+	}
+
 	if len(query) != s.config.VectorDim {
 		return fmt.Errorf("query vector dimension mismatch: expected %d, got %d",
 			s.config.VectorDim, len(query))
@@ -660,11 +665,27 @@ func (s *SQLiteStore) scoreCandidates(query []float32, candidates []ScoredEmbedd
 // SearchWithFilter performs vector similarity search with advanced metadata filtering
 func (s *SQLiteStore) SearchWithFilter(ctx context.Context, query []float32, opts SearchOptions, metadataFilters map[string]interface{}) ([]ScoredEmbedding, error) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
+	storeDim := s.config.VectorDim
+	s.mu.RUnlock()
 
 	if s.closed {
 		return nil, wrapError("searchWithFilter", ErrStoreClosed)
 	}
+
+	queryDim := len(query)
+
+	// Auto-adapt query vector if dimensions don't match
+	if storeDim > 0 && queryDim != storeDim {
+		adaptedQuery, err := s.adapter.AdaptVector(query, queryDim, storeDim)
+		if err != nil {
+			return nil, wrapError("searchWithFilter", fmt.Errorf("query adaptation failed: %w", err))
+		}
+		s.adapter.logDimensionEvent("search_adapt", queryDim, storeDim, "query_vector")
+		query = adaptedQuery
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	if err := s.validateSearchInput(query, opts); err != nil {
 		return nil, wrapError("searchWithFilter", err)
