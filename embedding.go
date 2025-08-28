@@ -57,22 +57,31 @@ func DefaultHNSWConfig() HNSWConfig {
 	}
 }
 
+// AdaptPolicy defines how to handle vector dimension mismatches
+type AdaptPolicy int
+
+const (
+	SmartAdapt   AdaptPolicy = iota // Intelligent adaptation based on data distribution (default)
+	AutoTruncate                    // Always truncate to smaller dimension
+	AutoPad                         // Always pad to larger dimension
+	WarnOnly                        // Only warn, don't auto-adapt
+)
+
 // Config represents configuration options for the vector store
 type Config struct {
-	Path         string         `json:"path"`
-	VectorDim    int            `json:"vectorDim"`
-	MaxConns     int            `json:"maxConns,omitempty"`
-	BatchSize    int            `json:"batchSize,omitempty"`
-	SimilarityFn SimilarityFunc `json:"-"`
-	HNSW         HNSWConfig     `json:"hnsw,omitempty"`
+	Path         string         `json:"path"`                  // Database file path
+	VectorDim    int            `json:"vectorDim"`             // Expected vector dimension, 0 = auto-detect
+	AutoDimAdapt AdaptPolicy    `json:"autoDimAdapt"`          // How to handle dimension mismatches
+	SimilarityFn SimilarityFunc `json:"-"`                     // Similarity function
+	HNSW         HNSWConfig     `json:"hnsw,omitempty"`        // HNSW index configuration
 }
 
 // DefaultConfig returns a default configuration
 func DefaultConfig() Config {
 	return Config{
-		MaxConns:     10,
-		BatchSize:    100,
-		SimilarityFn: CosineSimilarity,
+		VectorDim:    0,                // Auto-detect dimension
+		AutoDimAdapt: SmartAdapt,       // Intelligent adaptation
+		SimilarityFn: CosineSimilarity, // Cosine similarity
 		HNSW:         DefaultHNSWConfig(),
 	}
 }

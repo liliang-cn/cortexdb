@@ -21,6 +21,8 @@ sqvect is a pure Go library that provides a simple, efficient vector storage sol
 - 🎯 **Optimized for embeddings** – Built for AI/ML workflows
 - 📊 **Rich metadata support** with JSON storage
 - ⚡ **High performance** – Optimized for common vector operations
+- 🔄 **Auto dimension adaptation** – Seamlessly handle vectors of different dimensions
+- 🤖 **Zero configuration** – Works out of the box with any embedding model
 
 ## 🚀 Quick Start
 
@@ -44,8 +46,8 @@ import (
 )
 
 func main() {
-    // Create a new vector store with 768 dimensions
-    store, err := sqvect.New("embeddings.db", 768)
+    // Create a new vector store with auto-dimension detection
+    store, err := sqvect.New("embeddings.db", 0) // 0 = auto-detect
     if err != nil {
         log.Fatal(err)
     }
@@ -57,27 +59,43 @@ func main() {
         log.Fatal(err)
     }
 
-    // Insert an embedding
-    embedding := sqvect.Embedding{
+    // Insert BERT embeddings (768 dimensions)
+    bertEmb := &sqvect.Embedding{
         ID:      "doc_1_chunk_1",
-        Vector:  []float32{0.1, 0.2, 0.3, /* ... 768 dimensions */},
-        Content: "This is sample text content",
+        Vector:  make([]float32, 768), // BERT dimensions
+        Content: "This is BERT encoded text",
         DocID:   "document_1",
         Metadata: map[string]string{
-            "source": "pdf",
-            "page":   "1",
+            "source": "bert",
+            "type":   "text",
         },
     }
 
-    if err := store.Upsert(ctx, embedding); err != nil {
+    if err := store.Upsert(ctx, bertEmb); err != nil {
         log.Fatal(err)
     }
 
-    // Search for similar embeddings
-    query := []float32{0.1, 0.25, 0.28, /* ... 768 dimensions */}
+    // Insert OpenAI embeddings (1536 dimensions) - automatically adapted!
+    openaiEmb := &sqvect.Embedding{
+        ID:      "doc_2_chunk_1", 
+        Vector:  make([]float32, 1536), // OpenAI dimensions
+        Content: "This is OpenAI encoded text",
+        DocID:   "document_2",
+        Metadata: map[string]string{
+            "source": "openai",
+            "type":   "text",
+        },
+    }
+
+    if err := store.Upsert(ctx, openaiEmb); err != nil {
+        log.Fatal(err)
+    }
+
+    // Search with any dimension query - automatically adapted!
+    query := make([]float32, 3072) // Even larger dimension works
     results, err := store.Search(ctx, query, sqvect.SearchOptions{
         TopK:      5,
-        Threshold: 0.7, // Only return results with similarity > 0.7
+        Threshold: 0.7,
     })
     if err != nil {
         log.Fatal(err)
@@ -85,9 +103,49 @@ func main() {
 
     // Process results
     for _, result := range results {
-        fmt.Printf("Score: %.4f | Content: %s\n", result.Score, result.Content)
+        fmt.Printf("Score: %.4f | Content: %s | Source: %s\n", 
+            result.Score, result.Content, result.Metadata["source"])
     }
 }
+```
+
+## 🔄 Automatic Dimension Adaptation
+
+sqvect automatically handles vectors of different dimensions, making it easy to:
+
+- **Switch between embedding models** (e.g., BERT 768D → OpenAI 1536D)
+- **Mix different embedding sources** in the same database
+- **Query with any dimension** without worrying about compatibility
+
+### Adaptation Strategies
+
+```go
+config := sqvect.DefaultConfig()
+config.Path = "vectors.db"
+config.AutoDimAdapt = sqvect.SmartAdapt    // Default: intelligent adaptation
+// config.AutoDimAdapt = sqvect.AutoTruncate // Always truncate to smaller
+// config.AutoDimAdapt = sqvect.AutoPad      // Always pad to larger  
+// config.AutoDimAdapt = sqvect.WarnOnly     // Only warn, no adaptation
+
+store, err := sqvect.NewWithConfig(config)
+```
+
+### Zero Configuration Example
+
+```go
+// Just works - no dimension management needed!
+store, _ := sqvect.New("vectors.db", 0)
+store.Init(ctx)
+
+// Insert any dimension
+store.Upsert(ctx, &sqvect.Embedding{Vector: make([]float32, 384)})   // MiniLM
+store.Upsert(ctx, &sqvect.Embedding{Vector: make([]float32, 768)})   // BERT  
+store.Upsert(ctx, &sqvect.Embedding{Vector: make([]float32, 1536)})  // OpenAI
+store.Upsert(ctx, &sqvect.Embedding{Vector: make([]float32, 3072)})  // Large models
+
+// Search with any dimension
+results, _ := store.Search(ctx, make([]float32, 2500), sqvect.SearchOptions{TopK: 10})
+```
 ```
 
 ## 📖 API Documentation
@@ -145,6 +203,10 @@ type ScoredEmbedding struct {
 #### Basic Configuration
 
 ```go
+// Auto-detect dimensions (recommended)
+store, err := sqvect.New("data.db", 0)
+
+// Fixed dimensions
 store, err := sqvect.New("data.db", 768)
 ```
 
@@ -153,13 +215,31 @@ store, err := sqvect.New("data.db", 768)
 ```go
 config := sqvect.Config{
     Path:         "embeddings.db",
-    VectorDim:    768,
-    MaxConns:     20,
-    BatchSize:    500,
-    SimilarityFn: sqvect.CosineSimilarity,
+    VectorDim:    0,                       // 0 = auto-detect, >0 = fixed
+    AutoDimAdapt: sqvect.SmartAdapt,       // Dimension adaptation strategy
+    SimilarityFn: sqvect.CosineSimilarity, // Similarity function
+    HNSW: sqvect.HNSWConfig{               // Optional HNSW indexing
+        Enabled:        true,
+        M:              16,
+        EfConstruction: 200,
+        EfSearch:       50,
+    },
 }
 
 store, err := sqvect.NewWithConfig(config)
+```
+
+#### Dimension Adaptation Policies
+
+```go
+type AdaptPolicy int
+
+const (
+    SmartAdapt   AdaptPolicy = iota // Intelligent adaptation (default)
+    AutoTruncate                    // Always truncate to smaller dimension
+    AutoPad                         // Always pad to larger dimension  
+    WarnOnly                        // Only warn, don't auto-adapt
+)
 ```
 
 ## 🔍 Similarity Functions
@@ -300,6 +380,12 @@ fmt.Printf("DB Size: %d bytes\n", stats.Size)
 ### Basic Usage
 
 See [examples/basic](examples/basic) for a simple 3D vector example.
+
+### Dimension Adaptation
+
+See [examples/dimension_adapt](examples/dimension_adapt) for automatic dimension handling with different embedding models.
+
+For detailed documentation on dimension adaptation, see [DIMENSION.md](DIMENSION.md).
 
 ### Advanced Features
 
