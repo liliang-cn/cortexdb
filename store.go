@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,16 +19,17 @@ import (
 
 // SQLiteStore implements the Store interface using SQLite as backend
 type SQLiteStore struct {
-	db           *sql.DB
-	config       Config
-	mu           sync.RWMutex
-	closed       bool
-	similarityFn SimilarityFunc
-	hnswIndex    *hnsw.HNSW[vector.VF32] // HNSW index for fast search
-	idToKey      map[string]uint32       // Maps string IDs to uint32 keys
-	keyToID      map[uint32]string       // Maps uint32 keys to string IDs
-	nextKey      uint32                  // Next available key
-	adapter      *DimensionAdapter       // Dimension adaptation handler
+	db             *sql.DB
+	config         Config
+	mu             sync.RWMutex
+	closed         bool
+	similarityFn   SimilarityFunc
+	hnswIndex      *hnsw.HNSW[vector.VF32] // HNSW index for fast search
+	idToKey        map[string]uint32       // Maps string IDs to uint32 keys
+	keyToID        map[uint32]string       // Maps uint32 keys to string IDs
+	nextKey        uint32                  // Next available key
+	adapter        *DimensionAdapter       // Dimension adaptation handler
+	textSimilarity *TextSimilarity         // Text similarity calculator
 }
 
 // New creates a new SQLite vector store with the given configuration
@@ -61,6 +63,11 @@ func NewWithConfig(config Config) (*SQLiteStore, error) {
 		keyToID:      make(map[uint32]string),
 		nextKey:      1,
 		adapter:      NewDimensionAdapter(config.AutoDimAdapt),
+	}
+	
+	// Initialize text similarity if enabled
+	if config.TextSimilarity.Enabled {
+		store.textSimilarity = NewTextSimilarity()
 	}
 
 	return store, nil
@@ -432,7 +439,10 @@ func (s *SQLiteStore) searchWithHNSW(ctx context.Context, query []float32, opts 
 		return nil, fmt.Errorf("failed to fetch candidates: %w", err)
 	}
 
-	// Apply filters and calculate final scores
+	// Apply filters and calculate final scores using hybrid approach
+	textWeight := s.getTextWeight(opts)
+	vectorWeight := 1.0 - textWeight
+	
 	var results []ScoredEmbedding
 	for _, candidate := range candidates {
 		// Apply metadata filters
@@ -440,17 +450,29 @@ func (s *SQLiteStore) searchWithHNSW(ctx context.Context, query []float32, opts 
 			continue
 		}
 
-		// Calculate similarity score
-		score := s.similarityFn(query, candidate.Vector)
+		// Calculate vector similarity score
+		vectorScore := s.similarityFn(query, candidate.Vector)
+		
+		// Calculate text similarity score (if enabled and query text provided)
+		textScore := 0.0
+		if s.textSimilarity != nil && opts.QueryText != "" {
+			textScore = s.textSimilarity.CalculateSimilarity(opts.QueryText, candidate.Content)
+		}
+		
+		// Combine scores
+		finalScore := vectorScore
+		if textWeight > 0 && textScore > 0 {
+			finalScore = vectorScore*vectorWeight + textScore*textWeight
+		}
 		
 		// Apply threshold filter
-		if opts.Threshold > 0 && score < opts.Threshold {
+		if opts.Threshold > 0 && finalScore < opts.Threshold {
 			continue
 		}
 
 		results = append(results, ScoredEmbedding{
 			Embedding: candidate.Embedding,
-			Score:     score,
+			Score:     finalScore,
 		})
 	}
 
@@ -635,9 +657,26 @@ func (s *SQLiteStore) scoreCandidates(query []float32, candidates []ScoredEmbedd
 		opts.TopK = 10
 	}
 
-	// Calculate similarity scores
+	// Calculate similarity scores - hybrid approach
+	textWeight := s.getTextWeight(opts)
+	vectorWeight := 1.0 - textWeight
+	
 	for i := range candidates {
-		candidates[i].Score = s.similarityFn(query, candidates[i].Vector)
+		// Vector similarity score
+		vectorScore := s.similarityFn(query, candidates[i].Vector)
+		
+		// Text similarity score (if enabled and query text provided)
+		textScore := 0.0
+		if s.textSimilarity != nil && opts.QueryText != "" {
+			textScore = s.textSimilarity.CalculateSimilarity(opts.QueryText, candidates[i].Content)
+		}
+		
+		// Combine scores
+		if textWeight > 0 && textScore > 0 {
+			candidates[i].Score = vectorScore*vectorWeight + textScore*textWeight
+		} else {
+			candidates[i].Score = vectorScore // Fall back to vector-only scoring
+		}
 	}
 
 	// Filter by threshold
@@ -660,6 +699,21 @@ func (s *SQLiteStore) scoreCandidates(query []float32, candidates []ScoredEmbedd
 	}
 
 	return candidates
+}
+
+// getTextWeight determines the text similarity weight from options or config
+func (s *SQLiteStore) getTextWeight(opts SearchOptions) float64 {
+	// Use weight from SearchOptions if provided
+	if opts.TextWeight > 0 {
+		return math.Min(opts.TextWeight, 1.0) // Clamp to [0, 1]
+	}
+	
+	// Fall back to config default weight
+	if s.textSimilarity != nil && s.config.TextSimilarity.Enabled {
+		return s.config.TextSimilarity.DefaultWeight
+	}
+	
+	return 0.0 // No text similarity
 }
 
 // SearchWithFilter performs vector similarity search with advanced metadata filtering
