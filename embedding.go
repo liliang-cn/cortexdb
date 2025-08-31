@@ -19,9 +19,11 @@ type ScoredEmbedding struct {
 
 // SearchOptions defines options for vector search
 type SearchOptions struct {
-	TopK      int               `json:"topK"`
-	Filter    map[string]string `json:"filter,omitempty"`
-	Threshold float64           `json:"threshold,omitempty"`
+	TopK       int               `json:"topK"`
+	Filter     map[string]string `json:"filter,omitempty"`
+	Threshold  float64           `json:"threshold,omitempty"`
+	QueryText  string            `json:"queryText,omitempty"`  // Optional query text for enhanced matching
+	TextWeight float64           `json:"textWeight,omitempty"` // Weight for text similarity (0.0-1.0, default 0.3)
 }
 
 // StoreStats provides statistics about the vector store
@@ -57,6 +59,20 @@ func DefaultHNSWConfig() HNSWConfig {
 	}
 }
 
+// TextSimilarityConfig represents configuration for text-based similarity
+type TextSimilarityConfig struct {
+	Enabled       bool    `json:"enabled"`       // Enable text similarity matching
+	DefaultWeight float64 `json:"defaultWeight"` // Default weight for text similarity (0.0-1.0)
+}
+
+// DefaultTextSimilarityConfig returns default text similarity configuration
+func DefaultTextSimilarityConfig() TextSimilarityConfig {
+	return TextSimilarityConfig{
+		Enabled:       true, // Enabled by default
+		DefaultWeight: 0.3,  // 30% text similarity, 70% vector similarity
+	}
+}
+
 // AdaptPolicy defines how to handle vector dimension mismatches
 type AdaptPolicy int
 
@@ -69,20 +85,22 @@ const (
 
 // Config represents configuration options for the vector store
 type Config struct {
-	Path         string         `json:"path"`                  // Database file path
-	VectorDim    int            `json:"vectorDim"`             // Expected vector dimension, 0 = auto-detect
-	AutoDimAdapt AdaptPolicy    `json:"autoDimAdapt"`          // How to handle dimension mismatches
-	SimilarityFn SimilarityFunc `json:"-"`                     // Similarity function
-	HNSW         HNSWConfig     `json:"hnsw,omitempty"`        // HNSW index configuration
+	Path           string               `json:"path"`                    // Database file path
+	VectorDim      int                  `json:"vectorDim"`               // Expected vector dimension, 0 = auto-detect
+	AutoDimAdapt   AdaptPolicy          `json:"autoDimAdapt"`            // How to handle dimension mismatches
+	SimilarityFn   SimilarityFunc       `json:"-"`                       // Similarity function
+	HNSW           HNSWConfig           `json:"hnsw,omitempty"`          // HNSW index configuration
+	TextSimilarity TextSimilarityConfig `json:"textSimilarity,omitempty"` // Text similarity configuration
 }
 
 // DefaultConfig returns a default configuration
 func DefaultConfig() Config {
 	return Config{
-		VectorDim:    0,                // Auto-detect dimension
-		AutoDimAdapt: SmartAdapt,       // Intelligent adaptation
-		SimilarityFn: CosineSimilarity, // Cosine similarity
-		HNSW:         DefaultHNSWConfig(),
+		VectorDim:      0,                              // Auto-detect dimension
+		AutoDimAdapt:   SmartAdapt,                     // Intelligent adaptation
+		SimilarityFn:   CosineSimilarity,               // Cosine similarity
+		HNSW:           DefaultHNSWConfig(),            // HNSW configuration
+		TextSimilarity: DefaultTextSimilarityConfig(),  // Text similarity configuration
 	}
 }
 
