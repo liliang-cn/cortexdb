@@ -7,7 +7,7 @@
 - **含义**:
   - `0.0`: 完全不匹配
   - `1.0`: 完美匹配
-  - `> 1.0`: 带有boost权重的强匹配
+  - `> 1.0`: 带有 boost 权重的强匹配
 
 ## ⚙️ 配置选项
 
@@ -26,8 +26,8 @@ type TextSimilarityOptions struct {
 ### 工作原理
 
 1. **基础相似度计算**: 使用多种算法计算文本相似度 (0.0-1.0)
-2. **Boost权重应用**: 如果查询和内容包含配置的特殊词汇，应用权重倍数
-3. **跨语言支持**: 通过 `TermPairs` 支持中英文对应词汇的boost
+2. **Boost 权重应用**: 如果查询和内容包含配置的特殊词汇，应用权重倍数
+3. **跨语言支持**: 通过 `TermPairs` 支持中英文对应词汇的 boost
 
 ### 示例
 
@@ -53,21 +53,24 @@ score := sim.CalculateSimilarity("yinshu", "音书")  // 3.0 (超过1.0!)
 
 ## 📈 实际测试结果
 
-### 基础匹配 (无boost)
+### 基础匹配 (无 boost)
+
 ```
 'yinshu' vs '音书': 1.000
 'beijing' vs '北京': 1.000
 'coffee' vs '咖啡': 0.333 (需要配置TermPairs才能完美匹配)
 ```
 
-### 带boost的匹配
+### 带 boost 的匹配
+
 ```
 # AllowScoreAboveOne = true, boost = 3.0
 'yinshu' vs '音书': 3.000 🔥
 'beijing yinshu' vs '北京音书': 15.000 🔥 (多个boost词相乘)
 ```
 
-### 限制vs不限制对比
+### 限制 vs 不限制对比
+
 ```
 # boost = 5.0
 AllowScoreAboveOne = false: 1.000 (被限制)
@@ -77,18 +80,21 @@ AllowScoreAboveOne = true:  5.000 (真实boost效果)
 ## 🎨 使用场景
 
 ### 1. 标准使用 (兼容模式)
+
 ```go
 sim := sqvect.NewTextSimilarity()  // 默认配置
 // 分数范围: 0.0-1.0
 ```
 
 ### 2. 中文支持
+
 ```go
 sim := sqvect.NewTextSimilarityWithOptions(sqvect.DefaultChineseOptions())
 // 常用中英文词汇自动支持
 ```
 
 ### 3. 自定义权重
+
 ```go
 options := sqvect.TextSimilarityOptions{
     AllowScoreAboveOne: true,
@@ -101,18 +107,20 @@ options := sqvect.TextSimilarityOptions{
 ## 🔧 配置建议
 
 ### 权重设置
+
 - **1.0**: 标准权重，不改变分数
 - **1.5-2.0**: 轻微提升
-- **3.0-5.0**: 显著提升  
+- **3.0-5.0**: 显著提升
 - **10.0+**: 极高权重 (谨慎使用)
 
 ### 向后兼容
+
 - `AllowScoreAboveOne = false`: 保持传统 0-1 范围
-- `AllowScoreAboveOne = true`: 启用boost超过1.0的能力
+- `AllowScoreAboveOne = true`: 启用 boost 超过 1.0 的能力
 
 ## 🎯 核心优势
 
-1. **灵活性**: 可配置的boost和词汇对应
+1. **灵活性**: 可配置的 boost 和词汇对应
 2. **跨语言**: 中英文自动匹配支持
 3. **兼容性**: 默认行为保持不变
 4. **精确控制**: 细粒度的权重配置
