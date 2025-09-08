@@ -29,7 +29,7 @@ type SQLiteStore struct {
 	keyToID        map[uint32]string       // Maps uint32 keys to string IDs
 	nextKey        uint32                  // Next available key
 	adapter        *DimensionAdapter       // Dimension adaptation handler
-	textSimilarity *TextSimilarity         // Text similarity calculator
+	textSimilarity TextSimilarity         // Text similarity calculator
 }
 
 // New creates a new SQLite vector store with the given configuration
@@ -66,9 +66,10 @@ func NewWithConfig(config Config) (*SQLiteStore, error) {
 	}
 	
 	// Initialize text similarity if enabled
-	if config.TextSimilarity.Enabled {
-		store.textSimilarity = NewTextSimilarity()
-	}
+	// TODO: Implement text similarity
+	// if config.TextSimilarity.Enabled {
+	// 	store.textSimilarity = NewTextSimilarity()
+	// }
 
 	return store, nil
 }
