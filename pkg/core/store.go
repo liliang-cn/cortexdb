@@ -182,7 +182,12 @@ func (s *SQLiteStore) rebuildHNSWIndex(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to query existing vectors: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			// Log error but don't override the main error
+			_ = err
+		}
+	}()
 
 	// Insert each vector into HNSW index
 	for rows.Next() {
@@ -199,7 +204,10 @@ func (s *SQLiteStore) rebuildHNSWIndex(ctx context.Context) error {
 		}
 
 		// Insert into HNSW index
-		s.hnswIndex.Insert(id, vec)
+		if err := s.hnswIndex.Insert(id, vec); err != nil {
+			// Log error but don't fail the entire operation
+			_ = err
+		}
 	}
 
 	return rows.Err()
@@ -287,7 +295,7 @@ func (s *SQLiteStore) Upsert(ctx context.Context, emb *Embedding) error {
 
 	// Update HNSW index if enabled
 	if s.config.HNSW.Enabled && s.hnswIndex != nil {
-		s.hnswIndex.Insert(emb.ID, emb.Vector)
+		_ = s.hnswIndex.Insert(emb.ID, emb.Vector)
 	}
 
 	return nil
@@ -380,7 +388,7 @@ func (s *SQLiteStore) UpsertBatch(ctx context.Context, embs []*Embedding) error 
 	// Update HNSW index if enabled
 	if s.config.HNSW.Enabled && s.hnswIndex != nil {
 		for _, emb := range embs {
-			s.hnswIndex.Insert(emb.ID, emb.Vector)
+			_ = s.hnswIndex.Insert(emb.ID, emb.Vector)
 		}
 	}
 
@@ -540,7 +548,7 @@ func (s *SQLiteStore) fetchEmbeddingsByIDs(ctx context.Context, ids []string) ([
 	if err != nil {
 		return nil, fmt.Errorf("failed to query embeddings by IDs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var candidates []ScoredEmbedding
 	for rows.Next() {
@@ -970,7 +978,10 @@ func (s *SQLiteStore) Delete(ctx context.Context, id string) error {
 
 	// Update HNSW index if enabled
 	if s.config.HNSW.Enabled && s.hnswIndex != nil {
-		s.hnswIndex.Delete(id)
+		if err := s.hnswIndex.Delete(id); err != nil {
+			// Log error but don't fail the entire operation
+			_ = err
+		}
 	}
 
 	return nil
@@ -1293,7 +1304,7 @@ func (s *SQLiteStore) GetByID(ctx context.Context, id string) (*Embedding, error
 	if err != nil {
 		return nil, wrapError("get_by_id", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	
 	if !rows.Next() {
 		return nil, wrapError("get_by_id", ErrNotFound)

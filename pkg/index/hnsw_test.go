@@ -125,11 +125,11 @@ func TestHNSWLargeScale(t *testing.T) {
 	dim := 128
 	vectors := make([][]float32, numVectors)
 	
-	rand.Seed(time.Now().UnixNano())
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for i := 0; i < numVectors; i++ {
 		vec := make([]float32, dim)
 		for j := 0; j < dim; j++ {
-			vec[j] = rand.Float32()*2 - 1
+			vec[j] = rng.Float32()*2 - 1
 		}
 		vectors[i] = vec
 		
@@ -252,7 +252,9 @@ func BenchmarkHNSWInsert(b *testing.B) {
 	
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		hnsw.Insert(fmt.Sprintf("vec_%d", i), vectors[i])
+		if err := hnsw.Insert(fmt.Sprintf("vec_%d", i), vectors[i]); err != nil {
+			b.Fatalf("Insert failed: %v", err)
+		}
 	}
 }
 
@@ -267,7 +269,9 @@ func BenchmarkHNSWSearch(b *testing.B) {
 		for j := 0; j < dim; j++ {
 			vec[j] = rand.Float32()
 		}
-		hnsw.Insert(fmt.Sprintf("vec_%d", i), vec)
+		if err := hnsw.Insert(fmt.Sprintf("vec_%d", i), vec); err != nil {
+			b.Fatalf("Insert failed: %v", err)
+		}
 	}
 	
 	// Generate query

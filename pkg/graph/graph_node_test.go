@@ -28,8 +28,8 @@ func setupTestGraph(t testing.TB) (*core.SQLiteStore, *GraphStore, func()) {
 	}
 	
 	cleanup := func() {
-		store.Close()
-		os.Remove(dbPath)
+		func() { _ = store.Close() }()
+		_ = os.Remove(dbPath)
 	}
 	
 	return store, graph, cleanup
@@ -183,8 +183,8 @@ func TestGraphEdgeCRUD(t *testing.T) {
 		Vector: []float32{4.0, 5.0, 6.0},
 	}
 	
-	graph.UpsertNode(ctx, node1)
-	graph.UpsertNode(ctx, node2)
+	_ = graph.UpsertNode(ctx, node1)
+	_ = graph.UpsertNode(ctx, node2)
 	
 	t.Run("CreateEdge", func(t *testing.T) {
 		edge := &GraphEdge{
@@ -365,8 +365,8 @@ func TestGraphCascadeDelete(t *testing.T) {
 		Vector: []float32{4.0, 5.0, 6.0},
 	}
 	
-	graph.UpsertNode(ctx, node1)
-	graph.UpsertNode(ctx, node2)
+	_ = graph.UpsertNode(ctx, node1)
+	_ = graph.UpsertNode(ctx, node2)
 	
 	// Create edge
 	edge := &GraphEdge{
@@ -375,7 +375,7 @@ func TestGraphCascadeDelete(t *testing.T) {
 		ToNodeID:   "cascade_node2",
 		EdgeType:   "test",
 	}
-	graph.UpsertEdge(ctx, edge)
+	_ = graph.UpsertEdge(ctx, edge)
 	
 	// Delete node should cascade delete edges
 	err := graph.DeleteNode(ctx, "cascade_node1")

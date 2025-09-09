@@ -21,7 +21,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to open database:", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	
 	ctx := context.Background()
 	

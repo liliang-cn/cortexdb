@@ -28,7 +28,7 @@ func TestNeighbors(t *testing.T) {
 	}
 	
 	for _, node := range nodes {
-		graph.UpsertNode(ctx, &node)
+		_ = graph.UpsertNode(ctx, &node)
 	}
 	
 	edges := []GraphEdge{
@@ -40,7 +40,7 @@ func TestNeighbors(t *testing.T) {
 	}
 	
 	for _, edge := range edges {
-		graph.UpsertEdge(ctx, &edge)
+		_ = graph.UpsertEdge(ctx, &edge)
 	}
 	
 	t.Run("OneHopNeighbors", func(t *testing.T) {
@@ -148,7 +148,7 @@ func TestNeighbors(t *testing.T) {
 			ToNodeID:   "D",
 			EdgeType:   "special",
 		}
-		graph.UpsertEdge(ctx, typedEdge)
+		_ = graph.UpsertEdge(ctx, typedEdge)
 		
 		neighbors, err := graph.Neighbors(ctx, "A", TraversalOptions{
 			MaxDepth:  1,
@@ -181,8 +181,8 @@ func TestNeighbors(t *testing.T) {
 			Vector:   []float32{0, 0, 1},
 			NodeType: "type2",
 		}
-		graph.UpsertNode(ctx, nodeB)
-		graph.UpsertNode(ctx, nodeC)
+		_ = graph.UpsertNode(ctx, nodeB)
+		_ = graph.UpsertNode(ctx, nodeC)
 		
 		neighbors, err := graph.Neighbors(ctx, "A", TraversalOptions{
 			MaxDepth:  1,
@@ -224,7 +224,7 @@ func TestShortestPath(t *testing.T) {
 	}
 	
 	for _, node := range nodes {
-		graph.UpsertNode(ctx, &node)
+		_ = graph.UpsertNode(ctx, &node)
 	}
 	
 	edges := []GraphEdge{
@@ -235,7 +235,7 @@ func TestShortestPath(t *testing.T) {
 	}
 	
 	for _, edge := range edges {
-		graph.UpsertEdge(ctx, &edge)
+		_ = graph.UpsertEdge(ctx, &edge)
 	}
 	
 	t.Run("DirectPath", func(t *testing.T) {
@@ -293,7 +293,7 @@ func TestShortestPath(t *testing.T) {
 			ID:     "Isolated",
 			Vector: []float32{5, 5, 5},
 		}
-		graph.UpsertNode(ctx, isolatedNode)
+		_ = graph.UpsertNode(ctx, isolatedNode)
 		
 		_, err := graph.ShortestPath(ctx, "A", "Isolated")
 		if err == nil {
@@ -317,7 +317,7 @@ func TestSubgraph(t *testing.T) {
 	}
 	
 	for _, node := range nodes {
-		graph.UpsertNode(ctx, &node)
+		_ = graph.UpsertNode(ctx, &node)
 	}
 	
 	edges := []GraphEdge{
@@ -328,7 +328,7 @@ func TestSubgraph(t *testing.T) {
 	}
 	
 	for _, edge := range edges {
-		graph.UpsertEdge(ctx, &edge)
+		_ = graph.UpsertEdge(ctx, &edge)
 	}
 	
 	t.Run("ExtractSubgraph", func(t *testing.T) {
@@ -406,7 +406,7 @@ func TestConnected(t *testing.T) {
 	}
 	
 	for _, node := range nodes {
-		graph.UpsertNode(ctx, &node)
+		_ = graph.UpsertNode(ctx, &node)
 	}
 	
 	edges := []GraphEdge{
@@ -421,7 +421,7 @@ func TestConnected(t *testing.T) {
 	}
 	
 	for _, edge := range edges {
-		graph.UpsertEdge(ctx, &edge)
+		_ = graph.UpsertEdge(ctx, &edge)
 	}
 	
 	t.Run("DirectlyConnected", func(t *testing.T) {
@@ -506,7 +506,7 @@ func TestTraversalEdgeCases(t *testing.T) {
 			ID:     "TestNode",
 			Vector: []float32{1, 2, 3},
 		}
-		graph.UpsertNode(ctx, node)
+		_ = graph.UpsertNode(ctx, node)
 		
 		neighbors, err := graph.Neighbors(ctx, "TestNode", TraversalOptions{
 			MaxDepth: 0,
@@ -531,7 +531,7 @@ func TestTraversalEdgeCases(t *testing.T) {
 		}
 		
 		for _, n := range nodes {
-			graph.UpsertNode(ctx, &n)
+			_ = graph.UpsertNode(ctx, &n)
 		}
 		
 		edges := []GraphEdge{
@@ -541,7 +541,7 @@ func TestTraversalEdgeCases(t *testing.T) {
 		}
 		
 		for _, e := range edges {
-			graph.UpsertEdge(ctx, &e)
+			_ = graph.UpsertEdge(ctx, &e)
 		}
 		
 		// Should handle cycle without infinite loop
@@ -570,8 +570,8 @@ func TestGetEdgeByID(t *testing.T) {
 	// Create nodes and edge
 	node1 := &GraphNode{ID: "node1", Vector: []float32{1, 0, 0}}
 	node2 := &GraphNode{ID: "node2", Vector: []float32{0, 1, 0}}
-	graph.UpsertNode(ctx, node1)
-	graph.UpsertNode(ctx, node2)
+	_ = graph.UpsertNode(ctx, node1)
+	_ = graph.UpsertNode(ctx, node2)
 	
 	edge := &GraphEdge{
 		ID:         "test_edge",
@@ -583,7 +583,7 @@ func TestGetEdgeByID(t *testing.T) {
 			"key": "value",
 		},
 	}
-	graph.UpsertEdge(ctx, edge)
+	_ = graph.UpsertEdge(ctx, edge)
 	
 	t.Run("GetExistingEdge", func(t *testing.T) {
 		retrieved, err := graph.getEdgeByID(ctx, "test_edge")

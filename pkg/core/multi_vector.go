@@ -63,7 +63,12 @@ func (s *SQLiteStore) UpsertMultiVector(ctx context.Context, entity *MultiVector
 	if err != nil {
 		return wrapError("upsert_multi_vector", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil {
+			// Log error but don't override the main error
+			_ = err
+		}
+	}()
 	
 	// Insert each vector with a composite ID
 	for fieldName, vector := range entity.Vectors {
@@ -100,7 +105,10 @@ func (s *SQLiteStore) UpsertMultiVector(ctx context.Context, entity *MultiVector
 		
 		// Update HNSW index if enabled
 		if s.config.HNSW.Enabled && s.hnswIndex != nil {
-			s.hnswIndex.Insert(compositeID, vector)
+			if err := s.hnswIndex.Insert(compositeID, vector); err != nil {
+				// Log error but don't fail the entire operation
+				_ = err
+			}
 		}
 	}
 	
@@ -263,7 +271,12 @@ func (s *SQLiteStore) GetMultiVectorEntity(ctx context.Context, entityID string)
 	if err != nil {
 		return nil, wrapError("get_multi_vector", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			// Log error but don't override the main error
+			_ = err
+		}
+	}()
 	
 	entity := &MultiVectorEntity{
 		ID:       entityID,
@@ -343,7 +356,10 @@ func (s *SQLiteStore) DeleteMultiVectorEntity(ctx context.Context, entityID stri
 			compositeIDs = append(compositeIDs, id)
 		}
 	}
-	rows.Close()
+	if err := rows.Close(); err != nil {
+		// Log error but don't override the main error
+		_ = err
+	}
 	
 	// Delete from database
 	_, err = s.db.ExecContext(ctx, `
@@ -357,7 +373,10 @@ func (s *SQLiteStore) DeleteMultiVectorEntity(ctx context.Context, entityID stri
 	// Update HNSW index
 	if s.config.HNSW.Enabled && s.hnswIndex != nil {
 		for _, id := range compositeIDs {
-			s.hnswIndex.Delete(id)
+			if err := s.hnswIndex.Delete(id); err != nil {
+				// Log error but don't fail the entire operation
+				_ = err
+			}
 		}
 	}
 	

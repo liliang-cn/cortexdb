@@ -24,7 +24,6 @@ func (g *GraphStore) HybridSearch(ctx context.Context, query *HybridQuery) ([]*H
 		query.Weights.VectorWeight = 0.5
 		query.Weights.GraphWeight = 0.3
 		query.Weights.EdgeWeight = 0.2
-		totalWeight = 1.0
 	} else if math.Abs(totalWeight-1.0) > 0.001 {
 		// Normalize to sum to 1.0
 		query.Weights.VectorWeight /= totalWeight
@@ -118,8 +117,7 @@ func (g *GraphStore) HybridSearch(ctx context.Context, query *HybridQuery) ([]*H
 	nodeScores := make(map[string]*HybridResult)
 
 	// Add vector search results
-	if vectorResults != nil {
-		for nodeID, vectorScore := range vectorResults {
+	for nodeID, vectorScore := range vectorResults {
 			node, err := g.GetNode(ctx, nodeID)
 			if err != nil {
 				continue
@@ -143,13 +141,11 @@ func (g *GraphStore) HybridSearch(ctx context.Context, query *HybridQuery) ([]*H
 			result.CombinedScore = result.VectorScore*query.Weights.VectorWeight +
 				result.GraphScore*query.Weights.GraphWeight
 
-			nodeScores[nodeID] = result
-		}
+		nodeScores[nodeID] = result
 	}
 
 	// Add graph traversal results not in vector results
-	if graphResults != nil {
-		for nodeID, gd := range graphResults {
+	for nodeID, gd := range graphResults {
 			if _, exists := nodeScores[nodeID]; !exists {
 				node, err := g.GetNode(ctx, nodeID)
 				if err != nil {
@@ -172,8 +168,7 @@ func (g *GraphStore) HybridSearch(ctx context.Context, query *HybridQuery) ([]*H
 					result.GraphScore*query.Weights.GraphWeight +
 					gd.weight*query.Weights.EdgeWeight
 
-				nodeScores[nodeID] = result
-			}
+			nodeScores[nodeID] = result
 		}
 	}
 
@@ -304,7 +299,7 @@ func (g *GraphStore) GetAllNodes(ctx context.Context, filter *GraphFilter) ([]*G
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var nodes []*GraphNode
 	for rows.Next() {

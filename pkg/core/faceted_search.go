@@ -3,7 +3,6 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -262,7 +261,12 @@ func (s *SQLiteStore) fetchCandidatesWithFacets(ctx context.Context, whereClause
 	if err != nil {
 		return nil, fmt.Errorf("failed to query with facets: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			// Log error but don't override the main error
+			_ = err
+		}
+	}()
 	
 	var candidates []ScoredEmbedding
 	for rows.Next() {
@@ -316,7 +320,10 @@ func (s *SQLiteStore) computeFacetCounts(ctx context.Context, opts FacetedSearch
 				facetResult.Total += count
 			}
 		}
-		rows.Close()
+		if err := rows.Close(); err != nil {
+			// Log error but don't override the main error
+			_ = err
+		}
 		
 		if len(facetResult.Values) > 0 {
 			results = append(results, facetResult)
@@ -384,16 +391,3 @@ func (s *SQLiteStore) BatchRangeSearch(ctx context.Context, queries [][]float32,
 	return results, nil
 }
 
-// Helper function to parse metadata JSON for faceted search
-func parseMetadataForFacets(metadataJSON string) (map[string]interface{}, error) {
-	if metadataJSON == "" {
-		return nil, nil
-	}
-	
-	var metadata map[string]interface{}
-	if err := json.Unmarshal([]byte(metadataJSON), &metadata); err != nil {
-		return nil, err
-	}
-	
-	return metadata, nil
-}

@@ -33,7 +33,7 @@ var initCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("failed to create store: %w", err)
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		ctx := context.Background()
 		if err := store.Init(ctx); err != nil {
@@ -90,7 +90,7 @@ var embedAddCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		embedding := &core.Embedding{
 			ID:         id,
@@ -122,7 +122,7 @@ var embedGetCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		ctx := context.Background()
 		// Direct Get method not available in core
@@ -169,7 +169,7 @@ var embedDeleteCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		ctx := context.Background()
 		if err := store.Delete(ctx, id); err != nil {
@@ -202,7 +202,7 @@ var embedBatchCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		ctx := context.Background()
 		if err := store.UpsertBatch(ctx, embeddings); err != nil {
@@ -239,7 +239,7 @@ var searchCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		opts := core.SearchOptions{
 			Collection: collection,
@@ -294,7 +294,7 @@ var statsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		ctx := context.Background()
 		stats, err := store.Stats(ctx)
@@ -325,7 +325,7 @@ var optimizeCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		ctx := context.Background()
 		
@@ -398,7 +398,7 @@ var collectionCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		ctx := context.Background()
 		collection, err := store.CreateCollection(ctx, name, dimensions)
@@ -419,7 +419,7 @@ var collectionListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		ctx := context.Background()
 		collections, err := store.ListCollections(ctx)
@@ -453,7 +453,7 @@ var collectionDeleteCmd = &cobra.Command{
 		if !force {
 			fmt.Printf("Are you sure you want to delete collection '%s'? This will delete all embeddings in it. [y/N]: ", name)
 			var response string
-			fmt.Scanln(&response)
+			_, _ = fmt.Scanln(&response)
 			if response != "y" && response != "Y" {
 				fmt.Println("Cancelled.")
 				return nil
@@ -464,7 +464,7 @@ var collectionDeleteCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		ctx := context.Background()
 		if err := store.DeleteCollection(ctx, name); err != nil {
@@ -487,7 +487,7 @@ var collectionStatsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		ctx := context.Background()
 		stats, err := store.GetCollectionStats(ctx, name)
@@ -536,7 +536,7 @@ func openStore() (*core.SQLiteStore, error) {
 	// Initialize the store if not already done
 	ctx := context.Background()
 	if err := store.Init(ctx); err != nil {
-		store.Close()
+		_ = store.Close()
 		return nil, fmt.Errorf("failed to initialize store: %w", err)
 	}
 	
@@ -556,7 +556,7 @@ func init() {
 	embedAddCmd.Flags().String("doc-id", "", "Document ID")
 	embedAddCmd.Flags().String("metadata", "", "Metadata as JSON")
 	embedAddCmd.Flags().String("collection", "", "Collection name")
-	embedAddCmd.MarkFlagRequired("vector")
+	_ = embedAddCmd.MarkFlagRequired("vector")
 	
 	embedGetCmd.Flags().Bool("json", false, "Output as JSON")
 	
@@ -567,7 +567,7 @@ func init() {
 	searchCmd.Flags().String("filter", "", "Metadata filters (key=value,key2=value2)")
 	searchCmd.Flags().String("collection", "", "Collection to search in")
 	searchCmd.Flags().Bool("json", false, "Output as JSON")
-	searchCmd.MarkFlagRequired("vector")
+	_ = searchCmd.MarkFlagRequired("vector")
 	
 	// Collection commands
 	collectionCmd.AddCommand(collectionCreateCmd, collectionListCmd, collectionDeleteCmd, collectionStatsCmd)
@@ -580,8 +580,8 @@ func init() {
 	similarityCmd.Flags().String("vector1", "", "First vector (comma-separated)")
 	similarityCmd.Flags().String("vector2", "", "Second vector (comma-separated)")
 	similarityCmd.Flags().String("method", "cosine", "Similarity method (cosine/dot/euclidean)")
-	similarityCmd.MarkFlagRequired("vector1")
-	similarityCmd.MarkFlagRequired("vector2")
+	_ = similarityCmd.MarkFlagRequired("vector1")
+	_ = similarityCmd.MarkFlagRequired("vector2")
 	
 	// Stats command
 	statsCmd.Flags().Bool("json", false, "Output as JSON")

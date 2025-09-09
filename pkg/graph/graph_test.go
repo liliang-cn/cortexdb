@@ -12,13 +12,13 @@ import (
 
 func TestGraphBasicOperations(t *testing.T) {
 	dbPath := fmt.Sprintf("test_graph_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
+	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 3)
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 	if err := store.Init(ctx); err != nil {
@@ -101,8 +101,8 @@ func TestGraphBasicOperations(t *testing.T) {
 			NodeType: "person",
 		}
 
-		graph.UpsertNode(ctx, node1)
-		graph.UpsertNode(ctx, node2)
+		_ = graph.UpsertNode(ctx, node1)
+		_ = graph.UpsertNode(ctx, node2)
 
 		// Create edge
 		edge := &GraphEdge{
@@ -149,13 +149,13 @@ func TestGraphBasicOperations(t *testing.T) {
 
 func TestGraphTraversal(t *testing.T) {
 	dbPath := fmt.Sprintf("test_traversal_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
+	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 3)
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 	if err := store.Init(ctx); err != nil {
@@ -257,13 +257,13 @@ func TestGraphTraversal(t *testing.T) {
 
 func TestHybridSearch(t *testing.T) {
 	dbPath := fmt.Sprintf("test_hybrid_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
+	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 3)
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 	if err := store.Init(ctx); err != nil {

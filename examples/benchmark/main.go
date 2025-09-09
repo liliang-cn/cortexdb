@@ -16,7 +16,7 @@ func main() {
 	// Benchmark SQLite Vector performance for embedding use cases
 	
 	// Clean start
-	os.Remove("benchmark.db")
+	_ = os.Remove("benchmark.db")
 	
 	config := sqvect.DefaultConfig("benchmark.db")
 	config.Dimensions = 384 // Common embedding dimension
@@ -25,8 +25,8 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to open database:", err)
 	}
-	defer db.Close()
-	defer os.Remove("benchmark.db")
+	defer func() { _ = db.Close() }()
+	defer func() { _ = os.Remove("benchmark.db") }()
 	
 	ctx := context.Background()
 	quick := db.Quick()

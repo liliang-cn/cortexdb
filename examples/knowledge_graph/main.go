@@ -13,10 +13,10 @@ import (
 
 // generateEmbedding creates a simple embedding for demonstration
 func generateEmbedding(concept string) []float32 {
-	rand.Seed(int64(len(concept)))
+	rng := rand.New(rand.NewSource(int64(len(concept))))
 	embedding := make([]float32, 128)
 	for i := range embedding {
-		embedding[i] = rand.Float32()*2 - 1
+		embedding[i] = rng.Float32()*2 - 1
 	}
 	return embedding
 }
@@ -24,7 +24,7 @@ func generateEmbedding(concept string) []float32 {
 func main() {
 	// Create a knowledge graph database
 	dbPath := "knowledge_graphStore.db"
-	defer os.Remove(dbPath)
+	defer func() { _ = os.Remove(dbPath) }()
 
 	fmt.Println("=== Knowledge Graph with Vector Embeddings ===")
 	fmt.Println()
@@ -38,7 +38,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 	graphStore := db.Graph()

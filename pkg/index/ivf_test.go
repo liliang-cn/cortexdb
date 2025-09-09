@@ -76,7 +76,9 @@ func TestIVFIndexAddSearch(t *testing.T) {
 	
 	// Train
 	trainVectors := generateTestVectorsIVF(50, dim)
-	ivf.Train(trainVectors)
+	if err := ivf.Train(trainVectors); err != nil {
+		t.Fatalf("Train failed: %v", err)
+	}
 	
 	// Add vectors
 	testVectors := generateTestVectorsIVF(20, dim)
@@ -144,11 +146,15 @@ func TestIVFIndexStats(t *testing.T) {
 	
 	// Train and add vectors
 	trainVectors := generateTestVectorsIVF(50, dim)
-	ivf.Train(trainVectors)
+	if err := ivf.Train(trainVectors); err != nil {
+		t.Fatalf("Train failed: %v", err)
+	}
 	
 	for i := 0; i < 20; i++ {
 		id := fmt.Sprintf("vec_%d", i)
-		ivf.Add(id, trainVectors[i])
+		if err := ivf.Add(id, trainVectors[i]); err != nil {
+			t.Fatalf("Add failed: %v", err)
+		}
 	}
 	
 	// Get stats
@@ -184,10 +190,14 @@ func TestIVFIndexClear(t *testing.T) {
 	
 	// Train and add vectors
 	vectors := generateTestVectorsIVF(50, dim)
-	ivf.Train(vectors)
+	if err := ivf.Train(vectors); err != nil {
+		t.Fatalf("Train failed: %v", err)
+	}
 	
 	for i := 0; i < 10; i++ {
-		ivf.Add(fmt.Sprintf("vec_%d", i), vectors[i])
+		if err := ivf.Add(fmt.Sprintf("vec_%d", i), vectors[i]); err != nil {
+			t.Fatalf("Add failed: %v", err)
+		}
 	}
 	
 	// Clear
@@ -233,7 +243,9 @@ func TestIVFIndexDimensionMismatch(t *testing.T) {
 	
 	// Train with correct dimension
 	vectors := generateTestVectorsIVF(50, dim)
-	ivf.Train(vectors)
+	if err := ivf.Train(vectors); err != nil {
+		t.Fatalf("Train failed: %v", err)
+	}
 	
 	// Try to add wrong dimension
 	wrongVec := make([]float32, 64)
@@ -250,14 +262,14 @@ func TestIVFIndexDimensionMismatch(t *testing.T) {
 }
 
 func generateTestVectorsIVF(n, dim int) [][]float32 {
-	rand.Seed(42)
+	rng := rand.New(rand.NewSource(42))
 	vectors := make([][]float32, n)
 	for i := 0; i < n; i++ {
 		vec := make([]float32, dim)
 		// Create some clusters in the data
 		cluster := i % 3
 		for j := 0; j < dim; j++ {
-			vec[j] = rand.Float32() + float32(cluster)*0.5
+			vec[j] = rng.Float32() + float32(cluster)*0.5
 		}
 		vectors[i] = vec
 	}
@@ -267,29 +279,37 @@ func generateTestVectorsIVF(n, dim int) [][]float32 {
 func BenchmarkIVFAdd(b *testing.B) {
 	ivf := NewIVFIndex(128, 100)
 	vectors := generateTestVectorsIVF(1000, 128)
-	ivf.Train(vectors)
+	if err := ivf.Train(vectors); err != nil {
+		b.Fatalf("Train failed: %v", err)
+	}
 	
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		id := fmt.Sprintf("vec_%d", i)
-		ivf.Add(id, vectors[i%len(vectors)])
+		if err := ivf.Add(id, vectors[i%len(vectors)]); err != nil {
+			b.Fatalf("Add failed: %v", err)
+		}
 	}
 }
 
 func BenchmarkIVFSearch(b *testing.B) {
 	ivf := NewIVFIndex(128, 100)
 	vectors := generateTestVectorsIVF(10000, 128)
-	ivf.Train(vectors)
+	if err := ivf.Train(vectors); err != nil {
+		b.Fatalf("Train failed: %v", err)
+	}
 	
 	// Add vectors
 	for i, vec := range vectors {
-		ivf.Add(fmt.Sprintf("vec_%d", i), vec)
+		_ = ivf.Add(fmt.Sprintf("vec_%d", i), vec)
 	}
 	
 	query := vectors[0]
 	b.ResetTimer()
 	
 	for i := 0; i < b.N; i++ {
-		ivf.Search(query, 10)
+		if _, _, err := ivf.Search(query, 10); err != nil {
+			b.Fatalf("Search failed: %v", err)
+		}
 	}
 }

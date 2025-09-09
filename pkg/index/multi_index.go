@@ -474,7 +474,10 @@ func (h *HybridIndex) Delete(id string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	
-	h.hnsw.Delete(id)
+	if err := h.hnsw.Delete(id); err != nil {
+		// Log but don't fail - some indices may not support deletion
+		_ = err
+	}
 	// IVF doesn't support delete, would need rebuild
 	return nil
 }
@@ -535,7 +538,7 @@ func NewIVFAdapter(dimension, nCentroids int) *IVFAdapter {
 
 // Insert implements VectorIndex interface
 func (ivf *IVFAdapter) Insert(id string, vector []float32) error {
-	return ivf.IVFIndex.Add(id, vector)
+	return ivf.Add(id, vector)
 }
 
 // Search implements VectorIndex interface

@@ -30,14 +30,14 @@ func TestDefaultConfig(t *testing.T) {
 
 func TestOpen(t *testing.T) {
 	dbPath := fmt.Sprintf("test_sqvect_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
+	defer func() { _ = os.Remove(dbPath) }()
 
 	config := DefaultConfig(dbPath)
 	db, err := Open(config)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if db.store == nil {
 		t.Error("Expected non-nil store")
@@ -63,14 +63,14 @@ func TestOpenInvalidPath(t *testing.T) {
 
 func TestDBInterfaces(t *testing.T) {
 	dbPath := fmt.Sprintf("test_interfaces_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
+	defer func() { _ = os.Remove(dbPath) }()
 
 	config := DefaultConfig(dbPath)
 	db, err := Open(config)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	t.Run("VectorInterface", func(t *testing.T) {
 		vectorStore := db.Vector()
@@ -90,6 +90,7 @@ func TestDBInterfaces(t *testing.T) {
 		quick := db.Quick()
 		if quick == nil {
 			t.Error("Expected non-nil quick interface")
+			return
 		}
 		if quick.db != db {
 			t.Error("Quick interface should reference the same DB")
@@ -99,7 +100,7 @@ func TestDBInterfaces(t *testing.T) {
 
 func TestQuickAdd(t *testing.T) {
 	dbPath := fmt.Sprintf("test_quick_add_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
+	defer func() { _ = os.Remove(dbPath) }()
 
 	config := Config{
 		Path:       dbPath,
@@ -109,7 +110,7 @@ func TestQuickAdd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	quick := db.Quick()
 	ctx := context.Background()
@@ -170,7 +171,7 @@ func TestQuickAdd(t *testing.T) {
 
 func TestQuickSearch(t *testing.T) {
 	dbPath := fmt.Sprintf("test_quick_search_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
+	defer func() { _ = os.Remove(dbPath) }()
 
 	config := Config{
 		Path:       dbPath,
@@ -180,7 +181,7 @@ func TestQuickSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	quick := db.Quick()
 	ctx := context.Background()
@@ -309,7 +310,7 @@ func TestGenerateCounter(t *testing.T) {
 
 func TestDBClose(t *testing.T) {
 	dbPath := fmt.Sprintf("test_close_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
+	defer func() { _ = os.Remove(dbPath) }()
 
 	config := DefaultConfig(dbPath)
 	db, err := Open(config)
@@ -333,7 +334,7 @@ func TestDBClose(t *testing.T) {
 
 func TestConfigVariations(t *testing.T) {
 	dbPath := fmt.Sprintf("test_config_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
+	defer func() { _ = os.Remove(dbPath) }()
 
 	t.Run("CustomDimensions", func(t *testing.T) {
 		config := Config{
@@ -346,7 +347,7 @@ func TestConfigVariations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to open database with custom dimensions: %v", err)
 		}
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 	})
 
 	t.Run("DotProductSimilarity", func(t *testing.T) {
@@ -360,8 +361,8 @@ func TestConfigVariations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to open database with dot product similarity: %v", err)
 		}
-		defer db.Close()
-		defer os.Remove(dbPath + "_dot")
+		defer func() { _ = db.Close() }()
+		defer func() { _ = os.Remove(dbPath + "_dot") }()
 	})
 
 	t.Run("EuclideanDistance", func(t *testing.T) {
@@ -375,14 +376,14 @@ func TestConfigVariations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to open database with Euclidean distance: %v", err)
 		}
-		defer db.Close()
-		defer os.Remove(dbPath + "_euclidean")
+		defer func() { _ = db.Close() }()
+		defer func() { _ = os.Remove(dbPath + "_euclidean") }()
 	})
 }
 
 func TestIntegrationWorkflow(t *testing.T) {
 	dbPath := fmt.Sprintf("test_integration_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
+	defer func() { _ = os.Remove(dbPath) }()
 
 	// Open database
 	config := DefaultConfig(dbPath)
@@ -390,7 +391,7 @@ func TestIntegrationWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	quick := db.Quick()
 	ctx := context.Background()

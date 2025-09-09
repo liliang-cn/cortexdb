@@ -9,14 +9,24 @@ import (
 func TestCollections(t *testing.T) {
 	// Create temporary database
 	dbPath := "test_collections.db"
-	defer os.Remove(dbPath)
+	defer func() {
+		if err := os.Remove(dbPath); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
 
 	// Create store
 	store, err := New(dbPath, 0)
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
 
 	ctx := context.Background()
 	if err := store.Init(ctx); err != nil {
@@ -141,14 +151,24 @@ func TestCollections(t *testing.T) {
 func TestCollectionEmbeddings(t *testing.T) {
 	// Create temporary database
 	dbPath := "test_collection_embeddings.db"
-	defer os.Remove(dbPath)
+	defer func() {
+		if err := os.Remove(dbPath); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
 
 	// Create store
 	store, err := New(dbPath, 0)
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
 
 	ctx := context.Background()
 	if err := store.Init(ctx); err != nil {

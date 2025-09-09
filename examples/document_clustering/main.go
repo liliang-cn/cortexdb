@@ -38,13 +38,13 @@ func generateEmbedding(text string, category int, noise float32) []float32 {
 	pattern := patterns[category%len(patterns)]
 	
 	// Generate embedding based on pattern
-	rand.Seed(int64(len(text) + category))
+	rng := rand.New(rand.NewSource(int64(len(text) + category)))
 	for i := 0; i < dim; i++ {
 		// Use pattern for first few dimensions
 		if i < len(pattern) {
-			embedding[i] = pattern[i] + (rand.Float32()-0.5)*noise
+			embedding[i] = pattern[i] + (rng.Float32()-0.5)*noise
 		} else {
-			embedding[i] = (rand.Float32() - 0.5) * noise
+			embedding[i] = (rng.Float32() - 0.5) * noise
 		}
 	}
 	
@@ -106,7 +106,7 @@ func main() {
 
 	// Initialize database
 	dbPath := "document_clustering.db"
-	defer os.Remove(dbPath)
+	defer func() { _ = os.Remove(dbPath) }()
 
 	config := sqvect.Config{
 		Path:       dbPath,
@@ -117,7 +117,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to open database:", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 	quick := db.Quick()

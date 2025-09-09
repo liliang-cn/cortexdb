@@ -19,7 +19,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to open database:", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	
 	ctx := context.Background()
 	
@@ -40,14 +40,14 @@ func main() {
 	
 	// Store embeddings
 	fmt.Println("Adding embeddings...")
-	var ids []string
 	for _, emb := range embeddings {
 		id, err := quick.Add(ctx, emb.vector, emb.text)
 		if err != nil {
 			log.Printf("Failed to add embedding: %v", err)
 			continue
 		}
-		ids = append(ids, id)
+		// Store ID for reference if needed later
+		_ = id
 		fmt.Printf("Added: %s -> %s\n", id, emb.text)
 	}
 	

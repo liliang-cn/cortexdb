@@ -331,7 +331,7 @@ func (g *GraphStore) GetEdges(ctx context.Context, nodeID string, direction stri
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var edges []*GraphEdge
 	for rows.Next() {

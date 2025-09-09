@@ -114,7 +114,9 @@ func TestScalarQuantizerDifferentBits(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%d_bits", tc.bits), func(t *testing.T) {
 			sq, _ := NewScalarQuantizer(dim, tc.bits)
-			sq.Train(vectors)
+			if err := sq.Train(vectors); err != nil {
+				t.Fatalf("Train failed: %v", err)
+			}
 			
 			// Test compression ratio
 			ratio := sq.CompressionRatio()
@@ -230,7 +232,9 @@ func TestBinaryQuantizerSearch(t *testing.T) {
 	
 	// Generate and train
 	vectors := generateTestVectorsPQ(100, dim)
-	bq.Train(vectors)
+	if err := bq.Train(vectors); err != nil {
+		t.Fatalf("Train failed: %v", err)
+	}
 	
 	// Encode all vectors
 	database := make([][]byte, len(vectors))
@@ -304,26 +308,34 @@ func TestOptimizedBinaryQuantizer(t *testing.T) {
 func BenchmarkScalarQuantizerEncode(b *testing.B) {
 	sq, _ := NewScalarQuantizer(512, 8)
 	vectors := generateTestVectorsPQ(1000, 512)
-	sq.Train(vectors)
+	if err := sq.Train(vectors); err != nil {
+		b.Fatalf("Train failed: %v", err)
+	}
 	
 	vec := vectors[0]
 	b.ResetTimer()
 	
 	for i := 0; i < b.N; i++ {
-		sq.Encode(vec)
+		if _, err := sq.Encode(vec); err != nil {
+			b.Fatalf("Encode failed: %v", err)
+		}
 	}
 }
 
 func BenchmarkBinaryQuantizerEncode(b *testing.B) {
 	bq := NewBinaryQuantizer(512)
 	vectors := generateTestVectorsPQ(1000, 512)
-	bq.Train(vectors)
+	if err := bq.Train(vectors); err != nil {
+		b.Fatalf("Train failed: %v", err)
+	}
 	
 	vec := vectors[0]
 	b.ResetTimer()
 	
 	for i := 0; i < b.N; i++ {
-		bq.Encode(vec)
+		if _, err := bq.Encode(vec); err != nil {
+			b.Fatalf("Encode failed: %v", err)
+		}
 	}
 }
 

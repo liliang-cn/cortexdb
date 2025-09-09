@@ -23,7 +23,7 @@ func TestHybridSearchBasic(t *testing.T) {
 	}
 	
 	for _, node := range nodes {
-		graph.UpsertNode(ctx, &node)
+		_ = graph.UpsertNode(ctx, &node)
 	}
 	
 	// Create edges
@@ -34,7 +34,7 @@ func TestHybridSearchBasic(t *testing.T) {
 	}
 	
 	for _, edge := range edges {
-		graph.UpsertEdge(ctx, &edge)
+		_ = graph.UpsertEdge(ctx, &edge)
 	}
 	
 	t.Run("VectorOnlySearch", func(t *testing.T) {
@@ -252,7 +252,7 @@ func TestGraphVectorSearch(t *testing.T) {
 	}
 	
 	for _, node := range nodes {
-		graph.UpsertNode(ctx, &node)
+		_ = graph.UpsertNode(ctx, &node)
 	}
 	
 	edges := []GraphEdge{
@@ -263,7 +263,7 @@ func TestGraphVectorSearch(t *testing.T) {
 	}
 	
 	for _, edge := range edges {
-		graph.UpsertEdge(ctx, &edge)
+		_ = graph.UpsertEdge(ctx, &edge)
 	}
 	
 	t.Run("SearchWithinNeighborhood", func(t *testing.T) {
@@ -332,7 +332,7 @@ func TestSimilarityInGraph(t *testing.T) {
 	}
 	
 	for _, node := range nodes {
-		graph.UpsertNode(ctx, &node)
+		_ = graph.UpsertNode(ctx, &node)
 	}
 	
 	t.Run("FindSimilarNodes", func(t *testing.T) {
@@ -408,7 +408,7 @@ func TestHybridWeightNormalization(t *testing.T) {
 		ID:     "test",
 		Vector: []float32{1.0, 0.0, 0.0},
 	}
-	graph.UpsertNode(ctx, node)
+	_ = graph.UpsertNode(ctx, node)
 	
 	t.Run("AutoNormalization", func(t *testing.T) {
 		query := &HybridQuery{
@@ -508,7 +508,7 @@ func TestHybridSearchEdgeCases(t *testing.T) {
 			ID:     "test_node",
 			Vector: []float32{1.0, 0.0, 0.0},
 		}
-		graph.UpsertNode(ctx, node)
+		_ = graph.UpsertNode(ctx, node)
 		
 		query := &HybridQuery{
 			Vector: []float32{1.0, 0.0, 0.0},

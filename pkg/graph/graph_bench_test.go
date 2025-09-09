@@ -18,7 +18,7 @@ func BenchmarkGraphNodeOperations(b *testing.B) {
 			ID:     fmt.Sprintf("node_%d", i),
 			Vector: []float32{float32(i), float32(i * 2), float32(i * 3)},
 		}
-		graph.UpsertNode(ctx, node)
+		_ = graph.UpsertNode(ctx, node)
 	}
 	
 	b.Run("UpsertNode", func(b *testing.B) {
@@ -30,7 +30,7 @@ func BenchmarkGraphNodeOperations(b *testing.B) {
 				Content:  "Benchmark content",
 				NodeType: "bench",
 			}
-			graph.UpsertNode(ctx, node)
+			_ = graph.UpsertNode(ctx, node)
 		}
 	})
 	
@@ -38,7 +38,7 @@ func BenchmarkGraphNodeOperations(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			nodeID := fmt.Sprintf("node_%d", i%100)
-			graph.GetNode(ctx, nodeID)
+			_, _ = graph.GetNode(ctx, nodeID)
 		}
 	})
 	
@@ -51,7 +51,7 @@ func BenchmarkGraphNodeOperations(b *testing.B) {
 				Vector:  []float32{float32(i * 2), float32(i * 3), float32(i * 4)},
 				Content: fmt.Sprintf("Updated content %d", i),
 			}
-			graph.UpsertNode(ctx, node)
+			_ = graph.UpsertNode(ctx, node)
 		}
 	})
 	
@@ -62,19 +62,19 @@ func BenchmarkGraphNodeOperations(b *testing.B) {
 				ID:     fmt.Sprintf("delete_node_%d", i),
 				Vector: []float32{1, 2, 3},
 			}
-			graph.UpsertNode(ctx, node)
+			_ = graph.UpsertNode(ctx, node)
 		}
 		
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.DeleteNode(ctx, fmt.Sprintf("delete_node_%d", i))
+			_ = graph.DeleteNode(ctx, fmt.Sprintf("delete_node_%d", i))
 		}
 	})
 	
 	b.Run("GetAllNodes", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.GetAllNodes(ctx, nil)
+			_, _ = graph.GetAllNodes(ctx, nil)
 		}
 	})
 	
@@ -96,7 +96,7 @@ func BenchmarkGraphEdgeOperations(b *testing.B) {
 			ID:     fmt.Sprintf("n%d", i),
 			Vector: []float32{float32(i), 0, 0},
 		}
-		graph.UpsertNode(ctx, node)
+		_ = graph.UpsertNode(ctx, node)
 	}
 	
 	// Pre-create edges
@@ -108,7 +108,7 @@ func BenchmarkGraphEdgeOperations(b *testing.B) {
 				FromNodeID: fmt.Sprintf("n%d", i),
 				ToNodeID:   fmt.Sprintf("n%d", j),
 			}
-			graph.UpsertEdge(ctx, edge)
+			_ = graph.UpsertEdge(ctx, edge)
 			edgeCount++
 		}
 	}
@@ -123,7 +123,7 @@ func BenchmarkGraphEdgeOperations(b *testing.B) {
 				EdgeType:   "bench",
 				Weight:     0.5,
 			}
-			graph.UpsertEdge(ctx, edge)
+			_ = graph.UpsertEdge(ctx, edge)
 		}
 	})
 	
@@ -131,7 +131,7 @@ func BenchmarkGraphEdgeOperations(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			nodeID := fmt.Sprintf("n%d", i%100)
-			graph.GetEdges(ctx, nodeID, "out")
+			_, _ = graph.GetEdges(ctx, nodeID, "out")
 		}
 	})
 	
@@ -143,12 +143,12 @@ func BenchmarkGraphEdgeOperations(b *testing.B) {
 				FromNodeID: "n0",
 				ToNodeID:   "n1",
 			}
-			graph.UpsertEdge(ctx, edge)
+			_ = graph.UpsertEdge(ctx, edge)
 		}
 		
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.DeleteEdge(ctx, fmt.Sprintf("del_edge_%d", i))
+			_ = graph.DeleteEdge(ctx, fmt.Sprintf("del_edge_%d", i))
 		}
 	})
 }
@@ -166,7 +166,7 @@ func BenchmarkGraphTraversal(b *testing.B) {
 			ID:     fmt.Sprintf("node_%d", i),
 			Vector: []float32{float32(i % 10), float32(i % 20), float32(i % 30)},
 		}
-		graph.UpsertNode(ctx, node)
+		_ = graph.UpsertNode(ctx, node)
 	}
 	
 	// Create edges (each node connects to next 3)
@@ -178,7 +178,7 @@ func BenchmarkGraphTraversal(b *testing.B) {
 					FromNodeID: fmt.Sprintf("node_%d", i),
 					ToNodeID:   fmt.Sprintf("node_%d", i+j),
 				}
-				graph.UpsertEdge(ctx, edge)
+				_ = graph.UpsertEdge(ctx, edge)
 			}
 		}
 	}
@@ -186,7 +186,7 @@ func BenchmarkGraphTraversal(b *testing.B) {
 	b.Run("Neighbors_1Hop", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.Neighbors(ctx, "node_500", TraversalOptions{
+			_, _ = graph.Neighbors(ctx, "node_500", TraversalOptions{
 				MaxDepth:  1,
 				Direction: "out",
 			})
@@ -196,7 +196,7 @@ func BenchmarkGraphTraversal(b *testing.B) {
 	b.Run("Neighbors_2Hop", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.Neighbors(ctx, "node_500", TraversalOptions{
+			_, _ = graph.Neighbors(ctx, "node_500", TraversalOptions{
 				MaxDepth:  2,
 				Direction: "out",
 			})
@@ -206,7 +206,7 @@ func BenchmarkGraphTraversal(b *testing.B) {
 	b.Run("Neighbors_3Hop", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.Neighbors(ctx, "node_500", TraversalOptions{
+			_, _ = graph.Neighbors(ctx, "node_500", TraversalOptions{
 				MaxDepth:  3,
 				Direction: "out",
 			})
@@ -216,14 +216,14 @@ func BenchmarkGraphTraversal(b *testing.B) {
 	b.Run("ShortestPath", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.ShortestPath(ctx, "node_100", "node_110")
+			_, _ = graph.ShortestPath(ctx, "node_100", "node_110")
 		}
 	})
 	
 	b.Run("Connected", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.Connected(ctx, "node_100", "node_200", 5)
+			_, _ = graph.Connected(ctx, "node_100", "node_200", 5)
 		}
 	})
 	
@@ -235,7 +235,7 @@ func BenchmarkGraphTraversal(b *testing.B) {
 		
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.Subgraph(ctx, nodeIDs)
+			_, _ = graph.Subgraph(ctx, nodeIDs)
 		}
 	})
 }
@@ -254,7 +254,7 @@ func BenchmarkHybridSearch(b *testing.B) {
 			Content:  fmt.Sprintf("Document %d", i),
 			NodeType: "document",
 		}
-		graph.UpsertNode(ctx, node)
+		_ = graph.UpsertNode(ctx, node)
 	}
 	
 	// Create edges
@@ -268,7 +268,7 @@ func BenchmarkHybridSearch(b *testing.B) {
 					EdgeType:   "related",
 					Weight:     0.8,
 				}
-				graph.UpsertEdge(ctx, edge)
+				_ = graph.UpsertEdge(ctx, edge)
 			}
 		}
 	}
@@ -288,7 +288,7 @@ func BenchmarkHybridSearch(b *testing.B) {
 		
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.HybridSearch(ctx, query)
+			_, _ = graph.HybridSearch(ctx, query)
 		}
 	})
 	
@@ -308,7 +308,7 @@ func BenchmarkHybridSearch(b *testing.B) {
 		
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.HybridSearch(ctx, query)
+			_, _ = graph.HybridSearch(ctx, query)
 		}
 	})
 	
@@ -329,14 +329,14 @@ func BenchmarkHybridSearch(b *testing.B) {
 		
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.HybridSearch(ctx, query)
+			_, _ = graph.HybridSearch(ctx, query)
 		}
 	})
 	
 	b.Run("GraphVectorSearch", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.GraphVectorSearch(ctx, "doc_250", queryVector, TraversalOptions{
+			_, _ = graph.GraphVectorSearch(ctx, "doc_250", queryVector, TraversalOptions{
 				MaxDepth:  2,
 				Direction: "out",
 			})
@@ -344,12 +344,9 @@ func BenchmarkHybridSearch(b *testing.B) {
 	})
 	
 	b.Run("SimilarityInGraph", func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			// SimilarityInGraph function needs to be implemented or available
-			// Skipping for now
-			return
-		}
+		// SimilarityInGraph function needs to be implemented or available
+		// Skipping for now
+		b.Skip("SimilarityInGraph not yet implemented")
 	})
 }
 
@@ -366,7 +363,7 @@ func BenchmarkGraphAlgorithms(b *testing.B) {
 			ID:     fmt.Sprintf("n%d", i),
 			Vector: []float32{float32(i), float32(i * 2), float32(i * 3)},
 		}
-		graph.UpsertNode(ctx, node)
+		_ = graph.UpsertNode(ctx, node)
 	}
 	
 	// Create random edges
@@ -377,34 +374,34 @@ func BenchmarkGraphAlgorithms(b *testing.B) {
 			ToNodeID:   fmt.Sprintf("n%d", (i*7)%nodeCount),
 			Weight:     0.5 + float64(i%10)/20,
 		}
-		graph.UpsertEdge(ctx, edge)
+		_ = graph.UpsertEdge(ctx, edge)
 	}
 	
 	b.Run("PageRank", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.PageRank(ctx, 50, 0.85)
+			_, _ = graph.PageRank(ctx, 50, 0.85)
 		}
 	})
 	
 	b.Run("CommunityDetection", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.CommunityDetection(ctx)
+			_, _ = graph.CommunityDetection(ctx)
 		}
 	})
 	
 	b.Run("PredictEdges", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.PredictEdges(ctx, fmt.Sprintf("n%d", i%nodeCount), 5)
+			_, _ = graph.PredictEdges(ctx, fmt.Sprintf("n%d", i%nodeCount), 5)
 		}
 	})
 	
 	b.Run("GetGraphStatistics", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.GetGraphStatistics(ctx)
+			_, _ = graph.GetGraphStatistics(ctx)
 		}
 	})
 }
@@ -428,7 +425,7 @@ func BenchmarkLargeGraph(b *testing.B) {
 					ID:     fmt.Sprintf("large_n%d", idx),
 					Vector: []float32{float32(idx % 100), float32(idx % 200), float32(idx % 300)},
 				}
-				graph.UpsertNode(ctx, node)
+				_ = graph.UpsertNode(ctx, node)
 			}
 		}
 	})
@@ -439,7 +436,7 @@ func BenchmarkLargeGraph(b *testing.B) {
 			ID:     fmt.Sprintf("test_n%d", i),
 			Vector: []float32{float32(i % 100), float32(i % 200), float32(i % 300)},
 		}
-		graph.UpsertNode(ctx, node)
+		_ = graph.UpsertNode(ctx, node)
 	}
 	
 	// Create edges
@@ -451,7 +448,7 @@ func BenchmarkLargeGraph(b *testing.B) {
 					FromNodeID: fmt.Sprintf("test_n%d", i),
 					ToNodeID:   fmt.Sprintf("test_n%d", i+j),
 				}
-				graph.UpsertEdge(ctx, edge)
+				_ = graph.UpsertEdge(ctx, edge)
 			}
 		}
 	}
@@ -459,7 +456,7 @@ func BenchmarkLargeGraph(b *testing.B) {
 	b.Run("LargeGraphTraversal", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.Neighbors(ctx, "test_n500", TraversalOptions{
+			_, _ = graph.Neighbors(ctx, "test_n500", TraversalOptions{
 				MaxDepth:  3,
 				Direction: "out",
 			})
@@ -478,7 +475,7 @@ func BenchmarkLargeGraph(b *testing.B) {
 		
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			graph.HybridSearch(ctx, query)
+			_, _ = graph.HybridSearch(ctx, query)
 		}
 	})
 }

@@ -309,7 +309,7 @@ func (g *GraphStore) EnableHNSWIndex(dimensions int) error {
 	if err != nil {
 		return fmt.Errorf("failed to query existing nodes: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var nodeID string
@@ -323,7 +323,7 @@ func (g *GraphStore) EnableHNSWIndex(dimensions int) error {
 			continue
 		}
 
-		g.hnswIndex.index.Add(nodeID, vector)
+		_ = g.hnswIndex.index.Add(nodeID, vector)
 	}
 
 	return nil
@@ -417,18 +417,3 @@ func (g *GraphStore) HNSWHybridSearch(ctx context.Context, query *HybridQuery) (
 	return results, nil
 }
 
-// updateHNSWIndex updates the HNSW index when a node is added/updated
-func (g *GraphStore) updateHNSWIndex(nodeID string, vector []float32) error {
-	if g.hnswIndex != nil {
-		return g.hnswIndex.index.Add(nodeID, vector)
-	}
-	return nil
-}
-
-// removeFromHNSWIndex removes a node from the HNSW index
-func (g *GraphStore) removeFromHNSWIndex(nodeID string) error {
-	if g.hnswIndex != nil {
-		g.hnswIndex.index.Remove(nodeID)
-	}
-	return nil
-}

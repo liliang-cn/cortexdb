@@ -30,11 +30,11 @@ func generateEmbedding(text string, dim int) []float32 {
 	for _, r := range text {
 		h = h*31 + int(r)
 	}
-	rand.Seed(int64(h))
+	rng := rand.New(rand.NewSource(int64(h)))
 	
 	embedding := make([]float32, dim)
 	for i := range embedding {
-		embedding[i] = rand.Float32()*2 - 1
+		embedding[i] = rng.Float32()*2 - 1
 	}
 	
 	// Normalize
@@ -59,7 +59,7 @@ func main() {
 
 	// Initialize database
 	dbPath := "hybrid_search.db"
-	defer os.Remove(dbPath)
+	defer func() { _ = os.Remove(dbPath) }()
 
 	config := sqvect.Config{
 		Path:       dbPath,
@@ -70,7 +70,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to open database:", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 	graphStore := db.Graph()
@@ -229,7 +229,7 @@ func main() {
 	queryText := "transformer architecture for visual recognition"
 	queryVector := generateEmbedding(queryText, 256)
 	fmt.Printf("   Query: \"%s\"\n", queryText)
-	fmt.Println("   " + string(make([]byte, 60, 60)))
+	fmt.Println("   " + string(make([]byte, 60)))
 
 	// A. Pure vector search
 	fmt.Println("\n   A. Vector-Only Search (Traditional)")
@@ -451,14 +451,14 @@ func main() {
 	// Vector search performance
 	start := time.Now()
 	for i := 0; i < 100; i++ {
-		db.Vector().Search(ctx, testQuery, core.SearchOptions{TopK: 5})
+		_, _ = db.Vector().Search(ctx, testQuery, core.SearchOptions{TopK: 5})
 	}
 	vectorTime := time.Since(start)
 	
 	// Hybrid search performance
 	start = time.Now()
 	for i := 0; i < 100; i++ {
-		graphStore.HybridSearch(ctx, &graph.HybridQuery{
+		_, _ = graphStore.HybridSearch(ctx, &graph.HybridQuery{
 			Vector: testQuery,
 			TopK:   5,
 			Weights: graph.HybridWeights{

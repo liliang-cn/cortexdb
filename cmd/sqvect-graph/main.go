@@ -34,7 +34,7 @@ var initCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("failed to create store: %w", err)
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		ctx := context.Background()
 		if err := store.Init(ctx); err != nil {
@@ -101,7 +101,7 @@ var nodeAddCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		node := &graphpkg.GraphNode{
 			ID:         nodeID,
@@ -132,7 +132,7 @@ var nodeGetCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		ctx := context.Background()
 		node, err := graph.GetNode(ctx, nodeID)
@@ -171,7 +171,7 @@ var nodeListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		ctx := context.Background()
 		
@@ -217,7 +217,7 @@ var nodeDeleteCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		ctx := context.Background()
 		if err := graph.DeleteNode(ctx, nodeID); err != nil {
@@ -259,7 +259,7 @@ var edgeAddCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		edge := &graphpkg.GraphEdge{
 			ID:         edgeID,
@@ -292,7 +292,7 @@ var edgeListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		ctx := context.Background()
 		edges, err := graph.GetEdges(ctx, nodeID, direction)
@@ -345,7 +345,7 @@ var searchVectorCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		ctx := context.Background()
 		
@@ -406,7 +406,7 @@ var searchHybridCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		query := &graphpkg.HybridQuery{
 			Vector:      vector,
@@ -455,7 +455,7 @@ var exportCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		ctx := context.Background()
 		
@@ -463,7 +463,7 @@ var exportCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("failed to create output file: %w", err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		
 		if err := graph.Export(ctx, file, graphpkg.ExportFormat(format)); err != nil {
 			return fmt.Errorf("export failed: %w", err)
@@ -486,7 +486,7 @@ var importCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		ctx := context.Background()
 		
@@ -494,7 +494,7 @@ var importCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("failed to open input file: %w", err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		
 		if err := graph.Import(ctx, file, graphpkg.ExportFormat(format)); err != nil {
 			return fmt.Errorf("import failed: %w", err)
@@ -513,7 +513,7 @@ var statsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		
 		ctx := context.Background()
 		stats, err := graph.GetGraphStatistics(ctx)
@@ -551,7 +551,7 @@ func openGraph() (*core.SQLiteStore, *graphpkg.GraphStore, error) {
 	// Initialize the store if not already done
 	ctx := context.Background()
 	if err := store.Init(ctx); err != nil {
-		store.Close()
+		_ = store.Close()
 		return nil, nil, fmt.Errorf("failed to initialize store: %w", err)
 	}
 	
@@ -560,6 +560,7 @@ func openGraph() (*core.SQLiteStore, *graphpkg.GraphStore, error) {
 	if err := graph.InitGraphSchema(ctx); err != nil {
 		// Ignore error if schema already exists
 		// This is expected when opening an existing database
+		_ = err
 	}
 	
 	return store, graph, nil
@@ -602,7 +603,7 @@ func init() {
 	searchVectorCmd.Flags().Int("top-k", 10, "Number of results")
 	searchVectorCmd.Flags().Float64("threshold", 0.0, "Similarity threshold")
 	searchVectorCmd.Flags().Bool("hnsw", false, "Use HNSW index")
-	searchVectorCmd.MarkFlagRequired("vector")
+	_ = searchVectorCmd.MarkFlagRequired("vector")
 	
 	searchHybridCmd.Flags().String("vector", "", "Query vector (comma-separated)")
 	searchHybridCmd.Flags().String("start-node", "", "Start node for graph search")

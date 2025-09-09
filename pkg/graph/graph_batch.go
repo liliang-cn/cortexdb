@@ -41,7 +41,7 @@ func (g *GraphStore) UpsertNodesBatch(ctx context.Context, nodes []*GraphNode) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	
 	// Prepare statement for batch insert
 	stmt, err := tx.PrepareContext(ctx, `
@@ -57,7 +57,7 @@ func (g *GraphStore) UpsertNodesBatch(ctx context.Context, nodes []*GraphNode) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare statement: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 	
 	// Process each node
 	for _, node := range nodes {
@@ -132,7 +132,7 @@ func (g *GraphStore) DeleteNodesBatch(ctx context.Context, nodeIDs []string) (*B
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	
 	// Build batch delete query with placeholders
 	placeholders := make([]string, len(nodeIDs))
@@ -180,7 +180,7 @@ func (g *GraphStore) UpsertEdgesBatch(ctx context.Context, edges []*GraphEdge) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	
 	// Prepare statement for batch insert
 	stmt, err := tx.PrepareContext(ctx, `
@@ -197,7 +197,7 @@ func (g *GraphStore) UpsertEdgesBatch(ctx context.Context, edges []*GraphEdge) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare statement: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 	
 	// Process each edge
 	for _, edge := range edges {
@@ -282,7 +282,7 @@ func (g *GraphStore) DeleteEdgesBatch(ctx context.Context, edgeIDs []string) (*B
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	
 	// Build batch delete query
 	placeholders := make([]string, len(edgeIDs))
@@ -339,7 +339,7 @@ func (g *GraphStore) GetNodesBatch(ctx context.Context, nodeIDs []string) ([]*Gr
 	if err != nil {
 		return nil, fmt.Errorf("failed to query nodes: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	
 	nodes := make([]*GraphNode, 0, len(nodeIDs))
 	for rows.Next() {
@@ -404,7 +404,7 @@ func (g *GraphStore) GetEdgesBatch(ctx context.Context, edgeIDs []string) ([]*Gr
 	if err != nil {
 		return nil, fmt.Errorf("failed to query edges: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	
 	edges := make([]*GraphEdge, 0, len(edgeIDs))
 	for rows.Next() {
@@ -471,7 +471,7 @@ func (g *GraphStore) ExecuteBatch(ctx context.Context, ops *BatchGraphOperation)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	
 	// Process node upserts
 	if len(ops.NodeUpserts) > 0 {
@@ -541,7 +541,7 @@ func (g *GraphStore) upsertNodesBatchTx(ctx context.Context, tx *sql.Tx, nodes [
 	if err != nil {
 		return nil, err
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 	
 	for _, node := range nodes {
 		if node == nil || node.ID == "" || len(node.Vector) == 0 {
@@ -611,7 +611,7 @@ func (g *GraphStore) upsertEdgesBatchTx(ctx context.Context, tx *sql.Tx, edges [
 	if err != nil {
 		return nil, err
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 	
 	for _, edge := range edges {
 		if edge == nil || edge.ID == "" || edge.FromNodeID == "" || edge.ToNodeID == "" {

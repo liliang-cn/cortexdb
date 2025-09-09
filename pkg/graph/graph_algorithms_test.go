@@ -24,7 +24,7 @@ func TestPageRank(t *testing.T) {
 	}
 	
 	for _, node := range nodes {
-		graph.UpsertNode(ctx, &node)
+		_ = graph.UpsertNode(ctx, &node)
 	}
 	
 	edges := []GraphEdge{
@@ -42,7 +42,7 @@ func TestPageRank(t *testing.T) {
 	}
 	
 	for _, edge := range edges {
-		graph.UpsertEdge(ctx, &edge)
+		_ = graph.UpsertEdge(ctx, &edge)
 	}
 	
 	t.Run("BasicPageRank", func(t *testing.T) {
@@ -91,9 +91,10 @@ func TestPageRank(t *testing.T) {
 		// Verify that authority node has higher score than isolated node
 		var authorityScore, isolatedScore float64
 		for _, result := range results {
-			if result.NodeID == "authority" {
+			switch result.NodeID {
+			case "authority":
 				authorityScore = result.Score
-			} else if result.NodeID == "isolated" {
+			case "isolated":
 				isolatedScore = result.Score
 			}
 		}
@@ -153,7 +154,7 @@ func TestCommunityDetection(t *testing.T) {
 	}
 	
 	for _, node := range nodes {
-		graph.UpsertNode(ctx, &node)
+		_ = graph.UpsertNode(ctx, &node)
 	}
 	
 	edges := []GraphEdge{
@@ -176,7 +177,7 @@ func TestCommunityDetection(t *testing.T) {
 	}
 	
 	for _, edge := range edges {
-		graph.UpsertEdge(ctx, &edge)
+		_ = graph.UpsertEdge(ctx, &edge)
 	}
 	
 	t.Run("DetectCommunities", func(t *testing.T) {
@@ -253,7 +254,7 @@ func TestPredictEdges(t *testing.T) {
 	}
 	
 	for _, node := range nodes {
-		graph.UpsertNode(ctx, &node)
+		_ = graph.UpsertNode(ctx, &node)
 	}
 	
 	// user1 likes item1 and item2
@@ -270,7 +271,7 @@ func TestPredictEdges(t *testing.T) {
 	}
 	
 	for _, edge := range edges {
-		graph.UpsertEdge(ctx, &edge)
+		_ = graph.UpsertEdge(ctx, &edge)
 	}
 	
 	t.Run("PredictForUser", func(t *testing.T) {
@@ -339,7 +340,7 @@ func TestPredictEdges(t *testing.T) {
 			ID:     "isolated",
 			Vector: []float32{0.5, 0.5, 0.5},
 		}
-		graph.UpsertNode(ctx, isolated)
+		_ = graph.UpsertNode(ctx, isolated)
 		
 		predictions, err := graph.PredictEdges(ctx, "isolated", 5)
 		if err != nil {
@@ -382,7 +383,7 @@ func TestGraphStatistics(t *testing.T) {
 	}
 	
 	for _, node := range nodes {
-		graph.UpsertNode(ctx, &node)
+		_ = graph.UpsertNode(ctx, &node)
 	}
 	
 	edges := []GraphEdge{
@@ -394,7 +395,7 @@ func TestGraphStatistics(t *testing.T) {
 	}
 	
 	for _, edge := range edges {
-		graph.UpsertEdge(ctx, &edge)
+		_ = graph.UpsertEdge(ctx, &edge)
 	}
 	
 	t.Run("BasicStatistics", func(t *testing.T) {
@@ -463,7 +464,7 @@ func TestGraphStatistics(t *testing.T) {
 			ID:     "single",
 			Vector: []float32{1, 1, 1},
 		}
-		singleGraph.UpsertNode(ctx, node)
+		_ = singleGraph.UpsertNode(ctx, node)
 		
 		stats, err := singleGraph.GetGraphStatistics(ctx)
 		if err != nil {
@@ -499,7 +500,7 @@ func TestPageRankConvergence(t *testing.T) {
 	}
 	
 	for _, node := range nodes {
-		graph.UpsertNode(ctx, &node)
+		_ = graph.UpsertNode(ctx, &node)
 	}
 	
 	edges := []GraphEdge{
@@ -509,7 +510,7 @@ func TestPageRankConvergence(t *testing.T) {
 	}
 	
 	for _, edge := range edges {
-		graph.UpsertEdge(ctx, &edge)
+		_ = graph.UpsertEdge(ctx, &edge)
 	}
 	
 	t.Run("ConvergenceTest", func(t *testing.T) {

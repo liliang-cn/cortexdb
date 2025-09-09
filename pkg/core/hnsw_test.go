@@ -13,7 +13,12 @@ import (
 func TestHNSWIntegration(t *testing.T) {
 	// Create temporary database
 	dbPath := fmt.Sprintf("/tmp/test_hnsw_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
+	defer func() {
+		if err := os.Remove(dbPath); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
 
 	// Test with HNSW enabled
 	t.Run("with_hnsw", func(t *testing.T) {
@@ -34,7 +39,12 @@ func TestHNSWIntegration(t *testing.T) {
 		if err := store.Init(ctx); err != nil {
 			t.Fatalf("Failed to initialize store: %v", err)
 		}
-		defer store.Close()
+		defer func() {
+		if err := store.Close(); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
 
 		// Insert test vectors
 		vectors := generateTestVectors(100, 128)
@@ -84,7 +94,7 @@ func TestHNSWIntegration(t *testing.T) {
 	// Test with HNSW disabled (linear search fallback)
 	t.Run("without_hnsw", func(t *testing.T) {
 		dbPath2 := fmt.Sprintf("/tmp/test_no_hnsw_%d.db", time.Now().UnixNano())
-		defer os.Remove(dbPath2)
+		defer func() { _ = os.Remove(dbPath2) }()
 
 		config := DefaultConfig()
 		config.Path = dbPath2
@@ -100,7 +110,12 @@ func TestHNSWIntegration(t *testing.T) {
 		if err := store.Init(ctx); err != nil {
 			t.Fatalf("Failed to initialize store: %v", err)
 		}
-		defer store.Close()
+		defer func() {
+		if err := store.Close(); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
 
 		// Insert test vectors
 		vectors := generateTestVectors(100, 128)
@@ -137,7 +152,12 @@ func TestHNSWIntegration(t *testing.T) {
 
 func TestHNSWRebuild(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/test_hnsw_rebuild_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
+	defer func() {
+		if err := os.Remove(dbPath); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
 
 	ctx := context.Background()
 
@@ -168,7 +188,9 @@ func TestHNSWRebuild(t *testing.T) {
 			t.Fatalf("Failed to insert vector %d: %v", i, err)
 		}
 	}
-	store.Close()
+	if err := store.Close(); err != nil {
+		t.Fatalf("Failed to close store: %v", err)
+	}
 
 	// Now reopen with HNSW enabled - should rebuild index from existing data
 	config.HNSW.Enabled = true
@@ -180,7 +202,12 @@ func TestHNSWRebuild(t *testing.T) {
 	if err := store2.Init(ctx); err != nil {
 		t.Fatalf("Failed to reinitialize store: %v", err)
 	}
-	defer store2.Close()
+	defer func() {
+		if err := store2.Close(); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
 
 	// Verify HNSW index was built from existing data
 	if store2.hnswIndex == nil {
@@ -207,7 +234,12 @@ func TestHNSWPerformance(t *testing.T) {
 	}
 
 	dbPath := fmt.Sprintf("/tmp/test_hnsw_perf_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
+	defer func() {
+		if err := os.Remove(dbPath); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
 
 	ctx := context.Background()
 	numVectors := 10000
@@ -221,7 +253,9 @@ func TestHNSWPerformance(t *testing.T) {
 	configHNSW.HNSW.Enabled = true
 
 	storeHNSW, _ := NewWithConfig(configHNSW)
-	storeHNSW.Init(ctx)
+	if err := storeHNSW.Init(ctx); err != nil {
+		t.Fatalf("Failed to init HNSW store: %v", err)
+	}
 
 	// Insert vectors
 	vectors := generateTestVectors(numVectors, dim)
@@ -230,20 +264,26 @@ func TestHNSWPerformance(t *testing.T) {
 			ID:     fmt.Sprintf("vec_%d", i),
 			Vector: vec,
 		}
-		storeHNSW.Upsert(ctx, emb)
+		if err := storeHNSW.Upsert(ctx, emb); err != nil {
+			t.Fatalf("Failed to upsert: %v", err)
+		}
 	}
 
 	// Benchmark HNSW search
 	queries := generateTestVectors(numQueries, dim)
 	startHNSW := time.Now()
 	for _, q := range queries {
-		storeHNSW.Search(ctx, q, SearchOptions{TopK: 10})
+		if _, err := storeHNSW.Search(ctx, q, SearchOptions{TopK: 10}); err != nil {
+			t.Fatalf("Search failed: %v", err)
+		}
 	}
 	hnswTime := time.Since(startHNSW)
-	storeHNSW.Close()
+	if err := storeHNSW.Close(); err != nil {
+		t.Fatalf("Failed to close store: %v", err)
+	}
 
 	// Clean up and test without HNSW
-	os.Remove(dbPath)
+	_ = os.Remove(dbPath)
 	
 	configLinear := DefaultConfig()
 	configLinear.Path = dbPath
@@ -251,7 +291,9 @@ func TestHNSWPerformance(t *testing.T) {
 	configLinear.HNSW.Enabled = false
 
 	storeLinear, _ := NewWithConfig(configLinear)
-	storeLinear.Init(ctx)
+	if err := storeLinear.Init(ctx); err != nil {
+		t.Fatalf("Failed to init linear store: %v", err)
+	}
 
 	// Insert same vectors
 	for i, vec := range vectors {
@@ -259,16 +301,22 @@ func TestHNSWPerformance(t *testing.T) {
 			ID:     fmt.Sprintf("vec_%d", i),
 			Vector: vec,
 		}
-		storeLinear.Upsert(ctx, emb)
+		if err := storeLinear.Upsert(ctx, emb); err != nil {
+			t.Fatalf("Failed to upsert: %v", err)
+		}
 	}
 
 	// Benchmark linear search
 	startLinear := time.Now()
 	for _, q := range queries {
-		storeLinear.Search(ctx, q, SearchOptions{TopK: 10})
+		if _, err := storeLinear.Search(ctx, q, SearchOptions{TopK: 10}); err != nil {
+			t.Fatalf("Search failed: %v", err)
+		}
 	}
 	linearTime := time.Since(startLinear)
-	storeLinear.Close()
+	if err := storeLinear.Close(); err != nil {
+		t.Fatalf("Failed to close store: %v", err)
+	}
 
 	// HNSW should be significantly faster
 	speedup := float64(linearTime) / float64(hnswTime)
@@ -308,7 +356,12 @@ func generateTestVectors(n, dim int) [][]float32 {
 // Benchmark tests
 func BenchmarkHNSWSearch(b *testing.B) {
 	dbPath := fmt.Sprintf("/tmp/bench_hnsw_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
+	defer func() {
+		if err := os.Remove(dbPath); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
 
 	config := DefaultConfig()
 	config.Path = dbPath
@@ -317,8 +370,15 @@ func BenchmarkHNSWSearch(b *testing.B) {
 
 	store, _ := NewWithConfig(config)
 	ctx := context.Background()
-	store.Init(ctx)
-	defer store.Close()
+	if err := store.Init(ctx); err != nil {
+		b.Fatalf("Failed to init store: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
 
 	// Insert vectors
 	vectors := generateTestVectors(5000, 512)
@@ -327,20 +387,29 @@ func BenchmarkHNSWSearch(b *testing.B) {
 			ID:     fmt.Sprintf("vec_%d", i),
 			Vector: vec,
 		}
-		store.Upsert(ctx, emb)
+		if err := store.Upsert(ctx, emb); err != nil {
+			b.Fatalf("Failed to upsert: %v", err)
+		}
 	}
 
 	query := generateTestVectors(1, 512)[0]
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		store.Search(ctx, query, SearchOptions{TopK: 10})
+		if _, err := store.Search(ctx, query, SearchOptions{TopK: 10}); err != nil {
+			b.Fatalf("Search failed: %v", err)
+		}
 	}
 }
 
 func BenchmarkLinearSearch(b *testing.B) {
 	dbPath := fmt.Sprintf("/tmp/bench_linear_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
+	defer func() {
+		if err := os.Remove(dbPath); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
 
 	config := DefaultConfig()
 	config.Path = dbPath
@@ -349,8 +418,15 @@ func BenchmarkLinearSearch(b *testing.B) {
 
 	store, _ := NewWithConfig(config)
 	ctx := context.Background()
-	store.Init(ctx)
-	defer store.Close()
+	if err := store.Init(ctx); err != nil {
+		b.Fatalf("Failed to init store: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
 
 	// Insert vectors
 	vectors := generateTestVectors(5000, 512)
@@ -359,13 +435,17 @@ func BenchmarkLinearSearch(b *testing.B) {
 			ID:     fmt.Sprintf("vec_%d", i),
 			Vector: vec,
 		}
-		store.Upsert(ctx, emb)
+		if err := store.Upsert(ctx, emb); err != nil {
+			b.Fatalf("Failed to upsert: %v", err)
+		}
 	}
 
 	query := generateTestVectors(1, 512)[0]
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		store.Search(ctx, query, SearchOptions{TopK: 10})
+		if _, err := store.Search(ctx, query, SearchOptions{TopK: 10}); err != nil {
+			b.Fatalf("Search failed: %v", err)
+		}
 	}
 }

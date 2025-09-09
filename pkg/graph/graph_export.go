@@ -151,7 +151,7 @@ func (g *GraphStore) ExportGraphML(ctx context.Context, writer io.Writer) error 
 	encoder.Indent("", "  ")
 	
 	// Write XML header
-	writer.Write([]byte(xml.Header))
+	_, _ = writer.Write([]byte(xml.Header))
 	
 	// Encode document
 	if err := encoder.Encode(doc); err != nil {
@@ -198,7 +198,7 @@ func (g *GraphStore) ImportGraphML(ctx context.Context, reader io.Reader) error 
 					node.Vector = make([]float32, 3)
 				}
 			case "properties":
-				json.Unmarshal([]byte(data.Value), &node.Properties)
+				_ = json.Unmarshal([]byte(data.Value), &node.Properties)
 			}
 		}
 		
@@ -237,7 +237,7 @@ func (g *GraphStore) ImportGraphML(ctx context.Context, reader io.Reader) error 
 					edge.Weight = w
 				}
 			case "properties":
-				json.Unmarshal([]byte(data.Value), &edge.Properties)
+				_ = json.Unmarshal([]byte(data.Value), &edge.Properties)
 			}
 		}
 		
@@ -420,7 +420,7 @@ func (g *GraphStore) ExportGEXF(ctx context.Context, writer io.Writer) error {
 	encoder.Indent("", "  ")
 	
 	// Write XML header
-	writer.Write([]byte(xml.Header))
+	_, _ = writer.Write([]byte(xml.Header))
 	
 	// Encode document
 	if err := encoder.Encode(doc); err != nil {
@@ -467,7 +467,7 @@ func (g *GraphStore) ImportGEXF(ctx context.Context, reader io.Reader) error {
 					node.Vector = make([]float32, 3)
 				}
 			case "properties":
-				json.Unmarshal([]byte(attValue.Value), &node.Properties)
+				_ = json.Unmarshal([]byte(attValue.Value), &node.Properties)
 			}
 		}
 		

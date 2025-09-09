@@ -11,7 +11,12 @@ import (
 func TestHNSWSimple(t *testing.T) {
 	// Create temporary database
 	dbPath := fmt.Sprintf("/tmp/test_hnsw_simple_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
+	defer func() {
+		if err := os.Remove(dbPath); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
 
 	config := DefaultConfig()
 	config.Path = dbPath
@@ -30,7 +35,12 @@ func TestHNSWSimple(t *testing.T) {
 	if err := store.Init(ctx); err != nil {
 		t.Fatalf("Failed to initialize store: %v", err)
 	}
-	defer store.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			// Ignore cleanup errors in tests
+			_ = err
+		}
+	}()
 
 	// Insert simple test vectors
 	vectors := []struct {

@@ -45,11 +45,11 @@ func generateEmbedding(text string, seed int, dim int) []float32 {
 	for _, r := range text {
 		h = h*31 + int(r)
 	}
-	rand.Seed(int64(h))
+	rng := rand.New(rand.NewSource(int64(h)))
 	
 	embedding := make([]float32, dim)
 	for i := range embedding {
-		embedding[i] = rand.Float32()*2 - 1
+		embedding[i] = rng.Float32()*2 - 1
 	}
 	
 	// Normalize
@@ -74,7 +74,7 @@ func main() {
 
 	// Initialize database
 	dbPath := "multi_collection.db"
-	defer os.Remove(dbPath)
+	defer func() { _ = os.Remove(dbPath) }()
 
 	config := sqvect.Config{
 		Path:       dbPath,
@@ -85,7 +85,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to open database:", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 	vectorStore := db.Vector()

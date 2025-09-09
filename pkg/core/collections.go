@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -169,7 +168,12 @@ func (s *SQLiteStore) ListCollections(ctx context.Context) ([]*Collection, error
 	if err != nil {
 		return nil, wrapError("list_collections", fmt.Errorf("failed to list collections: %w", err))
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			// Log error but don't override the main error
+			_ = err
+		}
+	}()
 
 	var collections []*Collection
 	for rows.Next() {
@@ -222,7 +226,12 @@ func (s *SQLiteStore) DeleteCollection(ctx context.Context, name string) error {
 	if err != nil {
 		return wrapError("delete_collection", fmt.Errorf("failed to start transaction: %w", err))
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil {
+			// Log error but don't override the main error
+			_ = err
+		}
+	}()
 
 	// Get collection ID first
 	var collectionID int
@@ -298,16 +307,3 @@ func (s *SQLiteStore) GetCollectionStats(ctx context.Context, name string) (*Col
 	return stats, nil
 }
 
-// getDefaultCollection gets or creates the default collection
-func (s *SQLiteStore) getDefaultCollection(ctx context.Context) (*Collection, error) {
-	// Try to get default collection first
-	collection, err := s.GetCollection(ctx, "default")
-	if err != nil {
-		// If not found, create it
-		if strings.Contains(fmt.Sprintf("%v", err), "not found") {
-			return s.CreateCollection(ctx, "default", s.config.VectorDim)
-		}
-		return nil, err
-	}
-	return collection, nil
-}

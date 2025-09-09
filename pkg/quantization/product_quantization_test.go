@@ -104,7 +104,9 @@ func TestProductQuantizerSearch(t *testing.T) {
 	
 	// Generate and train
 	vectors := generateTestVectorsPQ(numVectors, dim)
-	pq.Train(vectors)
+	if err := pq.Train(vectors); err != nil {
+		t.Fatalf("Train failed: %v", err)
+	}
 	
 	// Encode all vectors
 	codes := make([][]byte, numVectors)
@@ -151,7 +153,9 @@ func TestProductQuantizerSerialization(t *testing.T) {
 	
 	// Train with some data
 	vectors := generateTestVectorsPQ(20, dim)
-	pq.Train(vectors)
+	if err := pq.Train(vectors); err != nil {
+		t.Fatalf("Train failed: %v", err)
+	}
 	
 	// Serialize
 	data := pq.SerializeCodebooks()
@@ -201,12 +205,12 @@ func TestProductQuantizerNotTrained(t *testing.T) {
 }
 
 func generateTestVectorsPQ(n, dim int) [][]float32 {
-	rand.Seed(42)
+	rng := rand.New(rand.NewSource(42))
 	vectors := make([][]float32, n)
 	for i := 0; i < n; i++ {
 		vec := make([]float32, dim)
 		for j := 0; j < dim; j++ {
-			vec[j] = rand.Float32()*2 - 1
+			vec[j] = rng.Float32()*2 - 1
 		}
 		vectors[i] = vec
 	}
@@ -225,33 +229,43 @@ func calculateMSE(a, b []float32) float32 {
 func BenchmarkPQEncode(b *testing.B) {
 	pq, _ := NewProductQuantizer(512, 8, 256)
 	vectors := generateTestVectorsPQ(1000, 512)
-	pq.Train(vectors)
+	if err := pq.Train(vectors); err != nil {
+		b.Fatalf("Train failed: %v", err)
+	}
 	
 	vec := vectors[0]
 	b.ResetTimer()
 	
 	for i := 0; i < b.N; i++ {
-		pq.Encode(vec)
+		if _, err := pq.Encode(vec); err != nil {
+			b.Fatalf("Encode failed: %v", err)
+		}
 	}
 }
 
 func BenchmarkPQDecode(b *testing.B) {
 	pq, _ := NewProductQuantizer(512, 8, 256)
 	vectors := generateTestVectorsPQ(1000, 512)
-	pq.Train(vectors)
+	if err := pq.Train(vectors); err != nil {
+		b.Fatalf("Train failed: %v", err)
+	}
 	
 	encoded, _ := pq.Encode(vectors[0])
 	b.ResetTimer()
 	
 	for i := 0; i < b.N; i++ {
-		pq.Decode(encoded)
+		if _, err := pq.Decode(encoded); err != nil {
+			b.Fatalf("Decode failed: %v", err)
+		}
 	}
 }
 
 func BenchmarkPQSearch(b *testing.B) {
 	pq, _ := NewProductQuantizer(128, 8, 256)
 	vectors := generateTestVectorsPQ(10000, 128)
-	pq.Train(vectors)
+	if err := pq.Train(vectors); err != nil {
+		b.Fatalf("Train failed: %v", err)
+	}
 	
 	// Encode all vectors
 	codes := make([][]byte, len(vectors))

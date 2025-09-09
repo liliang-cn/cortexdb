@@ -140,12 +140,3 @@ func ValidateVector(vector []float32) error {
 	return nil
 }
 
-// isNaN reports whether f is an IEEE 754 "not-a-number" value
-func isNaN(f float64) bool {
-	return f != f
-}
-
-// isInf reports whether f is an infinity, according to sign
-func isInf(f float64, sign int) bool {
-	return sign >= 0 && f > 1.7976931348623157e+308 || sign <= 0 && f < -1.7976931348623157e+308
-}

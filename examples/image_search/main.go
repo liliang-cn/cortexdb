@@ -37,11 +37,11 @@ func simulateCLIPEmbedding(description string, tags []string, seed int) []float3
 	for _, r := range text {
 		h = h*31 + int(r)
 	}
-	rand.Seed(int64(h))
+	rng := rand.New(rand.NewSource(int64(h)))
 	
 	// Generate base embedding
 	for i := 0; i < dim; i++ {
-		embedding[i] = rand.Float32()*2 - 1
+		embedding[i] = rng.Float32()*2 - 1
 	}
 	
 	// Add tag-specific patterns
@@ -84,7 +84,7 @@ func main() {
 
 	// Initialize database
 	dbPath := "image_search.db"
-	defer os.Remove(dbPath)
+	defer func() { _ = os.Remove(dbPath) }()
 
 	config := sqvect.Config{
 		Path:       dbPath,
@@ -95,7 +95,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to open database:", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 	quick := db.Quick()
