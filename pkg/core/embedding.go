@@ -121,6 +121,9 @@ type Store interface {
 	// Search performs vector similarity search
 	Search(ctx context.Context, query []float32, opts SearchOptions) ([]ScoredEmbedding, error)
 
+	// RangeSearch finds all vectors within a specified distance from the query
+	RangeSearch(ctx context.Context, query []float32, radius float32, opts SearchOptions) ([]ScoredEmbedding, error)
+
 	// Delete removes an embedding by ID
 	Delete(ctx context.Context, id string) error
 

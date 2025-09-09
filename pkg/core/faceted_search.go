@@ -342,6 +342,11 @@ func (s *SQLiteStore) RangeSearch(ctx context.Context, query []float32, radius f
 		return nil, wrapError("range_search", ErrStoreClosed)
 	}
 	
+	// Validate radius
+	if radius <= 0 {
+		return nil, fmt.Errorf("radius must be positive, got %f", radius)
+	}
+	
 	// Get all candidates (no topK limit for range search)
 	candidates, err := s.fetchCandidates(ctx, opts)
 	if err != nil {
@@ -351,21 +356,38 @@ func (s *SQLiteStore) RangeSearch(ctx context.Context, query []float32, radius f
 	// Filter by radius
 	var results []ScoredEmbedding
 	for _, candidate := range candidates {
+		// Check if vector is properly loaded
+		if len(candidate.Vector) == 0 {
+			// Skip empty vectors
+			continue
+		}
+		
 		score := s.similarityFn(query, candidate.Vector)
 		
-		// For range search, we consider score as distance
-		// Lower score = closer distance for most metrics
-		distance := float32(1.0 - score)
+		// For range search, we need to handle different similarity metrics:
+		// - Euclidean: score is negative distance, so actual distance = -score
+		// - Cosine: score is similarity (0 to 1), so distance = 1 - score
+		// - DotProduct: not suitable for range search (unbounded)
+		
+		var distance float32
+		if score <= 0 {
+			// Euclidean distance (negative score)
+			distance = float32(-score)
+		} else {
+			// Cosine similarity or other bounded metrics
+			distance = float32(1.0 - score)
+		}
 		
 		if distance <= radius {
-			candidate.Score = score
+			// For display, use the actual distance as the score for range search
+			candidate.Score = float64(distance)
 			results = append(results, candidate)
 		}
 	}
 	
-	// Sort by score (descending - higher score is better)
+	// Sort by distance (ascending - closer is better for range search)
 	sort.Slice(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
+		return results[i].Score < results[j].Score
 	})
 	
 	// Apply TopK limit if specified
