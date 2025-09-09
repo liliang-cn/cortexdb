@@ -1,0 +1,1 @@
+- > we should focus on Lib usage and, keep it light weight. we could easily be used in other go AI project

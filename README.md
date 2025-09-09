@@ -7,22 +7,25 @@
 [![GitHub release](https://img.shields.io/github/release/liliang-cn/sqvect.svg)](https://github.com/liliang-cn/sqvect/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**A lightweight, embeddable vector store in Go using SQLite.**
+**A lightweight, embeddable vector database for Go AI projects.**
 
-sqvect is a pure Go library that provides a simple, efficient vector storage solution using SQLite as the backend. Perfect for local RAG (Retrieval-Augmented Generation) applications, semantic search, and similarity matching without the complexity of external vector databases.
+SQLite Vector is a **100% pure Go** library designed for AI applications that need fast, reliable vector storage without external dependencies. Perfect for RAG systems, semantic search, knowledge graphs, and any Go AI project that needs embedding storage.
+
+Built on SQLite (using pure Go implementation - **no CGO required!**) for zero-configuration deployment and maximum compatibility with existing Go applications.
 
 ## ✨ Features
 
-- 🚀 **No server required** – Single `.db` file storage
-- 🔍 **Vector similarity search** with cosine, dot product, and Euclidean distance
-- 📦 **Batch operations** for efficient data loading
-- 🔒 **Thread-safe** operations with concurrent read/write support
-- 🧩 **Pure Go implementation** – No external dependencies except SQLite driver
-- 🎯 **Optimized for embeddings** – Built for AI/ML workflows
-- 📊 **Rich metadata support** with JSON storage
-- ⚡ **High performance** – Optimized for common vector operations
-- 🔄 **Auto dimension adaptation** – Seamlessly handle vectors of different dimensions
-- 🤖 **Zero configuration** – Works out of the box with any embedding model
+- 🪶 **Lightweight & Embeddable** – Single SQLite file, zero external dependencies
+- 🔧 **Pure Go Implementation** – No CGO required! Uses modernc.org/sqlite
+- 🚀 **Made for Go AI Projects** – Designed for seamless integration
+- 📦 **Collections Support** – Multi-tenant namespacing for different data types  
+- 🕸️ **Knowledge Graphs** – Advanced graph operations for RAG systems
+- 🔍 **Multiple Similarity Functions** – Cosine, dot product, Euclidean distance
+- ⚡ **High Performance** – HNSW indexing and optimized search
+- 🔄 **Auto Dimension Adaptation** – Handle any embedding model seamlessly
+- 🔒 **Production Ready** – Thread-safe, ACID transactions, battle-tested
+- 📊 **Rich Metadata** – JSON metadata storage and filtering
+- 🎯 **Zero Configuration** – Works out of the box
 
 ## 🚀 Quick Start
 
@@ -42,71 +45,94 @@ import (
     "fmt"
     "log"
 
-    "github.com/liliang-cn/sqvect"
+    "github.com/liliang-cn/sqvect/pkg/sqvect"
 )
 
 func main() {
-    // Create a new vector store with auto-dimension detection
-    store, err := sqvect.New("embeddings.db", 0) // 0 = auto-detect
+    // Open database with simple config
+    config := sqvect.DefaultConfig("vectors.db")
+    config.Dimensions = 384 // OpenAI ada-002 dimensions
+    
+    db, err := sqvect.Open(config)
     if err != nil {
-        log.Fatal(err)
+        log.Fatal("Failed to open database:", err)
     }
-    defer store.Close()
-
-    // Initialize the store
+    defer db.Close()
+    
     ctx := context.Background()
-    if err := store.Init(ctx); err != nil {
-        log.Fatal(err)
-    }
-
-    // Insert BERT embeddings (768 dimensions)
-    bertEmb := &sqvect.Embedding{
-        ID:      "doc_1_chunk_1",
-        Vector:  make([]float32, 768), // BERT dimensions
-        Content: "This is BERT encoded text",
-        DocID:   "document_1",
-        Metadata: map[string]string{
-            "source": "bert",
-            "type":   "text",
-        },
-    }
-
-    if err := store.Upsert(ctx, bertEmb); err != nil {
-        log.Fatal(err)
-    }
-
-    // Insert OpenAI embeddings (1536 dimensions) - automatically adapted!
-    openaiEmb := &sqvect.Embedding{
-        ID:      "doc_2_chunk_1", 
-        Vector:  make([]float32, 1536), // OpenAI dimensions
-        Content: "This is OpenAI encoded text",
-        DocID:   "document_2",
-        Metadata: map[string]string{
-            "source": "openai",
-            "type":   "text",
-        },
-    }
-
-    if err := store.Upsert(ctx, openaiEmb); err != nil {
-        log.Fatal(err)
-    }
-
-    // Search with any dimension query - automatically adapted!
-    query := make([]float32, 3072) // Even larger dimension works
-    results, err := store.Search(ctx, query, sqvect.SearchOptions{
-        TopK:      5,
-        Threshold: 0.7,
-    })
+    quick := db.Quick()
+    
+    // Add embeddings (from any source: OpenAI, HuggingFace, etc.)
+    vector := []float32{0.1, 0.2, 0.3...} // Your embeddings here
+    id, err := quick.Add(ctx, vector, "Your document content")
     if err != nil {
         log.Fatal(err)
     }
-
+    
+    // Search for similar content  
+    queryVector := []float32{0.1, 0.2, 0.3...} // Query embedding
+    results, err := quick.Search(ctx, queryVector, 10)
+    if err != nil {
+        log.Fatal(err)
+    }
+    
     // Process results
     for _, result := range results {
-        fmt.Printf("Score: %.4f | Content: %s | Source: %s\n", 
-            result.Score, result.Content, result.Metadata["source"])
+        fmt.Printf("ID: %s, Score: %.4f\nContent: %s\n\n", 
+            result.ID, result.Score, result.Content)
     }
 }
+```
+
+### Collections for Multi-Tenant Apps
+
+```go
+// Create collections for different data types
+_, err := db.Vector().CreateCollection(ctx, "documents", 384)
+_, err := db.Vector().CreateCollection(ctx, "images", 512) 
+_, err := db.Vector().CreateCollection(ctx, "code", 768)
+
+// Add to specific collections
+docID, _ := quick.AddToCollection(ctx, "documents", docVector, "Business document")
+imgID, _ := quick.AddToCollection(ctx, "images", imgVector, "Product image")
+
+// Search within collections  
+docResults, _ := quick.SearchInCollection(ctx, "documents", queryVector, 5)
+```
+
+### Advanced: Knowledge Graphs for RAG
+
+```go
+// Get graph store for advanced operations
+graphStore := db.Graph()
+
+// Create nodes with embeddings
+node := &graph.GraphNode{
+    ID: "doc1", 
+    Vector: embedding,
+    Content: "Machine learning introduction",
+    NodeType: "document",
+}
+graphStore.UpsertNode(ctx, node)
+
+// Create relationships  
+edge := &graph.GraphEdge{
+    FromNodeID: "doc1",
+    ToNodeID: "doc2",
+    EdgeType: "references", 
+    Weight: 0.8,
+}
+graphStore.UpsertEdge(ctx, edge)
+
+// Hybrid vector + graph search
+hybridQuery := &graph.HybridQuery{
+    Vector: queryEmbedding,
+    StartNodeID: "doc1", 
+    TopK: 10,
+    VectorWeight: 0.7,  // 70% vector similarity
+    GraphWeight: 0.3,   // 30% graph proximity
+}
+results, _ := graphStore.HybridSearch(ctx, hybridQuery)
 ```
 
 ## 🔄 Automatic Dimension Adaptation
