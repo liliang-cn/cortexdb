@@ -111,9 +111,9 @@ func TestLSHDelete(t *testing.T) {
 	lsh := NewLSHIndex(config)
 	
 	// Insert vectors
-	lsh.Insert("vec1", []float32{1, 0, 0, 0})
-	lsh.Insert("vec2", []float32{0, 1, 0, 0})
-	lsh.Insert("vec3", []float32{0, 0, 1, 0})
+	_ = lsh.Insert("vec1", []float32{1, 0, 0, 0})
+	_ = lsh.Insert("vec2", []float32{0, 1, 0, 0})
+	_ = lsh.Insert("vec3", []float32{0, 0, 1, 0})
 	
 	if lsh.Size() != 3 {
 		t.Errorf("Expected size 3, got %d", lsh.Size())
@@ -153,7 +153,7 @@ func TestLSHStats(t *testing.T) {
 		for j := range vec {
 			vec[j] = rand.Float32()
 		}
-		lsh.Insert(fmt.Sprintf("vec%d", i), vec)
+		_ = lsh.Insert(fmt.Sprintf("vec%d", i), vec)
 	}
 	
 	stats := lsh.Stats()
@@ -185,7 +185,7 @@ func TestLSHDimensionMismatch(t *testing.T) {
 	}
 	
 	// Insert correct dimension
-	lsh.Insert("good", []float32{1, 0, 0, 0})
+	_ = lsh.Insert("good", []float32{1, 0, 0, 0})
 	
 	// Try to search with wrong dimension
 	_, err = lsh.Search([]float32{1, 2}, 1)
@@ -205,8 +205,8 @@ func TestLSHClear(t *testing.T) {
 	lsh := NewLSHIndex(config)
 	
 	// Insert vectors
-	lsh.Insert("vec1", []float32{1, 0, 0, 0})
-	lsh.Insert("vec2", []float32{0, 1, 0, 0})
+	_ = lsh.Insert("vec1", []float32{1, 0, 0, 0})
+	_ = lsh.Insert("vec2", []float32{0, 1, 0, 0})
 	
 	if lsh.Size() != 2 {
 		t.Errorf("Expected size 2, got %d", lsh.Size())
@@ -241,7 +241,7 @@ func BenchmarkLSHInsert(b *testing.B) {
 	
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		lsh.Insert(fmt.Sprintf("vec%d", i), vec)
+		_ = lsh.Insert(fmt.Sprintf("vec%d", i), vec)
 	}
 }
 
@@ -261,7 +261,7 @@ func BenchmarkLSHSearch(b *testing.B) {
 		for j := range vec {
 			vec[j] = rand.Float32()
 		}
-		lsh.Insert(fmt.Sprintf("vec%d", i), vec)
+		_ = lsh.Insert(fmt.Sprintf("vec%d", i), vec)
 	}
 	
 	query := make([]float32, 128)
@@ -271,7 +271,7 @@ func BenchmarkLSHSearch(b *testing.B) {
 	
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		lsh.Search(query, 10)
+		_, _ = lsh.Search(query, 10)
 	}
 }
 
@@ -291,7 +291,7 @@ func BenchmarkLSHMultiProbe(b *testing.B) {
 		for j := range vec {
 			vec[j] = rand.Float32()
 		}
-		lsh.Insert(fmt.Sprintf("vec%d", i), vec)
+		_ = lsh.Insert(fmt.Sprintf("vec%d", i), vec)
 	}
 	
 	query := make([]float32, 128)
@@ -301,7 +301,7 @@ func BenchmarkLSHMultiProbe(b *testing.B) {
 	
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		lsh.SearchWithMultiProbe(query, 10, 3)
+		_, _ = lsh.SearchWithMultiProbe(query, 10, 3)
 	}
 }
 
@@ -326,7 +326,7 @@ func TestLSHRecallAccuracy(t *testing.T) {
 			vec[j] = rand.Float32()
 		}
 		vectors[id] = vec
-		flat.Insert(id, vec)
+		_ = flat.Insert(id, vec)
 	}
 	
 	// Create LSH index
@@ -339,7 +339,7 @@ func TestLSHRecallAccuracy(t *testing.T) {
 	lsh := NewLSHIndex(config)
 	
 	for id, vec := range vectors {
-		lsh.Insert(id, vec)
+		_ = lsh.Insert(id, vec)
 	}
 	
 	// Test recall
@@ -414,8 +414,8 @@ func TestLSHPerformance(t *testing.T) {
 		for j := range vec {
 			vec[j] = rand.Float32()
 		}
-		lsh.Insert(id, vec)
-		flat.Insert(id, vec)
+		_ = lsh.Insert(id, vec)
+		_ = flat.Insert(id, vec)
 	}
 	t.Logf("Insertion took: %v", time.Since(start))
 	
@@ -484,7 +484,7 @@ func TestLSHHashDistribution(t *testing.T) {
 		hash := lsh.computeHash(vec, 0)
 		hashCounts[hash]++
 		
-		lsh.Insert(fmt.Sprintf("vec%d", i), vec)
+		_ = lsh.Insert(fmt.Sprintf("vec%d", i), vec)
 	}
 	
 	// Check distribution

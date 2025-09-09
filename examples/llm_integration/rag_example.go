@@ -128,7 +128,7 @@ func (r *RAGExample) IndexDocument(doc Document) error {
 
 		// Also add to LSH index if enabled
 		if r.lshIndex != nil {
-			r.lshIndex.Insert(embeddingID, embedding)
+			_ = r.lshIndex.Insert(embeddingID, embedding)
 		}
 	}
 
@@ -515,5 +515,5 @@ func main() {
 	fmt.Println(string(stats))
 
 	// Cleanup
-	os.Remove("/tmp/rag_demo.db")
+	_ = os.Remove("/tmp/rag_demo.db")
 }

@@ -391,7 +391,7 @@ func (s *SQLiteStore) fetchCandidatesWithSQL(ctx context.Context, whereClause st
 	if err != nil {
 		return nil, fmt.Errorf("failed to query with filter: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	
 	var candidates []ScoredEmbedding
 	for rows.Next() {

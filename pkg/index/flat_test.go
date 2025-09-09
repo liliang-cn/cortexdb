@@ -250,7 +250,7 @@ func TestFlatIndexEdgeCases(t *testing.T) {
 
 	// Test k larger than index size
 	_ = index.Insert("v2", []float32{0.0, 1.0, 0.0})
-	ids, distances = index.Search([]float32{0.5, 0.5, 0.0}, 10)
+	ids, _ = index.Search([]float32{0.5, 0.5, 0.0}, 10)
 	if len(ids) != 2 {
 		t.Errorf("Expected 2 results (all vectors), got %d", len(ids))
 	}

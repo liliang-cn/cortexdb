@@ -281,6 +281,7 @@ func (idx *IncrementalIndex) SearchWithUpdates(ctx context.Context, query []floa
 		processedCount := 0
 		timeout := time.After(10 * time.Millisecond)
 		
+	ProcessLoop:
 		for processedCount < pendingCount && processedCount < 10 {
 			select {
 			case emb := <-idx.updates:
@@ -310,7 +311,7 @@ func (idx *IncrementalIndex) SearchWithUpdates(ctx context.Context, query []floa
 				processedCount++
 				
 			case <-timeout:
-				break
+				break ProcessLoop
 			}
 		}
 	}

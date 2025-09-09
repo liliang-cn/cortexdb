@@ -422,6 +422,7 @@ func TestStreamSearchContextCancellation(t *testing.T) {
 	
 	// Create cancellable context
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // Ensure cancel is always called
 	
 	query := []float32{0.5, 0, 0, 0}
 	opts := StreamingOptions{
