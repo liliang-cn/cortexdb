@@ -13,7 +13,7 @@ func main() {
 	
 	// 1. Open database with simple config
 	config := sqvect.DefaultConfig("embeddings.db")
-	config.Dimensions = 384 // OpenAI ada-002 dimensions
+	config.Dimensions = 384 // Dimension for models like all-MiniLM-L6-v2 (OpenAI is 1536)
 	
 	db, err := sqvect.Open(config)
 	if err != nil {

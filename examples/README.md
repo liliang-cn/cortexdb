@@ -97,10 +97,9 @@ import (
 )
 
 // Initialize database
-config := sqvect.Config{
-    Path:       "mydb.db",
-    Dimensions: 384, // or 0 for auto-detect
-}
+config := sqvect.DefaultConfig("mydb.db")
+config.Dimensions = 384 // or 0 for auto-detect
+
 db, err := sqvect.Open(config)
 defer db.Close()
 
@@ -111,7 +110,10 @@ results, err := quick.Search(ctx, queryVector, topK)
 
 // Use Vector store for advanced operations
 vectorStore := db.Vector()
-err := vectorStore.CreateCollection(ctx, "products", 256)
+// Creating collections
+vectorStore.CreateCollection(ctx, "products", 256)
+
+// Advanced search
 results, err := vectorStore.Search(ctx, query, core.SearchOptions{
     Collection: "products",
     TopK:       10,
@@ -120,7 +122,7 @@ results, err := vectorStore.Search(ctx, query, core.SearchOptions{
 
 // Use Graph store for graph operations
 graphStore := db.Graph()
-err := graphStore.InitGraphSchema(ctx)
+// Add nodes and edges...
 err := graphStore.UpsertNode(ctx, &graph.GraphNode{...})
 err := graphStore.UpsertEdge(ctx, &graph.GraphEdge{...})
 ```

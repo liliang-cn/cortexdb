@@ -20,6 +20,7 @@ type Config struct {
 	Path         string            // Database file path
 	Dimensions   int               // Vector dimensions (0 for auto-detect)
 	SimilarityFn core.SimilarityFunc // Similarity function (default: cosine)
+	IndexType    core.IndexType    // Index type (HNSW, IVF, Flat)
 }
 
 // DefaultConfig returns default configuration
@@ -28,17 +29,30 @@ func DefaultConfig(path string) Config {
 		Path:         path,
 		Dimensions:   0, // Auto-detect
 		SimilarityFn: core.CosineSimilarity,
+		IndexType:    core.IndexTypeHNSW, // Default to HNSW
 	}
 }
 
 // Open opens or creates a vector database
 func Open(config Config) (*DB, error) {
+	hnswConfig := core.DefaultHNSWConfig()
+	if config.IndexType == core.IndexTypeHNSW {
+		hnswConfig.Enabled = true
+	}
+
+	ivfConfig := core.DefaultIVFConfig()
+	if config.IndexType == core.IndexTypeIVF {
+		ivfConfig.Enabled = true
+	}
+
 	coreConfig := core.Config{
 		Path:           config.Path,
 		VectorDim:      config.Dimensions,
 		SimilarityFn:   config.SimilarityFn,
 		AutoDimAdapt:   core.SmartAdapt,
-		HNSW:           core.DefaultHNSWConfig(),
+		IndexType:      config.IndexType,
+		HNSW:           hnswConfig,
+		IVF:            ivfConfig,
 		TextSimilarity: core.DefaultTextSimilarityConfig(),
 	}
 
