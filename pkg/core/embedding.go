@@ -62,6 +62,22 @@ func DefaultHNSWConfig() HNSWConfig {
 	}
 }
 
+// IVFConfig represents configuration options for IVF indexing
+type IVFConfig struct {
+	Enabled    bool `json:"enabled"`
+	NCentroids int  `json:"nCentroids"` // Number of centroids (default: 100)
+	NProbe     int  `json:"nProbe"`     // Number of clusters to search (default: 10)
+}
+
+// DefaultIVFConfig returns default IVF configuration
+func DefaultIVFConfig() IVFConfig {
+	return IVFConfig{
+		Enabled:    false,
+		NCentroids: 100,
+		NProbe:     10,
+	}
+}
+
 // TextSimilarityConfig represents configuration for text-based similarity
 type TextSimilarityConfig struct {
 	Enabled       bool    `json:"enabled"`       // Enable text similarity matching
@@ -86,13 +102,24 @@ const (
 	WarnOnly                        // Only warn, don't auto-adapt
 )
 
+// IndexType defines the type of index to use
+type IndexType int
+
+const (
+	IndexTypeHNSW IndexType = iota
+	IndexTypeIVF
+	IndexTypeFlat
+)
+
 // Config represents configuration options for the vector store
 type Config struct {
 	Path           string               `json:"path"`                    // Database file path
 	VectorDim      int                  `json:"vectorDim"`               // Expected vector dimension, 0 = auto-detect
 	AutoDimAdapt   AdaptPolicy          `json:"autoDimAdapt"`            // How to handle dimension mismatches
 	SimilarityFn   SimilarityFunc       `json:"-"`                       // Similarity function
+	IndexType      IndexType            `json:"indexType"`               // Index type to use
 	HNSW           HNSWConfig           `json:"hnsw,omitempty"`          // HNSW index configuration
+	IVF            IVFConfig            `json:"ivf,omitempty"`           // IVF index configuration
 	TextSimilarity TextSimilarityConfig `json:"textSimilarity,omitempty"` // Text similarity configuration
 }
 
@@ -102,7 +129,9 @@ func DefaultConfig() Config {
 		VectorDim:      0,                              // Auto-detect dimension
 		AutoDimAdapt:   SmartAdapt,                     // Intelligent adaptation
 		SimilarityFn:   CosineSimilarity,               // Cosine similarity
+		IndexType:      IndexTypeHNSW,                  // Default to HNSW
 		HNSW:           DefaultHNSWConfig(),            // HNSW configuration
+		IVF:            DefaultIVFConfig(),             // IVF configuration
 		TextSimilarity: DefaultTextSimilarityConfig(),  // Text similarity configuration
 	}
 }
@@ -142,4 +171,7 @@ type Store interface {
 	ListCollections(ctx context.Context) ([]*Collection, error)
 	DeleteCollection(ctx context.Context, name string) error
 	GetCollectionStats(ctx context.Context, name string) (*CollectionStats, error)
+
+	// Index operations
+	TrainIndex(ctx context.Context, numCentroids int) error
 }

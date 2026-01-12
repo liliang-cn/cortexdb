@@ -24,6 +24,7 @@ type SQLiteStore struct {
 	closed         bool
 	similarityFn   SimilarityFunc
 	hnswIndex      *index.HNSW            // Our custom HNSW index for fast search
+	ivfIndex       *index.IVFIndex        // IVF index for partitioned search
 	adapter        *DimensionAdapter       // Dimension adaptation handler
 	textSimilarity TextSimilarity         // Text similarity calculator
 }
@@ -97,6 +98,11 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 
 	// Initialize HNSW index if enabled
 	if err := s.initHNSWIndex(ctx); err != nil {
+		return wrapError("init", err)
+	}
+
+	// Initialize IVF index if enabled
+	if err := s.initIVFIndex(ctx); err != nil {
 		return wrapError("init", err)
 	}
 
@@ -213,6 +219,117 @@ func (s *SQLiteStore) rebuildHNSWIndex(ctx context.Context) error {
 	return rows.Err()
 }
 
+// initIVFIndex initializes the IVF index if enabled
+func (s *SQLiteStore) initIVFIndex(ctx context.Context) error {
+	if s.config.IndexType != IndexTypeIVF {
+		return nil
+	}
+
+	if s.config.VectorDim <= 0 {
+		return nil // Cannot initialize without dimension
+	}
+
+	// Default to 100 centroids if not specified
+	nCentroids := s.config.IVF.NCentroids
+	if nCentroids <= 0 {
+		nCentroids = 100
+	}
+
+	s.ivfIndex = index.NewIVFIndex(s.config.VectorDim, nCentroids)
+	
+	// Set probe count
+	if s.config.IVF.NProbe > 0 {
+		s.ivfIndex.SetNProbe(s.config.IVF.NProbe)
+	}
+
+	// Note: IVF index requires training. 
+	// We don't automatically train here because we might not have enough data.
+	// User should call TrainIndex() explicitly or we could implement auto-training later.
+	
+	return nil
+}
+
+// TrainIndex trains the index with existing data
+func (s *SQLiteStore) TrainIndex(ctx context.Context, numCentroids int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return wrapError("train_index", ErrStoreClosed)
+	}
+	
+	// Ensure we are in IVF mode
+	if s.config.IndexType != IndexTypeIVF {
+		return wrapError("train_index", fmt.Errorf("index type is not IVF"))
+	}
+	
+	// Use config value if numCentroids is 0
+	if numCentroids <= 0 {
+		numCentroids = s.config.IVF.NCentroids
+		if numCentroids <= 0 {
+			numCentroids = 100
+		}
+	}
+
+	if s.ivfIndex == nil {
+		if s.config.VectorDim <= 0 {
+			 return wrapError("train_index", fmt.Errorf("vector dimension not set"))
+		}
+		s.ivfIndex = index.NewIVFIndex(s.config.VectorDim, numCentroids)
+	} else {
+		// Re-initialize to change number of centroids if needed, or just retrain
+		if s.ivfIndex.NCentroids != numCentroids {
+			s.ivfIndex = index.NewIVFIndex(s.config.VectorDim, numCentroids)
+		} else {
+			s.ivfIndex.Clear() // Clear existing data to re-train
+		}
+	}
+	
+	// Fetch all vectors for training
+	// optimization: sample vectors if too many? For now load all.
+	rows, err := s.db.QueryContext(ctx, "SELECT id, vector FROM embeddings")
+	if err != nil {
+		return wrapError("train_index", fmt.Errorf("failed to fetch vectors: %w", err))
+	}
+	defer func() { _ = rows.Close() }()
+	
+	var ids []string
+	var vectors [][]float32
+	
+	for rows.Next() {
+		var id string
+		var vectorBytes []byte
+		if err := rows.Scan(&id, &vectorBytes); err != nil {
+			continue
+		}
+		vec, err := encoding.DecodeVector(vectorBytes)
+		if err != nil {
+			continue
+		}
+		ids = append(ids, id)
+		vectors = append(vectors, vec)
+	}
+	
+	if len(vectors) == 0 {
+		return wrapError("train_index", fmt.Errorf("no vectors found for training"))
+	}
+	
+	// Train the index
+	if err := s.ivfIndex.Train(vectors); err != nil {
+		return wrapError("train_index", err)
+	}
+	
+	// Add all vectors to the index
+	for i, vec := range vectors {
+		if err := s.ivfIndex.Add(ids[i], vec); err != nil {
+			// Log error?
+			continue
+		}
+	}
+	
+	return nil
+}
+
 // Upsert inserts or updates a single embedding
 func (s *SQLiteStore) Upsert(ctx context.Context, emb *Embedding) error {
 	s.mu.RLock()
@@ -296,6 +413,11 @@ func (s *SQLiteStore) Upsert(ctx context.Context, emb *Embedding) error {
 	// Update HNSW index if enabled
 	if s.config.HNSW.Enabled && s.hnswIndex != nil {
 		_ = s.hnswIndex.Insert(emb.ID, emb.Vector)
+	}
+
+	// Update IVF index if enabled and trained
+	if s.config.IndexType == IndexTypeIVF && s.ivfIndex != nil && s.ivfIndex.Trained {
+		_ = s.ivfIndex.Add(emb.ID, emb.Vector)
 	}
 
 	return nil
@@ -392,6 +514,13 @@ func (s *SQLiteStore) UpsertBatch(ctx context.Context, embs []*Embedding) error 
 		}
 	}
 
+	// Update IVF index if enabled and trained
+	if s.config.IndexType == IndexTypeIVF && s.ivfIndex != nil && s.ivfIndex.Trained {
+		for _, emb := range embs {
+			_ = s.ivfIndex.Add(emb.ID, emb.Vector)
+		}
+	}
+
 	return nil
 }
 
@@ -427,6 +556,11 @@ func (s *SQLiteStore) Search(ctx context.Context, query []float32, opts SearchOp
 	// Use HNSW index if available and enabled
 	if s.config.HNSW.Enabled && s.hnswIndex != nil {
 		return s.searchWithHNSW(ctx, query, opts)
+	}
+
+	// Use IVF index if available and enabled
+	if s.config.IndexType == IndexTypeIVF && s.ivfIndex != nil && s.ivfIndex.Trained {
+		return s.searchWithIVF(ctx, query, opts)
 	}
 
 	// Fallback to linear search
@@ -474,7 +608,37 @@ func (s *SQLiteStore) searchWithHNSW(ctx context.Context, query []float32, opts 
 		return nil, fmt.Errorf("failed to fetch candidates: %w", err)
 	}
 
-	// Apply filters and calculate final scores using hybrid approach
+	return s.processCandidates(query, candidates, opts)
+}
+
+// searchWithIVF performs vector search using IVF index
+func (s *SQLiteStore) searchWithIVF(ctx context.Context, query []float32, opts SearchOptions) ([]ScoredEmbedding, error) {
+	if opts.TopK <= 0 {
+		opts.TopK = 10
+	}
+
+	// Search IVF index
+	// Fetch 4x candidates to allow for filtering
+	candidateIDs, _, err := s.ivfIndex.Search(query, opts.TopK * 4)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(candidateIDs) == 0 {
+		return s.searchLinear(ctx, query, opts)
+	}
+
+	// Fetch full embeddings
+	candidates, err := s.fetchEmbeddingsByIDs(ctx, candidateIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch candidates: %w", err)
+	}
+
+	return s.processCandidates(query, candidates, opts)
+}
+
+// processCandidates applies scoring and filtering to candidates
+func (s *SQLiteStore) processCandidates(query []float32, candidates []ScoredEmbedding, opts SearchOptions) ([]ScoredEmbedding, error) {
 	textWeight := s.getTextWeight(opts)
 	vectorWeight := 1.0 - textWeight
 	
@@ -803,6 +967,9 @@ func (s *SQLiteStore) SearchWithFilter(ctx context.Context, query []float32, opt
 	// Use HNSW index if available and enabled
 	if s.config.HNSW.Enabled && s.hnswIndex != nil {
 		candidates, err = s.searchWithHNSW(ctx, query, opts)
+	} else if s.config.IndexType == IndexTypeIVF && s.ivfIndex != nil && s.ivfIndex.Trained {
+		// Use IVF index
+		candidates, err = s.searchWithIVF(ctx, query, opts)
 	} else {
 		// Fallback to linear search
 		candidates, err = s.fetchCandidates(ctx, opts)
