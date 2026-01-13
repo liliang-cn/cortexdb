@@ -37,6 +37,8 @@ func (da *DimensionAdapter) AdaptVector(vector []float32, sourceDim, targetDim i
 	}
 
 	switch da.policy {
+	case StrictMode:
+		return vector, fmt.Errorf("dimension mismatch: expected %d, got %d (StrictMode)", targetDim, sourceDim)
 	case SmartAdapt:
 		return da.smartAdapt(vector, sourceDim, targetDim), nil
 	case AutoTruncate:
@@ -203,6 +205,10 @@ func calculateVectorStddev(vector []float32) float32 {
 // logDimensionEvent logs dimension-related events
 func (da *DimensionAdapter) logDimensionEvent(event string, sourceDim, targetDim int, vectorID string) {
 	switch da.policy {
+	case StrictMode:
+		if sourceDim != targetDim {
+			log.Printf("[DIMENSION] ERROR: Dimension mismatch %d ≠ %d for vector %s (StrictMode)", sourceDim, targetDim, vectorID)
+		}
 	case SmartAdapt:
 		if sourceDim != targetDim {
 			if sourceDim > targetDim {

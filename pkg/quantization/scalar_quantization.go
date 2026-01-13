@@ -4,6 +4,8 @@ package quantization
 import (
 	"errors"
 	"fmt"
+	"io"
+	"encoding/gob"
 	"math"
 	"math/rand"
 )
@@ -29,6 +31,18 @@ func NewScalarQuantizer(dimension int, nbits int) (*ScalarQuantizer, error) {
 		Min:       make([]float32, dimension),
 		Max:       make([]float32, dimension),
 	}, nil
+}
+
+// Save serializes the quantizer
+func (sq *ScalarQuantizer) Save(w io.Writer) error {
+	enc := gob.NewEncoder(w)
+	return enc.Encode(sq)
+}
+
+// Load deserializes the quantizer
+func (sq *ScalarQuantizer) Load(r io.Reader) error {
+	dec := gob.NewDecoder(r)
+	return dec.Decode(sq)
 }
 
 // Train learns the value ranges from training data
@@ -172,6 +186,18 @@ func NewBinaryQuantizer(dimension int) *BinaryQuantizer {
 		Dimension: dimension,
 		Threshold: make([]float32, dimension),
 	}
+}
+
+// Save serializes the quantizer
+func (bq *BinaryQuantizer) Save(w io.Writer) error {
+	enc := gob.NewEncoder(w)
+	return enc.Encode(bq)
+}
+
+// Load deserializes the quantizer
+func (bq *BinaryQuantizer) Load(r io.Reader) error {
+	dec := gob.NewDecoder(r)
+	return dec.Decode(bq)
 }
 
 // Train learns thresholds from training data

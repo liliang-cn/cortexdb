@@ -158,8 +158,13 @@ func TestCollectionEmbeddings(t *testing.T) {
 		}
 	}()
 
-	// Create store
-	store, err := New(dbPath, 0)
+	// Create store with SmartAdapt to allow mixed dimensions across collections
+	config := DefaultConfig()
+	config.Path = dbPath
+	config.VectorDim = 0
+	config.AutoDimAdapt = SmartAdapt
+
+	store, err := NewWithConfig(config)
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}

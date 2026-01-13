@@ -3,18 +3,27 @@ package index
 
 import (
 	"container/heap"
+	"encoding/gob"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"sync"
 	"time"
 )
 
+// Quantizer defines interface for vector quantization
+type Quantizer interface {
+	Encode(vec []float32) ([]byte, error)
+	Decode(encoded []byte) ([]float32, error)
+}
+
 // HNSWNode represents a node in the HNSW graph
 type HNSWNode struct {
 	ID         string
 	Vector     []float32
+	Quantized  []byte     // Quantized vector data (optional)
 	Level      int
 	Neighbors  [][]string // Neighbors at each level
 	Deleted    bool
@@ -36,6 +45,9 @@ type HNSW struct {
 	// Distance function
 	DistFunc func(a, b []float32) float32
 	
+	// Quantization
+	Quantizer Quantizer
+	
 	// Thread safety
 	mu sync.RWMutex
 	rng *rand.Rand
@@ -54,6 +66,94 @@ func NewHNSW(M, efConstruction int, distFunc func(a, b []float32) float32) *HNSW
 		DistFunc:       distFunc,
 		rng:            rand.New(rand.NewSource(seed)),
 	}
+}
+
+// SetQuantizer sets the quantizer for the index
+func (h *HNSW) SetQuantizer(q Quantizer) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.Quantizer = q
+}
+
+// calculateDistance computes distance between query and node, handling quantization
+func (h *HNSW) calculateDistance(query []float32, node *HNSWNode) float32 {
+	if node.Vector != nil {
+		return h.DistFunc(query, node.Vector)
+	}
+	
+	if node.Quantized != nil && h.Quantizer != nil {
+		// Dequantize on the fly
+		// Note: For better performance, we should implement distance in compressed domain,
+		// but that requires changing the Quantizer interface to support distance calc.
+		// For now, this saves memory at the cost of CPU.
+		vec, err := h.Quantizer.Decode(node.Quantized)
+		if err == nil {
+			return h.DistFunc(query, vec)
+		}
+	}
+	
+	// Fallback or error case (shouldn't happen if managed correctly)
+	return math.MaxFloat32
+}
+
+// Save serializes the index to a writer
+func (h *HNSW) Save(w io.Writer) error {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	enc := gob.NewEncoder(w)
+
+	// Encode parameters
+	if err := enc.Encode(h.M); err != nil { return err }
+	if err := enc.Encode(h.EfConstruction); err != nil { return err }
+	if err := enc.Encode(h.EntryPoint); err != nil { return err }
+
+	// Encode nodes count
+	if err := enc.Encode(len(h.Nodes)); err != nil { return err }
+
+	// Encode nodes
+	for _, node := range h.Nodes {
+		if err := enc.Encode(node); err != nil {
+			return err
+		}
+	}
+	
+	// Note: We don't save the Quantizer itself here because it's an interface
+	// and might require specific type handling. The store should handle Quantizer persistence.
+
+	return nil
+}
+
+// Load deserializes the index from a reader
+func (h *HNSW) Load(r io.Reader) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	dec := gob.NewDecoder(r)
+
+	// Decode parameters
+	if err := dec.Decode(&h.M); err != nil { return err }
+	h.MaxM = h.M * 2
+	h.ML = 1.0 / math.Log(2.0)
+	
+	if err := dec.Decode(&h.EfConstruction); err != nil { return err }
+	if err := dec.Decode(&h.EntryPoint); err != nil { return err }
+
+	// Decode nodes count
+	var count int
+	if err := dec.Decode(&count); err != nil { return err }
+
+	// Decode nodes
+	h.Nodes = make(map[string]*HNSWNode, count)
+	for i := 0; i < count; i++ {
+		var node HNSWNode
+		if err := dec.Decode(&node); err != nil {
+			return err
+		}
+		h.Nodes[node.ID] = &node
+	}
+
+	return nil
 }
 
 // selectLevel randomly selects level for a new node
@@ -79,11 +179,29 @@ func (h *HNSW) Insert(id string, vector []float32) error {
 		return fmt.Errorf("node %s already exists", id)
 	}
 	
+	// Prepare node data
+	var quantized []byte
+	var storedVector []float32 = vector
+	
+	if h.Quantizer != nil {
+		var err error
+		quantized, err = h.Quantizer.Encode(vector)
+		if err == nil {
+			// If quantization successful, we can choose to drop the raw vector to save memory
+			// However, HNSW construction needs accurate distances.
+			// Ideally, we keep vector during construction if we are building incrementally,
+			// or we accept the accuracy loss.
+			// Let's drop it to fulfill the "memory efficiency" requirement.
+			storedVector = nil
+		}
+	}
+	
 	// Create new node
 	level := h.selectLevel()
 	node := &HNSWNode{
 		ID:        id,
-		Vector:    vector,
+		Vector:    storedVector,
+		Quantized: quantized,
 		Level:     level,
 		Neighbors: make([][]string, level+1),
 	}
@@ -134,14 +252,26 @@ func (h *HNSW) Insert(id string, vector []float32) error {
 			
 			// Check if neighbor has this layer
 			if lc < len(neighborNode.Neighbors) && len(neighborNode.Neighbors[lc]) > maxConn {
-				// Prune the connections
-				newNeighbors := h.selectNeighborsHeuristic(
-					neighborNode.Vector,
-					neighborNode.Neighbors[lc],
-					maxConn,
-					lc,
-				)
-				neighborNode.Neighbors[lc] = newNeighbors
+				// To prune, we need the neighbor's vector.
+				// If neighbor is quantized, we need to decode it or use stored vector.
+				// This implies expensive decoding during pruning if we only store quantized.
+				
+				// Fetch neighbor vector (might involve decoding)
+				neighborVec := neighborNode.Vector
+				if neighborVec == nil && neighborNode.Quantized != nil && h.Quantizer != nil {
+					neighborVec, _ = h.Quantizer.Decode(neighborNode.Quantized)
+				}
+				
+				if neighborVec != nil {
+					// Prune the connections
+					newNeighbors := h.selectNeighborsHeuristic(
+						neighborVec,
+						neighborNode.Neighbors[lc],
+						maxConn,
+						lc,
+					)
+					neighborNode.Neighbors[lc] = newNeighbors
+				}
 			}
 		}
 		
@@ -163,7 +293,7 @@ func (h *HNSW) searchLayer(query []float32, entryPoints []string, ef int, layer 
 	dynamicList := &distHeap{} // max heap for nearest
 	
 	for _, point := range entryPoints {
-		dist := h.DistFunc(query, h.Nodes[point].Vector)
+		dist := h.calculateDistance(query, h.Nodes[point])
 		
 		heap.Push(candidates, &heapItem{id: point, dist: dist})
 		heap.Push(dynamicList, &heapItem{id: point, dist: -dist}) // negative for max heap
@@ -189,7 +319,7 @@ func (h *HNSW) searchLayer(query []float32, entryPoints []string, ef int, layer 
 			if !visited[neighbor] {
 				visited[neighbor] = true
 				
-				dist := h.DistFunc(query, h.Nodes[neighbor].Vector)
+				dist := h.calculateDistance(query, h.Nodes[neighbor])
 				
 				if dist < -(*dynamicList)[0].dist || dynamicList.Len() < ef {
 					heap.Push(candidates, &heapItem{id: neighbor, dist: dist})
@@ -241,15 +371,16 @@ func (h *HNSW) selectNeighborsHeuristic(query []float32, candidates []string, m 
 	
 	pairs := make([]distPair, len(candidates))
 	for i, candidate := range candidates {
-		var vec []float32
+		var dist float32
 		if candidate == "query" {
-			vec = query
+			// Should not happen in standard usage, logic specific
+			dist = 0
 		} else {
-			vec = h.Nodes[candidate].Vector
+			dist = h.calculateDistance(query, h.Nodes[candidate])
 		}
 		pairs[i] = distPair{
 			id:   candidate,
-			dist: h.DistFunc(query, vec),
+			dist: dist,
 		}
 	}
 	
@@ -319,7 +450,7 @@ func (h *HNSW) Search(query []float32, k int, ef int) ([]string, []float32) {
 		if node, exists := h.Nodes[candidate]; exists && !node.Deleted {
 			results = append(results, result{
 				id:   candidate,
-				dist: h.DistFunc(query, node.Vector),
+				dist: h.calculateDistance(query, node),
 			})
 		}
 	}

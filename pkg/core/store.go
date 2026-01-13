@@ -1,8 +1,7 @@
 package core
 
 import (
-	"github.com/liliang-cn/sqvect/internal/encoding"
-	"github.com/liliang-cn/sqvect/pkg/index"
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
@@ -12,6 +11,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/liliang-cn/sqvect/internal/encoding"
+	"github.com/liliang-cn/sqvect/pkg/index"
+	"github.com/liliang-cn/sqvect/pkg/quantization"
 
 	_ "modernc.org/sqlite" // SQLite driver
 )
@@ -25,6 +28,7 @@ type SQLiteStore struct {
 	similarityFn   SimilarityFunc
 	hnswIndex      *index.HNSW            // Our custom HNSW index for fast search
 	ivfIndex       *index.IVFIndex        // IVF index for partitioned search
+	quantizer      index.Quantizer        // Vector quantizer
 	adapter        *DimensionAdapter       // Dimension adaptation handler
 	textSimilarity TextSimilarity         // Text similarity calculator
 }
@@ -79,15 +83,22 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 	}
 
 	// Open database connection
-	db, err := sql.Open("sqlite", s.config.Path+"?_journal_mode=WAL&_synchronous=NORMAL&_cache_size=10000")
+	// _journal_mode=WAL: Better concurrency
+	// _synchronous=NORMAL: Good balance of safety and speed
+	// _busy_timeout=5000: Wait up to 5s for lock instead of failing immediately
+	// _cache_size=-2000: Use 2MB of memory for cache (negative value = kb)
+	dsn := fmt.Sprintf("%s?_journal_mode=WAL&_synchronous=NORMAL&_busy_timeout=5000&_cache_size=-2000", s.config.Path)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return wrapError("init", fmt.Errorf("failed to open database: %w", err))
 	}
 
 	// Configure connection pool with sensible defaults
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(time.Hour)
+	// Allow more open connections for read concurrency
+	db.SetMaxOpenConns(25)
+	// Keep enough idle connections to avoid reconnection overhead
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(2 * time.Hour)
 
 	s.db = db
 
@@ -137,6 +148,12 @@ func (s *SQLiteStore) createTables(ctx context.Context) error {
 	CREATE INDEX IF NOT EXISTS idx_embeddings_doc_id ON embeddings(doc_id);
 	CREATE INDEX IF NOT EXISTS idx_embeddings_created_at ON embeddings(created_at);
 	CREATE INDEX IF NOT EXISTS idx_collections_name ON collections(name);
+	
+	CREATE TABLE IF NOT EXISTS index_snapshots (
+		type TEXT PRIMARY KEY,
+		data BLOB NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
 	`
 
 	_, err := s.db.ExecContext(ctx, createTableSQL)
@@ -162,6 +179,16 @@ func (s *SQLiteStore) initHNSWIndex(ctx context.Context) error {
 		return nil
 	}
 
+	// Initialize Quantizer if enabled
+	if s.config.Quantization.Enabled && s.config.VectorDim > 0 {
+		if s.config.Quantization.Type == "binary" {
+			s.quantizer = quantization.NewBinaryQuantizer(s.config.VectorDim)
+		} else {
+			sq, _ := quantization.NewScalarQuantizer(s.config.VectorDim, s.config.Quantization.NBits)
+			s.quantizer = sq
+		}
+	}
+
 	// Create HNSW index with appropriate distance function
 	// Since we can't compare functions directly, we'll use cosine distance as default
 	// which works well for most similarity functions
@@ -173,8 +200,67 @@ func (s *SQLiteStore) initHNSWIndex(ctx context.Context) error {
 		distFunc,
 	)
 
+	// Set quantizer to HNSW index if available
+	if s.quantizer != nil {
+		s.hnswIndex.SetQuantizer(s.quantizer)
+	}
+
+	// Try to load from snapshot first
+	loaded, err := s.loadIndexSnapshot(ctx, "HNSW")
+	if err != nil {
+		// If load fails, we log/ignore and rebuild
+		// In production, we might want to log this error
+	}
+	
+	if loaded {
+		return nil
+	}
+
+	// If quantization enabled but not loaded from snapshot, we need to train it before rebuilding
+	if s.quantizer != nil && !loaded {
+		if err := s.TrainQuantizer(ctx); err != nil {
+			// Log error but continue (accuracy might suffer)
+		}
+	}
+
 	// Load existing vectors into HNSW index
 	return s.rebuildHNSWIndex(ctx)
+}
+
+// TrainQuantizer trains the quantizer on existing vectors
+func (s *SQLiteStore) TrainQuantizer(ctx context.Context) error {
+	if s.quantizer == nil {
+		return nil
+	}
+
+	// Sample up to 1000 vectors for training
+	rows, err := s.db.QueryContext(ctx, "SELECT vector FROM embeddings LIMIT 1000")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var trainingVectors [][]float32
+	for rows.Next() {
+		var vectorBytes []byte
+		if err := rows.Scan(&vectorBytes); err != nil {
+			continue
+		}
+		vec, err := encoding.DecodeVector(vectorBytes)
+		if err == nil {
+			trainingVectors = append(trainingVectors, vec)
+		}
+	}
+
+	if len(trainingVectors) > 0 {
+		if sq, ok := s.quantizer.(*quantization.ScalarQuantizer); ok {
+			return sq.Train(trainingVectors)
+		} else if bq, ok := s.quantizer.(*quantization.BinaryQuantizer); ok {
+			return bq.Train(trainingVectors)
+		}
+	}
+
+	return nil
 }
 
 // rebuildHNSWIndex rebuilds the HNSW index from existing vectors in the database
@@ -240,6 +326,16 @@ func (s *SQLiteStore) initIVFIndex(ctx context.Context) error {
 	// Set probe count
 	if s.config.IVF.NProbe > 0 {
 		s.ivfIndex.SetNProbe(s.config.IVF.NProbe)
+	}
+
+	// Try to load from snapshot
+	loaded, err := s.loadIndexSnapshot(ctx, "IVF")
+	if err != nil {
+		// Log error
+	}
+	
+	if loaded {
+		return nil
 	}
 
 	// Note: IVF index requires training. 
@@ -348,10 +444,37 @@ func (s *SQLiteStore) Upsert(ctx context.Context, emb *Embedding) error {
 		if s.config.VectorDim == 0 { // Double-check after acquiring write lock
 			s.config.VectorDim = incomingDim
 			currentDim = incomingDim
+			
+			// Initialize quantizer now that we know the dimension
+			if s.config.Quantization.Enabled && s.quantizer == nil {
+				if s.config.Quantization.Type == "binary" {
+					s.quantizer = quantization.NewBinaryQuantizer(currentDim)
+				} else {
+					sq, _ := quantization.NewScalarQuantizer(currentDim, s.config.Quantization.NBits)
+					s.quantizer = sq
+				}
+				if s.hnswIndex != nil {
+					s.hnswIndex.SetQuantizer(s.quantizer)
+				}
+			}
 		} else {
 			currentDim = s.config.VectorDim
 		}
 		s.mu.Unlock()
+	}
+
+	// Auto-train quantizer if not trained
+	if s.quantizer != nil {
+		trained := false
+		if sq, ok := s.quantizer.(*quantization.ScalarQuantizer); ok {
+			trained = sq.Trained
+		} else if bq, ok := s.quantizer.(*quantization.BinaryQuantizer); ok {
+			trained = bq.Trained
+		}
+		
+		if !trained {
+			_ = s.TrainQuantizer(ctx)
+		}
 	}
 
 	// Handle dimension mismatch
@@ -434,6 +557,29 @@ func (s *SQLiteStore) UpsertBatch(ctx context.Context, embs []*Embedding) error 
 
 	if len(embs) == 0 {
 		return nil
+	}
+
+	// Auto-train quantizer if not trained
+	if s.quantizer != nil {
+		trained := false
+		if sq, ok := s.quantizer.(*quantization.ScalarQuantizer); ok {
+			trained = sq.Trained
+		} else if bq, ok := s.quantizer.(*quantization.BinaryQuantizer); ok {
+			trained = bq.Trained
+		}
+		
+		if !trained {
+			// Extract some vectors for training
+			var trainingVectors [][]float32
+			for i := 0; i < len(embs) && i < 1000; i++ {
+				trainingVectors = append(trainingVectors, embs[i].Vector)
+			}
+			if sq, ok := s.quantizer.(*quantization.ScalarQuantizer); ok {
+				_ = sq.Train(trainingVectors)
+			} else if bq, ok := s.quantizer.(*quantization.BinaryQuantizer); ok {
+				_ = bq.Train(trainingVectors)
+			}
+		}
 	}
 
 	// Start transaction
@@ -1524,6 +1670,102 @@ func (s *SQLiteStore) Stats(ctx context.Context) (StoreStats, error) {
 	}, nil
 }
 
+// saveIndexSnapshot saves the current index to the database
+func (s *SQLiteStore) saveIndexSnapshot(ctx context.Context) error {
+	var buf bytes.Buffer
+	var indexType string
+	
+	if s.config.IndexType == IndexTypeHNSW && s.hnswIndex != nil {
+		indexType = "HNSW"
+		if err := s.hnswIndex.Save(&buf); err != nil {
+			return fmt.Errorf("failed to serialize HNSW index: %w", err)
+		}
+	} else if s.config.IndexType == IndexTypeIVF && s.ivfIndex != nil && s.ivfIndex.Trained {
+		indexType = "IVF"
+		if err := s.ivfIndex.Save(&buf); err != nil {
+			return fmt.Errorf("failed to serialize IVF index: %w", err)
+		}
+	} else {
+		return nil // No index to save
+	}
+	
+	// Save to database
+	query := `
+		INSERT OR REPLACE INTO index_snapshots (type, data, created_at)
+		VALUES (?, ?, CURRENT_TIMESTAMP)
+	`
+	_, err := s.db.ExecContext(ctx, query, indexType, buf.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to save index snapshot: %w", err)
+	}
+	
+	// Also save quantizer if available
+	if s.quantizer != nil {
+		var qBuf bytes.Buffer
+		var err error
+		if sq, ok := s.quantizer.(*quantization.ScalarQuantizer); ok {
+			err = sq.Save(&qBuf)
+		} else if bq, ok := s.quantizer.(*quantization.BinaryQuantizer); ok {
+			err = bq.Save(&qBuf)
+		}
+		
+		if err == nil && qBuf.Len() > 0 {
+			_, _ = s.db.ExecContext(ctx, "INSERT OR REPLACE INTO index_snapshots (type, data, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)", "QUANTIZER", qBuf.Bytes())
+		}
+	}
+	
+	return nil
+}
+
+// loadIndexSnapshot tries to load the index from the database
+func (s *SQLiteStore) loadIndexSnapshot(ctx context.Context, indexType string) (bool, error) {
+	// First try to load quantizer if we're loading an index
+	var qData []byte
+	err := s.db.QueryRowContext(ctx, "SELECT data FROM index_snapshots WHERE type = ?", "QUANTIZER").Scan(&qData)
+	if err == nil {
+		if s.config.Quantization.Type == "binary" {
+			bq := quantization.NewBinaryQuantizer(s.config.VectorDim)
+			if err := bq.Load(bytes.NewReader(qData)); err == nil {
+				s.quantizer = bq
+			}
+		} else {
+			sq, _ := quantization.NewScalarQuantizer(s.config.VectorDim, s.config.Quantization.NBits)
+			if err := sq.Load(bytes.NewReader(qData)); err == nil {
+				s.quantizer = sq
+			}
+		}
+		
+		if s.quantizer != nil && s.hnswIndex != nil {
+			s.hnswIndex.SetQuantizer(s.quantizer)
+		}
+	}
+
+	var data []byte
+	err = s.db.QueryRowContext(ctx, "SELECT data FROM index_snapshots WHERE type = ?", indexType).Scan(&data)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to query index snapshot: %w", err)
+	}
+	
+	buf := bytes.NewReader(data)
+	
+	if indexType == "HNSW" && s.hnswIndex != nil {
+		if err := s.hnswIndex.Load(buf); err != nil {
+			return false, fmt.Errorf("failed to deserialize HNSW index: %w", err)
+		}
+		return true, nil
+	} else if indexType == "IVF" && s.ivfIndex != nil {
+		if err := s.ivfIndex.Load(buf); err != nil {
+			return false, fmt.Errorf("failed to deserialize IVF index: %w", err)
+		}
+		return true, nil
+	}
+	
+	return false, nil
+}
+
 // Close closes the database connection and releases resources
 func (s *SQLiteStore) Close() error {
 	s.mu.Lock()
@@ -1531,6 +1773,17 @@ func (s *SQLiteStore) Close() error {
 
 	if s.closed {
 		return nil
+	}
+
+	// Try to save index snapshot before closing
+	// Use a new context with timeout since the original context might be cancelled
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	if err := s.saveIndexSnapshot(ctx); err != nil {
+		// Log error but continue closing
+		// In a real logger we would log this
+		_ = err
 	}
 
 	s.closed = true

@@ -92,11 +92,28 @@ func DefaultTextSimilarityConfig() TextSimilarityConfig {
 	}
 }
 
+// QuantizationConfig represents configuration for vector quantization
+type QuantizationConfig struct {
+	Enabled bool   `json:"enabled"` // Enable quantization
+	Type    string `json:"type"`    // "scalar" (SQ8) or "binary" (BQ)
+	NBits   int    `json:"nBits"`   // Bits per component (default 8 for SQ8)
+}
+
+// DefaultQuantizationConfig returns default quantization configuration
+func DefaultQuantizationConfig() QuantizationConfig {
+	return QuantizationConfig{
+		Enabled: false,
+		Type:    "scalar",
+		NBits:   8,
+	}
+}
+
 // AdaptPolicy defines how to handle vector dimension mismatches
 type AdaptPolicy int
 
 const (
-	SmartAdapt   AdaptPolicy = iota // Intelligent adaptation based on data distribution (default)
+	StrictMode   AdaptPolicy = iota // Error on dimension mismatch (default)
+	SmartAdapt                      // Intelligent adaptation based on data distribution
 	AutoTruncate                    // Always truncate to smaller dimension
 	AutoPad                         // Always pad to larger dimension
 	WarnOnly                        // Only warn, don't auto-adapt
@@ -121,18 +138,20 @@ type Config struct {
 	HNSW           HNSWConfig           `json:"hnsw,omitempty"`          // HNSW index configuration
 	IVF            IVFConfig            `json:"ivf,omitempty"`           // IVF index configuration
 	TextSimilarity TextSimilarityConfig `json:"textSimilarity,omitempty"` // Text similarity configuration
+	Quantization   QuantizationConfig   `json:"quantization,omitempty"`   // Quantization configuration
 }
 
 // DefaultConfig returns a default configuration
 func DefaultConfig() Config {
 	return Config{
 		VectorDim:      0,                              // Auto-detect dimension
-		AutoDimAdapt:   SmartAdapt,                     // Intelligent adaptation
+		AutoDimAdapt:   StrictMode,                     // Strict by default
 		SimilarityFn:   CosineSimilarity,               // Cosine similarity
 		IndexType:      IndexTypeHNSW,                  // Default to HNSW
 		HNSW:           DefaultHNSWConfig(),            // HNSW configuration
 		IVF:            DefaultIVFConfig(),             // IVF configuration
 		TextSimilarity: DefaultTextSimilarityConfig(),  // Text similarity configuration
+		Quantization:   DefaultQuantizationConfig(),    // Quantization configuration
 	}
 }
 

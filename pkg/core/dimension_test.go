@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -132,8 +133,13 @@ func TestAutoDetectDimension(t *testing.T) {
 		}
 	}()
 
-	// Create store with auto-detect (dimension = 0)
-	store, err := New(dbPath, 0)
+	// Create store with auto-detect (dimension = 0) and SmartAdapt
+	config := DefaultConfig()
+	config.Path = dbPath
+	config.VectorDim = 0
+	config.AutoDimAdapt = SmartAdapt
+
+	store, err := NewWithConfig(config)
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}
@@ -195,8 +201,13 @@ func TestMixedDimensionSearch(t *testing.T) {
 		}
 	}()
 
-	// Create store with auto-detect
-	store, err := New(dbPath, 0)
+	// Create store with auto-detect and SmartAdapt
+	config := DefaultConfig()
+	config.Path = dbPath
+	config.VectorDim = 0
+	config.AutoDimAdapt = SmartAdapt
+
+	store, err := NewWithConfig(config)
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}
@@ -344,6 +355,42 @@ func TestDimensionPolicies(t *testing.T) {
 
 			t.Logf("Policy %s: inserted and searched successfully", p.name)
 		})
+	}
+}
+
+func TestStrictMode(t *testing.T) {
+	// Create temporary database file  
+	dbPath := "test_strict_" + time.Now().Format("20060102_150405") + ".db"
+	defer func() {
+		if err := os.Remove(dbPath); err != nil {
+			_ = err
+		}
+	}()
+
+	// Create store with default config (StrictMode)
+	store, err := New(dbPath, 3)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+	if err := store.Init(ctx); err != nil {
+		t.Fatalf("Failed to initialize store: %v", err)
+	}
+
+	// Insert correct dimension (should work)
+	err = store.Upsert(ctx, &Embedding{ID: "ok", Vector: []float32{1, 2, 3}})
+	if err != nil {
+		t.Errorf("Expected success for 3D vector, got %v", err)
+	}
+
+	// Insert wrong dimension (should fail)
+	err = store.Upsert(ctx, &Embedding{ID: "fail", Vector: []float32{1, 2}})
+	if err == nil {
+		t.Error("Expected error for 2D vector in StrictMode, got none")
+	} else if !strings.Contains(err.Error(), "dimension mismatch") {
+		t.Errorf("Expected dimension mismatch error, got: %v", err)
 	}
 }
 

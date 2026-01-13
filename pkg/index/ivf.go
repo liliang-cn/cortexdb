@@ -2,8 +2,10 @@
 package index
 
 import (
+	"encoding/gob"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"sort"
@@ -33,6 +35,52 @@ func NewIVFIndex(dimension, nCentroids int) *IVFIndex {
 		IDs:        []string{},
 		Vectors:    [][]float32{},
 	}
+}
+
+// Save serializes the index to a writer
+func (ivf *IVFIndex) Save(w io.Writer) error {
+	ivf.mu.RLock()
+	defer ivf.mu.RUnlock()
+
+	enc := gob.NewEncoder(w)
+
+	// Encode parameters
+	if err := enc.Encode(ivf.NCentroids); err != nil { return err }
+	if err := enc.Encode(ivf.Dimension); err != nil { return err }
+	if err := enc.Encode(ivf.NProbe); err != nil { return err }
+	if err := enc.Encode(ivf.Trained); err != nil { return err }
+
+	// Encode data
+	if err := enc.Encode(ivf.Centroids); err != nil { return err }
+	if err := enc.Encode(ivf.Invlists); err != nil { return err }
+	if err := enc.Encode(ivf.IDs); err != nil { return err }
+	
+	// Note: We encode vectors too to enable fast startup without SQL scan
+	if err := enc.Encode(ivf.Vectors); err != nil { return err }
+
+	return nil
+}
+
+// Load deserializes the index from a reader
+func (ivf *IVFIndex) Load(r io.Reader) error {
+	ivf.mu.Lock()
+	defer ivf.mu.Unlock()
+
+	dec := gob.NewDecoder(r)
+
+	// Decode parameters
+	if err := dec.Decode(&ivf.NCentroids); err != nil { return err }
+	if err := dec.Decode(&ivf.Dimension); err != nil { return err }
+	if err := dec.Decode(&ivf.NProbe); err != nil { return err }
+	if err := dec.Decode(&ivf.Trained); err != nil { return err }
+
+	// Decode data
+	if err := dec.Decode(&ivf.Centroids); err != nil { return err }
+	if err := dec.Decode(&ivf.Invlists); err != nil { return err }
+	if err := dec.Decode(&ivf.IDs); err != nil { return err }
+	if err := dec.Decode(&ivf.Vectors); err != nil { return err }
+
+	return nil
 }
 
 // Train learns cluster centroids from training data
