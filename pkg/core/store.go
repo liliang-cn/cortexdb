@@ -878,6 +878,11 @@ func (s *SQLiteStore) processCandidates(query []float32, candidates []ScoredEmbe
 	
 	var results []ScoredEmbedding
 	for _, candidate := range candidates {
+		// Apply collection filter
+		if opts.Collection != "" && candidate.Collection != opts.Collection {
+			continue
+		}
+
 		// Apply metadata filters
 		if !s.matchesFilter(candidate.Embedding, opts.Filter) {
 			continue
@@ -1405,6 +1410,152 @@ func (s *SQLiteStore) DeleteByDocID(ctx context.Context, docID string) error {
 	_, err := s.db.ExecContext(ctx, "DELETE FROM embeddings WHERE doc_id = ?", docID)
 	if err != nil {
 		return wrapError("delete_by_doc_id", fmt.Errorf("failed to delete embeddings: %w", err))
+	}
+
+	return nil
+}
+
+// DeleteBatch removes multiple embeddings by their IDs in a single operation
+// This is more efficient than calling Delete multiple times as it:
+// 1. Uses a single SQL DELETE statement with IN clause
+
+
+// DeleteBatch removes multiple embeddings by their IDs in a single operation
+func (s *SQLiteStore) DeleteBatch(ctx context.Context, ids []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return wrapError("delete_batch", ErrStoreClosed)
+	}
+
+	if len(ids) == 0 {
+		return nil
+	}
+
+	// Filter out empty IDs
+	validIDs := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if strings.TrimSpace(id) != "" {
+			validIDs = append(validIDs, id)
+		}
+	}
+	
+	if len(validIDs) == 0 {
+		return nil
+	}
+
+	// 1. Delete from SQLite
+	// Use chunks to avoid SQLite parameter limit (default 999)
+	totalRowsAffected := int64(0)
+	chunkSize := 500
+	for i := 0; i < len(validIDs); i += chunkSize {
+		end := i + chunkSize
+		if end > len(validIDs) {
+			end = len(validIDs)
+		}
+		
+		chunk := validIDs[i:end]
+		placeholders := make([]string, len(chunk))
+		args := make([]interface{}, len(chunk))
+		for j, id := range chunk {
+			placeholders[j] = "?"
+			args[j] = id
+		}
+		
+		query := fmt.Sprintf("DELETE FROM embeddings WHERE id IN (%s)", strings.Join(placeholders, ","))
+		result, err := s.db.ExecContext(ctx, query, args...)
+		if err != nil {
+			return wrapError("delete_batch", fmt.Errorf("failed to delete chunk: %w", err))
+		}
+		
+		rows, _ := result.RowsAffected()
+		totalRowsAffected += rows
+	}
+
+	if totalRowsAffected == 0 {
+		return wrapError("delete_batch", ErrNotFound)
+	}
+
+	// 2. Delete from Memory Indexes
+	if s.hnswIndex != nil {
+		for _, id := range validIDs {
+			_ = s.hnswIndex.Delete(id)
+		}
+	}
+	
+	if s.ivfIndex != nil {
+		for _, id := range validIDs {
+			_ = s.ivfIndex.Delete(id)
+		}
+	}
+
+	return nil
+}
+
+// DeleteByFilter removes embeddings matching the given metadata filter
+// This is useful for bulk deletion operations based on metadata criteria
+func (s *SQLiteStore) DeleteByFilter(ctx context.Context, filter *MetadataFilter) error {
+	if filter == nil || filter.IsEmpty() {
+		return wrapError("delete_by_filter", fmt.Errorf("filter cannot be empty"))
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return wrapError("delete_by_filter", ErrStoreClosed)
+	}
+
+	// Build WHERE clause from filter
+	whereClause, params := filter.ToSQL()
+	if whereClause == "" {
+		return wrapError("delete_by_filter", fmt.Errorf("failed to build filter"))
+	}
+
+	// Replace e.metadata with embeddings.metadata in WHERE clause for standalone queries
+	// The filter builder uses "json_extract(metadata, ...)" which is correct for embeddings table
+	// No replacement needed if we use simple column names, but check BuildSQLFromFilter implementation
+	// BuildSQLFromFilter uses "json_extract(metadata, ...)" which refers to column 'metadata'
+	
+	// First, get the IDs that will be deleted (for index cleanup)
+	idQuery := fmt.Sprintf("SELECT id FROM embeddings WHERE %s", whereClause)
+	rows, err := s.db.QueryContext(ctx, idQuery, params...)
+	if err != nil {
+		return wrapError("delete_by_filter", fmt.Errorf("failed to query embeddings: %w", err))
+	}
+	
+	var idsToDelete []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err == nil {
+			idsToDelete = append(idsToDelete, id)
+		}
+	}
+	rows.Close()
+
+	if len(idsToDelete) == 0 {
+		return nil // Nothing to delete
+	}
+
+	// Now delete the embeddings
+	deleteQuery := fmt.Sprintf("DELETE FROM embeddings WHERE %s", whereClause)
+	_, err = s.db.ExecContext(ctx, deleteQuery, params...)
+	if err != nil {
+		return wrapError("delete_by_filter", fmt.Errorf("failed to delete embeddings: %w", err))
+	}
+	
+	// Update Memory Indexes
+	if s.hnswIndex != nil {
+		for _, id := range idsToDelete {
+			_ = s.hnswIndex.Delete(id)
+		}
+	}
+	
+	if s.ivfIndex != nil {
+		for _, id := range idsToDelete {
+			_ = s.ivfIndex.Delete(id)
+		}
 	}
 
 	return nil

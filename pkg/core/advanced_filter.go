@@ -306,6 +306,219 @@ func BuildSQLFromFilter(filter *FilterExpression, paramIndex *int) (string, []in
 	}
 }
 
+// MetadataFilter helper for building filter expressions
+type MetadataFilter struct {
+	expression *FilterExpression
+}
+
+// NewMetadataFilter creates a new metadata filter builder
+func NewMetadataFilter() *MetadataFilter {
+	return &MetadataFilter{}
+}
+
+// Equal adds an equality condition
+func (f *MetadataFilter) Equal(field string, value interface{}) *MetadataFilter {
+	expr := &FilterExpression{
+		Operator: FilterEQ,
+		Field:    field,
+		Value:    value,
+	}
+	f.combine(expr)
+	return f
+}
+
+// NotEqual adds a non-equality condition
+func (f *MetadataFilter) NotEqual(field string, value interface{}) *MetadataFilter {
+	expr := &FilterExpression{
+		Operator: FilterNE,
+		Field:    field,
+		Value:    value,
+	}
+	f.combine(expr)
+	return f
+}
+
+// GreaterThan adds a greater than condition
+func (f *MetadataFilter) GreaterThan(field string, value interface{}) *MetadataFilter {
+	expr := &FilterExpression{
+		Operator: FilterGT,
+		Field:    field,
+		Value:    value,
+	}
+	f.combine(expr)
+	return f
+}
+
+// LessThan adds a less than condition
+func (f *MetadataFilter) LessThan(field string, value interface{}) *MetadataFilter {
+	expr := &FilterExpression{
+		Operator: FilterLT,
+		Field:    field,
+		Value:    value,
+	}
+	f.combine(expr)
+	return f
+}
+
+// In adds an IN condition
+func (f *MetadataFilter) In(field string, values ...interface{}) *MetadataFilter {
+	expr := &FilterExpression{
+		Operator: FilterIN,
+		Field:    field,
+		Value:    values,
+	}
+	f.combine(expr)
+	return f
+}
+
+// GreaterThanOrEqual adds a greater than or equal condition
+func (f *MetadataFilter) GreaterThanOrEqual(field string, value interface{}) *MetadataFilter {
+	expr := &FilterExpression{
+		Operator: FilterGTE,
+		Field:    field,
+		Value:    value,
+	}
+	f.combine(expr)
+	return f
+}
+
+// LessThanOrEqual adds a less than or equal condition
+func (f *MetadataFilter) LessThanOrEqual(field string, value interface{}) *MetadataFilter {
+	expr := &FilterExpression{
+		Operator: FilterLTE,
+		Field:    field,
+		Value:    value,
+	}
+	f.combine(expr)
+	return f
+}
+
+// Between adds a BETWEEN condition
+func (f *MetadataFilter) Between(field string, min, max interface{}) *MetadataFilter {
+	expr := &FilterExpression{
+		Operator: FilterBETWEEN,
+		Field:    field,
+		Value:    []interface{}{min, max},
+	}
+	f.combine(expr)
+	return f
+}
+
+// Like adds a LIKE condition
+func (f *MetadataFilter) Like(field string, pattern string) *MetadataFilter {
+	expr := &FilterExpression{
+		Operator: FilterLIKE,
+		Field:    field,
+		Value:    pattern,
+	}
+	f.combine(expr)
+	return f
+}
+
+// NotIn adds a NOT IN condition
+func (f *MetadataFilter) NotIn(field string, values ...interface{}) *MetadataFilter {
+	// NotIn is usually NOT (field IN values)
+	// Or we can add FilterNOTIN operator.
+	// Current implementation doesn't support FilterNOTIN directly in BuildSQLFromFilter?
+	// Let's implement as NOT(IN)
+	
+	inExpr := &FilterExpression{
+		Operator: FilterIN,
+		Field:    field,
+		Value:    values,
+	}
+	
+	expr := &FilterExpression{
+		Operator: FilterNOT,
+		Children: []*FilterExpression{inExpr},
+	}
+	
+	f.combine(expr)
+	return f
+}
+
+// StringIn is alias for In for string values
+func (f *MetadataFilter) StringIn(field string, values ...string) *MetadataFilter {
+	ifStr := make([]interface{}, len(values))
+	for i, v := range values {
+		ifStr[i] = v
+	}
+	return f.In(field, ifStr...)
+}
+
+// Build returns the underlying expression (for tests)
+func (f *MetadataFilter) Build() *FilterExpression {
+	return f.expression
+}
+
+// And combines with another filter using AND
+func (f *MetadataFilter) And(other *MetadataFilter) *MetadataFilter {
+	if other == nil || other.expression == nil {
+		return f
+	}
+	if f.expression == nil {
+		f.expression = other.expression
+		return f
+	}
+	
+	// If current is AND, append to children to keep tree flat?
+	// For simplicity, just create new AND node
+	f.expression = &FilterExpression{
+		Operator: FilterAND,
+		Children: []*FilterExpression{f.expression, other.expression},
+	}
+	return f
+}
+
+// Or combines with another filter using OR
+func (f *MetadataFilter) Or(other *MetadataFilter) *MetadataFilter {
+	if other == nil || other.expression == nil {
+		return f
+	}
+	if f.expression == nil {
+		f.expression = other.expression
+		return f
+	}
+	
+	f.expression = &FilterExpression{
+		Operator: FilterOR,
+		Children: []*FilterExpression{f.expression, other.expression},
+	}
+	return f
+}
+
+// combine adds expression to the filter, combining with AND if needed
+func (f *MetadataFilter) combine(expr *FilterExpression) {
+	if f.expression == nil {
+		f.expression = expr
+	} else {
+		// Combine with AND
+		f.expression = &FilterExpression{
+			Operator: FilterAND,
+			Children: []*FilterExpression{f.expression, expr},
+		}
+	}
+}
+
+// BuildSQL returns the SQL WHERE clause for the filter
+func (f *MetadataFilter) BuildSQL() (string, []interface{}) {
+	if f.expression == nil {
+		return "", nil
+	}
+	paramIndex := 0
+	return BuildSQLFromFilter(f.expression, &paramIndex)
+}
+
+// ToSQL is an alias for BuildSQL
+func (f *MetadataFilter) ToSQL() (string, []interface{}) {
+	return f.BuildSQL()
+}
+
+// IsEmpty checks if the filter is empty
+func (f *MetadataFilter) IsEmpty() bool {
+	return f == nil || f.expression == nil
+}
+
 // SearchWithAdvancedFilter performs vector search with advanced filtering
 func (s *SQLiteStore) SearchWithAdvancedFilter(ctx context.Context, query []float32, opts AdvancedSearchOptions) ([]ScoredEmbedding, error) {
 	s.mu.RLock()

@@ -85,6 +85,18 @@ go build -o simple_example examples/simple_usage/main.go
 - Large-scale testing
 - **Perfect for:** Performance optimization, capacity planning
 
+### 10. **chat_memory** - AI Chat Memory
+- Session management
+- Message storage
+- Context retrieval
+- Semantic memory search
+- **Perfect for:** Chatbots, AI Agents
+
+### 11. **benchmark_ivf** - Index Comparison
+- Compare HNSW vs IVF performance
+- Index training demo
+- **Perfect for:** Performance tuning
+
 ## 💻 API Usage Patterns
 
 All examples use the latest sqvect API:

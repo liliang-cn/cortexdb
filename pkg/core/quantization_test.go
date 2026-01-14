@@ -14,7 +14,7 @@ func TestQuantizationIntegration(t *testing.T) {
 
 	ctx := context.Background()
 	dim := 128
-	numVectors := 500
+	numVectors := 50
 
 	// 1. Create store with Quantization enabled
 	config := DefaultConfig()

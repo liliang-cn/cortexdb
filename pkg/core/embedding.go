@@ -179,6 +179,12 @@ type Store interface {
 	// DeleteByDocID removes all embeddings for a document
 	DeleteByDocID(ctx context.Context, docID string) error
 
+	// DeleteBatch removes multiple embeddings by their IDs in a single operation
+	DeleteBatch(ctx context.Context, ids []string) error
+
+	// DeleteByFilter removes embeddings matching the given metadata filter
+	DeleteByFilter(ctx context.Context, filter *MetadataFilter) error
+
 	// Close closes the store and releases resources
 	Close() error
 
@@ -194,4 +200,23 @@ type Store interface {
 
 	// Index operations
 	TrainIndex(ctx context.Context, numCentroids int) error
+	TrainQuantizer(ctx context.Context) error
+
+	// Document Management
+	CreateDocument(ctx context.Context, doc *Document) error
+	GetDocument(ctx context.Context, id string) (*Document, error)
+	DeleteDocument(ctx context.Context, id string) error
+	ListDocumentsWithFilter(ctx context.Context, author string, limit int) ([]*Document, error)
+
+	// Chat Memory
+	CreateSession(ctx context.Context, session *Session) error
+	GetSession(ctx context.Context, id string) (*Session, error)
+	AddMessage(ctx context.Context, msg *Message) error
+	GetSessionHistory(ctx context.Context, sessionID string, limit int) ([]*Message, error)
+	SearchChatHistory(ctx context.Context, queryVec []float32, sessionID string, limit int) ([]*Message, error)
+
+	// Advanced Search
+	SearchWithACL(ctx context.Context, query []float32, acl []string, opts SearchOptions) ([]ScoredEmbedding, error)
+	HybridSearch(ctx context.Context, vectorQuery []float32, textQuery string, opts HybridSearchOptions) ([]ScoredEmbedding, error)
+	SearchWithAdvancedFilter(ctx context.Context, query []float32, opts AdvancedSearchOptions) ([]ScoredEmbedding, error)
 }

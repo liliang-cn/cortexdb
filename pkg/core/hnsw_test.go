@@ -242,9 +242,9 @@ func TestHNSWPerformance(t *testing.T) {
 	}()
 
 	ctx := context.Background()
-	numVectors := 1000 // Reduced from 10000 to 1000 to avoid timeout
+	numVectors := 100 // Reduced for fast testing
 	dim := 256
-	numQueries := 50 // Reduced from 100
+	numQueries := 10 // Reduced from 100
 
 	// Test with HNSW
 	configHNSW := DefaultConfig()

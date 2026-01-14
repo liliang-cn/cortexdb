@@ -6,7 +6,6 @@ import (
 	"log"
 	"math/rand"
 	"os"
-	"time"
 
 	"github.com/liliang-cn/sqvect/pkg/core"
 	"github.com/liliang-cn/sqvect/pkg/sqvect"

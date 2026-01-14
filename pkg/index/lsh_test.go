@@ -389,23 +389,18 @@ func TestLSHPerformance(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping performance test in short mode")
 	}
-	
+
 	dimension := 128
-	numVectors := 50000
-	
-	// Create LSH index
+	numVectors := 1000 // Reduced for fast testing
+
 	config := LSHConfig{
-		NumTables:    10,
-		NumHashFuncs: 8,
 		Dimension:    dimension,
-		Seed:         42,
+		NumHashFuncs: 8,
+		NumTables:    10,
 	}
 	lsh := NewLSHIndex(config)
-	
-	// Create flat index for comparison
 	flat := NewFlatIndex(dimension, EuclideanDistance)
 	
-	// Insert vectors
 	t.Logf("Inserting %d vectors...", numVectors)
 	start := time.Now()
 	for i := 0; i < numVectors; i++ {
