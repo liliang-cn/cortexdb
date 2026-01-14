@@ -11,6 +11,10 @@ import (
 	"github.com/liliang-cn/sqvect/internal/encoding"
 )
 
+func createDummyDoc(ctx context.Context, s *SQLiteStore, id string) error {
+	return s.CreateDocument(ctx, &Document{ID: id, Title: "Dummy " + id, Version: 1})
+}
+
 func TestSimilarityFunctions(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -217,6 +221,11 @@ func TestSQLiteStore(t *testing.T) {
 		t.Fatalf("Failed to initialize store: %v", err)
 	}
 
+	// Create document first to satisfy FK constraint
+	if err := createDummyDoc(ctx, store, "doc1"); err != nil {
+		t.Fatalf("Failed to create dummy doc1: %v", err)
+	}
+
 	// Test embedding validation
 	validEmb := Embedding{
 		ID:      "test1",
@@ -288,6 +297,14 @@ func TestBatchOperations(t *testing.T) {
 		t.Fatalf("Failed to initialize store: %v", err)
 	}
 
+	// Create documents first
+	if err := createDummyDoc(ctx, store, "doc1"); err != nil {
+		t.Fatalf("Failed to create dummy doc1: %v", err)
+	}
+	if err := createDummyDoc(ctx, store, "doc2"); err != nil {
+		t.Fatalf("Failed to create dummy doc2: %v", err)
+	}
+
 	// Create batch of embeddings
 	embeddings := []Embedding{
 		{ID: "batch1", Vector: []float32{1.0, 0.0}, Content: "Content 1", DocID: "doc1"},
@@ -351,6 +368,14 @@ func TestDeleteOperations(t *testing.T) {
 	ctx := context.Background()
 	if err := store.Init(ctx); err != nil {
 		t.Fatalf("Failed to initialize store: %v", err)
+	}
+
+	// Create documents first
+	if err := createDummyDoc(ctx, store, "doc1"); err != nil {
+		t.Fatalf("Failed to create dummy doc1: %v", err)
+	}
+	if err := createDummyDoc(ctx, store, "doc2"); err != nil {
+		t.Fatalf("Failed to create dummy doc2: %v", err)
 	}
 
 	// Insert test data
@@ -435,6 +460,17 @@ func TestListDocuments(t *testing.T) {
 	}
 	if len(docs) != 0 {
 		t.Errorf("Expected 0 documents in empty store, got %d", len(docs))
+	}
+
+	// Create documents first
+	if err := createDummyDoc(ctx, store, "doc1"); err != nil {
+		t.Fatalf("Failed to create dummy doc1: %v", err)
+	}
+	if err := createDummyDoc(ctx, store, "doc2"); err != nil {
+		t.Fatalf("Failed to create dummy doc2: %v", err)
+	}
+	if err := createDummyDoc(ctx, store, "doc3"); err != nil {
+		t.Fatalf("Failed to create dummy doc3: %v", err)
 	}
 
 	// Insert test data with various doc IDs
@@ -578,6 +614,14 @@ func TestGetByDocID(t *testing.T) {
 		t.Fatalf("Failed to initialize store: %v", err)
 	}
 
+	// Create documents first
+	if err := createDummyDoc(ctx, store, "doc1"); err != nil {
+		t.Fatalf("Failed to create dummy doc1: %v", err)
+	}
+	if err := createDummyDoc(ctx, store, "doc2"); err != nil {
+		t.Fatalf("Failed to create dummy doc2: %v", err)
+	}
+
 	// Insert test data
 	embeddings := []Embedding{
 		{ID: "emb1", Vector: []float32{1.0, 0.0}, Content: "Content 1", DocID: "doc1"},
@@ -647,6 +691,17 @@ func TestGetDocumentsByType(t *testing.T) {
 	ctx := context.Background()
 	if err := store.Init(ctx); err != nil {
 		t.Fatalf("Failed to initialize store: %v", err)
+	}
+
+	// Create documents first
+	if err := createDummyDoc(ctx, store, "doc1"); err != nil {
+		t.Fatalf("Failed to create dummy doc1: %v", err)
+	}
+	if err := createDummyDoc(ctx, store, "doc2"); err != nil {
+		t.Fatalf("Failed to create dummy doc2: %v", err)
+	}
+	if err := createDummyDoc(ctx, store, "doc3"); err != nil {
+		t.Fatalf("Failed to create dummy doc3: %v", err)
 	}
 
 	// Insert test data with different types
@@ -728,6 +783,17 @@ func TestClearOperations(t *testing.T) {
 		t.Fatalf("Failed to initialize store: %v", err)
 	}
 
+	// Create documents first
+	if err := createDummyDoc(ctx, store, "doc1"); err != nil {
+		t.Fatalf("Failed to create dummy doc1: %v", err)
+	}
+	if err := createDummyDoc(ctx, store, "doc2"); err != nil {
+		t.Fatalf("Failed to create dummy doc2: %v", err)
+	}
+	if err := createDummyDoc(ctx, store, "doc3"); err != nil {
+		t.Fatalf("Failed to create dummy doc3: %v", err)
+	}
+
 	// Insert test data
 	embeddings := []Embedding{
 		{ID: "emb1", Vector: []float32{1.0, 0.0}, Content: "Content 1", DocID: "doc1"},
@@ -798,6 +864,14 @@ func TestListDocumentsWithInfo(t *testing.T) {
 	ctx := context.Background()
 	if err := store.Init(ctx); err != nil {
 		t.Fatalf("Failed to initialize store: %v", err)
+	}
+
+	// Create documents first
+	if err := createDummyDoc(ctx, store, "doc1"); err != nil {
+		t.Fatalf("Failed to create dummy doc1: %v", err)
+	}
+	if err := createDummyDoc(ctx, store, "doc2"); err != nil {
+		t.Fatalf("Failed to create dummy doc2: %v", err)
 	}
 
 	// Insert test data
@@ -943,6 +1017,11 @@ func BenchmarkUpsert(b *testing.B) {
 	ctx := context.Background()
 	if err := store.Init(ctx); err != nil {
 		b.Fatalf("Failed to initialize store: %v", err)
+	}
+
+	// Create dummy doc for benchmark
+	if err := createDummyDoc(ctx, store, "doc1"); err != nil {
+		b.Fatalf("Failed to create dummy doc: %v", err)
 	}
 
 	vector := make([]float32, 768)
@@ -1168,6 +1247,11 @@ func BenchmarkSearch(b *testing.B) {
 		b.Fatalf("Failed to initialize store: %v", err)
 	}
 
+	// Create dummy doc
+	if err := createDummyDoc(ctx, store, "doc1"); err != nil {
+		b.Fatalf("Failed to create dummy doc: %v", err)
+	}
+
 	// Insert test data
 	embeddings := make([]*Embedding, 1000)
 	for i := range embeddings {
@@ -1179,6 +1263,7 @@ func BenchmarkSearch(b *testing.B) {
 			ID:      fmt.Sprintf("search_bench_%d", i),
 			Vector:  vector,
 			Content: fmt.Sprintf("Content %d", i),
+			DocID:   "doc1",
 		}
 	}
 

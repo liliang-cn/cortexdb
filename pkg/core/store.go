@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -102,6 +103,11 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 
 	s.db = db
 
+	// Enable Foreign Keys (Crucial for cascading deletes)
+	if _, err := s.db.Exec("PRAGMA foreign_keys = ON;"); err != nil {
+		return wrapError("init", fmt.Errorf("failed to enable foreign keys: %w", err))
+	}
+
 	// Create tables
 	if err := s.createTables(ctx); err != nil {
 		return wrapError("init", err)
@@ -133,6 +139,18 @@ func (s *SQLiteStore) createTables(ctx context.Context) error {
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
+	CREATE TABLE IF NOT EXISTS documents (
+		id TEXT PRIMARY KEY,
+		title TEXT,
+		source_url TEXT,
+		version INTEGER DEFAULT 1,
+		author TEXT,
+		metadata TEXT,
+		acl TEXT, -- JSON list of allowed users/groups
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
 	CREATE TABLE IF NOT EXISTS embeddings (
 		id TEXT PRIMARY KEY,
 		collection_id INTEGER DEFAULT 1,
@@ -140,8 +158,10 @@ func (s *SQLiteStore) createTables(ctx context.Context) error {
 		content TEXT NOT NULL,
 		doc_id TEXT,
 		metadata TEXT,
+		acl TEXT, -- JSON list of allowed users/groups (inherits from doc if null)
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE
+		FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
+		FOREIGN KEY (doc_id) REFERENCES documents(id) ON DELETE CASCADE
 	);
 	
 	CREATE INDEX IF NOT EXISTS idx_embeddings_collection_id ON embeddings(collection_id);
@@ -154,6 +174,45 @@ func (s *SQLiteStore) createTables(ctx context.Context) error {
 		data BLOB NOT NULL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
+
+	CREATE TABLE IF NOT EXISTS sessions (
+		id TEXT PRIMARY KEY,
+		user_id TEXT,
+		metadata TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS messages (
+		id TEXT PRIMARY KEY,
+		session_id TEXT NOT NULL,
+		role TEXT NOT NULL, -- 'user', 'assistant', 'system'
+		content TEXT NOT NULL,
+		vector BLOB, -- Optional embedding for long-term memory
+		metadata TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+	);
+	
+	CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
+	CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+
+	-- FTS5 Virtual Table for Hybrid Search
+	-- We use 'content' option to avoid duplicating data, referencing embeddings table
+	-- Note: Triggers are needed to keep FTS index in sync
+	CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(content, content='embeddings', content_rowid='rowid');
+
+	-- Triggers to keep FTS index in sync
+	CREATE TRIGGER IF NOT EXISTS embeddings_ai AFTER INSERT ON embeddings BEGIN
+	  INSERT INTO chunks_fts(rowid, content) VALUES (new.rowid, new.content);
+	END;
+	CREATE TRIGGER IF NOT EXISTS embeddings_ad AFTER DELETE ON embeddings BEGIN
+	  INSERT INTO chunks_fts(chunks_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+	END;
+	CREATE TRIGGER IF NOT EXISTS embeddings_au AFTER UPDATE ON embeddings BEGIN
+	  INSERT INTO chunks_fts(chunks_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+	  INSERT INTO chunks_fts(rowid, content) VALUES (new.rowid, new.content);
+	END;
 	`
 
 	_, err := s.db.ExecContext(ctx, createTableSQL)
@@ -522,13 +581,28 @@ func (s *SQLiteStore) Upsert(ctx context.Context, emb *Embedding) error {
 		return wrapError("upsert", err)
 	}
 
+	// Encode ACL
+	var aclJSON []byte
+	if len(emb.ACL) > 0 {
+		// Use standard json marshal for string array
+		importJSON, _ := json.Marshal(emb.ACL) 
+		aclJSON = importJSON
+	}
+
+	// Handle DocID (treat empty as NULL)
+	var docID sql.NullString
+	if emb.DocID != "" {
+		docID.String = emb.DocID
+		docID.Valid = true
+	}
+
 	// Insert or replace
 	query := `
-	INSERT OR REPLACE INTO embeddings (id, collection_id, vector, content, doc_id, metadata, created_at)
-	VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+	INSERT OR REPLACE INTO embeddings (id, collection_id, vector, content, doc_id, metadata, acl, created_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 	`
 
-	_, err = s.db.ExecContext(ctx, query, emb.ID, collectionID, vectorBytes, emb.Content, emb.DocID, metadataJSON)
+	_, err = s.db.ExecContext(ctx, query, emb.ID, collectionID, vectorBytes, emb.Content, docID, metadataJSON, aclJSON)
 	if err != nil {
 		return wrapError("upsert", fmt.Errorf("failed to insert embedding: %w", err))
 	}
@@ -597,8 +671,8 @@ func (s *SQLiteStore) UpsertBatch(ctx context.Context, embs []*Embedding) error 
 
 	// Prepare statement
 	stmt, err := tx.PrepareContext(ctx, `
-		INSERT OR REPLACE INTO embeddings (id, collection_id, vector, content, doc_id, metadata, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		INSERT OR REPLACE INTO embeddings (id, collection_id, vector, content, doc_id, metadata, acl, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 	`)
 	if err != nil {
 		return wrapError("upsert_batch", fmt.Errorf("failed to prepare statement: %w", err))
@@ -642,7 +716,21 @@ func (s *SQLiteStore) UpsertBatch(ctx context.Context, embs []*Embedding) error 
 			return wrapError("upsert_batch", fmt.Errorf("failed to encode metadata at index %d: %w", i, err))
 		}
 
-		_, err = stmt.ExecContext(ctx, emb.ID, collectionID, vectorBytes, emb.Content, emb.DocID, metadataJSON)
+		// Encode ACL
+		var aclJSON []byte
+		if len(emb.ACL) > 0 {
+			importJSON, _ := json.Marshal(emb.ACL)
+			aclJSON = importJSON
+		}
+
+		// Handle DocID
+		var docID sql.NullString
+		if emb.DocID != "" {
+			docID.String = emb.DocID
+			docID.Valid = true
+		}
+
+		_, err = stmt.ExecContext(ctx, emb.ID, collectionID, vectorBytes, emb.Content, docID, metadataJSON, aclJSON)
 		if err != nil {
 			return wrapError("upsert_batch", fmt.Errorf("failed to insert embedding at index %d: %w", i, err))
 		}
@@ -961,7 +1049,8 @@ func (s *SQLiteStore) fetchCandidates(ctx context.Context, opts SearchOptions) (
 
 // scanEmbedding scans a row into an embedding
 func (s *SQLiteStore) scanEmbedding(rows *sql.Rows) (ScoredEmbedding, error) {
-	var id, content, docID, metadataJSON string
+	var id, content, metadataJSON string
+	var docID sql.NullString
 	var collectionName sql.NullString
 	var collectionID int
 	var vectorBytes []byte
@@ -992,7 +1081,7 @@ func (s *SQLiteStore) scanEmbedding(rows *sql.Rows) (ScoredEmbedding, error) {
 			Collection:   collection,
 			Vector:       vector,
 			Content:      content,
-			DocID:        docID,
+			DocID:        docID.String, // Will be empty if invalid
 			Metadata:     metadata,
 		},
 		Score: 0, // Will be set later
@@ -1399,10 +1488,28 @@ func (s *SQLiteStore) GetByDocID(ctx context.Context, docID string) ([]*Embeddin
 
 // scanEmbeddingForGet scans a row into an embedding for Get methods
 func (s *SQLiteStore) scanEmbeddingForGet(rows *sql.Rows) (*Embedding, error) {
-	var id, content, docID, metadataJSON string
+	var id, content, metadataJSON string
+	var docID sql.NullString
+	var aclJSON []byte
 	var vectorBytes []byte
+	
+	// Check columns count
+	cols, _ := rows.Columns()
+	
+	var collectionName string
+	var createdAt time.Time
+	
+	var err error
+	
+	if len(cols) == 8 { // GetByID format
+		err = rows.Scan(&id, &vectorBytes, &content, &docID, &metadataJSON, &aclJSON, &createdAt, &collectionName)
+	} else if len(cols) == 5 { // Old format (GetByDocID)
+		err = rows.Scan(&id, &vectorBytes, &content, &docID, &metadataJSON)
+	} else {
+		return nil, fmt.Errorf("unexpected column count: %d", len(cols))
+	}
 
-	if err := rows.Scan(&id, &vectorBytes, &content, &docID, &metadataJSON); err != nil {
+	if err != nil {
 		return nil, fmt.Errorf("failed to scan row: %w", err)
 	}
 
@@ -1415,13 +1522,20 @@ func (s *SQLiteStore) scanEmbeddingForGet(rows *sql.Rows) (*Embedding, error) {
 	if err != nil {
 		metadata = nil // Continue with nil metadata
 	}
+	
+	var acl []string
+	if len(aclJSON) > 0 {
+		_ = json.Unmarshal(aclJSON, &acl)
+	}
 
 	return &Embedding{
 		ID:       id,
+		Collection: collectionName,
 		Vector:   vector,
 		Content:  content,
-		DocID:    docID,
+		DocID:    docID.String,
 		Metadata: metadata,
+		ACL:      acl,
 	}, nil
 }
 
@@ -1608,7 +1722,7 @@ func (s *SQLiteStore) GetByID(ctx context.Context, id string) (*Embedding, error
 	
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT 
-			e.id, e.vector, e.content, e.doc_id, e.metadata, e.created_at,
+			e.id, e.vector, e.content, e.doc_id, e.metadata, e.acl, e.created_at,
 			COALESCE(c.name, '') as collection_name
 		FROM embeddings e
 		LEFT JOIN collections c ON e.collection_id = c.id

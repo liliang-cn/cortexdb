@@ -11,6 +11,7 @@ type Embedding struct {
 	Content      string            `json:"content"`
 	DocID        string            `json:"docId,omitempty"`
 	Metadata     map[string]string `json:"metadata,omitempty"`
+	ACL          []string          `json:"acl,omitempty"` // Allowed user IDs or groups
 }
 
 // ScoredEmbedding represents an embedding with similarity score

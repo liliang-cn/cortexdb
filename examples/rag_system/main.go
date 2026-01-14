@@ -4,202 +4,130 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math"
+	"math/rand"
+	"os"
+	"time"
 
-	"github.com/liliang-cn/sqvect/pkg/sqvect"
-	"github.com/liliang-cn/sqvect/pkg/graph"
 	"github.com/liliang-cn/sqvect/pkg/core"
+	"github.com/liliang-cn/sqvect/pkg/sqvect"
 )
 
 func main() {
-	// Example: Advanced RAG system with graph relationships
+	dbPath := "rag_demo.db"
+	_ = os.Remove(dbPath) // Clean start
+
+	// 1. Initialize RAG Database
+	fmt.Println("Initializing RAG Database...")
+	config := sqvect.DefaultConfig(dbPath)
+	config.Dimensions = 4 // Small dim for demo
+	// Enable HNSW for vectors
+	config.IndexType = core.IndexTypeHNSW 
 	
-	config := sqvect.DefaultConfig("rag.db")
-	config.Dimensions = 1536 // GPT-3 embedding dimensions
-	
-	db, err := sqvect.Open(config)
+db, err := sqvect.Open(config)
 	if err != nil {
-		log.Fatal("Failed to open database:", err)
+		log.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
-	
+	defer func() {
+		db.Close()
+		os.Remove(dbPath)
+	}()
+
 	ctx := context.Background()
+	store := db.Vector()
+
+	// 2. Ingest a Document (Hybrid: Vector + Keyword)
+	fmt.Println("\nIngesting documents...")
 	
-	// Create knowledge graph for documents and their relationships
-	fmt.Println("Building knowledge graph for RAG system...")
-	
-	// Add document chunks with embeddings
-	documents := []struct {
-		id      string
-		content string
-		docType string
-		vector  []float32
-	}{
-		{"doc1", "Introduction to machine learning algorithms", "intro", createDocumentEmbedding(1536, 1)},
-		{"doc2", "Supervised learning: classification and regression", "concept", createDocumentEmbedding(1536, 2)},
-		{"doc3", "Unsupervised learning: clustering and dimensionality reduction", "concept", createDocumentEmbedding(1536, 3)},
-		{"doc4", "Deep learning and neural networks", "advanced", createDocumentEmbedding(1536, 4)},
-		{"doc5", "Applications of ML in industry", "application", createDocumentEmbedding(1536, 5)},
-	}
-	
-	// Store as graph nodes with vector embeddings
-	graphStore := db.Graph()
-	
-	// Initialize graph schema
-	if err := graphStore.InitGraphSchema(ctx); err != nil {
-		log.Fatal("Failed to init graph schema:", err)
-	}
-	
-	for _, doc := range documents {
-		node := &graph.GraphNode{
-			ID:      doc.id,
-			Vector:  doc.vector,
-			Content: doc.content,
-			NodeType: doc.docType,
-			Properties: map[string]interface{}{
-				"document_type": doc.docType,
-				"word_count":   len(doc.content),
-			},
-		}
-		
-		err := graphStore.UpsertNode(ctx, node)
-		if err != nil {
-			log.Printf("Failed to add node %s: %v", doc.id, err)
-			continue
-		}
-		
-		preview := doc.content
-		if len(preview) > 50 {
-			preview = preview[:50] + "..."
-		}
-		fmt.Printf("Added document: %s\n", preview)
-	}
-	
-	// Create relationships between documents
-	relationships := []struct {
-		from     string
-		to       string
-		relType  string
-		weight   float64
-	}{
-		{"doc1", "doc2", "leads_to", 0.8},
-		{"doc1", "doc3", "leads_to", 0.7},
-		{"doc2", "doc4", "builds_on", 0.9},
-		{"doc3", "doc4", "builds_on", 0.8},
-		{"doc4", "doc5", "applied_in", 0.7},
-		{"doc2", "doc5", "applied_in", 0.6},
-	}
-	
-	for _, rel := range relationships {
-		edge := &graph.GraphEdge{
-			ID:         fmt.Sprintf("%s_%s", rel.from, rel.to),
-			FromNodeID: rel.from,
-			ToNodeID:   rel.to,
-			EdgeType:   rel.relType,
-			Weight:     rel.weight,
-		}
-		
-		err := graphStore.UpsertEdge(ctx, edge)
-		if err != nil {
-			log.Printf("Failed to add edge %s->%s: %v", rel.from, rel.to, err)
-		}
-	}
-	
-	fmt.Println("\nKnowledge graph built successfully!")
-	
-	// Demonstrate RAG queries
-	fmt.Println("\n--- RAG Query Examples ---")
-	
-	// 1. Pure vector similarity search
-	queryVector := createDocumentEmbedding(1536, 2) // Similar to supervised learning
-	
-	vectorResults, err := db.Vector().Search(ctx, queryVector, core.SearchOptions{
-		TopK: 3,
-		Threshold: 0.0,
+docID := "tech_manual_v1"
+	err = store.CreateDocument(ctx, &core.Document{
+		ID:    docID,
+		Title: "Sqvect Technical Manual",
+		Author: "Engineering Team",
+		Metadata: map[string]interface{}{"type": "manual"},
 	})
-	if err == nil {
-		fmt.Printf("\n1. Vector similarity search results:\n")
-		for i, result := range vectorResults {
-			fmt.Printf("   %d. %s (score: %.4f)\n", i+1, result.Content[:50]+"...", result.Score)
-		}
+	if err != nil {
+		log.Fatal(err)
 	}
-	
-	// 2. Hybrid vector + graph search (best for RAG)
-	hybridQuery := &graph.HybridQuery{
-		Vector:          queryVector,
-		StartNodeID:     "doc1", // Start from introduction
-		TopK:           5,
-		VectorThreshold: 0.3,
-		TotalThreshold:  0.2,
-		VectorWeight:    0.7,
-		GraphWeight:     0.3,
-	}
-	
-	hybridResults, err := graphStore.HybridSearch(ctx, hybridQuery)
-	if err == nil {
-		fmt.Printf("\n2. Hybrid search results (vector + graph):\n")
-		for i, result := range hybridResults {
-			fmt.Printf("   %d. %s\n      Vector: %.3f, Graph: %.3f, Total: %.3f\n",
-				i+1, result.Node.Content[:50]+"...", 
-				result.VectorScore, result.GraphScore, result.TotalScore)
-		}
-	}
-	
-	// 3. Graph traversal for finding related concepts
-	fmt.Printf("\n3. Finding documents related to 'doc2' (supervised learning):\n")
-	neighbors, err := graphStore.Neighbors(ctx, "doc2", graph.TraversalOptions{
-		MaxDepth:  2,
-		EdgeTypes: []string{"builds_on", "applied_in"},
+
+	// Add chunks (simulated)
+	// Chunk 1: Mentions "Hybrid Search" explicitly
+	chunk1Vec := []float32{0.9, 0.1, 0.0, 0.0} 
+	store.Upsert(ctx, &core.Embedding{
+		ID:      "chunk_1",
+		DocID:   docID,
+		Vector:  chunk1Vec,
+		Content: "Hybrid search combines vector similarity with keyword matching using FTS5.",
 	})
-	if err == nil {
-		for i, neighbor := range neighbors {
-			fmt.Printf("   %d. %s\n", i+1, neighbor.Content[:50]+"...")
+
+	// Chunk 2: Mentions "Performance" explicitly
+	chunk2Vec := []float32{0.0, 0.9, 0.1, 0.0}
+	store.Upsert(ctx, &core.Embedding{
+		ID:      "chunk_2",
+		DocID:   docID,
+		Vector:  chunk2Vec,
+		Content: "Performance is optimized using SQ8 quantization and HNSW indexing.",
+	})
+
+	// Chunk 3: Mentions "Installation"
+	chunk3Vec := []float32{0.0, 0.0, 0.1, 0.9}
+	store.Upsert(ctx, &core.Embedding{
+		ID:      "chunk_3",
+		DocID:   docID,
+		Vector:  chunk3Vec,
+		Content: "To install sqvect, simply run go get.",
+	})
+
+	// 3. Perform Hybrid Search
+	// Scenario: User asks "How does search work?"
+	// - Vector query might be close to chunk1 (semantic)
+	// - Keyword "search" appears in chunk1
+	
+	fmt.Println("\nPerforming Hybrid Search for 'search'...")
+	
+	queryVec := []float32{0.8, 0.2, 0.0, 0.0} // Semantically close to chunk 1
+	results, err := store.HybridSearch(ctx, queryVec, "search", core.HybridSearchOptions{
+		SearchOptions: core.SearchOptions{TopK: 3},
+		RRFK:          60,
+	})
+	if err != nil {
+		log.Printf("Hybrid search warning (FTS might be missing): %v", err)
+	} else {
+		for i, res := range results {
+			fmt.Printf("%d. [Score: %.4f] %s\n", i+1, res.Score, res.Content)
 		}
 	}
+
+	// 4. Secure Search (ACL)
+	fmt.Println("\nDemonstrating Row-Level Security (ACL)...")
 	
-	// 4. Path finding for explanation chains
-	fmt.Printf("\n4. Learning path from introduction to applications:\n")
-	path, err := graphStore.ShortestPath(ctx, "doc1", "doc5")
-	if err == nil && path != nil {
-		fmt.Printf("   Path found with %d steps:\n", len(path.Nodes)-1)
-		for i, node := range path.Nodes {
-			if i > 0 {
-				fmt.Printf("   -> ")
-			}
-			preview := node.Content
-			if len(preview) > 30 {
-				preview = preview[:30] + "..."
-			}
-			fmt.Printf("%s", preview)
-		}
-		fmt.Println()
+	// Add a secret chunk
+	store.Upsert(ctx, &core.Embedding{
+		ID:      "secret_chunk",
+		DocID:   docID,
+		Vector:  chunk1Vec,
+		Content: "SECRET: The launch code is 1234.",
+		ACL:     []string{"role:admin"},
+	})
+
+	// Search as "role:user" (Should NOT see secret)
+	fmt.Println("Searching as 'role:user':")
+	resultsUser, _ := store.SearchWithACL(ctx, chunk1Vec, []string{"role:user"}, core.SearchOptions{TopK: 5})
+	for _, res := range resultsUser {
+		fmt.Printf("- %s\n", res.Content)
 	}
-	
-	// Performance stats
-	stats, _ := db.Vector().Stats(ctx)
-	fmt.Printf("\nRAG System Stats:\n")
-	fmt.Printf("  Total embeddings: %d\n", stats.Count)
-	fmt.Printf("  Vector dimensions: %d\n", stats.Dimensions)
-	fmt.Printf("  Database size: %.2f KB\n", float64(stats.Size)/1024)
+
+	// Search as "role:admin" (Should see secret)
+	fmt.Println("Searching as 'role:admin':")
+	resultsAdmin, _ := store.SearchWithACL(ctx, chunk1Vec, []string{"role:admin"}, core.SearchOptions{TopK: 5})
+	for _, res := range resultsAdmin {
+		fmt.Printf("- %s\n", res.Content)
+	}
 }
 
-// createDocumentEmbedding simulates document embeddings for demonstration
-// In real RAG systems, you'd use OpenAI, HuggingFace, or other embedding models
-func createDocumentEmbedding(dim int, seed int) []float32 {
-	vector := make([]float32, dim)
-	for i := 0; i < dim; i++ {
-		vector[i] = float32((seed*i*17)%200-100) / 100.0
+func randomVec(dim int) []float32 {
+	v := make([]float32, dim)
+	for i := range v {
+		v[i] = rand.Float32()
 	}
-	// Simple normalization
-	var norm float32
-	for _, v := range vector {
-		norm += v * v
-	}
-	if norm > 0 {
-		norm = float32(1.0 / math.Sqrt(float64(norm)))
-		for i := range vector {
-			vector[i] *= norm
-		}
-	}
-	return vector
+	return v
 }
