@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/liliang-cn/sqvect/pkg/core"
 	"github.com/liliang-cn/sqvect/pkg/graph"
 )
@@ -136,15 +137,7 @@ func (q *Quick) SearchInCollection(ctx context.Context, collection string, query
 	return q.db.store.Search(ctx, query, opts)
 }
 
-// generateID generates a simple ID for embeddings
+// generateID generates a unique ID for embeddings using UUID
 func generateID() string {
-	// Use a simple counter or UUID - keeping it lightweight
-	return fmt.Sprintf("emb_%d", generateCounter())
-}
-
-var idCounter int64
-
-func generateCounter() int64 {
-	idCounter++
-	return idCounter
+	return uuid.New().String()
 }

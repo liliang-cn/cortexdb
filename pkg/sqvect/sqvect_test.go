@@ -151,7 +151,10 @@ func TestQuickAdd(t *testing.T) {
 	})
 
 	t.Run("SmartPadding", func(t *testing.T) {
-		// Test smart padding feature - system automatically adjusts dimensions
+		// Test smart padding feature
+		// We need to enable SmartAdapt explicitly now that StrictMode is default
+		db.store.SetAutoDimAdapt(core.SmartAdapt)
+		
 		vector := []float32{1.0, 2.0} // Will be padded to 3 dimensions
 		content := "Padded vector"
 		
@@ -268,9 +271,6 @@ func TestQuickSearch(t *testing.T) {
 }
 
 func TestGenerateID(t *testing.T) {
-	// Reset counter for consistent testing
-	idCounter = 0
-	
 	id1 := generateID()
 	id2 := generateID()
 	
@@ -278,33 +278,13 @@ func TestGenerateID(t *testing.T) {
 		t.Error("Generated IDs should be unique")
 	}
 	
-	if id1 != "emb_1" {
-		t.Errorf("Expected first ID to be 'emb_1', got %s", id1)
+	if id1 == "" || id2 == "" {
+		t.Error("Generated IDs should not be empty")
 	}
 	
-	if id2 != "emb_2" {
-		t.Errorf("Expected second ID to be 'emb_2', got %s", id2)
-	}
-}
-
-func TestGenerateCounter(t *testing.T) {
-	// Reset counter
-	idCounter = 0
-	
-	count1 := generateCounter()
-	count2 := generateCounter()
-	count3 := generateCounter()
-	
-	if count1 != 1 {
-		t.Errorf("Expected first count to be 1, got %d", count1)
-	}
-	
-	if count2 != 2 {
-		t.Errorf("Expected second count to be 2, got %d", count2)
-	}
-	
-	if count3 != 3 {
-		t.Errorf("Expected third count to be 3, got %d", count3)
+	// Should be a valid UUID string
+	if len(id1) < 32 {
+		t.Errorf("Expected UUID length, got %d", len(id1))
 	}
 }
 

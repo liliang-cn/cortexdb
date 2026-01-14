@@ -140,6 +140,7 @@ type Config struct {
 	IVF            IVFConfig            `json:"ivf,omitempty"`           // IVF index configuration
 	TextSimilarity TextSimilarityConfig `json:"textSimilarity,omitempty"` // Text similarity configuration
 	Quantization   QuantizationConfig   `json:"quantization,omitempty"`   // Quantization configuration
+	Logger         Logger               `json:"-"`                       // Logger instance (defaults to nop logger)
 }
 
 // DefaultConfig returns a default configuration
