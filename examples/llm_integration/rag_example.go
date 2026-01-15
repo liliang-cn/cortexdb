@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/liliang-cn/sqvect/pkg/core"
-	"github.com/liliang-cn/sqvect/pkg/index"
+	"github.com/liliang-cn/sqvect/v2/v2/pkg/core"
+	"github.com/liliang-cn/sqvect/v2/v2/pkg/index"
 )
 
 // RAGExample demonstrates a complete RAG system using sqvect

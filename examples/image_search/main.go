@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/liliang-cn/sqvect/pkg/sqvect"
+	"github.com/liliang-cn/sqvect/v2/v2/pkg/sqvect"
 )
 
 // Image represents an image with metadata

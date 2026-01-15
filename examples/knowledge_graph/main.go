@@ -7,8 +7,8 @@ import (
 	"math/rand"
 	"os"
 
-	"github.com/liliang-cn/sqvect/pkg/sqvect"
-	"github.com/liliang-cn/sqvect/pkg/graph"
+	"github.com/liliang-cn/sqvect/v2/v2/pkg/sqvect"
+	"github.com/liliang-cn/sqvect/v2/v2/pkg/graph"
 )
 
 // generateEmbedding creates a simple embedding for demonstration

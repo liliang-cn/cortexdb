@@ -1,8 +1,8 @@
 package graph
 
 import (
-	"github.com/liliang-cn/sqvect/internal/encoding"
-	"github.com/liliang-cn/sqvect/pkg/core"
+	"github.com/liliang-cn/sqvect/v2/internal/encoding"
+	"github.com/liliang-cn/sqvect/v2/pkg/core"
 	"context"
 	"database/sql"
 	"encoding/json"

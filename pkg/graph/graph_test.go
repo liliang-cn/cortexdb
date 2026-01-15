@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/liliang-cn/sqvect/pkg/core"
+	"github.com/liliang-cn/sqvect/v2/pkg/core"
 )
 
 func TestGraphBasicOperations(t *testing.T) {

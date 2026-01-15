@@ -1,10 +1,10 @@
 # sqvect
 
-[![CI/CD](https://github.com/liliang-cn/sqvect/actions/workflows/ci.yml/badge.svg)](https://github.com/liliang-cn/sqvect/actions/workflows/ci.yml)
+[![CI/CD](https://github.com/liliang-cn/sqvect/v2/actions/workflows/ci.yml/badge.svg)](https://github.com/liliang-cn/sqvect/v2/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/liliang-cn/sqvect/branch/main/graph/badge.svg)](https://codecov.io/gh/liliang-cn/sqvect)
-[![Go Report Card](https://goreportcard.com/badge/github.com/liliang-cn/sqvect)](https://goreportcard.com/report/github.com/liliang-cn/sqvect)
-[![Go Reference](https://pkg.go.dev/badge/github.com/liliang-cn/sqvect.svg)](https://pkg.go.dev/github.com/liliang-cn/sqvect)
-[![GitHub release](https://img.shields.io/github/release/liliang-cn/sqvect.svg)](https://github.com/liliang-cn/sqvect/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/liliang-cn/sqvect/v2)](https://goreportcard.com/report/github.com/liliang-cn/sqvect/v2)
+[![Go Reference](https://pkg.go.dev/badge/github.com/liliang-cn/sqvect/v2.svg)](https://pkg.go.dev/github.com/liliang-cn/sqvect/v2)
+[![GitHub release](https://img.shields.io/github/release/liliang-cn/sqvect.svg)](https://github.com/liliang-cn/sqvect/v2/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **A lightweight, embeddable vector database LIBRARY for Go AI projects.**
@@ -24,7 +24,7 @@ sqvect is a **100% pure Go library** designed to be the storage kernel for your 
 ## 🚀 Quick Start
 
 ```bash
-go get github.com/liliang-cn/sqvect
+go get github.com/liliang-cn/sqvect/v2
 ```
 
 ```go
@@ -33,7 +33,7 @@ package main
 import (
     "context"
     "fmt"
-    "github.com/liliang-cn/sqvect/pkg/sqvect"
+    "github.com/liliang-cn/sqvect/v2/pkg/sqvect"
 )
 
 func main() {

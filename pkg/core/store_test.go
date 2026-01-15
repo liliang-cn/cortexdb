@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/liliang-cn/sqvect/internal/encoding"
+	"github.com/liliang-cn/sqvect/v2/internal/encoding"
 )
 
 func createDummyDoc(ctx context.Context, s *SQLiteStore, id string) error {

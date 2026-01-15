@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/liliang-cn/sqvect/pkg/index"
+	"github.com/liliang-cn/sqvect/v2/pkg/index"
 
 	_ "modernc.org/sqlite" // SQLite driver
 )

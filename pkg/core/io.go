@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/liliang-cn/sqvect/internal/encoding"
-	"github.com/liliang-cn/sqvect/pkg/index"
+	"github.com/liliang-cn/sqvect/v2/internal/encoding"
+	"github.com/liliang-cn/sqvect/v2/pkg/index"
 )
 
 // DumpFormat represents the format for data export

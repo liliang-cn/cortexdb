@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/liliang-cn/sqvect/internal/encoding"
-	"github.com/liliang-cn/sqvect/pkg/quantization"
+	"github.com/liliang-cn/sqvect/v2/internal/encoding"
+	"github.com/liliang-cn/sqvect/v2/pkg/quantization"
 )
 
 // Upsert inserts or updates a single embedding

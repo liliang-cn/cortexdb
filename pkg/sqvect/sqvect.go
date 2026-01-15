@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/liliang-cn/sqvect/pkg/core"
-	"github.com/liliang-cn/sqvect/pkg/graph"
+	"github.com/liliang-cn/sqvect/v2/pkg/core"
+	"github.com/liliang-cn/sqvect/v2/pkg/graph"
 )
 
 // DB represents a SQLite vector database instance

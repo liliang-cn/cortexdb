@@ -103,9 +103,9 @@ All examples use the latest sqvect API:
 
 ```go
 import (
-    "github.com/liliang-cn/sqvect/pkg/sqvect"
-    "github.com/liliang-cn/sqvect/pkg/core"
-    "github.com/liliang-cn/sqvect/pkg/graph"
+    "github.com/liliang-cn/sqvect/v2/pkg/sqvect"
+    "github.com/liliang-cn/sqvect/v2/pkg/core"
+    "github.com/liliang-cn/sqvect/v2/pkg/graph"
 )
 
 // Initialize database

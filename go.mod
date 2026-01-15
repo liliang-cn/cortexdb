@@ -1,4 +1,4 @@
-module github.com/liliang-cn/sqvect
+module github.com/liliang-cn/sqvect/v2
 
 go 1.23.0
 

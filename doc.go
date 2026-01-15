@@ -17,7 +17,7 @@
 //
 //	import (
 //	    "context"
-//	    "github.com/liliang-cn/sqvect/pkg/sqvect"
+//	    "github.com/liliang-cn/sqvect/v2/pkg/sqvect"
 //	)
 //
 //	func main() {

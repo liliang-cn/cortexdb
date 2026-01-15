@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/liliang-cn/sqvect/pkg/core"
+	"github.com/liliang-cn/sqvect/v2/pkg/core"
 )
 
 var (

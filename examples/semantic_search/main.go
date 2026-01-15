@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/liliang-cn/sqvect/pkg/core"
-	"github.com/liliang-cn/sqvect/pkg/sqvect"
+	"github.com/liliang-cn/sqvect/v2/v2/pkg/core"
+	"github.com/liliang-cn/sqvect/v2/v2/pkg/sqvect"
 )
 
 // Document represents a text document with metadata

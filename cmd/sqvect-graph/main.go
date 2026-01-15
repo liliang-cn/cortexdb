@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/liliang-cn/sqvect/pkg/core"
-	graphpkg "github.com/liliang-cn/sqvect/pkg/graph"
+	"github.com/liliang-cn/sqvect/v2/pkg/core"
+	graphpkg "github.com/liliang-cn/sqvect/v2/pkg/graph"
 )
 
 var (

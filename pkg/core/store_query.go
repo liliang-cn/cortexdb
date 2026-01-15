@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/liliang-cn/sqvect/internal/encoding"
+	"github.com/liliang-cn/sqvect/v2/internal/encoding"
 )
 
 // GetByID gets an embedding by its ID

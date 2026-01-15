@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/liliang-cn/sqvect/pkg/core"
-	"github.com/liliang-cn/sqvect/pkg/graph"
+	"github.com/liliang-cn/sqvect/v2/pkg/core"
+	"github.com/liliang-cn/sqvect/v2/pkg/graph"
 )
 
 func TestDefaultConfig(t *testing.T) {
