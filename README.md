@@ -54,6 +54,38 @@ func main() {
 }
 ```
 
+## 💡 Why sqvect?
+
+### Key Advantages
+
+**🎯 All-in-One RAG Storage**
+- Stop managing separate databases for vectors, documents, and chat history
+- Single SQLite file = easy backup, migration, and version control
+- Perfect for edge deployment and local-first applications
+
+**🚀 Developer Experience**
+- Zero configuration - works out of the box
+- Type-safe Go API with full IntelliSense support
+- Built-in RAG schemas (no ORM/SQL required)
+- Comprehensive examples for common use cases
+
+**⚡ Performance & Efficiency**
+- SQ8 quantization reduces memory by 75% (1M vectors ~1GB)
+- Multiple index types (HNSW, IVF, LSH) for different workloads
+- WAL mode + connection pooling for concurrent access
+- SIMD-ready distance calculations
+
+**🔒 Security First**
+- Row-Level Security (ACL) built into the core
+- User-scoped queries enforce permission boundaries
+- No data leakage between tenants
+
+**🧪 Production Ready**
+- 93% test coverage on core APIs
+- Battle-tested algorithms (HNSW, RRF, PQ)
+- CI/CD + Codecov + Go Report Card badges
+- MIT license for easy integration
+
 ## 🏗 Enterprise RAG Capabilities
 
 sqvect goes beyond simple vector storage. It provides the schema and APIs needed for complex RAG apps.
@@ -139,6 +171,84 @@ sqvect manages these tables for you:
 | **IVF** | ~14,500 ops/s | ~1,230 QPS | ~1.0 GB (SQ8) |
 
 *Tested on Apple M2 Pro.*
+
+## 🎯 Best Use Cases
+
+### Perfect For ✅
+
+| Use Case | Why sqvect? |
+|:---|:---|
+| **Local-First RAG Apps** | Single file, no server, works offline |
+| **Edge AI Devices** | Low memory (SQ8), no external deps, pure Go |
+| **Personal Knowledge Bases** | Simple backup (copy file), easy to query |
+| **Internal Tools** | Fast setup, no DevOps overhead |
+| **Chat Memory Systems** | Built-in sessions/messages tables |
+| **Multi-Tenant SaaS** | ACL + Collections for isolation |
+| **Document Clustering** | Graph algorithms (PageRank, community detection) |
+| **Hybrid Search Apps** | Vector + FTS5 with RRF fusion |
+| **Prototype to Production** | Same code from dev to prod (just scale up) |
+
+### Not Recommended For ❌
+
+| Scenario | Better Alternative |
+|:---|:---|
+| >100M vectors | Milvus, Qdrant (distributed) |
+| <10ms latency requirements | Redis-based vector DB |
+| Multi-region HA | Cloud-native vector DB (Pinecone) |
+| Non-Go teams | Chroma (Python), Weaviate |
+
+### Real-World Examples
+
+- **Legal Document Analysis**: Store contracts, clauses, and case law with metadata filters
+- **Customer Support Chatbot**: Persistent conversation history + knowledge base search
+- **Code Search Engine**: Semantic code search + syntax-aware filtering
+- **Research Paper Graph**: Citation network + vector similarity
+- **E-commerce Recommendations**: User embeddings + product graph
+
+## 📊 Comparison with Alternatives
+
+### Vector Database Comparison
+
+| Feature | sqvect | Chroma | Weaviate | Milvus | Qdrant |
+|:---|:---:|:---:|:---:|:---:|:---:|
+| **Architecture** | Embedded | Server | Server | Distributed | Server |
+| **Language** | Go | Python | Go | Go | Rust |
+| **Dependencies** | SQLite only | DuckDB | Vector+Obj | Many | Many |
+| **Setup Time** | ~1 sec | ~5 min | ~10 min | ~30 min | ~10 min |
+| **Vector Search** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Keyword Search** | ✅ FTS5 | ❌ | ⚠️ | ❌ | ❌ |
+| **Graph DB** | ✅ Built-in | ❌ | ❌ | ❌ | ❌ |
+| **RAG Tables** | ✅ Ready | ❌ DIY | ❌ DIY | ❌ DIY | ❌ DIY |
+| **ACL/Security** | ✅ Row-level | ❌ | ⚠️ | ⚠️ | ⚠️ |
+| **Quantization** | SQ8/PQ/Binary | ❌ | ✅ | ✅ | ✅ |
+| **Scalability** | <10M | <100M | <1B | >1B | <1B |
+| **Backup** | Copy file | Export | Snapshot | Complex | Snapshot |
+| **Ideal For** | Edge/Local | Python ML | Enterprise | Big Data | Production |
+
+### When to Choose sqvect?
+
+**Choose sqvect if:**
+- ✅ You want a **single-file** database (no separate services)
+- ✅ You're building **local-first** or **edge AI** applications
+- ✅ You need **built-in RAG schemas** (docs, sessions, messages)
+- ✅ You want **graph algorithms** without Neo4j
+- ✅ You value **simplicity** over horizontal scalability
+- ✅ You're targeting **<10 million vectors**
+
+**Choose alternatives if:**
+- ❌ You need **distributed** deployment across multiple nodes
+- ❌ You have **>100M vectors** and need horizontal scaling
+- ❌ You require **sub-10ms** query latency
+- ❌ Your team doesn't use Go (prefer Python/TypeScript SDKs)
+
+### Unique Differentiators
+
+🎯 **No other vector DB combines:**
+1. Vector + Graph + Document + Chat in ONE file
+2. Built-in RAG schemas (zero design work)
+3. Row-Level Security without external auth
+4. Edge deployment ready (no network/containers)
+5. Pure Go (cross-compile to any platform)
 
 ## ⚖️ License
 
