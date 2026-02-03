@@ -39,7 +39,7 @@ jobs:
           fail_ci_if_error: false
 
       - name: Verify library can be imported
-        run: go list -m github.com/liliang-cn/sqvect
+        run: go list -m github.com/liliang-cn/sqvect/v2
 
       - name: Check examples compile (without running)
         run: |
