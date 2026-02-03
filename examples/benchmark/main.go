@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/liliang-cn/sqvect/v2/v2/pkg/sqvect"
+	"github.com/liliang-cn/sqvect/v2/pkg/sqvect"
 )
 
 func main() {

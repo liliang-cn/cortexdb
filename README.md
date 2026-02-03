@@ -16,8 +16,10 @@ sqvect is a **100% pure Go library** designed to be the storage kernel for your 
 - 🪶 **Lightweight** – Single SQLite file, zero external dependencies.
 - 🚀 **RAG-Ready** – Built-in tables for **Documents**, **Chat Sessions**, and **Messages**.
 - 🔍 **Hybrid Search** – Combine **Vector Search (HNSW)** + **Keyword Search (FTS5)** with RRF fusion.
+- 🧠 **AI Agent Memory** – **Hindsight** system for long-term agent memory (World, Bank, Opinion, Observation).
 - 🛡️ **Secure** – Row-Level Security (RLS) via **ACL** fields and query filtering.
-- 🧠 **Memory Efficient** – **SQ8 Quantization** reduces RAM usage by 75%.
+- 🕸️ **Graph Storage** – Built-in knowledge graph with entity relationships.
+- 📊 **Quantization** – **SQ8 Quantization** reduces RAM usage by 75%.
 - ⚡ **High Performance** – Optimized WAL mode, SIMD-ready distance calcs.
 - 🎯 **Zero Config** – Works out of the box.
 
@@ -85,6 +87,77 @@ func main() {
 - Battle-tested algorithms (HNSW, RRF, PQ)
 - CI/CD + Codecov + Go Report Card badges
 - MIT license for easy integration
+
+## 🧠 Hindsight: AI Agent Memory System
+
+sqvect includes **Hindsight**, a biomimetic memory system for AI agents that mirrors how human memory works. Inspired by [vectorize-io/hindsight](https://github.com/vectorize-io/hindsight), it enables agents to learn and improve over time.
+
+### Three Core Operations
+
+```go
+import "github.com/liliang-cn/sqvect/v2/pkg/hindsight"
+
+sys, _ := hindsight.New(&hindsight.Config{DBPath: "agent_memory.db"})
+
+// RETAIN: Store memories (caller provides embeddings)
+sys.Retain(ctx, &hindsight.Memory{
+    Type:     hindsight.WorldMemory,
+    Content:  "Alice works at Google as a senior engineer",
+    Vector:   embedding,
+    Entities: []string{"Alice", "Google"},
+})
+
+// RECALL: Search using TEMPR strategies (Temporal, Entity, Memory, Priming)
+results, _ := sys.Recall(ctx, &hindsight.RecallRequest{
+    BankID:      "agent-1",
+    QueryVector: queryEmbedding,
+    Strategy:    hindsight.DefaultStrategy(),
+})
+
+// OBSERVE: Reflect on memories to generate new insights
+resp, _ := sys.Observe(ctx, &hindsight.ReflectRequest{
+    BankID:      "agent-1",
+    Query:       "What does Alice prefer?",
+    QueryVector: queryEmbedding,
+})
+// resp.Observations contains newly generated insights
+```
+
+### Four Memory Types
+
+| Type | Description | Example |
+|:---|:---|:---|
+| **World** | Objective facts about the world | "Alice works at Google" |
+| **Bank** | Agent's own experiences | "I recommended Python to Bob" |
+| **Opinion** | Beliefs with confidence scores | "Python is best for ML" (0.85) |
+| **Observation** | Insights derived from reflection | "Users prefer concise answers" |
+
+### TEMPR Retrieval Strategies
+
+Hindsight runs four search strategies in parallel and fuses results with RRF:
+
+- **T**emporal – Time-range filtered search
+- **E**ntity – Graph-based entity relationships
+- **M**emory – Semantic vector similarity
+- **P**riming – Keyword/BM25 exact matching
+- **R**ecall – RRF fusion for ranked results
+
+### Memory Banks & Disposition
+
+```go
+// Create a memory bank with personality traits
+bank := hindsight.NewBank("agent-1", "Assistant Agent")
+bank.Skepticism = 3  // 1=Trusting, 5=Skeptical
+bank.Literalism = 3  // 1=Flexible, 5=Literal
+bank.Empathy = 4     // 1=Detached, 5=Empathetic
+sys.CreateBank(ctx, bank)
+```
+
+**Why Hindsight Matters**
+- Agents form **opinions** with confidence scores (not just retrieve facts)
+- **Disposition traits** influence how observations are generated
+- Agents **learn from experience** – observations persist across sessions
+- Pure memory system – no LLM dependency (caller handles embeddings)
 
 ## 🏗 Enterprise RAG Capabilities
 
@@ -154,9 +227,11 @@ db.Vector().DeleteDocument(ctx, "manual_v1")
 
 sqvect manages these tables for you:
 
-| Table | Description | 
+| Table | Description |
 | :--- | :--- |
 | `embeddings` | Vectors, content, JSON metadata, ACLs. |
+| `graph_nodes` | Graph nodes for entity relationships. |
+| `graph_edges` | Directed edges between nodes (with weights). |
 | `documents` | Parent records for embeddings (Title, URL, Version). |
 | `sessions` | Chat sessions/threads. |
 | `messages` | Chat logs (Role, Content, Timestamp). |
@@ -179,6 +254,7 @@ sqvect manages these tables for you:
 | Use Case | Why sqvect? |
 |:---|:---|
 | **Local-First RAG Apps** | Single file, no server, works offline |
+| **AI Agent Memory** | Hindsight system with TEMPR retrieval |
 | **Edge AI Devices** | Low memory (SQ8), no external deps, pure Go |
 | **Personal Knowledge Bases** | Simple backup (copy file), easy to query |
 | **Internal Tools** | Fast setup, no DevOps overhead |
@@ -199,6 +275,7 @@ sqvect manages these tables for you:
 
 ### Real-World Examples
 
+- **AI Agent Memory**: Long-term memory for agents using Hindsight (World, Bank, Opinion, Observation)
 - **Legal Document Analysis**: Store contracts, clauses, and case law with metadata filters
 - **Customer Support Chatbot**: Persistent conversation history + knowledge base search
 - **Code Search Engine**: Semantic code search + syntax-aware filtering
@@ -244,11 +321,12 @@ sqvect manages these tables for you:
 ### Unique Differentiators
 
 🎯 **No other vector DB combines:**
-1. Vector + Graph + Document + Chat in ONE file
+1. Vector + Graph + Document + Chat + **Agent Memory (Hindsight)** in ONE file
 2. Built-in RAG schemas (zero design work)
-3. Row-Level Security without external auth
-4. Edge deployment ready (no network/containers)
-5. Pure Go (cross-compile to any platform)
+3. **Hindsight**: biomimetic memory system for AI agents (TEMPR retrieval)
+4. Row-Level Security without external auth
+5. Edge deployment ready (no network/containers)
+6. Pure Go (cross-compile to any platform)
 
 ## ⚖️ License
 

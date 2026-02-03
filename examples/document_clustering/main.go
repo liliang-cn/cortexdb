@@ -9,8 +9,8 @@ import (
 	"os"
 	"sort"
 
-	"github.com/liliang-cn/sqvect/v2/v2/pkg/core"
-	"github.com/liliang-cn/sqvect/v2/v2/pkg/sqvect"
+	"github.com/liliang-cn/sqvect/v2/pkg/core"
+	"github.com/liliang-cn/sqvect/v2/pkg/sqvect"
 )
 
 // Cluster represents a document cluster
