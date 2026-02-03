@@ -20,7 +20,7 @@ sqvect is a **100% pure Go library** designed to be the storage kernel for your 
 - 🛡️ **Secure** – Row-Level Security (RLS) via **ACL** fields and query filtering.
 - 🕸️ **Graph Storage** – Built-in knowledge graph with entity relationships.
 - 📊 **Quantization** – **SQ8 Quantization** reduces RAM usage by 75%.
-- ⚡ **High Performance** – Optimized WAL mode, SIMD-ready distance calcs.
+- ⚡ **High Performance** – Optimized WAL mode, concurrent access.
 - 🎯 **Zero Config** – Works out of the box.
 
 ## 🚀 Quick Start
@@ -75,7 +75,7 @@ func main() {
 - SQ8 quantization reduces memory by 75% (1M vectors ~1GB)
 - Multiple index types (HNSW, IVF, LSH) for different workloads
 - WAL mode + connection pooling for concurrent access
-- SIMD-ready distance calculations
+- Efficient distance calculations
 
 **🔒 Security First**
 - Row-Level Security (ACL) built into the core

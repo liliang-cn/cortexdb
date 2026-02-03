@@ -14,6 +14,7 @@ type PageRankResult struct {
 }
 
 // PageRank calculates PageRank scores for all nodes in the graph
+// Optimized to load only topology (IDs and Edges) instead of full node objects.
 func (g *GraphStore) PageRank(ctx context.Context, iterations int, dampingFactor float64) ([]PageRankResult, error) {
 	if iterations <= 0 {
 		iterations = 100
@@ -22,82 +23,98 @@ func (g *GraphStore) PageRank(ctx context.Context, iterations int, dampingFactor
 		dampingFactor = 0.85
 	}
 
-	// Get all nodes
-	allNodes, err := g.GetAllNodes(ctx, nil)
+	// 1. Load Topology (IDs)
+	rows, err := g.db.QueryContext(ctx, "SELECT id FROM graph_nodes")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get nodes: %w", err)
+		return nil, fmt.Errorf("query nodes: %w", err)
 	}
+	
+	var nodes []string
+	nodeToIndex := make(map[string]int)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		nodeToIndex[id] = len(nodes)
+		nodes = append(nodes, id)
+	}
+	rows.Close()
 
-	if len(allNodes) == 0 {
+	if len(nodes) == 0 {
 		return []PageRankResult{}, nil
 	}
 
-	// Initialize PageRank scores
-	scores := make(map[string]float64)
-	newScores := make(map[string]float64)
-	nodeCount := float64(len(allNodes))
+	// 2. Load Topology (Edges)
+	edgeRows, err := g.db.QueryContext(ctx, "SELECT from_node_id, to_node_id FROM graph_edges")
+	if err != nil {
+		return nil, fmt.Errorf("query edges: %w", err)
+	}
+	
+	outDegree := make([]int, len(nodes))
+	inLinks := make([][]int, len(nodes))
+
+	for edgeRows.Next() {
+		var from, to string
+		if err := edgeRows.Scan(&from, &to); err != nil {
+			edgeRows.Close()
+			return nil, err
+		}
+		
+		u, ok1 := nodeToIndex[from]
+		v, ok2 := nodeToIndex[to]
+		if ok1 && ok2 {
+			outDegree[u]++
+			inLinks[v] = append(inLinks[v], u)
+		}
+	}
+	edgeRows.Close()
+
+	// 3. Compute PageRank
+	nodeCount := float64(len(nodes))
+	scores := make([]float64, len(nodes))
+	newScores := make([]float64, len(nodes))
 	initialScore := 1.0 / nodeCount
 
-	for _, node := range allNodes {
-		scores[node.ID] = initialScore
+	for i := range scores {
+		scores[i] = initialScore
 	}
 
-	// Build adjacency lists
-	outLinks := make(map[string][]string)
-	inLinks := make(map[string][]string)
-
-	for _, node := range allNodes {
-		edges, err := g.GetEdges(ctx, node.ID, "out")
-		if err != nil {
-			continue
-		}
-
-		for _, edge := range edges {
-			outLinks[node.ID] = append(outLinks[node.ID], edge.ToNodeID)
-			inLinks[edge.ToNodeID] = append(inLinks[edge.ToNodeID], node.ID)
-		}
-	}
-
-	// Iterative PageRank calculation
 	for iter := 0; iter < iterations; iter++ {
-		// Calculate new scores
-		for _, node := range allNodes {
+		maxDiff := 0.0
+		
+		for i := 0; i < len(nodes); i++ {
 			rank := (1.0 - dampingFactor) / nodeCount
 			
 			// Sum contributions from incoming links
-			for _, inNode := range inLinks[node.ID] {
-				outCount := len(outLinks[inNode])
-				if outCount > 0 {
-					rank += dampingFactor * scores[inNode] / float64(outCount)
+			for _, inIdx := range inLinks[i] {
+				outDeg := outDegree[inIdx]
+				if outDeg > 0 {
+					rank += dampingFactor * scores[inIdx] / float64(outDeg)
 				}
 			}
 			
-			newScores[node.ID] = rank
-		}
-
-		// Check convergence
-		maxDiff := 0.0
-		for nodeID := range scores {
-			diff := math.Abs(newScores[nodeID] - scores[nodeID])
+			newScores[i] = rank
+			diff := math.Abs(newScores[i] - scores[i])
 			if diff > maxDiff {
 				maxDiff = diff
 			}
-			scores[nodeID] = newScores[nodeID]
 		}
 
-		// Early termination if converged
+		copy(scores, newScores)
 		if maxDiff < 1e-6 {
 			break
 		}
 	}
 
-	// Convert to sorted results
-	results := make([]PageRankResult, 0, len(scores))
-	for nodeID, score := range scores {
-		results = append(results, PageRankResult{
-			NodeID: nodeID,
-			Score:  score,
-		})
+	// 4. Convert to results
+	results := make([]PageRankResult, len(nodes))
+	for i, id := range nodes {
+		results[i] = PageRankResult{
+			NodeID: id,
+			Score:  scores[i],
+		}
 	}
 
 	sort.Slice(results, func(i, j int) bool {
@@ -115,42 +132,67 @@ type Community struct {
 }
 
 // CommunityDetection performs community detection using the Louvain method
+// Optimized to reduce DB queries.
 func (g *GraphStore) CommunityDetection(ctx context.Context) ([]Community, error) {
-	// Get all nodes
-	allNodes, err := g.GetAllNodes(ctx, nil)
+	// 1. Load Nodes
+	rows, err := g.db.QueryContext(ctx, "SELECT id FROM graph_nodes")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get nodes: %w", err)
+		return nil, fmt.Errorf("query nodes: %w", err)
 	}
 
-	if len(allNodes) == 0 {
+	var nodes []string
+	nodeToIndex := make(map[string]int)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		nodeToIndex[id] = len(nodes)
+		nodes = append(nodes, id)
+	}
+	rows.Close()
+
+	if len(nodes) == 0 {
 		return []Community{}, nil
 	}
 
-	// Initialize each node in its own community
-	communities := make(map[string]int)
-	for i, node := range allNodes {
-		communities[node.ID] = i
+	// 2. Load Edges (Weighted)
+	// We need an adjacency map for weights: u -> v -> weight
+	adj := make([]map[int]float64, len(nodes))
+	for i := range adj {
+		adj[i] = make(map[int]float64)
 	}
 
-	// Build weighted adjacency matrix
-	weights := make(map[string]map[string]float64)
-	totalWeight := 0.0
-
-	for _, node := range allNodes {
-		weights[node.ID] = make(map[string]float64)
-		edges, err := g.GetEdges(ctx, node.ID, "out")
-		if err != nil {
-			continue
-		}
-
-		for _, edge := range edges {
-			weights[node.ID][edge.ToNodeID] = edge.Weight
-			totalWeight += edge.Weight
-		}
+	edgeRows, err := g.db.QueryContext(ctx, "SELECT from_node_id, to_node_id, weight FROM graph_edges")
+	if err != nil {
+		return nil, fmt.Errorf("query edges: %w", err)
 	}
 
-	// Simple community detection based on edge density
-	// (Simplified version - real Louvain is more complex)
+	for edgeRows.Next() {
+		var from, to string
+		var weight float64
+		if err := edgeRows.Scan(&from, &to, &weight); err != nil {
+			edgeRows.Close()
+			return nil, err
+		}
+		
+		u, ok1 := nodeToIndex[from]
+		v, ok2 := nodeToIndex[to]
+		if ok1 && ok2 {
+			// Directed to Undirected (or sum weights)
+			adj[u][v] += weight
+			adj[v][u] += weight // Treat as undirected for community detection often works better
+		}
+	}
+	edgeRows.Close()
+
+	// 3. Louvain Algorithm (Simplified)
+	communities := make([]int, len(nodes))
+	for i := range communities {
+		communities[i] = i
+	}
+
 	changed := true
 	iterations := 0
 	maxIterations := 100
@@ -159,65 +201,52 @@ func (g *GraphStore) CommunityDetection(ctx context.Context) ([]Community, error
 		changed = false
 		iterations++
 
-		for _, node := range allNodes {
-			currentCommunity := communities[node.ID]
-			bestCommunity := currentCommunity
+		for i := 0; i < len(nodes); i++ {
+			currentComm := communities[i]
+			bestComm := currentComm
 			bestGain := 0.0
 
-			// Check neighboring communities
-			neighbors := make(map[int]float64)
-			edges, _ := g.GetEdges(ctx, node.ID, "both")
-			
-			for _, edge := range edges {
-				var neighborID string
-				if edge.FromNodeID == node.ID {
-					neighborID = edge.ToNodeID
-				} else {
-					neighborID = edge.FromNodeID
-				}
-				
-				neighborComm := communities[neighborID]
-				neighbors[neighborComm] += edge.Weight
+			// Calculate connection strength to each neighboring community
+			commWeights := make(map[int]float64)
+			for neighbor, weight := range adj[i] {
+				commWeights[communities[neighbor]] += weight
 			}
 
-			// Find best community to move to
-			for comm, weight := range neighbors {
-				if comm != currentCommunity {
-					gain := weight // Simplified gain calculation
-					if gain > bestGain {
-						bestGain = gain
-						bestCommunity = comm
+			// Find best community
+			for comm, weight := range commWeights {
+				if comm != currentComm {
+					// Simplified gain: just raw weight connection
+					if weight > bestGain {
+						bestGain = weight
+						bestComm = comm
 					}
 				}
 			}
 
-			// Move to best community if gain is positive
-			if bestCommunity != currentCommunity {
-				communities[node.ID] = bestCommunity
+			if bestComm != currentComm {
+				communities[i] = bestComm
 				changed = true
 			}
 		}
 	}
 
-	// Group nodes by community
-	communityGroups := make(map[int][]string)
-	for nodeID, commID := range communities {
-		communityGroups[commID] = append(communityGroups[commID], nodeID)
+	// 4. Group results
+	commGroups := make(map[int][]string)
+	for i, commID := range communities {
+		commGroups[commID] = append(commGroups[commID], nodes[i])
 	}
 
-	// Convert to Community structs
-	results := make([]Community, 0, len(communityGroups))
-	communityID := 0
-	for _, nodes := range communityGroups {
+	results := make([]Community, 0, len(commGroups))
+	idCounter := 0
+	for _, groupNodes := range commGroups {
 		results = append(results, Community{
-			ID:    communityID,
-			Nodes: nodes,
-			Score: float64(len(nodes)) / float64(len(allNodes)), // Simple score
+			ID:    idCounter,
+			Nodes: groupNodes,
+			Score: float64(len(groupNodes)) / float64(len(nodes)),
 		})
-		communityID++
+		idCounter++
 	}
 
-	// Sort by community size
 	sort.Slice(results, func(i, j int) bool {
 		return len(results[i].Nodes) > len(results[j].Nodes)
 	})
@@ -239,110 +268,91 @@ func (g *GraphStore) PredictEdges(ctx context.Context, nodeID string, topK int) 
 		topK = 10
 	}
 
-	// Get the node
+	// Get target node
 	node, err := g.GetNode(ctx, nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get node: %w", err)
 	}
 
-	// Get existing connections
-	existingEdges, err := g.GetEdges(ctx, nodeID, "both")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get edges: %w", err)
-	}
-
-	existingConnections := make(map[string]bool)
-	for _, edge := range existingEdges {
-		if edge.FromNodeID == nodeID {
-			existingConnections[edge.ToNodeID] = true
-		} else {
-			existingConnections[edge.FromNodeID] = true
-		}
-	}
-
-	// Get all nodes
+	// Pre-fetch all edges to avoid N+1 queries
+	// We only need edges connected to 'nodeID' (already got via GetNode -> GetEdges usually, 
+	// but here we need 2-hop neighbors or all edges for 'common neighbors')
+	// For "common neighbors", we really need the full graph topology or at least 
+	// the neighbors of my neighbors.
+	
+	// Let's rely on GetAllNodes for vectors (needed for similarity)
+	// But optimize the structural check.
+	
 	allNodes, err := g.GetAllNodes(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get nodes: %w", err)
 	}
 
-	predictions := make([]EdgePrediction, 0)
+	// Load topology efficiently
+	edgeRows, err := g.db.QueryContext(ctx, "SELECT from_node_id, to_node_id FROM graph_edges")
+	if err != nil {
+		return nil, fmt.Errorf("query edges: %w", err)
+	}
+	defer edgeRows.Close()
 
-	// Method 1: Vector similarity
-	for _, otherNode := range allNodes {
-		if otherNode.ID == nodeID || existingConnections[otherNode.ID] {
-			continue
-		}
-
-		similarity := g.store.GetSimilarityFunc()(node.Vector, otherNode.Vector)
-		if similarity > 0.5 { // Threshold
-			predictions = append(predictions, EdgePrediction{
-				FromNodeID: nodeID,
-				ToNodeID:   otherNode.ID,
-				Score:      similarity,
-				Method:     "vector_similarity",
-			})
+	// Adjacency map: node -> set of neighbors
+	adj := make(map[string]map[string]bool)
+	for edgeRows.Next() {
+		var u, v string
+		if err := edgeRows.Scan(&u, &v); err == nil {
+			if adj[u] == nil { adj[u] = make(map[string]bool) }
+			if adj[v] == nil { adj[v] = make(map[string]bool) }
+			adj[u][v] = true
+			adj[v][u] = true // Treat as undirected for common neighbors
 		}
 	}
 
-	// Method 2: Common neighbors (for existing connections)
+	existingConnections := adj[nodeID]
+	if existingConnections == nil {
+		existingConnections = make(map[string]bool)
+	}
+
+	predictions := make([]EdgePrediction, 0)
+
 	for _, otherNode := range allNodes {
 		if otherNode.ID == nodeID || existingConnections[otherNode.ID] {
 			continue
 		}
 
-		// Count common neighbors
-		otherEdges, err := g.GetEdges(ctx, otherNode.ID, "both")
-		if err != nil {
-			continue
-		}
-
+		// Method 1: Vector Similarity
+		similarity := g.store.GetSimilarityFunc()(node.Vector, otherNode.Vector)
+		
+		// Method 2: Common Neighbors
 		commonNeighbors := 0
-		for _, edge := range otherEdges {
-			var neighborID string
-			if edge.FromNodeID == otherNode.ID {
-				neighborID = edge.ToNodeID
-			} else {
-				neighborID = edge.FromNodeID
-			}
-
-			if existingConnections[neighborID] {
+		for neighbor := range existingConnections {
+			if adj[otherNode.ID][neighbor] {
 				commonNeighbors++
 			}
 		}
 
-		if commonNeighbors > 0 {
-			score := float64(commonNeighbors) / float64(len(existingConnections)+1)
-			
-			// Check if we already have a prediction for this pair
-			found := false
-			for i, pred := range predictions {
-				if pred.ToNodeID == otherNode.ID {
-					// Combine scores
-					predictions[i].Score = (pred.Score + score) / 2
-					predictions[i].Method = "combined"
-					found = true
-					break
-				}
-			}
+		score := similarity
+		method := "vector_similarity"
 
-			if !found {
-				predictions = append(predictions, EdgePrediction{
-					FromNodeID: nodeID,
-					ToNodeID:   otherNode.ID,
-					Score:      score,
-					Method:     "common_neighbors",
-				})
-			}
+		if commonNeighbors > 0 {
+			cnScore := float64(commonNeighbors) / float64(len(existingConnections)+1)
+			score = (similarity + cnScore) / 2
+			method = "combined"
+		}
+
+		if score > 0.5 {
+			predictions = append(predictions, EdgePrediction{
+				FromNodeID: nodeID,
+				ToNodeID:   otherNode.ID,
+				Score:      score,
+				Method:     method,
+			})
 		}
 	}
 
-	// Sort by score
 	sort.Slice(predictions, func(i, j int) bool {
 		return predictions[i].Score > predictions[j].Score
 	})
 
-	// Return top K
 	if len(predictions) > topK {
 		predictions = predictions[:topK]
 	}
@@ -361,85 +371,82 @@ type GraphStatistics struct {
 
 // GetGraphStatistics computes statistics about the graph
 func (g *GraphStore) GetGraphStatistics(ctx context.Context) (*GraphStatistics, error) {
-	// Get all nodes
-	allNodes, err := g.GetAllNodes(ctx, nil)
+	stats := &GraphStatistics{}
+
+	// 1. Counts via SQL (Fast)
+	err := g.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM graph_nodes").Scan(&stats.NodeCount)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get nodes: %w", err)
+		return nil, err
+	}
+	if stats.NodeCount == 0 {
+		return stats, nil
 	}
 
-	nodeCount := len(allNodes)
-	if nodeCount == 0 {
-		return &GraphStatistics{}, nil
+	err = g.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM graph_edges").Scan(&stats.EdgeCount)
+	if err != nil {
+		return nil, err
 	}
 
-	// Count edges and degrees
-	edgeCount := 0
-	totalDegree := 0
-
-	for _, node := range allNodes {
-		edges, err := g.GetEdges(ctx, node.ID, "out")
-		if err != nil {
-			continue
-		}
-		edgeCount += len(edges)
-		totalDegree += len(edges)
-		
-		// Also count in-edges to get total degree
-		inEdges, err := g.GetEdges(ctx, node.ID, "in")
-		if err != nil {
-			continue
-		}
-		totalDegree += len(inEdges)
+	stats.AverageDegree = 2.0 * float64(stats.EdgeCount) / float64(stats.NodeCount)
+	
+	maxEdges := float64(stats.NodeCount) * float64(stats.NodeCount - 1)
+	if maxEdges > 0 {
+		stats.Density = float64(stats.EdgeCount) / maxEdges
 	}
 
-	// Calculate statistics
-	stats := &GraphStatistics{
-		NodeCount:     nodeCount,
-		EdgeCount:     edgeCount,
-		AverageDegree: float64(totalDegree) / float64(nodeCount),
+	// 2. Connected Components (BFS)
+	// Need topology for this
+	edgeRows, err := g.db.QueryContext(ctx, "SELECT from_node_id, to_node_id FROM graph_edges")
+	if err != nil {
+		return nil, err
 	}
-
-	// Calculate density (for directed graph)
-	maxPossibleEdges := nodeCount * (nodeCount - 1)
-	if maxPossibleEdges > 0 {
-		stats.Density = float64(edgeCount) / float64(maxPossibleEdges)
+	
+	adj := make(map[string][]string)
+	for edgeRows.Next() {
+		var u, v string
+		edgeRows.Scan(&u, &v)
+		adj[u] = append(adj[u], v)
+		adj[v] = append(adj[v], u) // Undirected traversal
 	}
+	edgeRows.Close()
 
-	// Count connected components (simplified - treats as undirected)
+	// Get all IDs for traversal
+	idRows, err := g.db.QueryContext(ctx, "SELECT id FROM graph_nodes")
+	if err != nil {
+		return nil, err
+	}
+	var allIDs []string
+	for idRows.Next() {
+		var id string
+		idRows.Scan(&id)
+		allIDs = append(allIDs, id)
+	}
+	idRows.Close()
+
 	visited := make(map[string]bool)
 	components := 0
 
-	for _, node := range allNodes {
-		if !visited[node.ID] {
+	for _, id := range allIDs {
+		if !visited[id] {
 			components++
-			// BFS to mark all connected nodes
-			queue := []string{node.ID}
+			// BFS
+			queue := []string{id}
+			visited[id] = true
+			
 			for len(queue) > 0 {
-				current := queue[0]
+				curr := queue[0]
 				queue = queue[1:]
 				
-				if visited[current] {
-					continue
-				}
-				visited[current] = true
-
-				edges, _ := g.GetEdges(ctx, current, "both")
-				for _, edge := range edges {
-					var nextID string
-					if edge.FromNodeID == current {
-						nextID = edge.ToNodeID
-					} else {
-						nextID = edge.FromNodeID
-					}
-					
-					if !visited[nextID] {
-						queue = append(queue, nextID)
+				for _, neighbor := range adj[curr] {
+					if !visited[neighbor] {
+						visited[neighbor] = true
+						queue = append(queue, neighbor)
 					}
 				}
 			}
 		}
 	}
-
+	
 	stats.ConnectedComponents = components
 
 	return stats, nil
