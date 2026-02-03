@@ -519,7 +519,7 @@ resp, _ := http.Post("http://localhost:11434/api/embeddings",
 
 ## Resources
 
-- [sqvect Documentation](https://github.com/liliang-cn/sqvect)
+- [sqvect Documentation](https://github.com/liliang-cn/sqvect/v2
 - [OpenAI Embeddings Guide](https://platform.openai.com/docs/guides/embeddings)
 - [RAG Best Practices](https://www.pinecone.io/learn/retrieval-augmented-generation/)
 - [Vector Database Benchmarks](https://ann-benchmarks.com/)

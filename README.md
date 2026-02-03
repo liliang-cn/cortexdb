@@ -1,10 +1,10 @@
 # sqvect
 
 [![CI/CD](https://github.com/liliang-cn/sqvect/v2/actions/workflows/ci.yml/badge.svg)](https://github.com/liliang-cn/sqvect/v2/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/liliang-cn/sqvect/branch/main/graph/badge.svg)](https://codecov.io/gh/liliang-cn/sqvect)
+[![codecov](https://codecov.io/gh/liliang-cn/sqvect/v2/branch/main/graph/badge.svg)](https://codecov.io/gh/liliang-cn/sqvect/v2)
 [![Go Report Card](https://goreportcard.com/badge/github.com/liliang-cn/sqvect/v2)](https://goreportcard.com/report/github.com/liliang-cn/sqvect/v2)
 [![Go Reference](https://pkg.go.dev/badge/github.com/liliang-cn/sqvect/v2.svg)](https://pkg.go.dev/github.com/liliang-cn/sqvect/v2)
-[![GitHub release](https://img.shields.io/github/release/liliang-cn/sqvect.svg)](https://github.com/liliang-cn/sqvect/v2/releases)
+[![GitHub release](https://img.shields.io/github/release/liliang-cn/sqvect/v2.svg)](https://github.com/liliang-cn/sqvect/v2/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **A lightweight, embeddable vector database LIBRARY for Go AI projects.**
