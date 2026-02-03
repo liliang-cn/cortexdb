@@ -32,13 +32,12 @@ jobs:
         run: go mod download
 
       - name: Run library tests
-        run: go test -v -race -coverprofile=coverage.out .
+        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
 
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
         with:
-          file: ./coverage.out
-          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Verify library can be imported
         run: go list -m github.com/liliang-cn/sqvect/v2
