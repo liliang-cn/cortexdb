@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [ main ]
+    tags:
+      - "v*"
   pull_request:
     branches: [ main ]
 
@@ -49,3 +51,33 @@ jobs:
             go build -o /dev/null .
             cd - > /dev/null
           done
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          echo "## What's New" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "See [README.md](https://github.com/liliang-cn/sqvect/blob/main/README.md) for details." >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_version.outputs.VERSION }}
+          name: ${{ steps.get_version.outputs.VERSION }}
+          body: ${{ steps.release_notes.outputs.outputs }}
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
