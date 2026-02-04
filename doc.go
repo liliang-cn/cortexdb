@@ -12,6 +12,8 @@
 //   - 🛡️ Secure - Row-Level Security via ACL fields and SQL-level push-down filtering.
 //   - 🔧 100% Pure Go - Easy cross-compilation and zero-dependency deployment.
 //   - 🕸️ GraphRAG - Advanced graph operations for complex relationship-based retrieval.
+//   - 🧭 Semantic Router - Intent routing with configurable similarity and thresholds.
+//   - 🧠 Hindsight - Biomimetic agent memory with TEMPR retrieval.
 //
 // # Quick Start
 //
@@ -29,7 +31,7 @@
 //	    // 2. Use the Quick interface for simple operations
 //	    ctx := context.Background()
 //	    quick := db.Quick()
-//	    
+//
 //	    // Add vector
 //	    quick.Add(ctx, []float32{0.1, 0.2, 0.3}, "Go is awesome")
 //
@@ -40,6 +42,8 @@
 // # RAG and Hybrid Search
 //
 // sqvect provides high-level APIs for building RAG applications:
+//
+//	import "github.com/liliang-cn/sqvect/v2/pkg/core"
 //
 //	// Perform hybrid search (Vector + Full-Text Search)
 //	results, err := db.Vector().HybridSearch(ctx, queryVec, "search term", core.HybridSearchOptions{
@@ -63,16 +67,49 @@
 //
 //	config := sqvect.DefaultConfig("data.db")
 //	config.IndexType = core.IndexTypeHNSW // or core.IndexTypeIVF
-//	config.Quantization.Enabled = true    // Enable SQ8 quantization
+//	config.SimilarityFn = core.CosineSimilarity
+//	config.Dimensions = 1536
 //
 //	db, err := sqvect.Open(config)
 //
-// # Oservability
+// For deeper control (quantization, logger, text similarity), use core.Config with core.NewWithConfig.
 //
-// sqvect v2.0.0+ supports structured logging:
+// # Observability
 //
-//	config.Logger = myCustomLogger
-//	db, _ := sqvect.Open(config)
+// sqvect v2.0.0+ supports structured logging via core.Config.Logger when using core.NewWithConfig.
+//
+// # Semantic Router
+//
+// Route user intent before expensive LLM calls:
+//
+//	import (
+//	    "context"
+//	    "github.com/liliang-cn/sqvect/v2/pkg/core"
+//	    semanticrouter "github.com/liliang-cn/sqvect/v2/pkg/semantic-router"
+//	)
+//
+//	router, _ := semanticrouter.NewRouter(
+//	    semanticrouter.NewMockEmbedder(1536),
+//	    semanticrouter.WithThreshold(0.82),
+//	    semanticrouter.WithSimilarityFunc(core.CosineSimilarity),
+//	)
+//
+//	_ = router.Add(&semanticrouter.Route{
+//	    Name: "refund",
+//	    Utterances: []string{"我要退款", "申请退款"},
+//	})
+//
+//	result, _ := router.Route(context.Background(), "我要退款")
+//	_ = result
+//
+// # Hindsight Memory
+//
+// Long-term agent memory with TEMPR retrieval:
+//
+//	import "github.com/liliang-cn/sqvect/v2/pkg/hindsight"
+//
+//	sys, _ := hindsight.New(&hindsight.Config{DBPath: "agent_memory.db"})
+//	_ = sys
 //
 // For more detailed examples, see the examples/ directory.
 package sqvect

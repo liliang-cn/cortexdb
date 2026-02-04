@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SQVect - Advanced Vector Database in Pure Go</title>
-    <meta name="description" content="SQVect is a high-performance vector database library built in pure Go, featuring HNSW indexing, quantization, and advanced search capabilities.">
-    
+    <title>SQVect - Embedded Vector + Graph DB in Pure Go</title>
+    <meta name="description"
+        content="SQVect is an embedded vector + graph database in pure Go with HNSW/IVF/LSH indexing, quantization, Hindsight memory, and semantic routing.">
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -32,93 +34,135 @@
             }
         }
     </script>
-    
+
     <!-- GSAP -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
-    
+
     <!-- Custom Styles -->
     <style>
         @keyframes float {
-            0%, 100% { transform: translateY(0px); }
-            50% { transform: translateY(-20px); }
+
+            0%,
+            100% {
+                transform: translateY(0px);
+            }
+
+            50% {
+                transform: translateY(-20px);
+            }
         }
-        
+
         @keyframes gradient {
-            0%, 100% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
+
+            0%,
+            100% {
+                background-position: 0% 50%;
+            }
+
+            50% {
+                background-position: 100% 50%;
+            }
         }
-        
+
         .gradient-bg {
             background: linear-gradient(-45deg, #667eea, #764ba2, #f093fb, #f5576c);
             background-size: 400% 400%;
             animation: gradient 15s ease infinite;
         }
-        
+
         .code-bg {
             background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
         }
-        
+
         .feature-card {
             transition: all 0.3s ease;
         }
-        
+
         .feature-card:hover {
             transform: translateY(-10px);
         }
-        
+
         .glass {
             backdrop-filter: blur(10px);
             background: rgba(255, 255, 255, 0.1);
         }
-        
+
         .dark .glass {
             background: rgba(0, 0, 0, 0.3);
         }
     </style>
 </head>
+
 <body class="bg-white dark:bg-gray-900 text-gray-900 dark:text-white transition-colors duration-300">
     <!-- Navigation -->
     <nav class="fixed top-0 w-full z-50 glass border-b border-gray-200 dark:border-gray-700">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between items-center h-16">
                 <div class="flex items-center space-x-3">
-                    <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                    <div
+                        class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
                         <span class="text-white font-bold text-sm">SQ</span>
                     </div>
-                    <span class="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                    <span
+                        class="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                         SQVect
                     </span>
                 </div>
-                
+
                 <div class="hidden md:flex items-center space-x-8">
-                    <a href="#features" class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Features</a>
-                    <a href="#architecture" class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Architecture</a>
-                    <a href="#examples" class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Examples</a>
-                    <a href="https://pkg.go.dev/github.com/liliang-cn/sqvect" class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Documentation</a>
-                    <button id="theme-toggle" class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                    <a href="#features" class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors" data-i18n
+                        data-en="Features" data-zh="特性">Features</a>
+                    <a href="#architecture" class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        data-i18n data-en="Architecture" data-zh="架构">Architecture</a>
+                    <a href="#examples" class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors" data-i18n
+                        data-en="Examples" data-zh="示例">Examples</a>
+                    <a href="https://pkg.go.dev/github.com/liliang-cn/sqvect/v2"
+                        class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors" data-i18n
+                        data-en="Documentation" data-zh="文档">Documentation</a>
+                    <div class="flex items-center space-x-2 text-sm">
+                        <button id="lang-en" class="lang-btn font-semibold text-blue-600">EN</button>
+                        <span class="text-gray-400">/</span>
+                        <button id="lang-zh"
+                            class="lang-btn text-gray-500 hover:text-blue-600 transition-colors">中文</button>
+                    </div>
+                    <button id="theme-toggle"
+                        class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
                         <svg id="sun-icon" class="w-5 h-5 hidden" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M10 2L13.09 8.26L20 9L14 14.74L15.18 21.02L10 17.77L4.82 21.02L6 14.74L0 9L6.91 8.26L10 2Z"></path>
+                            <path
+                                d="M10 2L13.09 8.26L20 9L14 14.74L15.18 21.02L10 17.77L4.82 21.02L6 14.74L0 9L6.91 8.26L10 2Z">
+                            </path>
                         </svg>
                         <svg id="moon-icon" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                             <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
                         </svg>
                     </button>
                 </div>
-                
+
                 <!-- Mobile menu button -->
                 <div class="md:hidden flex items-center space-x-2">
-                    <button id="theme-toggle-mobile" class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                    <div class="flex items-center space-x-2 text-xs">
+                        <button id="lang-en-mobile" class="lang-btn font-semibold text-blue-600">EN</button>
+                        <span class="text-gray-400">/</span>
+                        <button id="lang-zh-mobile"
+                            class="lang-btn text-gray-500 hover:text-blue-600 transition-colors">中文</button>
+                    </div>
+                    <button id="theme-toggle-mobile"
+                        class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
                         <svg id="sun-icon-mobile" class="w-5 h-5 hidden" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M10 2L13.09 8.26L20 9L14 14.74L15.18 21.02L10 17.77L4.82 21.02L6 14.74L0 9L6.91 8.26L10 2Z"></path>
+                            <path
+                                d="M10 2L13.09 8.26L20 9L14 14.74L15.18 21.02L10 17.77L4.82 21.02L6 14.74L0 9L6.91 8.26L10 2Z">
+                            </path>
                         </svg>
                         <svg id="moon-icon-mobile" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                             <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
                         </svg>
                     </button>
-                    <button class="mobile-menu-btn p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                    <button
+                        class="mobile-menu-btn p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 6h16M4 12h16M4 18h16"></path>
                         </svg>
                     </button>
                 </div>
@@ -127,71 +171,88 @@
     </nav>
 
     <!-- Hero Section -->
-    <section class="relative min-h-screen flex items-center justify-center overflow-hidden">
+    <section class="relative min-h-screen flex items-center justify-center overflow-hidden pt-24 md:pt-28">
         <div class="absolute inset-0 gradient-bg opacity-10"></div>
-        
+
         <!-- Floating Elements -->
         <div class="absolute inset-0 overflow-hidden pointer-events-none">
             <div class="absolute top-20 left-10 w-20 h-20 bg-blue-500 rounded-full opacity-20 animate-float"></div>
-            <div class="absolute top-40 right-20 w-16 h-16 bg-purple-500 rounded-full opacity-20 animate-float" style="animation-delay: -2s;"></div>
-            <div class="absolute bottom-20 left-20 w-24 h-24 bg-indigo-500 rounded-full opacity-20 animate-float" style="animation-delay: -4s;"></div>
+            <div class="absolute top-40 right-20 w-16 h-16 bg-purple-500 rounded-full opacity-20 animate-float"
+                style="animation-delay: -2s;"></div>
+            <div class="absolute bottom-20 left-20 w-24 h-24 bg-indigo-500 rounded-full opacity-20 animate-float"
+                style="animation-delay: -4s;"></div>
         </div>
-        
+
         <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
             <div id="hero-content">
                 <h1 class="text-5xl md:text-7xl font-bold mb-6 leading-tight">
-                    <span class="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
-                        Advanced Vector Database
+                    <span
+                        class="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
+                        <span data-i18n data-en="Embedded Vector + Graph Database" data-zh="嵌入式向量 + 图数据库">Embedded
+                            Vector + Graph Database</span>
                     </span>
                     <br>
-                    <span class="text-gray-900 dark:text-white">in Pure Go</span>
+                    <span class="text-gray-900 dark:text-white" data-i18n data-en="in Pure Go" data-zh="纯 Go 实现">in Pure
+                        Go</span>
                 </h1>
-                
-                <p class="text-xl md:text-2xl text-gray-600 dark:text-gray-300 mb-8 max-w-3xl mx-auto leading-relaxed">
-                    SQVect delivers enterprise-grade vector search with HNSW indexing, quantization, and advanced AI capabilities. 
-                    Zero dependencies, maximum performance.
+
+                <p class="text-xl md:text-2xl text-gray-600 dark:text-gray-300 mb-10 max-w-4xl mx-auto leading-relaxed font-light tracking-wide"
+                    data-i18n
+                    data-en="SQVect delivers embedded vector + graph storage with HNSW/IVF/LSH indexing, quantization, Hindsight memory, and semantic routing—pure Go, SQLite-backed, production-ready."
+                    data-zh="SQVect 提供嵌入式向量 + 图存储，支持 HNSW/IVF/LSH 索引、量化、Hindsight 记忆与语义路由——纯 Go、SQLite 驱动、生产可用。">
+                    SQVect delivers embedded vector + graph storage with HNSW/IVF/LSH indexing, quantization,
+                    Hindsight memory, and semantic routing—pure Go, SQLite-backed, production-ready.
                 </p>
-                
+
                 <div class="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
-                    <a href="https://github.com/liliang-cn/sqvect" 
-                       class="group bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-4 rounded-full font-semibold hover:from-blue-700 hover:to-purple-700 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl">
+                    <a href="https://github.com/liliang-cn/sqvect"
+                        class="group bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-4 rounded-full font-semibold hover:from-blue-700 hover:to-purple-700 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl">
                         <span class="flex items-center">
                             <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                                <path
+                                    d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
                             </svg>
-                            Get Started
-                            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                            <span data-i18n data-en="Get Started" data-zh="开始使用">Get Started</span>
+                            <svg class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" fill="none"
+                                stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7">
+                                </path>
                             </svg>
                         </span>
                     </a>
-                    
-                    <a href="#examples" 
-                       class="group border-2 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white px-8 py-4 rounded-full font-semibold hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-300">
-                        View Examples
-                        <svg class="w-4 h-4 ml-2 inline group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+
+                    <a href="#examples"
+                        class="group border-2 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white px-8 py-4 rounded-full font-semibold hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-300">
+                        <span data-i18n data-en="View Examples" data-zh="查看示例">View Examples</span>
+                        <svg class="w-4 h-4 ml-2 inline group-hover:translate-x-1 transition-transform" fill="none"
+                            stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7">
+                            </path>
                         </svg>
                     </a>
                 </div>
-                
+
                 <!-- Stats -->
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-8 max-w-2xl mx-auto">
                     <div class="text-center">
                         <div class="text-3xl font-bold text-blue-600 dark:text-blue-400" id="counter-1">0</div>
-                        <div class="text-sm text-gray-600 dark:text-gray-400">Zero Dependencies</div>
+                        <div class="text-sm text-gray-600 dark:text-gray-400" data-i18n data-en="Single SQLite File"
+                            data-zh="单一 SQLite 文件">Single SQLite File</div>
                     </div>
                     <div class="text-center">
                         <div class="text-3xl font-bold text-purple-600 dark:text-purple-400" id="counter-2">0</div>
-                        <div class="text-sm text-gray-600 dark:text-gray-400">Index Types</div>
+                        <div class="text-sm text-gray-600 dark:text-gray-400" data-i18n data-en="Index Types"
+                            data-zh="索引类型">Index Types</div>
                     </div>
                     <div class="text-center">
                         <div class="text-3xl font-bold text-indigo-600 dark:text-indigo-400" id="counter-3">0</div>
-                        <div class="text-sm text-gray-600 dark:text-gray-400">Quantization Methods</div>
+                        <div class="text-sm text-gray-600 dark:text-gray-400" data-i18n data-en="Quantization Methods"
+                            data-zh="量化方式">Quantization Methods</div>
                     </div>
                     <div class="text-center">
                         <div class="text-3xl font-bold text-green-600 dark:text-green-400" id="counter-4">0</div>
-                        <div class="text-sm text-gray-600 dark:text-gray-400">Pure Go</div>
+                        <div class="text-sm text-gray-600 dark:text-gray-400" data-i18n data-en="Pure Go"
+                            data-zh="纯 Go">Pure Go</div>
                     </div>
                 </div>
             </div>
@@ -202,85 +263,172 @@
     <section id="features" class="py-20 bg-gray-50 dark:bg-gray-800">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-16">
-                <h2 class="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                <h2 class="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"
+                    data-i18n data-en="Enterprise-Grade Features" data-zh="企业级特性">
                     Enterprise-Grade Features
                 </h2>
-                <p class="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
+                <p class="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto" data-i18n
+                    data-en="Built for production with cutting-edge algorithms and optimization techniques"
+                    data-zh="面向生产，采用先进算法与优化技术">
                     Built for production with cutting-edge algorithms and optimization techniques
                 </p>
             </div>
-            
+
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 <!-- Feature Cards -->
-                <div class="feature-card bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700">
-                    <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mb-6">
+                <div
+                    class="feature-card bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700">
+                    <div
+                        class="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mb-6">
                         <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                         </svg>
                     </div>
-                    <h3 class="text-xl font-bold mb-4">HNSW Indexing</h3>
-                    <p class="text-gray-600 dark:text-gray-300">
-                        Hierarchical Navigable Small World graphs for lightning-fast approximate nearest neighbor search with sub-linear complexity.
+                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="HNSW Indexing" data-zh="HNSW 索引">HNSW Indexing
+                    </h3>
+                    <p class="text-gray-600 dark:text-gray-300" data-i18n
+                        data-en="Hierarchical Navigable Small World graphs for lightning-fast approximate nearest neighbor search with sub-linear complexity."
+                        data-zh="基于分层小世界图的近似最近邻检索，亚线性复杂度。">
+                        Hierarchical Navigable Small World graphs for lightning-fast approximate nearest neighbor search
+                        with sub-linear complexity.
                     </p>
                 </div>
-                
-                <div class="feature-card bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700">
-                    <div class="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center mb-6">
+
+                <div
+                    class="feature-card bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700">
+                    <div
+                        class="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center mb-6">
                         <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z">
+                            </path>
                         </svg>
                     </div>
-                    <h3 class="text-xl font-bold mb-4">Advanced Quantization</h3>
-                    <p class="text-gray-600 dark:text-gray-300">
-                        Product, scalar, and binary quantization for optimal memory usage and blazing-fast searches with configurable precision.
+                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="Advanced Quantization" data-zh="高级量化">Advanced
+                        Quantization</h3>
+                    <p class="text-gray-600 dark:text-gray-300" data-i18n
+                        data-en="Product, scalar, and binary quantization for optimal memory usage and blazing-fast searches with configurable precision."
+                        data-zh="产品/标量/二值量化，兼顾内存与检索速度，可配置精度。">
+                        Product, scalar, and binary quantization for optimal memory usage and blazing-fast searches with
+                        configurable precision.
                     </p>
                 </div>
-                
-                <div class="feature-card bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700">
-                    <div class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl flex items-center justify-center mb-6">
+
+                <div
+                    class="feature-card bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700">
+                    <div
+                        class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl flex items-center justify-center mb-6">
                         <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2z">
+                            </path>
                         </svg>
                     </div>
-                    <h3 class="text-xl font-bold mb-4">Multi-Index Strategies</h3>
-                    <p class="text-gray-600 dark:text-gray-300">
-                        Combine HNSW, IVF, and flat indices with intelligent voting, merging, and reranking for optimal performance.
+                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="Multi-Index Strategies" data-zh="多索引策略">
+                        Multi-Index Strategies</h3>
+                    <p class="text-gray-600 dark:text-gray-300" data-i18n
+                        data-en="Combine HNSW, IVF, and flat indices with intelligent voting, merging, and reranking for optimal performance."
+                        data-zh="组合 HNSW/IVF/Flat，融合投票、合并与重排优化性能。">
+                        Combine HNSW, IVF, and flat indices with intelligent voting, merging, and reranking for optimal
+                        performance.
                     </p>
                 </div>
-                
-                <div class="feature-card bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700">
-                    <div class="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center mb-6">
+
+                <div
+                    class="feature-card bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700">
+                    <div
+                        class="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center mb-6">
                         <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z">
+                            </path>
                         </svg>
                     </div>
-                    <h3 class="text-xl font-bold mb-4">Advanced Search</h3>
-                    <p class="text-gray-600 dark:text-gray-300">
-                        Negative sampling, diversity search (MMR, DPP), anomaly detection, and recommendation systems built-in.
+                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="Advanced Search" data-zh="高级搜索">Advanced
+                        Search</h3>
+                    <p class="text-gray-600 dark:text-gray-300" data-i18n
+                        data-en="Negative sampling, diversity search (MMR, DPP), anomaly detection, and recommendation systems built-in."
+                        data-zh="内置负采样、多样性搜索（MMR/DPP）、异常检测与推荐能力。">
+                        Negative sampling, diversity search (MMR, DPP), anomaly detection, and recommendation systems
+                        built-in.
                     </p>
                 </div>
-                
-                <div class="feature-card bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700">
-                    <div class="w-12 h-12 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center mb-6">
+
+                <div
+                    class="feature-card bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700">
+                    <div
+                        class="w-12 h-12 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center mb-6">
                         <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10">
+                            </path>
                         </svg>
                     </div>
-                    <h3 class="text-xl font-bold mb-4">Multi-Vector Entities</h3>
-                    <p class="text-gray-600 dark:text-gray-300">
-                        Handle documents with multiple embeddings (title, content, summary) with field-specific weights and aggregation.
+                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="Multi-Vector Entities" data-zh="多向量实体">
+                        Multi-Vector Entities</h3>
+                    <p class="text-gray-600 dark:text-gray-300" data-i18n
+                        data-en="Handle documents with multiple embeddings (title, content, summary) with field-specific weights and aggregation."
+                        data-zh="文档多向量字段（标题/正文/摘要）加权与聚合。">
+                        Handle documents with multiple embeddings (title, content, summary) with field-specific weights
+                        and aggregation.
                     </p>
                 </div>
-                
-                <div class="feature-card bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700">
-                    <div class="w-12 h-12 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl flex items-center justify-center mb-6">
+
+                <div
+                    class="feature-card bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700">
+                    <div
+                        class="w-12 h-12 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl flex items-center justify-center mb-6">
                         <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4">
+                            </path>
                         </svg>
                     </div>
-                    <h3 class="text-xl font-bold mb-4">Faceted Search</h3>
-                    <p class="text-gray-600 dark:text-gray-300">
-                        Complex attribute-based filtering with range queries, aggregations, and SQL-based metadata search.
+                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="Faceted Search" data-zh="分面检索">Faceted Search
+                    </h3>
+                    <p class="text-gray-600 dark:text-gray-300" data-i18n
+                        data-en="Complex attribute-based filtering with range queries, aggregations, and SQL-based metadata search."
+                        data-zh="支持区间、聚合与 SQL 元数据搜索的复杂过滤。">
+                        Complex attribute-based filtering with range queries, aggregations, and SQL-based metadata
+                        search.
+                    </p>
+                </div>
+
+                <div
+                    class="feature-card bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700">
+                    <div
+                        class="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl flex items-center justify-center mb-6">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="Hindsight Memory" data-zh="Hindsight 记忆">
+                        Hindsight Memory</h3>
+                    <p class="text-gray-600 dark:text-gray-300" data-i18n
+                        data-en="Biomimetic agent memory with TEMPR retrieval, long-term learning, and opinion formation."
+                        data-zh="仿生智能体记忆，支持 TEMPR 检索、长期学习与观点形成。">
+                        Biomimetic agent memory with TEMPR retrieval, long-term learning, and opinion formation.
+                    </p>
+                </div>
+
+                <div
+                    class="feature-card bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700">
+                    <div
+                        class="w-12 h-12 bg-gradient-to-br from-fuchsia-500 to-purple-600 rounded-xl flex items-center justify-center mb-6">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 20l-5.447-2.724A1 1 0 013 16.382V7.618a1 1 0 01.553-.894L9 4m0 16l6-3m-6 3V4m6 13l5.447-2.724A1 1 0 0021 13.382V4.618a1 1 0 00-.553-.894L15 1m0 16V1m0 16l-6 3">
+                            </path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="Semantic Router" data-zh="语义路由">Semantic
+                        Router</h3>
+                    <p class="text-gray-600 dark:text-gray-300" data-i18n
+                        data-en="Route intents with configurable similarity, thresholds, and pluggable embedders."
+                        data-zh="可配置相似度与阈值的意图路由，支持可插拔嵌入器。">
+                        Route intents with configurable similarity, thresholds, and pluggable embedders.
                     </p>
                 </div>
             </div>
@@ -291,35 +439,114 @@
     <section id="architecture" class="py-20">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-16">
-                <h2 class="text-4xl font-bold mb-4">Architecture Overview</h2>
-                <p class="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
-                    Modular design for maximum flexibility and performance
+                <h2 class="text-4xl font-bold mb-4" data-i18n data-en="Architecture Overview" data-zh="架构概览">
+                    Architecture Overview</h2>
+                <p class="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto" data-i18n
+                    data-en="Modular Go packages for storage, indexing, routing, memory, and graph intelligence"
+                    data-zh="模块化 Go 包覆盖存储、索引、路由、记忆与图智能">
+                    Modular Go packages for storage, indexing, routing, memory, and graph intelligence
                 </p>
             </div>
-            
+
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
                 <div class="space-y-6">
-                    <div class="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200 dark:border-blue-700">
-                        <h3 class="text-xl font-bold mb-3 text-blue-900 dark:text-blue-100">Core Package</h3>
-                        <p class="text-blue-800 dark:text-blue-200">SQLite-based storage with advanced search, multi-vector entities, and faceted filtering.</p>
+                    <div
+                        class="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200 dark:border-blue-700">
+                        <h3 class="text-xl font-bold mb-3 text-blue-900 dark:text-blue-100" data-i18n
+                            data-en="SQVect Facade" data-zh="SQVect 门面">SQVect Facade</h3>
+                        <p class="text-blue-800 dark:text-blue-200" data-i18n
+                            data-en="High-level DB API (Open, Quick, Vector, Graph) for rapid app integration."
+                            data-zh="高层 DB API（Open/Quick/Vector/Graph），便于快速集成。">
+                            High-level DB API (Open, Quick, Vector, Graph) for
+                            rapid app integration.
+                        </p>
                     </div>
-                    
-                    <div class="p-6 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-xl border border-purple-200 dark:border-purple-700">
-                        <h3 class="text-xl font-bold mb-3 text-purple-900 dark:text-purple-100">Index Package</h3>
-                        <p class="text-purple-800 dark:text-purple-200">HNSW, IVF, and hybrid indexing strategies for optimal search performance.</p>
+
+                    <div
+                        class="p-6 bg-gradient-to-r from-slate-50 to-gray-50 dark:from-slate-900/20 dark:to-gray-900/20 rounded-xl border border-slate-200 dark:border-slate-700">
+                        <h3 class="text-xl font-bold mb-3 text-slate-900 dark:text-slate-100" data-i18n
+                            data-en="Core Package" data-zh="Core 包">Core Package</h3>
+                        <p class="text-slate-800 dark:text-slate-200" data-i18n
+                            data-en="SQLite storage, RAG schemas, ACL, FTS5, advanced search & filtering."
+                            data-zh="SQLite 存储、RAG 架构、ACL、FTS5 与高级检索/过滤。">
+                            SQLite storage, RAG schemas, ACL, FTS5, advanced
+                            search & filtering.
+                        </p>
                     </div>
-                    
-                    <div class="p-6 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl border border-green-200 dark:border-green-700">
-                        <h3 class="text-xl font-bold mb-3 text-green-900 dark:text-green-100">Quantization Package</h3>
-                        <p class="text-green-800 dark:text-green-200">Product, scalar, and binary quantization for memory optimization.</p>
+
+                    <div
+                        class="p-6 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-xl border border-purple-200 dark:border-purple-700">
+                        <h3 class="text-xl font-bold mb-3 text-purple-900 dark:text-purple-100" data-i18n
+                            data-en="Index Package" data-zh="Index 包">Index Package</h3>
+                        <p class="text-purple-800 dark:text-purple-200" data-i18n
+                            data-en="HNSW, IVF, LSH, and multi-index strategies for flexible performance."
+                            data-zh="HNSW/IVF/LSH 与多索引策略，兼顾性能与灵活性。">
+                            HNSW, IVF, LSH, and multi-index strategies for
+                            flexible performance.
+                        </p>
                     </div>
-                    
-                    <div class="p-6 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 rounded-xl border border-orange-200 dark:border-orange-700">
-                        <h3 class="text-xl font-bold mb-3 text-orange-900 dark:text-orange-100">Graph Package</h3>
-                        <p class="text-orange-800 dark:text-orange-200">Knowledge graph support with entity relationships and semantic connections.</p>
+
+                    <div
+                        class="p-6 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl border border-green-200 dark:border-green-700">
+                        <h3 class="text-xl font-bold mb-3 text-green-900 dark:text-green-100" data-i18n
+                            data-en="Quantization Package" data-zh="Quantization 包">Quantization Package</h3>
+                        <p class="text-green-800 dark:text-green-200" data-i18n
+                            data-en="SQ8, product, scalar, and binary quantization to reduce memory."
+                            data-zh="SQ8/产品/标量/二值量化，降低内存占用。">
+                            SQ8, product, scalar, and binary quantization to
+                            reduce memory.
+                        </p>
+                    </div>
+
+                    <div
+                        class="p-6 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 rounded-xl border border-orange-200 dark:border-orange-700">
+                        <h3 class="text-xl font-bold mb-3 text-orange-900 dark:text-orange-100" data-i18n
+                            data-en="Graph Package" data-zh="Graph 包">Graph Package</h3>
+                        <p class="text-orange-800 dark:text-orange-200" data-i18n
+                            data-en="Knowledge graph storage with traversal and hybrid graph + vector search."
+                            data-zh="知识图谱存储、图遍历与图+向量混合检索。">
+                            Knowledge graph storage with traversal and
+                            hybrid graph + vector search.
+                        </p>
+                    </div>
+
+                    <div
+                        class="p-6 bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 rounded-xl border border-amber-200 dark:border-amber-700">
+                        <h3 class="text-xl font-bold mb-3 text-amber-900 dark:text-amber-100" data-i18n
+                            data-en="Geo Package" data-zh="Geo 包">Geo Package</h3>
+                        <p class="text-amber-800 dark:text-amber-200" data-i18n
+                            data-en="Geospatial indexing and distance queries for location-aware search."
+                            data-zh="地理空间索引与距离查询，实现位置感知检索。">
+                            Geospatial indexing and distance queries for
+                            location-aware search.
+                        </p>
+                    </div>
+
+                    <div
+                        class="p-6 bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 rounded-xl border border-cyan-200 dark:border-cyan-700">
+                        <h3 class="text-xl font-bold mb-3 text-cyan-900 dark:text-cyan-100" data-i18n
+                            data-en="Hindsight Package" data-zh="Hindsight 包">Hindsight Package</h3>
+                        <p class="text-cyan-800 dark:text-cyan-200" data-i18n
+                            data-en="Agent memory with TEMPR retrieval, reflection, and long-term learning."
+                            data-zh="智能体记忆系统，支持 TEMPR 检索、反思与长期学习。">
+                            Agent memory with TEMPR retrieval, reflection, and
+                            long-term learning.
+                        </p>
+                    </div>
+
+                    <div
+                        class="p-6 bg-gradient-to-r from-fuchsia-50 to-purple-50 dark:from-fuchsia-900/20 dark:to-purple-900/20 rounded-xl border border-fuchsia-200 dark:border-fuchsia-700">
+                        <h3 class="text-xl font-bold mb-3 text-fuchsia-900 dark:text-fuchsia-100" data-i18n
+                            data-en="Semantic Router" data-zh="语义路由">Semantic Router</h3>
+                        <p class="text-fuchsia-800 dark:text-fuchsia-200" data-i18n
+                            data-en="Intent routing built on embeddings with configurable similarity and thresholds."
+                            data-zh="基于向量的意图路由，支持可配置相似度与阈值。">
+                            Intent routing built on embeddings with
+                            configurable similarity and thresholds.
+                        </p>
                     </div>
                 </div>
-                
+
                 <div class="code-bg rounded-2xl p-8 shadow-2xl">
                     <div class="flex items-center mb-4">
                         <div class="flex space-x-2">
@@ -333,48 +560,26 @@
 
 import (
     "context"
-    "github.com/liliang-cn/sqvect/pkg/core"
+    "fmt"
+
+    "github.com/liliang-cn/sqvect/v2/pkg/core"
+    "github.com/liliang-cn/sqvect/v2/pkg/sqvect"
 )
 
 func main() {
-    // Initialize SQVect store
-    store, err := core.NewSQLiteStore(&core.Config{
-        DatabasePath: "vectors.db",
-        Dimension:    1536,
-        Similarity:   core.CosineSimilarity,
-        HNSW: core.HNSWConfig{
-            Enabled: true,
-            M:       16,
-            EfConstruction: 200,
-        },
-    })
+    db, err := sqvect.Open(sqvect.DefaultConfig("rag.db"))
     if err != nil {
         panic(err)
     }
-    defer store.Close()
+    defer db.Close()
 
-    // Add vectors with metadata
-    embedding := &core.Embedding{
-        ID:       "doc1",
-        Vector:   []float32{0.1, 0.2, 0.3...},
-        Content:  "Your document content",
-        Metadata: map[string]string{
-            "category": "technology",
-            "author":   "AI Assistant",
-        },
-    }
-    
-    store.Upsert(context.Background(), embedding)
-    
-    // Search with advanced options
-    results, err := store.Search(context.Background(), 
-        queryVector, 
-        core.SearchOptions{
-            TopK: 10,
-            Filter: map[string]string{
-                "category": "technology",
-            },
-        })
+    ctx := context.Background()
+    db.Vector().CreateDocument(ctx, &core.Document{ID: "doc1", Title: "Go Guide"})
+
+    _, _ = db.Quick().Add(ctx, []float32{0.1, 0.2, 0.3}, "Go is awesome")
+
+    results, _ := db.Quick().Search(ctx, []float32{0.1, 0.2, 0.25}, 1)
+    fmt.Println(results[0].Content)
 }</code></pre>
                 </div>
             </div>
@@ -385,110 +590,194 @@ func main() {
     <section id="examples" class="py-20 bg-gray-50 dark:bg-gray-800">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-16">
-                <h2 class="text-4xl font-bold mb-4">Ready-to-Use Examples</h2>
-                <p class="text-xl text-gray-600 dark:text-gray-300">
+                <h2 class="text-4xl font-bold mb-4" data-i18n data-en="Ready-to-Use Examples" data-zh="即用示例">
+                    Ready-to-Use Examples</h2>
+                <p class="text-xl text-gray-600 dark:text-gray-300" data-i18n
+                    data-en="Get started quickly with our comprehensive example applications" data-zh="通过完整示例快速上手">
                     Get started quickly with our comprehensive example applications
                 </p>
             </div>
-            
+
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                <div class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+                <div
+                    class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
                     <div class="h-2 bg-gradient-to-r from-blue-500 to-purple-500"></div>
                     <div class="p-6">
-                        <h3 class="text-xl font-bold mb-3">Semantic Search</h3>
-                        <p class="text-gray-600 dark:text-gray-300 mb-4">
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Semantic Search" data-zh="语义检索">Semantic
+                            Search</h3>
+                        <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
+                            data-en="Build intelligent search with natural language understanding and context awareness."
+                            data-zh="基于自然语言理解与上下文的智能检索。">
                             Build intelligent search with natural language understanding and context awareness.
                         </p>
-                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/semantic_search" 
-                           class="inline-flex items-center text-blue-600 dark:text-blue-400 hover:underline">
-                            View Example
+                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/semantic_search"
+                            class="inline-flex items-center text-blue-600 dark:text-blue-400 hover:underline">
+                            <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14">
+                                </path>
                             </svg>
                         </a>
                     </div>
                 </div>
-                
-                <div class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+
+                <div
+                    class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
                     <div class="h-2 bg-gradient-to-r from-green-500 to-teal-500"></div>
                     <div class="p-6">
-                        <h3 class="text-xl font-bold mb-3">RAG System</h3>
-                        <p class="text-gray-600 dark:text-gray-300 mb-4">
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="RAG System" data-zh="RAG 系统">RAG System
+                        </h3>
+                        <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
+                            data-en="Retrieval-Augmented Generation with document chunking and contextual search."
+                            data-zh="文档分块与上下文检索的检索增强生成。">
                             Retrieval-Augmented Generation with document chunking and contextual search.
                         </p>
-                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/rag_system" 
-                           class="inline-flex items-center text-green-600 dark:text-green-400 hover:underline">
-                            View Example
+                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/rag_system"
+                            class="inline-flex items-center text-green-600 dark:text-green-400 hover:underline">
+                            <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14">
+                                </path>
                             </svg>
                         </a>
                     </div>
                 </div>
-                
-                <div class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+
+                <div
+                    class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
                     <div class="h-2 bg-gradient-to-r from-purple-500 to-pink-500"></div>
                     <div class="p-6">
-                        <h3 class="text-xl font-bold mb-3">Image Search</h3>
-                        <p class="text-gray-600 dark:text-gray-300 mb-4">
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Image Search" data-zh="图像检索">Image Search
+                        </h3>
+                        <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
+                            data-en="Visual similarity search with CLIP embeddings and multi-modal capabilities."
+                            data-zh="基于 CLIP 向量的多模态视觉相似检索。">
                             Visual similarity search with CLIP embeddings and multi-modal capabilities.
                         </p>
-                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/image_search" 
-                           class="inline-flex items-center text-purple-600 dark:text-purple-400 hover:underline">
-                            View Example
+                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/image_search"
+                            class="inline-flex items-center text-purple-600 dark:text-purple-400 hover:underline">
+                            <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14">
+                                </path>
                             </svg>
                         </a>
                     </div>
                 </div>
-                
-                <div class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+
+                <div
+                    class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
                     <div class="h-2 bg-gradient-to-r from-orange-500 to-red-500"></div>
                     <div class="p-6">
-                        <h3 class="text-xl font-bold mb-3">Knowledge Graph</h3>
-                        <p class="text-gray-600 dark:text-gray-300 mb-4">
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Knowledge Graph" data-zh="知识图谱">Knowledge
+                            Graph</h3>
+                        <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
+                            data-en="Entity relationships with graph traversal and semantic connections."
+                            data-zh="实体关系、图遍历与语义连接。">
                             Entity relationships with graph traversal and semantic connections.
                         </p>
-                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/knowledge_graph" 
-                           class="inline-flex items-center text-orange-600 dark:text-orange-400 hover:underline">
-                            View Example
+                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/knowledge_graph"
+                            class="inline-flex items-center text-orange-600 dark:text-orange-400 hover:underline">
+                            <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14">
+                                </path>
                             </svg>
                         </a>
                     </div>
                 </div>
-                
-                <div class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+
+                <div
+                    class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
                     <div class="h-2 bg-gradient-to-r from-indigo-500 to-blue-500"></div>
                     <div class="p-6">
-                        <h3 class="text-xl font-bold mb-3">Document Clustering</h3>
-                        <p class="text-gray-600 dark:text-gray-300 mb-4">
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Document Clustering" data-zh="文档聚类">
+                            Document Clustering</h3>
+                        <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
+                            data-en="Automatic document organization with unsupervised clustering algorithms."
+                            data-zh="使用无监督聚类实现自动文档组织。">
                             Automatic document organization with unsupervised clustering algorithms.
                         </p>
-                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/document_clustering" 
-                           class="inline-flex items-center text-indigo-600 dark:text-indigo-400 hover:underline">
-                            View Example
+                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/document_clustering"
+                            class="inline-flex items-center text-indigo-600 dark:text-indigo-400 hover:underline">
+                            <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14">
+                                </path>
                             </svg>
                         </a>
                     </div>
                 </div>
-                
-                <div class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+
+                <div
+                    class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
                     <div class="h-2 bg-gradient-to-r from-teal-500 to-green-500"></div>
                     <div class="p-6">
-                        <h3 class="text-xl font-bold mb-3">Hybrid Search</h3>
-                        <p class="text-gray-600 dark:text-gray-300 mb-4">
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Hybrid Search" data-zh="混合检索">Hybrid
+                            Search</h3>
+                        <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
+                            data-en="Combine semantic and keyword search for optimal information retrieval."
+                            data-zh="结合语义与关键词检索以获得最佳效果。">
                             Combine semantic and keyword search for optimal information retrieval.
                         </p>
-                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/hybrid_search" 
-                           class="inline-flex items-center text-teal-600 dark:text-teal-400 hover:underline">
-                            View Example
+                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/hybrid_search"
+                            class="inline-flex items-center text-teal-600 dark:text-teal-400 hover:underline">
+                            <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14">
+                                </path>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+
+                <div
+                    class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+                    <div class="h-2 bg-gradient-to-r from-fuchsia-500 to-purple-500"></div>
+                    <div class="p-6">
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Semantic Router" data-zh="语义路由">Semantic
+                            Router</h3>
+                        <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
+                            data-en="Intent routing with configurable similarity, thresholds, and pluggable embedders."
+                            data-zh="可配置相似度与阈值的意图路由，支持可插拔嵌入器。">
+                            Intent routing with configurable similarity, thresholds, and pluggable embedders.
+                        </p>
+                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/semantic-router"
+                            class="inline-flex items-center text-fuchsia-600 dark:text-fuchsia-400 hover:underline">
+                            <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
+                            <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14">
+                                </path>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+
+                <div
+                    class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+                    <div class="h-2 bg-gradient-to-r from-cyan-500 to-blue-500"></div>
+                    <div class="p-6">
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Hindsight Memory" data-zh="Hindsight 记忆">
+                            Hindsight Memory</h3>
+                        <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
+                            data-en="Agent memory with TEMPR retrieval, reflection, and long-term learning."
+                            data-zh="支持 TEMPR 检索、反思与长期学习的智能体记忆。">
+                            Agent memory with TEMPR retrieval, reflection, and long-term learning.
+                        </p>
+                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/hindsight"
+                            class="inline-flex items-center text-cyan-600 dark:text-cyan-400 hover:underline">
+                            <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
+                            <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14">
+                                </path>
                             </svg>
                         </a>
                     </div>
@@ -501,29 +790,39 @@ func main() {
     <section class="py-20">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-16">
-                <h2 class="text-4xl font-bold mb-4">Performance Benchmarks</h2>
-                <p class="text-xl text-gray-600 dark:text-gray-300">
+                <h2 class="text-4xl font-bold mb-4" data-i18n data-en="Performance Benchmarks" data-zh="性能基准">
+                    Performance Benchmarks</h2>
+                <p class="text-xl text-gray-600 dark:text-gray-300" data-i18n
+                    data-en="Optimized for speed and memory efficiency" data-zh="为速度与内存效率优化">
                     Optimized for speed and memory efficiency
                 </p>
             </div>
-            
+
             <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <div class="text-center p-8 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-2xl">
+                <div
+                    class="text-center p-8 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-2xl">
                     <div class="text-4xl font-bold text-blue-600 dark:text-blue-400 mb-2" id="perf-search">0</div>
-                    <div class="text-lg font-semibold mb-2">μs Search Time</div>
-                    <div class="text-sm text-gray-600 dark:text-gray-400">HNSW index on 1M vectors</div>
+                    <div class="text-lg font-semibold mb-2" data-i18n data-en="μs Search Time" data-zh="μs 搜索耗时">μs
+                        Search Time</div>
+                    <div class="text-sm text-gray-600 dark:text-gray-400" data-i18n data-en="HNSW index on 1M vectors"
+                        data-zh="100万向量上的 HNSW">HNSW index on 1M vectors</div>
                 </div>
-                
-                <div class="text-center p-8 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-2xl">
+
+                <div
+                    class="text-center p-8 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-2xl">
                     <div class="text-4xl font-bold text-purple-600 dark:text-purple-400 mb-2" id="perf-memory">0</div>
-                    <div class="text-lg font-semibold mb-2">% Memory Reduction</div>
-                    <div class="text-sm text-gray-600 dark:text-gray-400">With quantization enabled</div>
+                    <div class="text-lg font-semibold mb-2" data-i18n data-en="% Memory Reduction" data-zh="% 内存降低">%
+                        Memory Reduction</div>
+                    <div class="text-sm text-gray-600 dark:text-gray-400" data-i18n data-en="With quantization enabled"
+                        data-zh="启用量化">With quantization enabled</div>
                 </div>
-                
-                <div class="text-center p-8 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-2xl">
+
+                <div
+                    class="text-center p-8 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-2xl">
                     <div class="text-4xl font-bold text-green-600 dark:text-green-400 mb-2" id="perf-throughput">0</div>
-                    <div class="text-lg font-semibold mb-2">K QPS</div>
-                    <div class="text-sm text-gray-600 dark:text-gray-400">Concurrent search throughput</div>
+                    <div class="text-lg font-semibold mb-2" data-i18n data-en="K QPS" data-zh="千级 QPS">K QPS</div>
+                    <div class="text-sm text-gray-600 dark:text-gray-400" data-i18n
+                        data-en="Concurrent search throughput" data-zh="并发检索吞吐">Concurrent search throughput</div>
                 </div>
             </div>
         </div>
@@ -534,26 +833,31 @@ func main() {
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
             <div class="max-w-3xl mx-auto">
                 <h2 class="text-4xl font-bold text-white mb-6">
-                    Ready to Build Something Amazing?
+                    <span data-i18n data-en="Ready to Build Something Amazing?" data-zh="准备好构建令人惊艳的应用？">Ready to Build
+                        Something Amazing?</span>
                 </h2>
                 <p class="text-xl text-blue-100 mb-8">
-                    Join the developers building the next generation of AI applications with SQVect
+                    <span data-i18n
+                        data-en="Join the developers building the next generation of AI applications with SQVect"
+                        data-zh="加入使用 SQVect 构建下一代 AI 应用的开发者">Join the developers building the next generation of AI
+                        applications with SQVect</span>
                 </p>
-                
+
                 <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                    <a href="https://github.com/liliang-cn/sqvect" 
-                       class="bg-white text-blue-600 px-8 py-4 rounded-full font-semibold hover:bg-gray-100 transition-colors shadow-lg">
+                    <a href="https://github.com/liliang-cn/sqvect"
+                        class="bg-white text-blue-600 px-8 py-4 rounded-full font-semibold hover:bg-gray-100 transition-colors shadow-lg">
                         <span class="flex items-center justify-center">
                             <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                                <path
+                                    d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
                             </svg>
-                            Star on GitHub
+                            <span data-i18n data-en="Star on GitHub" data-zh="在 GitHub 点赞">Star on GitHub</span>
                         </span>
                     </a>
-                    
-                    <a href="https://pkg.go.dev/github.com/liliang-cn/sqvect" 
-                       class="border-2 border-white text-white px-8 py-4 rounded-full font-semibold hover:bg-white hover:text-blue-600 transition-colors">
-                        Read Documentation
+
+                    <a href="https://pkg.go.dev/github.com/liliang-cn/sqvect/v2"
+                        class="border-2 border-white text-white px-8 py-4 rounded-full font-semibold hover:bg-white hover:text-blue-600 transition-colors">
+                        <span data-i18n data-en="Read Documentation" data-zh="阅读文档">Read Documentation</span>
                     </a>
                 </div>
             </div>
@@ -566,47 +870,68 @@ func main() {
             <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
                 <div class="col-span-1 md:col-span-2">
                     <div class="flex items-center space-x-3 mb-4">
-                        <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                        <div
+                            class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
                             <span class="text-white font-bold text-sm">SQ</span>
                         </div>
                         <span class="text-xl font-bold text-white">SQVect</span>
                     </div>
-                    <p class="text-gray-400 mb-4 max-w-md">
-                        Advanced vector database library in pure Go. Built for performance, scalability, and ease of use.
+                    <p class="text-gray-400 mb-4 max-w-md" data-i18n
+                        data-en="Embedded vector + graph database in pure Go with Hindsight memory and semantic routing."
+                        data-zh="纯 Go 嵌入式向量 + 图数据库，内置 Hindsight 记忆与语义路由。">
+                        Embedded vector + graph database in pure Go with Hindsight memory and semantic routing.
                     </p>
                     <div class="flex space-x-4">
-                        <a href="https://github.com/liliang-cn/sqvect" class="text-gray-400 hover:text-white transition-colors">
+                        <a href="https://github.com/liliang-cn/sqvect"
+                            class="text-gray-400 hover:text-white transition-colors">
                             <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                                <path
+                                    d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
                             </svg>
                         </a>
                     </div>
                 </div>
-                
+
                 <div>
-                    <h3 class="text-white font-semibold mb-4">Resources</h3>
+                    <h3 class="text-white font-semibold mb-4" data-i18n data-en="Resources" data-zh="资源">Resources</h3>
                     <ul class="space-y-2">
-                        <li><a href="https://pkg.go.dev/github.com/liliang-cn/sqvect" class="text-gray-400 hover:text-white transition-colors">Documentation</a></li>
-                        <li><a href="https://github.com/liliang-cn/sqvect/tree/main/examples" class="text-gray-400 hover:text-white transition-colors">Examples</a></li>
-                        <li><a href="https://github.com/liliang-cn/sqvect/blob/main/ROADMAP.md" class="text-gray-400 hover:text-white transition-colors">Roadmap</a></li>
-                        <li><a href="https://github.com/liliang-cn/sqvect/blob/main/FEATURE_COMPARISON.md" class="text-gray-400 hover:text-white transition-colors">Features</a></li>
+                        <li><a href="https://pkg.go.dev/github.com/liliang-cn/sqvect/v2"
+                                class="text-gray-400 hover:text-white transition-colors" data-i18n
+                                data-en="Documentation" data-zh="文档">Documentation</a></li>
+                        <li><a href="https://github.com/liliang-cn/sqvect/tree/main/examples"
+                                class="text-gray-400 hover:text-white transition-colors" data-i18n data-en="Examples"
+                                data-zh="示例">Examples</a></li>
+                        <li><a href="https://github.com/liliang-cn/sqvect/blob/main/ROADMAP.md"
+                                class="text-gray-400 hover:text-white transition-colors" data-i18n data-en="Roadmap"
+                                data-zh="路线图">Roadmap</a></li>
+                        <li><a href="https://github.com/liliang-cn/sqvect/blob/main/FEATURE_COMPARISON.md"
+                                class="text-gray-400 hover:text-white transition-colors" data-i18n data-en="Features"
+                                data-zh="特性">Features</a></li>
                     </ul>
                 </div>
-                
+
                 <div>
-                    <h3 class="text-white font-semibold mb-4">Community</h3>
+                    <h3 class="text-white font-semibold mb-4" data-i18n data-en="Community" data-zh="社区">Community</h3>
                     <ul class="space-y-2">
-                        <li><a href="https://github.com/liliang-cn/sqvect/issues" class="text-gray-400 hover:text-white transition-colors">GitHub Issues</a></li>
-                        <li><a href="https://github.com/liliang-cn/sqvect/discussions" class="text-gray-400 hover:text-white transition-colors">Discussions</a></li>
-                        <li><a href="https://github.com/liliang-cn/sqvect/blob/main/CONTRIBUTING.md" class="text-gray-400 hover:text-white transition-colors">Contributing</a></li>
-                        <li><a href="https://github.com/liliang-cn/sqvect/blob/main/LICENSE" class="text-gray-400 hover:text-white transition-colors">License</a></li>
+                        <li><a href="https://github.com/liliang-cn/sqvect/issues"
+                                class="text-gray-400 hover:text-white transition-colors" data-i18n
+                                data-en="GitHub Issues" data-zh="问题反馈">GitHub Issues</a></li>
+                        <li><a href="https://github.com/liliang-cn/sqvect/discussions"
+                                class="text-gray-400 hover:text-white transition-colors" data-i18n data-en="Discussions"
+                                data-zh="讨论区">Discussions</a></li>
+                        <li><a href="https://github.com/liliang-cn/sqvect/blob/main/CONTRIBUTING.md"
+                                class="text-gray-400 hover:text-white transition-colors" data-i18n
+                                data-en="Contributing" data-zh="贡献指南">Contributing</a></li>
+                        <li><a href="https://github.com/liliang-cn/sqvect/blob/main/LICENSE"
+                                class="text-gray-400 hover:text-white transition-colors" data-i18n data-en="License"
+                                data-zh="许可证">License</a></li>
                     </ul>
                 </div>
             </div>
-            
+
             <div class="border-t border-gray-800 mt-8 pt-8 text-center">
                 <p class="text-gray-500">
-                    © 2024 SQVect. Open source under MIT License.
+                    © 2026 SQVect. Open source under MIT License.
                 </p>
             </div>
         </div>
@@ -615,13 +940,13 @@ func main() {
     <script>
         // GSAP Animations
         gsap.registerPlugin(ScrollTrigger);
-        
+
         // Theme Toggle
         const themeToggle = document.getElementById('theme-toggle');
         const sunIcon = document.getElementById('sun-icon');
         const moonIcon = document.getElementById('moon-icon');
         const html = document.documentElement;
-        
+
         // Check for saved theme or default to dark
         const currentTheme = localStorage.getItem('theme') || 'light';
         if (currentTheme === 'dark') {
@@ -629,7 +954,7 @@ func main() {
             sunIcon.classList.remove('hidden');
             moonIcon.classList.add('hidden');
         }
-        
+
         themeToggle.addEventListener('click', () => {
             html.classList.toggle('dark');
             if (html.classList.contains('dark')) {
@@ -642,7 +967,51 @@ func main() {
                 moonIcon.classList.remove('hidden');
             }
         });
-        
+
+        // Language Toggle
+        const langEn = document.getElementById('lang-en');
+        const langZh = document.getElementById('lang-zh');
+        const langEnMobile = document.getElementById('lang-en-mobile');
+        const langZhMobile = document.getElementById('lang-zh-mobile');
+
+        function setLangButtonState(button, active) {
+            if (!button) return;
+            button.classList.toggle('text-blue-600', active);
+            button.classList.toggle('font-semibold', active);
+            button.classList.toggle('text-gray-500', !active);
+        }
+
+        function applyLanguage(lang) {
+            const useLang = lang === 'zh' ? 'zh' : 'en';
+            document.documentElement.lang = useLang;
+            localStorage.setItem('lang', useLang);
+
+            document.querySelectorAll('[data-i18n]').forEach((el) => {
+                const text = el.getAttribute(`data-${useLang}`) || el.getAttribute('data-en');
+                if (text) {
+                    el.textContent = text;
+                }
+            });
+
+            setLangButtonState(langEn, useLang === 'en');
+            setLangButtonState(langZh, useLang === 'zh');
+            setLangButtonState(langEnMobile, useLang === 'en');
+            setLangButtonState(langZhMobile, useLang === 'zh');
+        }
+
+        const savedLang = localStorage.getItem('lang') || 'en';
+        applyLanguage(savedLang);
+
+        [langEn, langEnMobile].forEach((btn) => {
+            if (!btn) return;
+            btn.addEventListener('click', () => applyLanguage('en'));
+        });
+
+        [langZh, langZhMobile].forEach((btn) => {
+            if (!btn) return;
+            btn.addEventListener('click', () => applyLanguage('zh'));
+        });
+
         // Hero Animation
         gsap.from("#hero-content", {
             duration: 1,
@@ -650,31 +1019,31 @@ func main() {
             opacity: 0,
             ease: "power3.out"
         });
-        
+
         // Counter Animations
         function animateCounter(element, target, duration = 2) {
             gsap.to({ val: 0 }, {
                 duration: duration,
                 val: target,
                 ease: "power2.out",
-                onUpdate: function() {
+                onUpdate: function () {
                     element.textContent = Math.round(this.targets()[0].val);
                 }
             });
         }
-        
+
         // Trigger counters when in view
         ScrollTrigger.create({
             trigger: "#counter-1",
             start: "top 80%",
             onEnter: () => {
                 animateCounter(document.getElementById('counter-1'), 1);
-                animateCounter(document.getElementById('counter-2'), 8);
-                animateCounter(document.getElementById('counter-3'), 5);
+                animateCounter(document.getElementById('counter-2'), 4);
+                animateCounter(document.getElementById('counter-3'), 4);
                 animateCounter(document.getElementById('counter-4'), 100);
             }
         });
-        
+
         // Performance counters
         ScrollTrigger.create({
             trigger: "#perf-search",
@@ -685,7 +1054,7 @@ func main() {
                 animateCounter(document.getElementById('perf-throughput'), 25);
             }
         });
-        
+
         // Feature Cards Animation
         gsap.utils.toArray('.feature-card').forEach((card, i) => {
             gsap.from(card, {
@@ -700,7 +1069,7 @@ func main() {
                 }
             });
         });
-        
+
         // Smooth scrolling for navigation links
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
             anchor.addEventListener('click', function (e) {
@@ -715,7 +1084,7 @@ func main() {
                 }
             });
         });
-        
+
         // Parallax effect for floating elements
         gsap.utils.toArray('.animate-float').forEach((element) => {
             gsap.to(element, {
@@ -726,11 +1095,11 @@ func main() {
                 repeat: -1
             });
         });
-        
+
         // Mobile menu toggle (basic implementation)
         const mobileMenuBtn = document.querySelector('.mobile-menu-btn');
         const mobileMenu = document.querySelector('.mobile-menu');
-        
+
         if (mobileMenuBtn && mobileMenu) {
             mobileMenuBtn.addEventListener('click', () => {
                 mobileMenu.classList.toggle('hidden');
@@ -738,4 +1107,5 @@ func main() {
         }
     </script>
 </body>
+
 </html>

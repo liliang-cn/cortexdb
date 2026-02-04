@@ -17,6 +17,7 @@ sqvect is a **100% pure Go library** designed to be the storage kernel for your 
 - 🚀 **RAG-Ready** – Built-in tables for **Documents**, **Chat Sessions**, and **Messages**.
 - 🔍 **Hybrid Search** – Combine **Vector Search (HNSW)** + **Keyword Search (FTS5)** with RRF fusion.
 - 🧠 **AI Agent Memory** – **Hindsight** system for long-term agent memory (World, Bank, Opinion, Observation).
+- 🧭 **Semantic Router** – intent routing with configurable similarity and thresholds.
 - 🛡️ **Secure** – Row-Level Security (RLS) via **ACL** fields and query filtering.
 - 🕸️ **Graph Storage** – Built-in knowledge graph with entity relationships.
 - 📊 **Quantization** – **SQ8 Quantization** reduces RAM usage by 75%.
@@ -35,6 +36,7 @@ package main
 import (
     "context"
     "fmt"
+    "github.com/liliang-cn/sqvect/v2/pkg/core"
     "github.com/liliang-cn/sqvect/v2/pkg/sqvect"
 )
 
@@ -47,7 +49,7 @@ func main() {
     // 2. Add a Document & Vector
     // sqvect manages the relationship between docs and chunks
     db.Vector().CreateDocument(ctx, &core.Document{ID: "doc1", Title: "Go Guide"})
-    
+
     db.Quick().Add(ctx, []float32{0.1, 0.2, 0.9}, "Go is awesome")
 
     // 3. Search
@@ -61,28 +63,33 @@ func main() {
 ### Key Advantages
 
 **🎯 All-in-One RAG Storage**
+
 - Stop managing separate databases for vectors, documents, and chat history
 - Single SQLite file = easy backup, migration, and version control
 - Perfect for edge deployment and local-first applications
 
 **🚀 Developer Experience**
+
 - Zero configuration - works out of the box
 - Type-safe Go API with full IntelliSense support
 - Built-in RAG schemas (no ORM/SQL required)
 - Comprehensive examples for common use cases
 
 **⚡ Performance & Efficiency**
+
 - SQ8 quantization reduces memory by 75% (1M vectors ~1GB)
 - Multiple index types (HNSW, IVF, LSH) for different workloads
 - WAL mode + connection pooling for concurrent access
 - Efficient distance calculations
 
 **🔒 Security First**
+
 - Row-Level Security (ACL) built into the core
 - User-scoped queries enforce permission boundaries
 - No data leakage between tenants
 
 **🧪 Production Ready**
+
 - 93% test coverage on core APIs
 - Battle-tested algorithms (HNSW, RRF, PQ)
 - CI/CD + Codecov + Go Report Card badges
@@ -125,11 +132,11 @@ resp, _ := sys.Observe(ctx, &hindsight.ReflectRequest{
 
 ### Four Memory Types
 
-| Type | Description | Example |
-|:---|:---|:---|
-| **World** | Objective facts about the world | "Alice works at Google" |
-| **Bank** | Agent's own experiences | "I recommended Python to Bob" |
-| **Opinion** | Beliefs with confidence scores | "Python is best for ML" (0.85) |
+| Type            | Description                      | Example                        |
+| :-------------- | :------------------------------- | :----------------------------- |
+| **World**       | Objective facts about the world  | "Alice works at Google"        |
+| **Bank**        | Agent's own experiences          | "I recommended Python to Bob"  |
+| **Opinion**     | Beliefs with confidence scores   | "Python is best for ML" (0.85) |
 | **Observation** | Insights derived from reflection | "Users prefer concise answers" |
 
 ### TEMPR Retrieval Strategies
@@ -154,6 +161,7 @@ sys.CreateBank(ctx, bank)
 ```
 
 **Why Hindsight Matters**
+
 - Agents form **opinions** with confidence scores (not just retrieve facts)
 - **Disposition traits** influence how observations are generated
 - Agents **learn from experience** – observations persist across sessions
@@ -161,9 +169,39 @@ sys.CreateBank(ctx, bank)
 
 ## 🏗 Enterprise RAG Capabilities
 
+## 🧭 Semantic Router (Intent Routing)
+
+Use the semantic router to classify user queries before calling an LLM.
+
+```go
+import (
+    "context"
+    "fmt"
+
+    "github.com/liliang-cn/sqvect/v2/pkg/core"
+    semanticrouter "github.com/liliang-cn/sqvect/v2/pkg/semantic-router"
+)
+
+embedder := semanticrouter.NewMockEmbedder(1536)
+router, _ := semanticrouter.NewRouter(
+    embedder,
+    semanticrouter.WithThreshold(0.82),
+    semanticrouter.WithSimilarityFunc(core.CosineSimilarity),
+)
+
+router.Add(&semanticrouter.Route{
+    Name:       "refund",
+    Utterances: []string{"我要退款", "申请退款"},
+})
+
+result, _ := router.Route(context.Background(), "我要退款")
+fmt.Printf("Route: %s, Score: %.4f, Matched: %v\n", result.RouteName, result.Score, result.Matched)
+```
+
 sqvect goes beyond simple vector storage. It provides the schema and APIs needed for complex RAG apps.
 
 ### 1. Hybrid Search (Vector + Keyword)
+
 Combine semantic understanding with precise keyword matching using Reciprocal Rank Fusion (RRF).
 
 ```go
@@ -175,6 +213,7 @@ results, _ := db.Vector().HybridSearch(ctx, queryVec, "apple", core.HybridSearch
 ```
 
 ### 2. Chat Memory Management
+
 Store conversation history directly alongside your data.
 
 ```go
@@ -193,13 +232,14 @@ history, _ := db.Vector().GetSessionHistory(ctx, "sess_1", 10)
 ```
 
 ### 3. Row-Level Security (ACL)
+
 Enforce permissions at the database level.
 
 ```go
 // Insert restricted document
 db.Vector().Upsert(ctx, &core.Embedding{
-    ID: "secret_doc", 
-    Vector: vec, 
+    ID: "secret_doc",
+    Vector: vec,
     ACL: []string{"group:admin", "user:alice"}, // Only admins and Alice
 })
 
@@ -209,11 +249,12 @@ results, _ := db.Vector().SearchWithACL(ctx, queryVec, []string{"user:bob"}, opt
 ```
 
 ### 4. Document Management
+
 Track source files, versions, and metadata. Deleting a document automatically deletes all its vector chunks (Cascading Delete).
 
 ```go
 db.Vector().CreateDocument(ctx, &core.Document{
-    ID: "manual_v1", 
+    ID: "manual_v1",
     Title: "User Manual",
     Version: 1,
 })
@@ -227,51 +268,51 @@ db.Vector().DeleteDocument(ctx, "manual_v1")
 
 sqvect manages these tables for you:
 
-| Table | Description |
-| :--- | :--- |
-| `embeddings` | Vectors, content, JSON metadata, ACLs. |
-| `graph_nodes` | Graph nodes for entity relationships. |
-| `graph_edges` | Directed edges between nodes (with weights). |
-| `documents` | Parent records for embeddings (Title, URL, Version). |
-| `sessions` | Chat sessions/threads. |
-| `messages` | Chat logs (Role, Content, Timestamp). |
-| `collections` | Logical namespaces (Multi-tenancy). |
-| `chunks_fts` | **FTS5** virtual table for keyword search. |
+| Table         | Description                                          |
+| :------------ | :--------------------------------------------------- |
+| `embeddings`  | Vectors, content, JSON metadata, ACLs.               |
+| `graph_nodes` | Graph nodes for entity relationships.                |
+| `graph_edges` | Directed edges between nodes (with weights).         |
+| `documents`   | Parent records for embeddings (Title, URL, Version). |
+| `sessions`    | Chat sessions/threads.                               |
+| `messages`    | Chat logs (Role, Content, Timestamp).                |
+| `collections` | Logical namespaces (Multi-tenancy).                  |
+| `chunks_fts`  | **FTS5** virtual table for keyword search.           |
 
 ## 📊 Performance (128-dim)
 
-| Index Type | Insert Speed | Search QPS | Memory (1M vecs) |
-| :--- | :--- | :--- | :--- |
-| **HNSW** | ~580 ops/s | ~720 QPS | ~1.2 GB (SQ8) |
-| **IVF** | ~14,500 ops/s | ~1,230 QPS | ~1.0 GB (SQ8) |
+| Index Type | Insert Speed  | Search QPS | Memory (1M vecs) |
+| :--------- | :------------ | :--------- | :--------------- |
+| **HNSW**   | ~580 ops/s    | ~720 QPS   | ~1.2 GB (SQ8)    |
+| **IVF**    | ~14,500 ops/s | ~1,230 QPS | ~1.0 GB (SQ8)    |
 
-*Tested on Apple M2 Pro.*
+_Tested on Apple M2 Pro._
 
 ## 🎯 Best Use Cases
 
 ### Perfect For ✅
 
-| Use Case | Why sqvect? |
-|:---|:---|
-| **Local-First RAG Apps** | Single file, no server, works offline |
-| **AI Agent Memory** | Hindsight system with TEMPR retrieval |
-| **Edge AI Devices** | Low memory (SQ8), no external deps, pure Go |
-| **Personal Knowledge Bases** | Simple backup (copy file), easy to query |
-| **Internal Tools** | Fast setup, no DevOps overhead |
-| **Chat Memory Systems** | Built-in sessions/messages tables |
-| **Multi-Tenant SaaS** | ACL + Collections for isolation |
-| **Document Clustering** | Graph algorithms (PageRank, community detection) |
-| **Hybrid Search Apps** | Vector + FTS5 with RRF fusion |
-| **Prototype to Production** | Same code from dev to prod (just scale up) |
+| Use Case                     | Why sqvect?                                      |
+| :--------------------------- | :----------------------------------------------- |
+| **Local-First RAG Apps**     | Single file, no server, works offline            |
+| **AI Agent Memory**          | Hindsight system with TEMPR retrieval            |
+| **Edge AI Devices**          | Low memory (SQ8), no external deps, pure Go      |
+| **Personal Knowledge Bases** | Simple backup (copy file), easy to query         |
+| **Internal Tools**           | Fast setup, no DevOps overhead                   |
+| **Chat Memory Systems**      | Built-in sessions/messages tables                |
+| **Multi-Tenant SaaS**        | ACL + Collections for isolation                  |
+| **Document Clustering**      | Graph algorithms (PageRank, community detection) |
+| **Hybrid Search Apps**       | Vector + FTS5 with RRF fusion                    |
+| **Prototype to Production**  | Same code from dev to prod (just scale up)       |
 
 ### Not Recommended For ❌
 
-| Scenario | Better Alternative |
-|:---|:---|
-| >100M vectors | Milvus, Qdrant (distributed) |
-| <10ms latency requirements | Redis-based vector DB |
-| Multi-region HA | Cloud-native vector DB (Pinecone) |
-| Non-Go teams | Chroma (Python), Weaviate |
+| Scenario                   | Better Alternative                |
+| :------------------------- | :-------------------------------- |
+| >100M vectors              | Milvus, Qdrant (distributed)      |
+| <10ms latency requirements | Redis-based vector DB             |
+| Multi-region HA            | Cloud-native vector DB (Pinecone) |
+| Non-Go teams               | Chroma (Python), Weaviate         |
 
 ### Real-World Examples
 
@@ -286,25 +327,26 @@ sqvect manages these tables for you:
 
 ### Vector Database Comparison
 
-| Feature | sqvect | Chroma | Weaviate | Milvus | Qdrant |
-|:---|:---:|:---:|:---:|:---:|:---:|
-| **Architecture** | Embedded | Server | Server | Distributed | Server |
-| **Language** | Go | Python | Go | Go | Rust |
-| **Dependencies** | SQLite only | DuckDB | Vector+Obj | Many | Many |
-| **Setup Time** | ~1 sec | ~5 min | ~10 min | ~30 min | ~10 min |
-| **Vector Search** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Keyword Search** | ✅ FTS5 | ❌ | ⚠️ | ❌ | ❌ |
-| **Graph DB** | ✅ Built-in | ❌ | ❌ | ❌ | ❌ |
-| **RAG Tables** | ✅ Ready | ❌ DIY | ❌ DIY | ❌ DIY | ❌ DIY |
-| **ACL/Security** | ✅ Row-level | ❌ | ⚠️ | ⚠️ | ⚠️ |
-| **Quantization** | SQ8/PQ/Binary | ❌ | ✅ | ✅ | ✅ |
-| **Scalability** | <10M | <100M | <1B | >1B | <1B |
-| **Backup** | Copy file | Export | Snapshot | Complex | Snapshot |
-| **Ideal For** | Edge/Local | Python ML | Enterprise | Big Data | Production |
+| Feature            |    sqvect     |  Chroma   |  Weaviate  |   Milvus    |   Qdrant   |
+| :----------------- | :-----------: | :-------: | :--------: | :---------: | :--------: |
+| **Architecture**   |   Embedded    |  Server   |   Server   | Distributed |   Server   |
+| **Language**       |      Go       |  Python   |     Go     |     Go      |    Rust    |
+| **Dependencies**   |  SQLite only  |  DuckDB   | Vector+Obj |    Many     |    Many    |
+| **Setup Time**     |    ~1 sec     |  ~5 min   |  ~10 min   |   ~30 min   |  ~10 min   |
+| **Vector Search**  |      ✅       |    ✅     |     ✅     |     ✅      |     ✅     |
+| **Keyword Search** |    ✅ FTS5    |    ❌     |     ⚠️     |     ❌      |     ❌     |
+| **Graph DB**       |  ✅ Built-in  |    ❌     |     ❌     |     ❌      |     ❌     |
+| **RAG Tables**     |   ✅ Ready    |  ❌ DIY   |   ❌ DIY   |   ❌ DIY    |   ❌ DIY   |
+| **ACL/Security**   | ✅ Row-level  |    ❌     |     ⚠️     |     ⚠️      |     ⚠️     |
+| **Quantization**   | SQ8/PQ/Binary |    ❌     |     ✅     |     ✅      |     ✅     |
+| **Scalability**    |     <10M      |   <100M   |    <1B     |     >1B     |    <1B     |
+| **Backup**         |   Copy file   |  Export   |  Snapshot  |   Complex   |  Snapshot  |
+| **Ideal For**      |  Edge/Local   | Python ML | Enterprise |  Big Data   | Production |
 
 ### When to Choose sqvect?
 
 **Choose sqvect if:**
+
 - ✅ You want a **single-file** database (no separate services)
 - ✅ You're building **local-first** or **edge AI** applications
 - ✅ You need **built-in RAG schemas** (docs, sessions, messages)
@@ -313,6 +355,7 @@ sqvect manages these tables for you:
 - ✅ You're targeting **<10 million vectors**
 
 **Choose alternatives if:**
+
 - ❌ You need **distributed** deployment across multiple nodes
 - ❌ You have **>100M vectors** and need horizontal scaling
 - ❌ You require **sub-10ms** query latency
@@ -321,6 +364,7 @@ sqvect manages these tables for you:
 ### Unique Differentiators
 
 🎯 **No other vector DB combines:**
+
 1. Vector + Graph + Document + Chat + **Agent Memory (Hindsight)** in ONE file
 2. Built-in RAG schemas (zero design work)
 3. **Hindsight**: biomimetic memory system for AI agents (TEMPR retrieval)

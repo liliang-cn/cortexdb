@@ -4,13 +4,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
 
-	// Uncomment when package is available:
-	// "github.com/liliang-cn/sqvect/v2/pkg/core"
-	// "github.com/liliang-cn/sqvect/v2/pkg/semanticrouter"
+	"github.com/liliang-cn/sqvect/v2/pkg/core"
+	semanticrouter "github.com/liliang-cn/sqvect/v2/pkg/semantic-router"
 )
 
 func main() {
@@ -18,10 +18,8 @@ func main() {
 	log.Println("======================")
 	log.Println()
 	log.Println("This example demonstrates the semantic-router usage.")
-	log.Println("Uncomment the imports and code below when the package is available.")
 	log.Println()
-	log.Println("Example usage:")
-	log.Println(`
+
 	// Create a mock embedder (replace with real OpenAI embedder in production)
 	embedder := semanticrouter.NewMockEmbedder(1536)
 
@@ -31,6 +29,9 @@ func main() {
 		semanticrouter.WithThreshold(0.82),
 		semanticrouter.WithSimilarityFunc(core.CosineSimilarity),
 	)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// Define routes for different intents
 	refundHandler := func(ctx context.Context, query string, score float64) (string, error) {
@@ -60,25 +61,29 @@ func main() {
 		},
 	}
 
-	router.AddBatch(routes)
+	if err := router.AddBatch(routes); err != nil {
+		log.Fatal(err)
+	}
 
 	// Route a query
 	ctx := context.Background()
-	result, _ := router.Route(ctx, "我要退款")
-	fmt.Printf("Route: %s, Score: %.4f, Matched: %v\n",
-		result.RouteName, result.Score, result.Matched)
-	`)
+	query := "我要退款"
+	result, err := router.Route(ctx, query)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	// Sample output simulation
-	fmt.Println("\nSample output:")
 	fmt.Println(strings.Repeat("-", 60))
-	fmt.Println("已加载 2 个路由:")
-	fmt.Println("  - refund")
-	fmt.Println("  - chat")
-	fmt.Println()
-	fmt.Println("查询: \"我要退款\"")
-	fmt.Println("  匹配路由: refund")
-	fmt.Println("  相似度: 1.0000")
-	fmt.Println("  是否命中: true")
-	fmt.Println("  响应: [退款处理] 您的退款请求已收到（置信度: 1.00）")
+	fmt.Printf("查询: %q\n", query)
+	fmt.Printf("  匹配路由: %s\n", result.RouteName)
+	fmt.Printf("  相似度: %.4f\n", result.Score)
+	fmt.Printf("  是否命中: %v\n", result.Matched)
+
+	if result.Matched && result.Handler != nil {
+		response, err := result.Handler(ctx, query, result.Score)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("  响应: %s\n", response)
+	}
 }

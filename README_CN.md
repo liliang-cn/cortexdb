@@ -17,14 +17,16 @@ sqvect 是一个 **100% 纯 Go 库**，旨在为您的 RAG 应用提供存储内
 - 🚀 **开箱即用的 RAG** – 内置 **文档**、**聊天会话** 和 **消息** 表。
 - 🔍 **混合搜索** – 结合 **向量搜索 (HNSW)** + **关键词搜索 (FTS5)** 使用 RRF 融合。
 - 🛡️ **安全** – 通过 **ACL** 字段和查询过滤实现行级安全 (RLS)。
+- 🕸️ **图存储** – 内置知识图谱与图算法。
 - 🧠 **内存高效** – **SQ8 量化** 减少 75% 内存使用。
+- 🧭 **语义路由** – 基于相似度与阈值的意图路由。
 - ⚡ **高性能** – 优化 WAL 模式，支持高并发访问。
 - 🎯 **零配置** – 开箱即用。
 
 ## 🚀 快速开始
 
 ```bash
-go get github.com/liliang-cn/sqvect
+go get github.com/liliang-cn/sqvect/v2
 ```
 
 ```go
@@ -33,7 +35,8 @@ package main
 import (
     "context"
     "fmt"
-    "github.com/liliang-cn/sqvect/pkg/sqvect"
+    "github.com/liliang-cn/sqvect/v2/pkg/core"
+    "github.com/liliang-cn/sqvect/v2/pkg/sqvect"
 )
 
 func main() {
@@ -59,38 +62,144 @@ func main() {
 ### 核心优势
 
 **🎯 一体化 RAG 存储**
+
 - 无需为向量、文档和聊天历史管理多个数据库
 - 单个 SQLite 文件 = 轻松备份、迁移和版本控制
 - 非常适合边缘部署和本地优先应用
 
 **🚀 开发者体验**
+
 - 零配置 - 开箱即用
 - 类型安全的 Go API，支持完整的 IntelliSense
 - 内置 RAG 架构 (无需 ORM/SQL)
 - 丰富示例覆盖常见用例
 
 **⚡ 性能与效率**
+
 - SQ8 量化减少 75% 内存 (100万向量 ~1GB)
 - 多种索引类型 (HNSW, IVF, LSH) 适应不同工作负载
 - WAL 模式 + 连接池实现并发访问
 - 高效的距离计算
 
 **🔒 安全优先**
+
 - 行级安全 (ACL) 内置在核心中
 - 用户作用域查询强制执行权限边界
 - 租户之间无数据泄露
 
 **🧪 生产就绪**
+
 - 核心 API 测试覆盖率 93%
 - 经过实战验证的算法 (HNSW, RRF, PQ)
 - CI/CD + Codecov + Go Report Card 徽章
 - MIT 许可证便于集成
 
+## 🧠 Hindsight：AI 智能体记忆系统
+
+sqvect 内置 **Hindsight**，一个仿生记忆系统，用于让智能体在多轮交互中长期学习与改进。
+
+### 三大核心操作
+
+```go
+import "github.com/liliang-cn/sqvect/v2/pkg/hindsight"
+
+sys, _ := hindsight.New(&hindsight.Config{DBPath: "agent_memory.db"})
+
+// RETAIN：写入记忆（调用方提供向量）
+sys.Retain(ctx, &hindsight.Memory{
+    Type:     hindsight.WorldMemory,
+    Content:  "Alice works at Google as a senior engineer",
+    Vector:   embedding,
+    Entities: []string{"Alice", "Google"},
+})
+
+// RECALL：基于 TEMPR 策略检索
+results, _ := sys.Recall(ctx, &hindsight.RecallRequest{
+    BankID:      "agent-1",
+    QueryVector: queryEmbedding,
+    Strategy:    hindsight.DefaultStrategy(),
+})
+
+// OBSERVE：反思生成新洞察
+resp, _ := sys.Observe(ctx, &hindsight.ReflectRequest{
+    BankID:      "agent-1",
+    Query:       "What does Alice prefer?",
+    QueryVector: queryEmbedding,
+})
+// resp.Observations 包含新洞察
+```
+
+### 四种记忆类型
+
+| 类型            | 描述           | 示例                           |
+| :-------------- | :------------- | :----------------------------- |
+| **World**       | 世界客观事实   | "Alice works at Google"        |
+| **Bank**        | 智能体自身经历 | "I recommended Python to Bob"  |
+| **Opinion**     | 带置信度的观点 | "Python is best for ML" (0.85) |
+| **Observation** | 反思生成的洞察 | "Users prefer concise answers" |
+
+### TEMPR 检索策略
+
+Hindsight 同时运行四种检索并用 RRF 融合：
+
+- **T**emporal – 时间范围过滤
+- **E**ntity – 基于实体关系图
+- **M**emory – 向量语义相似度
+- **P**riming – 关键词/BM25 精确匹配
+- **R**ecall – RRF 融合排序
+
+### 记忆银行与性格倾向
+
+```go
+bank := hindsight.NewBank("agent-1", "Assistant Agent")
+bank.Skepticism = 3  // 1=易信, 5=怀疑
+bank.Literalism = 3  // 1=灵活, 5=字面
+bank.Empathy = 4     // 1=冷静, 5=共情
+sys.CreateBank(ctx, bank)
+```
+
+**为什么需要 Hindsight**
+
+- 智能体会形成带置信度的**观点**，而非只检索事实
+- **性格倾向**影响反思与洞察生成
+- 记忆可跨会话持续积累
+- 纯记忆系统，无 LLM 依赖（调用方负责嵌入）
+
 ## 🏗 企业级 RAG 能力
+
+## 🧭 语义路由（意图路由）
+
+在调用 LLM 前先做意图分类与路由。
+
+```go
+import (
+    "context"
+    "fmt"
+
+    "github.com/liliang-cn/sqvect/v2/pkg/core"
+    semanticrouter "github.com/liliang-cn/sqvect/v2/pkg/semantic-router"
+)
+
+embedder := semanticrouter.NewMockEmbedder(1536)
+router, _ := semanticrouter.NewRouter(
+    embedder,
+    semanticrouter.WithThreshold(0.82),
+    semanticrouter.WithSimilarityFunc(core.CosineSimilarity),
+)
+
+router.Add(&semanticrouter.Route{
+    Name:       "refund",
+    Utterances: []string{"我要退款", "申请退款"},
+})
+
+result, _ := router.Route(context.Background(), "我要退款")
+fmt.Printf("Route: %s, Score: %.4f, Matched: %v\n", result.RouteName, result.Score, result.Matched)
+```
 
 sqvect 超越简单的向量存储，为复杂的 RAG 应用提供架构和 API。
 
 ### 1. 混合搜索 (向量 + 关键词)
+
 使用倒数排名融合 (RRF) 将语义理解与精确关键词匹配结合。
 
 ```go
@@ -102,6 +211,7 @@ results, _ := db.Vector().HybridSearch(ctx, queryVec, "apple", core.HybridSearch
 ```
 
 ### 2. 聊天内存管理
+
 直接在数据旁边存储对话历史。
 
 ```go
@@ -120,6 +230,7 @@ history, _ := db.Vector().GetSessionHistory(ctx, "sess_1", 10)
 ```
 
 ### 3. 行级安全 (ACL)
+
 在数据库级别强制执行权限。
 
 ```go
@@ -136,6 +247,7 @@ results, _ := db.Vector().SearchWithACL(ctx, queryVec, []string{"user:bob"}, opt
 ```
 
 ### 4. 文档管理
+
 跟踪源文件、版本和元数据。删除文档会自动删除其所有向量分块 (级联删除)。
 
 ```go
@@ -154,48 +266,48 @@ db.Vector().DeleteDocument(ctx, "manual_v1")
 
 sqvect 为您管理以下表：
 
-| 表 | 描述 |
-| :--- | :--- |
-| `embeddings` | 向量、内容、JSON 元数据、ACL。 |
-| `documents` | 向量的父级记录 (标题、URL、版本)。 |
-| `sessions` | 聊天会话/线程。 |
-| `messages` | 聊天日志 (角色、内容、时间戳)。 |
-| `collections` | 逻辑命名空间 (多租户)。 |
-| `chunks_fts` | 用于关键词搜索的 **FTS5** 虚拟表。 |
+| 表            | 描述                               |
+| :------------ | :--------------------------------- |
+| `embeddings`  | 向量、内容、JSON 元数据、ACL。     |
+| `documents`   | 向量的父级记录 (标题、URL、版本)。 |
+| `sessions`    | 聊天会话/线程。                    |
+| `messages`    | 聊天日志 (角色、内容、时间戳)。    |
+| `collections` | 逻辑命名空间 (多租户)。            |
+| `chunks_fts`  | 用于关键词搜索的 **FTS5** 虚拟表。 |
 
 ## 📊 性能 (128 维)
 
-| 索引类型 | 插入速度 | 搜索 QPS | 内存 (100万向量) |
-| :--- | :--- | :--- | :--- |
-| **HNSW** | ~580 ops/s | ~720 QPS | ~1.2 GB (SQ8) |
-| **IVF** | ~14,500 ops/s | ~1,230 QPS | ~1.0 GB (SQ8) |
+| 索引类型 | 插入速度      | 搜索 QPS   | 内存 (100万向量) |
+| :------- | :------------ | :--------- | :--------------- |
+| **HNSW** | ~580 ops/s    | ~720 QPS   | ~1.2 GB (SQ8)    |
+| **IVF**  | ~14,500 ops/s | ~1,230 QPS | ~1.0 GB (SQ8)    |
 
-*在 Apple M2 Pro 上测试。*
+_在 Apple M2 Pro 上测试。_
 
 ## 🎯 最佳使用场景
 
 ### 非常适合 ✅
 
-| 使用场景 | 为什么选择 sqvect？ |
-|:---|:---|
-| **本地优先 RAG 应用** | 单文件、无服务器、离线工作 |
-| **边缘 AI 设备** | 低内存 (SQ8)、无外部依赖、纯 Go |
-| **个人知识库** | 简单备份 (复制文件)、易于查询 |
-| **内部工具** | 快速设置、无 DevOps 开销 |
-| **聊天内存系统** | 内置会话/消息表 |
-| **多租户 SaaS** | ACL + Collections 实现隔离 |
-| **文档聚类** | 图算法 (PageRank、社区检测) |
-| **混合搜索应用** | 向量 + FTS5 使用 RRF 融合 |
-| **原型到生产** | 同一套代码从开发到生产 (只需扩展) |
+| 使用场景              | 为什么选择 sqvect？               |
+| :-------------------- | :-------------------------------- |
+| **本地优先 RAG 应用** | 单文件、无服务器、离线工作        |
+| **边缘 AI 设备**      | 低内存 (SQ8)、无外部依赖、纯 Go   |
+| **个人知识库**        | 简单备份 (复制文件)、易于查询     |
+| **内部工具**          | 快速设置、无 DevOps 开销          |
+| **聊天内存系统**      | 内置会话/消息表                   |
+| **多租户 SaaS**       | ACL + Collections 实现隔离        |
+| **文档聚类**          | 图算法 (PageRank、社区检测)       |
+| **混合搜索应用**      | 向量 + FTS5 使用 RRF 融合         |
+| **原型到生产**        | 同一套代码从开发到生产 (只需扩展) |
 
 ### 不推荐用于 ❌
 
-| 场景 | 更好的替代方案 |
-|:---|:---|
-| >1亿向量 | Milvus, Qdrant (分布式) |
-| <10ms 延迟要求 | 基于 Redis 的向量数据库 |
-| 多区域高可用 | 云原生向量数据库 (Pinecone) |
-| 非 Go 团队 | Chroma (Python), Weaviate |
+| 场景           | 更好的替代方案              |
+| :------------- | :-------------------------- |
+| >1亿向量       | Milvus, Qdrant (分布式)     |
+| <10ms 延迟要求 | 基于 Redis 的向量数据库     |
+| 多区域高可用   | 云原生向量数据库 (Pinecone) |
+| 非 Go 团队     | Chroma (Python), Weaviate   |
 
 ### 真实世界示例
 
@@ -209,25 +321,26 @@ sqvect 为您管理以下表：
 
 ### 向量数据库对比
 
-| 特性 | sqvect | Chroma | Weaviate | Milvus | Qdrant |
-|:---|:---:|:---:|:---:|:---:|:---:|
-| **架构** | 嵌入式 | 服务器 | 服务器 | 分布式 | 服务器 |
-| **语言** | Go | Python | Go | Go | Rust |
-| **依赖** | 仅 SQLite | DuckDB | Vector+Obj | 很多 | 很多 |
-| **设置时间** | ~1 秒 | ~5 分钟 | ~10 分钟 | ~30 分钟 | ~10 分钟 |
-| **向量搜索** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **关键词搜索** | ✅ FTS5 | ❌ | ⚠️ | ❌ | ❌ |
-| **图数据库** | ✅ 内置 | ❌ | ❌ | ❌ | ❌ |
-| **RAG 表** | ✅ 就绪 | ❌ 自行实现 | ❌ 自行实现 | ❌ 自行实现 | ❌ 自行实现 |
-| **ACL/安全** | ✅ 行级 | ❌ | ⚠️ | ⚠️ | ⚠️ |
-| **量化** | SQ8/PQ/Binary | ❌ | ✅ | ✅ | ✅ |
-| **可扩展性** | <1000万 | <1亿 | <10亿 | >10亿 | <10亿 |
-| **备份** | 复制文件 | 导出 | 快照 | 复杂 | 快照 |
-| **适合场景** | 边缘/本地 | Python ML | 企业 | 大数据 | 生产 |
+| 特性           |    sqvect     |   Chroma    |  Weaviate   |   Milvus    |   Qdrant    |
+| :------------- | :-----------: | :---------: | :---------: | :---------: | :---------: |
+| **架构**       |    嵌入式     |   服务器    |   服务器    |   分布式    |   服务器    |
+| **语言**       |      Go       |   Python    |     Go      |     Go      |    Rust     |
+| **依赖**       |   仅 SQLite   |   DuckDB    | Vector+Obj  |    很多     |    很多     |
+| **设置时间**   |     ~1 秒     |   ~5 分钟   |  ~10 分钟   |  ~30 分钟   |  ~10 分钟   |
+| **向量搜索**   |      ✅       |     ✅      |     ✅      |     ✅      |     ✅      |
+| **关键词搜索** |    ✅ FTS5    |     ❌      |     ⚠️      |     ❌      |     ❌      |
+| **图数据库**   |    ✅ 内置    |     ❌      |     ❌      |     ❌      |     ❌      |
+| **RAG 表**     |    ✅ 就绪    | ❌ 自行实现 | ❌ 自行实现 | ❌ 自行实现 | ❌ 自行实现 |
+| **ACL/安全**   |    ✅ 行级    |     ❌      |     ⚠️      |     ⚠️      |     ⚠️      |
+| **量化**       | SQ8/PQ/Binary |     ❌      |     ✅      |     ✅      |     ✅      |
+| **可扩展性**   |    <1000万    |    <1亿     |    <10亿    |    >10亿    |    <10亿    |
+| **备份**       |   复制文件    |    导出     |    快照     |    复杂     |    快照     |
+| **适合场景**   |   边缘/本地   |  Python ML  |    企业     |   大数据    |    生产     |
 
 ### 何时选择 sqvect？
 
 **选择 sqvect 如果：**
+
 - ✅ 您想要 **单文件** 数据库 (无独立服务)
 - ✅ 您正在构建 **本地优先** 或 **边缘 AI** 应用
 - ✅ 您需要 **内置 RAG 架构** (文档、会话、消息)
@@ -236,6 +349,7 @@ sqvect 为您管理以下表：
 - ✅ 您目标 **<1000 万向量**
 
 **选择替代方案如果：**
+
 - ❌ 您需要 **分布式** 部署跨越多个节点
 - ❌ 您有 **>1亿向量** 并需要水平扩展
 - ❌ 您要求 **<10ms** 查询延迟
@@ -244,6 +358,7 @@ sqvect 为您管理以下表：
 ### 独特差异化
 
 🎯 **没有其他向量数据库能结合：**
+
 1. 向量 + 图 + 文档 + 聊天 在一个文件中
 2. 内置 RAG 架构 (无需设计工作)
 3. 无需外部认证的行级安全
