@@ -21,11 +21,12 @@ import (
 // System is the Hindsight memory system built on sqvect.
 // It provides Retain, Recall, and Reflect operations for AI agent memory.
 type System struct {
-	db    *sqvect.DB
-	store core.Store
-	graph *graph.GraphStore
-	mu    sync.RWMutex
-	banks map[string]*Bank
+	db         *sqvect.DB
+	store      core.Store
+	graph      *graph.GraphStore
+	collection *core.Collection
+	mu         sync.RWMutex
+	banks      map[string]*Bank
 }
 
 // Config configures the Hindsight system.
@@ -87,6 +88,11 @@ func New(cfg *Config) (*System, error) {
 			// Collection may already exist, continue
 		}
 	}
+
+	// Store collection reference and load persisted banks
+	collection, _ := sys.store.GetCollection(ctx, cfg.Collection)
+	sys.collection = collection
+	_ = sys.loadPersistedBanks(ctx)
 
 	return sys, nil
 }
@@ -678,7 +684,7 @@ func (s *System) formatContext(results []*RecallResult, bank *Bank, query string
 	return b.String()
 }
 
-// CreateBank creates a new memory bank.
+// CreateBank creates a new memory bank and persists it to the database.
 func (s *System) CreateBank(ctx context.Context, bank *Bank) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -688,18 +694,73 @@ func (s *System) CreateBank(ctx context.Context, bank *Bank) error {
 	}
 
 	bank.CreatedAt = time.Now().Unix()
-	s.banks[bank.ID] = bank
 
+	// Persist bank to graph_nodes for cross-session persistence
+	vectorDim := 1536 // default dimension
+	if s.collection != nil && s.collection.Dimensions > 0 {
+		vectorDim = s.collection.Dimensions
+	}
+	// Create a small non-zero vector to pass validation
+	vector := make([]float32, vectorDim)
+	if len(vector) > 0 {
+		vector[0] = 0.0001 // Small non-zero value
+	}
+
+	properties := map[string]interface{}{
+		"name":        bank.Name,
+		"description": bank.Description,
+		"background": bank.Background,
+		"skepticism":  bank.Skepticism,
+		"literalism":  bank.Literalism,
+		"empathy":     bank.Empathy,
+		"created_at":  bank.CreatedAt,
+	}
+
+	if err := s.graph.UpsertNode(ctx, &graph.GraphNode{
+		ID:         bank.ID,
+		Vector:     vector,
+		Content:    bank.Name,
+		NodeType:   "bank",
+		Properties: properties,
+	}); err != nil {
+		// Log but don't fail - bank is still in memory
+		fmt.Printf("[Warning] Failed to persist bank to graph: %v\n", err)
+	}
+
+	s.banks[bank.ID] = bank
 	return nil
 }
 
 // GetBank retrieves a memory bank by ID.
+// First checks in-memory cache, then loads from database if not found.
 func (s *System) GetBank(bankID string) (*Bank, bool) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	bank, ok := s.banks[bankID]
-	return bank, ok
+	s.mu.RUnlock()
+
+	if ok {
+		return bank, true
+	}
+
+	// Try to load from database graph
+	ctx := context.Background()
+	node, err := s.graph.GetNode(ctx, bankID)
+	if err == nil && node.NodeType == "bank" {
+		bank := &Bank{
+			ID:          node.ID,
+			Name:        node.Content,
+			Description: node.Content,
+			CreatedAt:   node.CreatedAt.Unix(),
+		}
+
+		s.mu.Lock()
+		s.banks[bankID] = bank
+		s.mu.Unlock()
+
+		return bank, true
+	}
+
+	return nil, false
 }
 
 // ListBanks returns all registered banks.
@@ -725,7 +786,9 @@ func (s *System) DeleteBank(bankID string) error {
 
 	delete(s.banks, bankID)
 
-	// TODO: Also delete all memories associated with this bank
+	// Also delete from graph database for persistence
+	ctx := context.Background()
+	_ = s.graph.DeleteNode(ctx, bankID)
 
 	return nil
 }
@@ -1091,4 +1154,43 @@ func (s *System) GetObservations(ctx context.Context, bankID string) ([]*Observa
 	}
 
 	return observations, nil
+}
+
+// loadPersistedBanks loads banks from graph_nodes on system startup
+func (s *System) loadPersistedBanks(ctx context.Context) error {
+	filter := &graph.GraphFilter{
+		NodeTypes: []string{"bank"},
+	}
+
+	nodes, err := s.graph.GetAllNodes(ctx, filter)
+	if err != nil {
+		return nil // Don't fail on load error
+	}
+
+	for _, node := range nodes {
+		bank := &Bank{
+			ID:          node.ID,
+			Name:        node.Content,
+			Description: node.Content,
+			CreatedAt:   node.CreatedAt.Unix(),
+		}
+
+		s.banks[bank.ID] = bank
+	}
+
+	return nil
+}
+
+// nodeToBank converts a graph node to a Bank helper
+func (s *System) nodeToBank(node *graph.GraphNode) *Bank {
+	if node.NodeType != "bank" {
+		return nil
+	}
+
+	return &Bank{
+		ID:          node.ID,
+		Name:        node.Content,
+		Description: node.Content,
+		CreatedAt:   node.CreatedAt.Unix(),
+	}
 }
