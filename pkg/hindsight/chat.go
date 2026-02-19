@@ -79,7 +79,9 @@ func (s *System) AddMessage(ctx context.Context, bankID string, msg *core.Messag
 	windowSize := cfg.WindowSize
 	sessionID := msg.SessionID
 
+	s.wg.Add(1)
 	go func() {
+		defer s.wg.Done()
 		bgCtx := context.Background()
 		// Retrieve the sliding window of recent messages.
 		// GetSessionHistory returns messages in descending order (newest first).

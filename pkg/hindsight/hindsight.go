@@ -33,6 +33,8 @@ type System struct {
 	// auto-retain state (registered via SetAutoRetain)
 	autoRetainCfg     AutoRetainConfig
 	autoRetainCounter int // counts role-matched messages since last trigger
+	// wg tracks in-flight background goroutines so Close() can wait for them.
+	wg sync.WaitGroup
 }
 
 // Config configures the Hindsight system.
@@ -109,8 +111,10 @@ func New(cfg *Config) (*System, error) {
 	return sys, nil
 }
 
-// Close closes the underlying database.
+// Close waits for any in-flight background goroutines (e.g. auto-retain
+// extraction) to finish and then closes the underlying database.
 func (s *System) Close() error {
+	s.wg.Wait()
 	return s.db.Close()
 }
 
