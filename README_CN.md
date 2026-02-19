@@ -165,6 +165,38 @@ sys.CreateBank(ctx, bank)
 - 记忆可跨会话持续积累
 - 纯记忆系统，无 LLM 依赖（调用方负责嵌入）
 
+### 可扩展 Hooks
+
+两个注入点让您接入任意 LLM 或模型，而无需与特定提供商耦合。
+
+**Hook 1 — `FactExtractorFn`：自动从对话提取事实**
+
+```go
+sys.SetFactExtractor(func(ctx context.Context, bankID string, msgs []*core.Message) ([]hindsight.ExtractedFact, error) {
+    // 调用您的 LLM / 模型提取结构化事实并计算嵌入
+    return []hindsight.ExtractedFact{
+        {ID: "lang_pref", Type: hindsight.WorldMemory,
+         Content: "Alice 偏好 Go", Vector: embed("Alice 偏好 Go")},
+    }, nil
+})
+
+// 传入原始对话消息，自动完成提取与存储
+result, err := sys.RetainFromText(ctx, "agent-1", messages)
+// result.Retained / result.Skipped / result.Err()
+```
+
+**Hook 2 — `RerankerFn`：RRF 之后的 Cross-Encoder 重排**
+
+```go
+sys.SetReranker(func(ctx context.Context, query string, candidates []*hindsight.RecallResult) ([]*hindsight.RecallResult, error) {
+    // 调用 Cohere Rerank / 本地 Cross-Encoder
+    scores := crossEncoder.Score(query, texts(candidates))
+    sort.Slice(candidates, func(i, j int) bool { return scores[i] > scores[j] })
+    return candidates, nil
+})
+// Recall() 自动应用重排；出错时静默回退到 RRF 顺序。
+```
+
 ## 🏗 企业级 RAG 能力
 
 ## 🧭 语义路由（意图路由）
@@ -266,14 +298,17 @@ db.Vector().DeleteDocument(ctx, "manual_v1")
 
 sqvect 为您管理以下表：
 
-| 表            | 描述                               |
-| :------------ | :--------------------------------- |
-| `embeddings`  | 向量、内容、JSON 元数据、ACL。     |
-| `documents`   | 向量的父级记录 (标题、URL、版本)。 |
-| `sessions`    | 聊天会话/线程。                    |
-| `messages`    | 聊天日志 (角色、内容、时间戳)。    |
-| `collections` | 逻辑命名空间 (多租户)。            |
-| `chunks_fts`  | 用于关键词搜索的 **FTS5** 虚拟表。 |
+| 表               | 描述                                          |
+| :--------------- | :-------------------------------------------- |
+| `embeddings`     | 向量、内容、JSON 元数据、ACL。                |
+| `documents`      | 向量的父级记录 (标题、URL、版本)。            |
+| `sessions`       | 聊天会话/线程。                               |
+| `messages`       | 聊天日志 (角色、内容、时间戳)。               |
+| `messages_fts`   | 消息 BM25 关键词搜索的 **FTS5** 虚拟表。      |
+| `collections`    | 逻辑命名空间 (多租户)。                       |
+| `chunks_fts`     | 向量内容关键词搜索的 **FTS5** 虚拟表。        |
+| `graph_nodes`    | 知识图谱节点（含向量嵌入）。                  |
+| `graph_edges`    | 图节点间的有向关系。                          |
 
 ## 📊 性能 (128 维)
 
