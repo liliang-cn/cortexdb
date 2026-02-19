@@ -87,103 +87,102 @@ TEMPR retrieval pipeline and RRF fusion — all over SQLite, zero external servi
 #### Architecture
 
 ```
-retain()  →  Knowledge Graph (graph_nodes)
-                ├── LayerMentalModel   (user-curated summaries)
-                ├── LayerObservation   (auto-consolidated from facts)
-                ├── LayerWorldFact     (objective facts)
-                └── LayerExperience    (agent's own past actions)
+retain()   →  sqvect embeddings collection ("memories")
+                ├── WorldMemory      (objective facts about the world)
+                ├── BankMemory       (agent's own past actions)
+                ├── OpinionMemory    (formed beliefs with confidence)
+                └── ObservationMemory (insights derived from reflection)
 
-recall()  →  TEMPR × 4 channels (concurrent)
-                ├── T Temporal   — time-range filter ("yesterday", "last week"…)
-                ├── E Embedding  — cross-session semantic similarity
-                ├── M keywords   — BM25 FTS5 full-text search
-                └── P Graph      — hybrid vector + relational search
-             ↓
-             RRF fusion  →  optional RerankerFn hook  →  RankedMemories
+recall()   →  TEMPR × 4 channels (concurrent)
+                ├── T Temporal  — time-range filtered search
+                ├── E Entity    — graph-based entity relationships
+                ├── M Memory    — semantic vector similarity
+                └── P Priming   — BM25 FTS5 keyword search
+              ↓
+              RRF fusion  →  optional RerankerFn hook  →  ranked results
 
-reflect() →  BankConfig (Mission / Directives / Disposition)
-             ↓
-             SystemPrompt + MemoryBlock  (ready for LLM injection)
+observe()  →  Disposition (Skepticism / Literalism / Empathy)
+              ↓ derives new Observations from patterns in recalled memories
+
+reflect()  →  formatted context string (ready for LLM injection)
 ```
 
 #### Basic Usage
 
 ```go
-mem := db.Memory()
+import "github.com/liliang-cn/sqvect/v2/pkg/hindsight"
 
-// Configure the agent's persona (affects Reflect output only)
-mem.SetBankConfig(memory.BankConfig{
-    Mission:    "I am a personalised travel assistant.",
-    Directives: []string{"Always suggest travel insurance."},
-    Disposition: map[string]float32{"empathy": 4.5},
-})
+sys, _ := hindsight.New(&hindsight.Config{DBPath: "agent.db"})
+defer sys.Close()
+
+// Create a memory bank with personality traits
+bank := hindsight.NewBank("agent-1", "Travel Assistant")
+bank.Empathy = 4
+sys.CreateBank(ctx, bank)
 
 // Retain: store a structured fact
-mem.Retain(ctx, memory.RetainInput{
-    UserID:  "alice",
-    FactID:  "home_city",
+sys.Retain(ctx, &hindsight.Memory{
+    ID:     "home_city",
+    BankID: "agent-1",
+    Type:   hindsight.WorldMemory,
     Content: "Alice lives in Berlin",
     Vector:  embed("Alice lives in Berlin"),
-    Layer:   memory.LayerWorldFact,
 })
 
 // Recall: four-channel TEMPR retrieval + RRF fusion
-mc, _ := mem.Recall(ctx, "alice", sessionID, queryVec, queryText)
-// mc.RecentHistory   – last N session messages
-// mc.RankedMemories  – RRF-ranked long-term facts
+results, _ := sys.Recall(ctx, &hindsight.RecallRequest{
+    BankID: "agent-1", Query: "Where does Alice live?",
+    QueryVector: queryVec, Strategy: hindsight.DefaultStrategy(), TopK: 5,
+})
 
-// Reflect: get LLM-ready context in one call
-rc, _ := mem.Reflect(ctx, "alice", sessionID, queryVec, queryText)
-// rc.SystemPrompt  – inject as LLM system message
-// rc.MemoryBlock   – inject as <MEMORY> context block
+// Reflect: get LLM-ready formatted context
+ctxResp, _ := sys.Reflect(ctx, &hindsight.ContextRequest{
+    BankID: "agent-1", Query: "Where does Alice live?",
+    QueryVector: queryVec, TopK: 4,
+})
+// ctxResp.Context  – ready for LLM system message injection
 ```
 
 #### Extensibility Hooks
 
-sqvect provides two injection points so you can plug in any LLM or model without coupling
-sqvect to a specific provider.
+Two injection points let you plug in any LLM or model without coupling to a specific provider.
 
 **Hook 1 — `FactExtractorFn`: automatic fact extraction**
 
 ```go
-// Register once at startup
-mem.SetFactExtractor(func(ctx context.Context, userID string, msgs []*core.Message) ([]memory.ExtractedFact, error) {
+sys.SetFactExtractor(func(ctx context.Context, bankID string, msgs []*core.Message) ([]hindsight.ExtractedFact, error) {
     // Call your LLM / model to extract structured facts + compute embeddings
-    return []memory.ExtractedFact{
-        {FactID: "lang_pref", Content: "Alice prefers Go", Vector: embed("Alice prefers Go"), Layer: memory.LayerWorldFact},
+    return []hindsight.ExtractedFact{
+        {ID: "lang_pref", Type: hindsight.WorldMemory,
+         Content: "Alice prefers Go", Vector: embed("Alice prefers Go")},
     }, nil
 })
 
 // Feed raw conversation messages – extraction + retention happens automatically
-result, err := mem.RetainFromText(ctx, "alice", messages)
+result, err := sys.RetainFromText(ctx, "agent-1", messages)
 // result.Retained / result.Skipped / result.Err()
 ```
 
 **Hook 2 — `RerankerFn`: cross-encoder reranking after RRF**
 
 ```go
-// Register once at startup
-mem.SetReranker(func(ctx context.Context, query string, candidates []*memory.RecallResult) ([]*memory.RecallResult, error) {
+sys.SetReranker(func(ctx context.Context, query string, candidates []*hindsight.RecallResult) ([]*hindsight.RecallResult, error) {
     // Call your cross-encoder / Cohere Rerank / LLM scorer
     scores := crossEncoder.Score(query, texts(candidates))
     sort.Slice(candidates, func(i, j int) bool { return scores[i] > scores[j] })
     return candidates, nil
 })
-// Recall() now applies reranking automatically after RRF.
-// If the reranker errors, Recall silently falls back to RRF order.
+// Recall() applies reranking automatically. Errors silently fall back to RRF order.
 ```
 
-**Observation consolidation via `ConsolidateFn`**
+**Deriving observations via `Observe`**
 
 ```go
-mem.Consolidate(ctx, "alice",
-    []string{"Alice prefers budget travel", "Alice is planning SE Asia trip"},
-    vec,
-    func(ctx context.Context, existing string, newFacts []string) (string, error) {
-        // Call your LLM to synthesise an updated Observation
-        return llm.Summarise(ctx, existing, newFacts)
-    },
-)
+resp, _ := sys.Observe(ctx, &hindsight.ReflectRequest{
+    BankID: "agent-1", Query: "What patterns can we infer about Alice?",
+    QueryVector: queryVec, Strategy: hindsight.DefaultStrategy(),
+})
+// resp.Observations – new insights auto-derived from recalled memories
 ```
 
 ### 4. Row-Level Security (ACL)

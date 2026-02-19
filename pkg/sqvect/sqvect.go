@@ -8,14 +8,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/liliang-cn/sqvect/v2/pkg/core"
 	"github.com/liliang-cn/sqvect/v2/pkg/graph"
-	"github.com/liliang-cn/sqvect/v2/pkg/memory"
 )
 
 // DB represents a SQLite vector database instance
 type DB struct {
-	store  *core.SQLiteStore
-	graph  *graph.GraphStore
-	memory *memory.MemoryManager
+	store *core.SQLiteStore
+	graph *graph.GraphStore
 }
 
 // Config represents database configuration
@@ -73,13 +71,9 @@ func Open(config Config) (*DB, error) {
 	// Create graph store
 	graphStore := graph.NewGraphStore(store)
 
-	// Create memory manager
-	memoryManager := memory.NewMemoryManager(store, graphStore)
-
 	return &DB{
-		store:  store,
-		graph:  graphStore,
-		memory: memoryManager,
+		store: store,
+		graph: graphStore,
 	}, nil
 }
 
@@ -91,11 +85,6 @@ func (db *DB) Vector() core.Store {
 // Graph returns the graph store interface
 func (db *DB) Graph() *graph.GraphStore {
 	return db.graph
-}
-
-// Memory returns the memory manager for high-level memory operations
-func (db *DB) Memory() *memory.MemoryManager {
-	return db.memory
 }
 
 // Close closes the database

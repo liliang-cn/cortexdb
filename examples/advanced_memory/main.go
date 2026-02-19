@@ -8,8 +8,7 @@ import (
 	"strings"
 
 	"github.com/liliang-cn/sqvect/v2/pkg/core"
-	"github.com/liliang-cn/sqvect/v2/pkg/memory"
-	"github.com/liliang-cn/sqvect/v2/pkg/sqvect"
+	"github.com/liliang-cn/sqvect/v2/pkg/hindsight"
 )
 
 func main() {
@@ -17,192 +16,208 @@ func main() {
 	defer os.Remove(dbPath)
 
 	// -----------------------------------------------------------------------
-	// 1. Open database and initialise graph schema.
+	// 1. Initialise the Hindsight memory system.
 	// -----------------------------------------------------------------------
-	config := sqvect.DefaultConfig(dbPath)
-	config.Dimensions = 4
-	db, err := sqvect.Open(config)
+	sys, err := hindsight.New(&hindsight.Config{
+		DBPath:    dbPath,
+		VectorDim: 4,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer sys.Close()
 
 	ctx := context.Background()
-	if err := db.Graph().InitGraphSchema(ctx); err != nil {
+
+	const bankID = "alice_travel_agent"
+
+	// -----------------------------------------------------------------------
+	// 2. Create a Memory Bank with personality disposition.
+	// -----------------------------------------------------------------------
+	bank := hindsight.NewBank(bankID, "Travel Assistant for Alice")
+	bank.Empathy = 4    // 1=Detached … 5=Empathetic
+	bank.Skepticism = 2 // 1=Trusting … 5=Skeptical
+	bank.Literalism = 2 // 1=Flexible … 5=Literal
+	if err := sys.CreateBank(ctx, bank); err != nil {
 		log.Fatal(err)
 	}
 
-	mem := db.Memory()
-
-	// -----------------------------------------------------------------------
-	// 2. Configure a Memory Bank – analogous to Hindsight's bank settings.
-	// -----------------------------------------------------------------------
-	mem.SetBankConfig(memory.BankConfig{
-		Mission: "I am a personalised travel assistant. " +
-			"I remember user preferences across sessions to avoid repetitive questions.",
-		Directives: []string{
-			"Never recommend destinations with active travel warnings.",
-			"Always suggest travel insurance for international trips.",
-		},
-		Disposition: map[string]float32{
-			"empathy":       4.5,
-			"proactiveness": 3.0,
-		},
-	})
-
-	fmt.Println("=== sqvect × Hindsight-style Memory Demo ===")
+	fmt.Println("=== sqvect × Hindsight Memory Demo ===")
 	fmt.Println()
 
-	userID := "user_alice"
-	sessionID := "session_current"
-
 	// -----------------------------------------------------------------------
-	// 3. Retain Phase – store facts at different memory layers.
+	// 3. Retain Phase – store facts with different memory types.
 	// -----------------------------------------------------------------------
-	fmt.Println("--- [RETAIN] Storing facts at different memory layers ---")
+	fmt.Println("--- [RETAIN] Storing memories ---")
 
-	// LayerMentalModel: high-level user-curated summary.
-	_ = mem.Retain(ctx, memory.RetainInput{
-		UserID:  userID,
-		FactID:  "travel_style",
-		Content: "Alice prefers budget backpacker trips with cultural immersion over luxury resorts.",
-		Vector:  []float32{0.9, 0.1, 0.0, 0.0},
-		Layer:   memory.LayerMentalModel,
+	// OpinionMemory: formed belief about the user.
+	_ = sys.Retain(ctx, &hindsight.Memory{
+		ID:         "travel_style",
+		BankID:     bankID,
+		Type:       hindsight.OpinionMemory,
+		Content:    "Alice prefers budget backpacker trips with cultural immersion over luxury resorts.",
+		Confidence: 0.9,
+		Vector:     []float32{0.9, 0.1, 0.0, 0.0},
 	})
 
-	// LayerWorldFact: objective user facts.
-	_ = mem.Retain(ctx, memory.RetainInput{
-		UserID:  userID,
-		FactID:  "home_city",
-		Content: "Alice is based in Berlin, Germany.",
-		Vector:  []float32{0.8, 0.0, 0.2, 0.0},
-		Layer:   memory.LayerWorldFact,
+	// WorldMemory: objective facts about the user.
+	_ = sys.Retain(ctx, &hindsight.Memory{
+		ID:       "home_city",
+		BankID:   bankID,
+		Type:     hindsight.WorldMemory,
+		Content:  "Alice is based in Berlin, Germany.",
+		Vector:   []float32{0.8, 0.0, 0.2, 0.0},
+		Entities: []string{"Alice", "Berlin", "Germany"},
 	})
-	_ = mem.Retain(ctx, memory.RetainInput{
-		UserID:  userID,
-		FactID:  "next_trip",
+
+	_ = sys.Retain(ctx, &hindsight.Memory{
+		ID:      "next_trip",
+		BankID:  bankID,
+		Type:    hindsight.WorldMemory,
 		Content: "Alice is planning a trip to Southeast Asia in March.",
 		Vector:  []float32{0.7, 0.3, 0.0, 0.0},
-		Layer:   memory.LayerWorldFact,
 	})
 
-	// LayerExperience: record a past recommendation by the agent.
-	_ = mem.Retain(ctx, memory.RetainInput{
-		UserID:  userID,
-		FactID:  "rec_001",
+	// BankMemory: the agent's own past actions / recommendations.
+	_ = sys.Retain(ctx, &hindsight.Memory{
+		ID:      "rec_001",
+		BankID:  bankID,
+		Type:    hindsight.BankMemory,
 		Content: "Recommended Chiang Mai as a budget-friendly base for northern Thailand.",
 		Vector:  []float32{0.6, 0.4, 0.0, 0.0},
-		Layer:   memory.LayerExperience,
 	})
 
-	fmt.Println("  ✓ Mental model, world facts, and experience stored.")
+	fmt.Println("  ✓ 4 memories retained (Opinion, World×2, Bank).")
 	fmt.Println()
 
 	// -----------------------------------------------------------------------
-	// 4. Consolidate – synthesise facts into a LayerObservation (LLM hook).
+	// 4. FactExtractorFn hook – auto-extract facts from raw conversation.
 	// -----------------------------------------------------------------------
-	fmt.Println("--- [CONSOLIDATE] Synthesising facts into an Observation ---")
+	fmt.Println("--- [HOOK] FactExtractorFn: auto-extract from conversation ---")
 
-	mockLLM := memory.ConsolidateFn(func(_ context.Context, existing string, newFacts []string) (string, error) {
-		// In production this would be an LLM call (OpenAI, Anthropic, Ollama…).
-		// Here we concatenate for demonstration purposes.
-		parts := []string{"[Observation]"}
-		if existing != "" {
-			parts = append(parts, "Prior: "+existing)
+	sys.SetFactExtractor(func(_ context.Context, _ string, msgs []*core.Message) ([]hindsight.ExtractedFact, error) {
+		// Production: call your LLM for structured extraction + embeddings.
+		// Demo: keyword scan.
+		var facts []hindsight.ExtractedFact
+		for _, m := range msgs {
+			if strings.Contains(strings.ToLower(m.Content), "vegetarian") {
+				facts = append(facts, hindsight.ExtractedFact{
+					ID:      "diet_preference",
+					Type:    hindsight.WorldMemory,
+					Content: "Alice is vegetarian.",
+					Vector:  []float32{0.3, 0.7, 0.0, 0.0},
+				})
+			}
 		}
-		parts = append(parts, "New: "+strings.Join(newFacts, " | "))
-		return strings.Join(parts, " — "), nil
+		return facts, nil
 	})
 
-	_ = mem.Consolidate(ctx, userID,
-		[]string{
-			"Alice prefers budget travel",
-			"Alice is planning Southeast Asia trip",
-		},
-		[]float32{0.75, 0.25, 0.0, 0.0},
-		mockLLM,
-	)
-	fmt.Println("  ✓ Observation node created/updated via ConsolidateFn.")
-	fmt.Println()
-
-	// -----------------------------------------------------------------------
-	// 5. Short-term memory – current session messages.
-	// -----------------------------------------------------------------------
-	fmt.Println("--- [SESSION] Adding current conversation messages ---")
-	_ = db.Vector().CreateSession(ctx, &core.Session{ID: sessionID, UserID: userID})
-	_ = db.Vector().AddMessage(ctx, &core.Message{
-		ID:        "msg_1",
-		SessionID: sessionID,
-		Role:      "user",
-		Content:   "Can you suggest a good base city for Cambodia?",
-		Vector:    []float32{0.65, 0.35, 0.0, 0.0},
-	})
-	fmt.Println("  ✓ Session message added.")
-	fmt.Println()
-
-	// -----------------------------------------------------------------------
-	// 6. Recall – TEMPR four-channel retrieval with RRF fusion.
-	// -----------------------------------------------------------------------
-	fmt.Println("--- [RECALL] TEMPR four-channel retrieval (RRF fusion) ---")
-	queryVec := []float32{0.7, 0.3, 0.0, 0.0}
-	queryText := "budget travel destination Southeast Asia"
-
-	mc, err := mem.Recall(ctx, userID, sessionID, queryVec, queryText)
+	convo := []*core.Message{
+		{Role: "user", Content: "I'm vegetarian by the way, any food advice?"},
+		{Role: "assistant", Content: "Noted – I'll tailor food recommendations accordingly."},
+	}
+	extractResult, err := sys.RetainFromText(ctx, bankID, convo)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	fmt.Printf("  Short-term history: %d message(s)\n", len(mc.RecentHistory))
-	for _, m := range mc.RecentHistory {
-		fmt.Printf("    [%s] %s\n", m.Role, m.Content)
-	}
-
-	fmt.Printf("\n  RRF-Ranked long-term memories (%d total):\n", len(mc.RankedMemories))
-	for i, r := range mc.RankedMemories {
-		fmt.Printf("    %d. [%.4f] [%s via %s] %s\n",
-			i+1, r.RRFScore, layerName(r.Layer), strings.Join(r.Sources, "+"), r.Content)
+	fmt.Printf("  ✓ RetainFromText: retained=%d skipped=%d\n", extractResult.Retained, extractResult.Skipped)
+	if extractResult.Err() != nil {
+		fmt.Println("  partial errors:", extractResult.Err())
 	}
 	fmt.Println()
 
 	// -----------------------------------------------------------------------
-	// 7. Reflect – mission + directives + memory block ready for LLM prompt.
+	// 5. Recall – TEMPR four-channel retrieval + RRF fusion.
 	// -----------------------------------------------------------------------
-	fmt.Println("--- [REFLECT] Building LLM-ready context ---")
-	rc, err := mem.Reflect(ctx, userID, sessionID, queryVec, queryText)
+	fmt.Println("--- [RECALL] TEMPR retrieval (Semantic + Keyword + RRF) ---")
+	queryVec := []float32{0.72, 0.28, 0.0, 0.0}
+
+	results, err := sys.Recall(ctx, &hindsight.RecallRequest{
+		BankID:      bankID,
+		Query:       "budget travel destination Southeast Asia",
+		QueryVector: queryVec,
+		Strategy:    hindsight.DefaultStrategy(),
+		TopK:        5,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	fmt.Println("\n  [System Prompt]:")
-	for _, line := range strings.Split(rc.SystemPrompt, "\n") {
-		fmt.Println("    " + line)
+	fmt.Printf("  ✓ Recall returned %d memories:\n", len(results))
+	for i, r := range results {
+		fmt.Printf("    %d. [%-11s score=%.4f] %s\n", i+1, r.Type, r.Score, r.Content)
 	}
-
-	if rc.DispositionHints != "" {
-		fmt.Printf("\n  [Disposition] %s\n", rc.DispositionHints)
-	}
-
-	fmt.Println("\n  [Memory Block]:")
-	for _, line := range strings.Split(rc.MemoryBlock, "\n") {
-		fmt.Println("    " + line)
-	}
-
 	fmt.Println()
-	fmt.Println("=== End of demo ===")
-	fmt.Println("The LLM can now use the SystemPrompt + MemoryBlock to answer")
-	fmt.Println("Alice's question with full personalised context, zero redundancy.")
-}
 
-// layerName returns a short display name for a MemoryLayer.
-func layerName(l memory.MemoryLayer) string {
-	switch l {
-	case memory.LayerMentalModel:
-		return "MentalModel"
-	case memory.LayerObservation:
-		return "Observation"
-	case memory.LayerWorldFact:
-		return "WorldFact"
-	default:
-		return "Experience"
+	// -----------------------------------------------------------------------
+	// 6. RerankerFn hook – plug-in cross-encoder after RRF.
+	// -----------------------------------------------------------------------
+	fmt.Println("--- [HOOK] RerankerFn: cross-encoder reranking ---")
+
+	sys.SetReranker(func(_ context.Context, _ string, candidates []*hindsight.RecallResult) ([]*hindsight.RecallResult, error) {
+		// Production: call Cohere Rerank / cross-encoder model.
+		// Demo: reverse order to prove the hook runs.
+		for i, j := 0, len(candidates)-1; i < j; i, j = i+1, j-1 {
+			candidates[i], candidates[j] = candidates[j], candidates[i]
+		}
+		return candidates, nil
+	})
+
+	reranked, _ := sys.Recall(ctx, &hindsight.RecallRequest{
+		BankID:      bankID,
+		Query:       "budget travel destination Southeast Asia",
+		QueryVector: queryVec,
+		Strategy:    hindsight.DefaultStrategy(),
+		TopK:        3,
+	})
+	fmt.Printf("  ✓ Reranked top-%d (reversed for demo):\n", len(reranked))
+	for i, r := range reranked {
+		fmt.Printf("    %d. %s\n", i+1, r.Content)
 	}
+	fmt.Println()
+
+	// -----------------------------------------------------------------------
+	// 7. Reflect – get LLM-ready formatted context.
+	// -----------------------------------------------------------------------
+	fmt.Println("--- [REFLECT] Building LLM context ---")
+
+	ctxResp, err := sys.Reflect(ctx, &hindsight.ContextRequest{
+		BankID:      bankID,
+		Query:       "Where should Alice travel next?",
+		QueryVector: queryVec,
+		Strategy:    hindsight.DefaultStrategy(),
+		TopK:        4,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	preview := ctxResp.Context
+	if len(preview) > 400 {
+		preview = preview[:400] + "..."
+	}
+	fmt.Printf("  ✓ Context (~%d tokens):\n%s\n", ctxResp.TokenCount, preview)
+	fmt.Println()
+
+	// -----------------------------------------------------------------------
+	// 8. Observe – derive new insights through reflection.
+	// -----------------------------------------------------------------------
+	fmt.Println("--- [OBSERVE] Generating observations ---")
+
+	reflectResp, err := sys.Observe(ctx, &hindsight.ReflectRequest{
+		BankID:      bankID,
+		Query:       "What travel patterns can we infer about Alice?",
+		QueryVector: queryVec,
+		Strategy:    hindsight.DefaultStrategy(),
+		TopK:        5,
+	})
+	if err != nil {
+		log.Println("  Observe error (expected in minimal demo):", err)
+	} else {
+		fmt.Printf("  ✓ Generated %d observation(s).\n", len(reflectResp.Observations))
+		for i, o := range reflectResp.Observations {
+			fmt.Printf("    %d. [%s conf=%.2f] %s\n", i+1, o.ObservationType, o.Confidence, o.Content)
+		}
+	}
+	fmt.Println()
+
+	fmt.Println("=== Demo complete ===")
 }

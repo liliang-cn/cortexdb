@@ -27,6 +27,9 @@ type System struct {
 	collection *core.Collection
 	mu         sync.RWMutex
 	banks      map[string]*Bank
+	// optional hooks (registered via SetFactExtractor / SetReranker)
+	factExtractor FactExtractorFn
+	reranker      RerankerFn
 }
 
 // Config configures the Hindsight system.
@@ -255,6 +258,16 @@ func (s *System) Recall(ctx context.Context, req *RecallRequest) ([]*RecallResul
 
 	// Apply RRF (Reciprocal Rank Fusion) to combine results
 	merged := s.rrfFuse(allResults)
+
+	// Apply optional RerankerFn after RRF; silently fall back on error or empty result.
+	s.mu.RLock()
+	reranker := s.reranker
+	s.mu.RUnlock()
+	if reranker != nil && req.Query != "" && len(merged) > 0 {
+		if reranked, err := reranker(ctx, req.Query, merged); err == nil && len(reranked) > 0 {
+			merged = reranked
+		}
+	}
 
 	// Apply top-K limit
 	if req.TopK > 0 && len(merged) > req.TopK {
