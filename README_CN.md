@@ -298,17 +298,17 @@ db.Vector().DeleteDocument(ctx, "manual_v1")
 
 sqvect 为您管理以下表：
 
-| 表               | 描述                                          |
-| :--------------- | :-------------------------------------------- |
-| `embeddings`     | 向量、内容、JSON 元数据、ACL。                |
-| `documents`      | 向量的父级记录 (标题、URL、版本)。            |
-| `sessions`       | 聊天会话/线程。                               |
-| `messages`       | 聊天日志 (角色、内容、时间戳)。               |
-| `messages_fts`   | 消息 BM25 关键词搜索的 **FTS5** 虚拟表。      |
-| `collections`    | 逻辑命名空间 (多租户)。                       |
-| `chunks_fts`     | 向量内容关键词搜索的 **FTS5** 虚拟表。        |
-| `graph_nodes`    | 知识图谱节点（含向量嵌入）。                  |
-| `graph_edges`    | 图节点间的有向关系。                          |
+| 表             | 描述                                     |
+| :------------- | :--------------------------------------- |
+| `embeddings`   | 向量、内容、JSON 元数据、ACL。           |
+| `documents`    | 向量的父级记录 (标题、URL、版本)。       |
+| `sessions`     | 聊天会话/线程。                          |
+| `messages`     | 聊天日志 (角色、内容、时间戳)。          |
+| `messages_fts` | 消息 BM25 关键词搜索的 **FTS5** 虚拟表。 |
+| `collections`  | 逻辑命名空间 (多租户)。                  |
+| `chunks_fts`   | 向量内容关键词搜索的 **FTS5** 虚拟表。   |
+| `graph_nodes`  | 知识图谱节点（含向量嵌入）。             |
+| `graph_edges`  | 图节点间的有向关系。                     |
 
 ## 📊 性能 (128 维)
 

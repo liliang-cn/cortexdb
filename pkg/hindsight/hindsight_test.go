@@ -281,9 +281,8 @@ func TestRetain(t *testing.T) {
 	sys.CreateBank(ctx, bank)
 
 	// Create the memories collection
-	if _, err := sys.store.CreateCollection(ctx, "memories", 64); err != nil {
-		t.Fatalf("Failed to create collection: %v", err)
-	}
+	// New() creates "memories" on init; ignore already-exists.
+	_, _ = sys.store.CreateCollection(ctx, "memories", 64)
 
 	t.Run("RetainWorldMemory", func(t *testing.T) {
 		mem := &Memory{
@@ -393,9 +392,8 @@ func TestRecall(t *testing.T) {
 	sys.CreateBank(ctx, bank)
 
 	// Create the memories collection
-	if _, err := sys.store.CreateCollection(ctx, "memories", 64); err != nil {
-		t.Fatalf("Failed to create collection: %v", err)
-	}
+	// New() creates "memories" on init; ignore already-exists.
+	_, _ = sys.store.CreateCollection(ctx, "memories", 64)
 
 	// Add test memories
 	memories := []*Memory{
@@ -522,9 +520,8 @@ func TestRecallWithStrategies(t *testing.T) {
 	sys.CreateBank(ctx, bank)
 
 	// Create the memories collection
-	if _, err := sys.store.CreateCollection(ctx, "memories", 64); err != nil {
-		t.Fatalf("Failed to create collection: %v", err)
-	}
+	// New() creates "memories" on init; ignore already-exists.
+	_, _ = sys.store.CreateCollection(ctx, "memories", 64)
 
 	// Add test memories with timestamps
 	now := time.Now()
@@ -652,9 +649,8 @@ func TestReflect(t *testing.T) {
 	sys.CreateBank(ctx, bank)
 
 	// Create the memories collection
-	if _, err := sys.store.CreateCollection(ctx, "memories", 64); err != nil {
-		t.Fatalf("Failed to create collection: %v", err)
-	}
+	// New() creates "memories" on init; ignore already-exists.
+	_, _ = sys.store.CreateCollection(ctx, "memories", 64)
 
 	// Add test memories
 	memories := []*Memory{
@@ -755,9 +751,8 @@ func TestObserve(t *testing.T) {
 	sys.CreateBank(ctx, bank)
 
 	// Create the memories collection
-	if _, err := sys.store.CreateCollection(ctx, "memories", 64); err != nil {
-		t.Fatalf("Failed to create collection: %v", err)
-	}
+	// New() creates "memories" on init; ignore already-exists.
+	_, _ = sys.store.CreateCollection(ctx, "memories", 64)
 
 	// Add test memories with repeated patterns
 	for i := 0; i < 5; i++ {
@@ -829,9 +824,8 @@ func TestObservationManagement(t *testing.T) {
 	sys.CreateBank(ctx, bank)
 
 	// Create the memories collection
-	if _, err := sys.store.CreateCollection(ctx, "memories", 64); err != nil {
-		t.Fatalf("Failed to create collection: %v", err)
-	}
+	// New() creates "memories" on init; ignore already-exists.
+	_, _ = sys.store.CreateCollection(ctx, "memories", 64)
 
 	t.Run("AddObservation", func(t *testing.T) {
 		obs := &Observation{

@@ -30,6 +30,9 @@ type System struct {
 	// optional hooks (registered via SetFactExtractor / SetReranker)
 	factExtractor FactExtractorFn
 	reranker      RerankerFn
+	// auto-retain state (registered via SetAutoRetain)
+	autoRetainCfg     AutoRetainConfig
+	autoRetainCounter int // counts role-matched messages since last trigger
 }
 
 // Config configures the Hindsight system.
@@ -55,6 +58,11 @@ func DefaultConfig(dbPath string) *Config {
 
 // New creates a new Hindsight memory system.
 func New(cfg *Config) (*System, error) {
+	// Apply defaults for missing fields.
+	if cfg.Collection == "" {
+		cfg.Collection = "memories"
+	}
+
 	db, err := sqvect.Open(sqvect.Config{
 		Path:         cfg.DBPath,
 		Dimensions:   cfg.VectorDim,
@@ -66,10 +74,11 @@ func New(cfg *Config) (*System, error) {
 	}
 
 	sys := &System{
-		db:    db,
-		store: db.Vector(),
-		graph: db.Graph(),
-		banks: make(map[string]*Bank),
+		db:            db,
+		store:         db.Vector(),
+		graph:         db.Graph(),
+		banks:         make(map[string]*Bank),
+		autoRetainCfg: defaultAutoRetainConfig(),
 	}
 
 	// Initialize the store and graph schema

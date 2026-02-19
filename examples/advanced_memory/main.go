@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/liliang-cn/sqvect/v2/pkg/core"
 	"github.com/liliang-cn/sqvect/v2/pkg/hindsight"
@@ -217,6 +218,68 @@ func main() {
 			fmt.Printf("    %d. [%s conf=%.2f] %s\n", i+1, o.ObservationType, o.Confidence, o.Content)
 		}
 	}
+	fmt.Println()
+
+	// -----------------------------------------------------------------------
+	// 9. Auto-retain: sys.AddMessage triggers extraction automatically.
+	//
+	//    Instead of calling RetainFromText manually, you register an extractor
+	//    once and let sys.AddMessage handle it.  Extraction fires in a background
+	//    goroutine every TriggerEvery matching messages so callers never block.
+	// -----------------------------------------------------------------------
+	fmt.Println("--- [AUTO-RETAIN] sys.AddMessage auto-extracts on each turn ---")
+
+	autoFired := make(chan struct{}, 1)
+	sys.SetFactExtractor(func(_ context.Context, _ string, msgs []*core.Message) ([]hindsight.ExtractedFact, error) {
+		// Signal the demo that extraction fired.
+		select {
+		case autoFired <- struct{}{}:
+		default:
+		}
+		// Same keyword-scan logic as section 4.
+		for _, m := range msgs {
+			if strings.Contains(strings.ToLower(m.Content), "gluten-free") {
+				return []hindsight.ExtractedFact{{
+					ID:      "gluten_free",
+					Type:    hindsight.WorldMemory,
+					Content: "Alice requires gluten-free food options.",
+					Vector:  []float32{0.25, 0.75, 0.0, 0.0},
+				}}, nil
+			}
+		}
+		return nil, nil
+	})
+
+	sys.SetAutoRetain(&hindsight.AutoRetainConfig{
+		Enabled:      true,
+		WindowSize:   6,  // pass last 6 messages to extractor
+		TriggerEvery: 2,  // fire after every 2 messages (one user+assistant turn)
+	})
+
+	sessionID := fmt.Sprintf("demo-%d", time.Now().UnixNano())
+	if err := sys.CreateSession(ctx, &core.Session{ID: sessionID, UserID: "alice"}); err != nil {
+		log.Fatal(err)
+	}
+
+	chatMsgs := []*core.Message{
+		{ID: sessionID + "-1", SessionID: sessionID, Role: "user", Content: "I'm also gluten-free, FYI."},
+		{ID: sessionID + "-2", SessionID: sessionID, Role: "assistant", Content: "Got it, I'll keep that in mind!"},
+	}
+	for _, m := range chatMsgs {
+		if err := sys.AddMessage(ctx, bankID, m); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	// Wait for async extraction (or timeout after 3 s).
+	select {
+	case <-autoFired:
+		fmt.Println("  ✓ Auto-retain triggered — extraction fired asynchronously.")
+	case <-time.After(3 * time.Second):
+		fmt.Println("  ✗ Auto-retain did not fire within 3 s.")
+	}
+	time.Sleep(200 * time.Millisecond) // let background DB writes settle
+	fmt.Println("  (gluten_free fact may now appear in future Recall results)")
 	fmt.Println()
 
 	fmt.Println("=== Demo complete ===")

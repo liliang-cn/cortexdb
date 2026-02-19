@@ -131,6 +131,41 @@ func (r *ExtractResult) Err() error {
 }
 
 // ---------------------------------------------------------------------------
+// AutoRetainConfig
+// ---------------------------------------------------------------------------
+
+// AutoRetainConfig controls the automatic retain behaviour triggered by AddMessage.
+type AutoRetainConfig struct {
+	// Enabled turns auto-retain on or off. Defaults to false until explicitly enabled.
+	Enabled bool
+
+	// WindowSize is the number of recent messages passed to FactExtractorFn each
+	// time a trigger fires. A larger window increases context at the cost of more
+	// tokens sent to the extractor. Default: 6.
+	WindowSize int
+
+	// TriggerEvery fires extraction after every N messages that match RoleFilter.
+	// Set to 1 to extract after every matching message, 2 for every pair, etc.
+	// Default: 2 (extract after each user+assistant turn).
+	TriggerEvery int
+
+	// RoleFilter restricts which message roles increment the counter.
+	// Nil or empty means all roles count.
+	// Example: []string{"user"} to trigger only on user messages.
+	RoleFilter []string
+}
+
+// defaultAutoRetainConfig returns sensible defaults.
+func defaultAutoRetainConfig() AutoRetainConfig {
+	return AutoRetainConfig{
+		Enabled:      false,
+		WindowSize:   6,
+		TriggerEvery: 2,
+		RoleFilter:   nil, // all roles
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Sentinel errors
 // ---------------------------------------------------------------------------
 
@@ -146,8 +181,8 @@ var ErrNoReranker = errors.New("hindsight: no RerankerFn configured")
 // Hook registration methods
 // ---------------------------------------------------------------------------
 
-// SetFactExtractor registers a FactExtractorFn for use by RetainFromText.
-// Safe for concurrent use; replaces any previously registered extractor.
+// SetFactExtractor registers a FactExtractorFn for use by RetainFromText and
+// auto-retain (AddMessage). Safe for concurrent use.
 func (s *System) SetFactExtractor(fn FactExtractorFn) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -160,6 +195,40 @@ func (s *System) SetReranker(fn RerankerFn) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.reranker = fn
+}
+
+// SetAutoRetain enables automatic fact extraction on AddMessage and configures
+// its behaviour. Requires a FactExtractorFn to be registered via SetFactExtractor
+// before auto-retain can fire. Calling this with cfg.Enabled = false disables it.
+//
+// Example:
+//
+//	sys.SetFactExtractor(myExtractor)
+//	sys.SetAutoRetain(&hindsight.AutoRetainConfig{
+//	    Enabled:      true,
+//	    WindowSize:   6,
+//	    TriggerEvery: 2,
+//	})
+//	// From now on, sys.AddMessage() triggers extraction automatically.
+func (s *System) SetAutoRetain(cfg *AutoRetainConfig) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if cfg == nil {
+		s.autoRetainCfg = defaultAutoRetainConfig()
+		s.autoRetainCfg.Enabled = false
+		return
+	}
+	if cfg.WindowSize <= 0 {
+		cfg.WindowSize = 6
+	}
+	if cfg.TriggerEvery <= 0 {
+		cfg.TriggerEvery = 2
+	}
+	s.autoRetainCfg = *cfg
+	if cfg.Enabled {
+		// reset counter so the first trigger fires after TriggerEvery messages
+		s.autoRetainCounter = 0
+	}
 }
 
 // ---------------------------------------------------------------------------
