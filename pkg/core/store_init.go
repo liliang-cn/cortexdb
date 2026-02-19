@@ -133,6 +133,23 @@ func (s *SQLiteStore) createTables(ctx context.Context) error {
 
 	CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
 	CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+	CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+
+	-- FTS5 Virtual Table for message keyword search (BM25 via SQLite FTS5)
+	-- content='messages' keeps a shadow copy synced via triggers below.
+	CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(content, content='messages', content_rowid='rowid');
+
+	-- Triggers to keep messages_fts in sync with messages table
+	CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+	  INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+	END;
+	CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+	  INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+	END;
+	CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+	  INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+	  INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+	END;
 
 	-- FTS5 Virtual Table for Hybrid Search
 	-- We use 'content' option to avoid duplicating data, referencing embeddings table
