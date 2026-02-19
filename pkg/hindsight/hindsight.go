@@ -722,7 +722,7 @@ func (s *System) CreateBank(ctx context.Context, bank *Bank) error {
 	properties := map[string]interface{}{
 		"name":        bank.Name,
 		"description": bank.Description,
-		"background": bank.Background,
+		"background":  bank.Background,
 		"skepticism":  bank.Skepticism,
 		"literalism":  bank.Literalism,
 		"empathy":     bank.Empathy,
@@ -1050,15 +1050,15 @@ func (s *System) RetainObservation(ctx context.Context, obs *Observation) error 
 
 	// Create a memory from the observation
 	mem := &Memory{
-		ID:        obs.ID,
-		BankID:    obs.BankID,
-		Type:      ObservationMemory,
-		Content:   obs.Content,
-		Vector:    obs.Vector,
-		Entities:  []string{}, // Could extract from content
+		ID:         obs.ID,
+		BankID:     obs.BankID,
+		Type:       ObservationMemory,
+		Content:    obs.Content,
+		Vector:     obs.Vector,
+		Entities:   []string{}, // Could extract from content
 		Confidence: obs.Confidence,
-		Metadata:  metadata,
-		CreatedAt: obs.CreatedAt,
+		Metadata:   metadata,
+		CreatedAt:  obs.CreatedAt,
 	}
 
 	return s.Retain(ctx, mem)

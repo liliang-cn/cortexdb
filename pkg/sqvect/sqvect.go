@@ -18,10 +18,10 @@ type DB struct {
 
 // Config represents database configuration
 type Config struct {
-	Path         string            // Database file path
-	Dimensions   int               // Vector dimensions (0 for auto-detect)
+	Path         string              // Database file path
+	Dimensions   int                 // Vector dimensions (0 for auto-detect)
 	SimilarityFn core.SimilarityFunc // Similarity function (default: cosine)
-	IndexType    core.IndexType    // Index type (HNSW, IVF, Flat)
+	IndexType    core.IndexType      // Index type (HNSW, IVF, Flat)
 }
 
 // DefaultConfig returns default configuration
@@ -116,7 +116,7 @@ func (q *Quick) AddToCollection(ctx context.Context, collection string, vector [
 		Vector:     vector,
 		Content:    content,
 	}
-	
+
 	err := q.db.store.Upsert(ctx, embedding)
 	return id, err
 }
@@ -133,7 +133,7 @@ func (q *Quick) SearchInCollection(ctx context.Context, collection string, query
 		TopK:       topK,
 		Threshold:  0.0,
 	}
-	
+
 	return q.db.store.Search(ctx, query, opts)
 }
 

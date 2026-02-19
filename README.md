@@ -346,15 +346,15 @@ db.Vector().DeleteDocument(ctx, "manual_v1")
 
 sqvect manages these tables for you:
 
-| Table         | Description                                          |
-| :------------ | :--------------------------------------------------- |
-| `embeddings`  | Vectors, content, JSON metadata, ACLs.               |
-| `documents`   | Parent records for embeddings (Title, URL, Version). |
-| `sessions`    | Chat sessions/threads.                               |
-| `messages`    | Chat logs (Role, Content, Timestamp).                |
-| `messages_fts`| **FTS5** virtual table for BM25 keyword search over messages. |
-| `collections` | Logical namespaces (Multi-tenancy).                  |
-| `chunks_fts`  | **FTS5** virtual table for keyword search over embeddings.    |
+| Table          | Description                                                   |
+| :------------- | :------------------------------------------------------------ |
+| `embeddings`   | Vectors, content, JSON metadata, ACLs.                        |
+| `documents`    | Parent records for embeddings (Title, URL, Version).          |
+| `sessions`     | Chat sessions/threads.                                        |
+| `messages`     | Chat logs (Role, Content, Timestamp).                         |
+| `messages_fts` | **FTS5** virtual table for BM25 keyword search over messages. |
+| `collections`  | Logical namespaces (Multi-tenancy).                           |
+| `chunks_fts`   | **FTS5** virtual table for keyword search over embeddings.    |
 
 ## 📊 Performance (128-dim)
 
