@@ -130,6 +130,47 @@ func (s *SQLiteStore) DeleteDocument(ctx context.Context, id string) error {
 	return nil
 }
 
+// UpdateDocument updates an existing document's metadata and other fields
+func (s *SQLiteStore) UpdateDocument(ctx context.Context, doc *Document) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.closed {
+		return wrapError("update_document", ErrStoreClosed)
+	}
+
+	metadataJSON, err := json.Marshal(doc.Metadata)
+	if err != nil {
+		return wrapError("update_document", fmt.Errorf("failed to marshal metadata: %w", err))
+	}
+
+	aclJSON, err := json.Marshal(doc.ACL)
+	if err != nil {
+		return wrapError("update_document", fmt.Errorf("failed to marshal ACL: %w", err))
+	}
+
+	query := `
+		UPDATE documents
+		SET title = ?, source_url = ?, version = ?, author = ?, metadata = ?, acl = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`
+
+	result, err := s.db.ExecContext(ctx, query, doc.Title, doc.SourceURL, doc.Version, doc.Author, metadataJSON, aclJSON, doc.ID)
+	if err != nil {
+		return wrapError("update_document", fmt.Errorf("failed to update document: %w", err))
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return wrapError("update_document", err)
+	}
+	if rowsAffected == 0 {
+		return wrapError("update_document", ErrNotFound)
+	}
+
+	return nil
+}
+
 // ListDocumentsWithFilter lists documents matching specific criteria
 // TODO: Add more filter options as needed
 func (s *SQLiteStore) ListDocumentsWithFilter(ctx context.Context, author string, limit int) ([]*Document, error) {
