@@ -3,11 +3,14 @@ package core
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"math"
 	"math/rand"
 	"sort"
-	"fmt"
 	"strings"
+
+	"github.com/liliang-cn/sqvect/v2/internal/encoding"
 )
 
 // HybridSearchOptions for combined vector + keyword search
@@ -62,67 +65,41 @@ func (s *SQLiteStore) HybridSearch(ctx context.Context, vectorQuery []float32, t
 	}
 
 	// 1. Vector Search (HNSW or Linear)
-	// We need raw candidates before scoring/sorting to perform fusion
-	vectorResults, err := s.Search(ctx, vectorQuery, opts.SearchOptions)
-	if err != nil {
-		return nil, fmt.Errorf("vector search failed: %w", err)
+	var vectorResults []ScoredEmbedding
+	var err error
+	if len(vectorQuery) > 0 {
+		vectorResults, err = s.Search(ctx, vectorQuery, opts.SearchOptions)
+		if err != nil {
+			return nil, fmt.Errorf("vector search failed: %w", err)
+		}
 	}
 
 	// 2. Keyword Search (FTS5)
-	ftsQuery := `
-		SELECT rowid, rank 
-		FROM chunks_fts 
-		WHERE chunks_fts MATCH ? 
-		ORDER BY rank 
-		LIMIT ?
-	`
-	rows, err := s.db.QueryContext(ctx, ftsQuery, textQuery, opts.TopK * 2)
-	if err != nil {
-		// FTS might fail if table doesn't exist or query syntax error
-		// Fallback to vector only results
-		return vectorResults, nil
-	}
-	defer rows.Close()
-
-	// Map rowid to rank for FTS results
 	ftsRanks := make(map[int64]int)
-	rank := 1
-	for rows.Next() {
-		var rowid int64
-		var score float64
-		if err := rows.Scan(&rowid, &score); err == nil {
-			ftsRanks[rowid] = rank
-			rank++
-		}
-	}
-
-	// Map ID to rank for Vector results
-	// We need rowid for fusion, so we need to fetch it.
-	// HNSW search returns Embedding struct which doesn't expose internal rowid by default.
-	// Optimization: For now, we'll fetch rowid for vector results.
-	vectorResultIDs := make([]string, len(vectorResults))
-	for i, res := range vectorResults {
-		vectorResultIDs[i] = res.ID
-	}
-	
-	vectorRowIDs := make(map[string]int64)
-	if len(vectorResultIDs) > 0 {
-		placeholders := strings.Repeat("?,", len(vectorResultIDs))
-		placeholders = placeholders[:len(placeholders)-1]
-		
-		args := make([]interface{}, len(vectorResultIDs))
-		for i, id := range vectorResultIDs {
-			args[i] = id
+	if textQuery != "" {
+		ftsQuery := `
+			SELECT rowid, rank 
+			FROM chunks_fts 
+			WHERE chunks_fts MATCH ? 
+			ORDER BY rank 
+			LIMIT ?
+		`
+		// Fetch more than topK to have a better pool for fusion
+		limit := opts.TopK * 3
+		if limit <= 0 {
+			limit = 30
 		}
 		
-		idRows, err := s.db.QueryContext(ctx, fmt.Sprintf("SELECT id, rowid FROM embeddings WHERE id IN (%s)", placeholders), args...)
+		rows, err := s.db.QueryContext(ctx, ftsQuery, textQuery, limit)
 		if err == nil {
-			defer idRows.Close()
-			for idRows.Next() {
-				var id string
+			defer rows.Close()
+			rank := 1
+			for rows.Next() {
 				var rowid int64
-				if err := idRows.Scan(&id, &rowid); err == nil {
-					vectorRowIDs[id] = rowid
+				var score float64
+				if err := rows.Scan(&rowid, &score); err == nil {
+					ftsRanks[rowid] = rank
+					rank++
 				}
 			}
 		}
@@ -134,68 +111,101 @@ func (s *SQLiteStore) HybridSearch(ctx context.Context, vectorQuery []float32, t
 		k = 60
 	}
 
+	// Map to store combined scores
 	fusedScores := make(map[string]float64)
-	allIDs := make(map[string]struct{}) // Keep track of all unique IDs
+	// Map to store full embedding data for results
+	embeddingsMap := make(map[string]ScoredEmbedding)
 
 	// Process Vector Ranks
 	for i, res := range vectorResults {
 		score := 1.0 / (k + float64(i+1))
-		fusedScores[res.ID] += score
-		allIDs[res.ID] = struct{}{}
+		fusedScores[res.ID] = score
+		embeddingsMap[res.ID] = res
 	}
 
 	// Process FTS Ranks
-	// Note: We need to map rowid back to ID for FTS results that are NOT in vector results
-	ftsRowIDs := []int64{}
-	for rowid := range ftsRanks {
-		ftsRowIDs = append(ftsRowIDs, rowid)
-	}
-	
-	// Fetch IDs for FTS rowids
-	// ftsIDMap := make(map[int64]string)
-	// Batch fetch ... (simplified for brevity, fetching all might be slow)
-	// For production, this should be optimized.
-	
-	// ... (Assume we fetched IDs)
-	// Since we can't easily map FTS rowid -> ID without query, we'll skip adding pure-FTS results
-	// that are not in vector results for this simplified implementation, OR we do a query.
-	// Let's do a query for FTS-only results to make it a true hybrid search.
-	
-	if len(ftsRowIDs) > 0 {
-		// Construct query to get IDs for rowids
-		// SELECT id, rowid FROM embeddings WHERE rowid IN (...)
-		// ... implementation omitted for brevity, assuming only re-ranking vector results or overlap
-		
-		// For a robust implementation:
-		// We should really fetch the full embeddings for FTS matches too.
-	}
+	// First, we need to map FTS rowids back to IDs
+	if len(ftsRanks) > 0 {
+		rowids := make([]int64, 0, len(ftsRanks))
+		for rid := range ftsRanks {
+			rowids = append(rowids, rid)
+		}
 
-	// For now, let's implement RRF only on the intersection/union we have info for.
-	// To do this properly requires a bit more plumbing in the `Store` to map rowid <-> id efficiently.
-	// But let's apply the boost to vector results that also appeared in FTS.
-	
-	for id, rowid := range vectorRowIDs {
-		if ftsRank, ok := ftsRanks[rowid]; ok {
-			fusedScores[id] += 1.0 / (k + float64(ftsRank))
+		placeholders := make([]string, len(rowids))
+		args := make([]interface{}, len(rowids))
+		for i, rid := range rowids {
+			placeholders[i] = "?"
+			args[i] = rid
+		}
+
+		query := fmt.Sprintf(
+			"SELECT e.id, e.collection_id, c.name, e.vector, e.content, e.doc_id, e.metadata, e.rowid "+
+				"FROM embeddings e "+
+				"LEFT JOIN collections c ON e.collection_id = c.id "+
+				"WHERE e.rowid IN (%s)",
+			strings.Join(placeholders, ","),
+		)
+
+		rows, err := s.db.QueryContext(ctx, query, args...)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var id, content, metadataJSON string
+				var docID sql.NullString
+				var collectionName sql.NullString
+				var collectionID int
+				var vectorBytes []byte
+				var rowid int64
+
+				if err := rows.Scan(&id, &collectionID, &collectionName, &vectorBytes, &content, &docID, &metadataJSON, &rowid); err != nil {
+					continue
+				}
+
+				// Calculate FTS score contribution
+				if rank, ok := ftsRanks[rowid]; ok {
+					score := 1.0 / (k + float64(rank))
+					fusedScores[id] += score
+
+					// If not already in map (from vector search), add it
+					if _, exists := embeddingsMap[id]; !exists {
+						vec, _ := encoding.DecodeVector(vectorBytes)
+						meta, _ := encoding.DecodeMetadata(metadataJSON)
+						
+						embeddingsMap[id] = ScoredEmbedding{
+							Embedding: Embedding{
+								ID:         id,
+								Collection: collectionName.String,
+								Vector:     vec,
+								Content:    content,
+								DocID:      docID.String,
+								Metadata:   meta,
+							},
+						}
+					}
+				}
+			}
 		}
 	}
 
-	// Re-sort vector results based on fused scores
-	// Note: This implementation currently only re-ranks vector results based on FTS matches.
-	// It does NOT introduce new results from FTS that were not in Vector Top-K.
-	// A full implementation would union the sets.
-	
-	for i := range vectorResults {
-		if score, ok := fusedScores[vectorResults[i].ID]; ok {
-			vectorResults[i].Score = score
-		}
+	// Final results construction
+	var results []ScoredEmbedding
+	for id, score := range fusedScores {
+		res := embeddingsMap[id]
+		res.Score = score
+		results = append(results, res)
 	}
-	
-	sort.Slice(vectorResults, func(i, j int) bool {
-		return vectorResults[i].Score > vectorResults[j].Score
+
+	// Sort by fused score
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Score > results[j].Score
 	})
 
-	return vectorResults, nil
+	// Apply TopK
+	if opts.TopK > 0 && len(results) > opts.TopK {
+		results = results[:opts.TopK]
+	}
+
+	return results, nil
 }
 
 // scoreAndSort helper
