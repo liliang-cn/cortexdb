@@ -33,27 +33,38 @@ go get github.com/liliang-cn/sqvect/v2
 package main
 
 import (
-    "context"
-    "fmt"
-    "github.com/liliang-cn/sqvect/v2/pkg/core"
-    "github.com/liliang-cn/sqvect/v2/pkg/sqvect"
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/liliang-cn/sqvect/v2/pkg/core"
+	"github.com/liliang-cn/sqvect/v2/pkg/sqvect"
 )
 
 func main() {
-    // 1. 打开数据库 (自动为向量、文档、聊天创建表)
-    db, _ := sqvect.Open(sqvect.DefaultConfig("rag.db"))
-    defer db.Close()
-    ctx := context.Background()
+	// 1. 打开数据库 (自动为向量、文档、聊天创建表)
+	db, err := sqvect.Open(sqvect.DefaultConfig("rag.db"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
 
-    // 2. 添加文档和向量
-    // sqvect 管理文档和分块之间的关系
-    db.Vector().CreateDocument(ctx, &core.Document{ID: "doc1", Title: "Go 指南"})
+	ctx := context.Background()
 
-    db.Quick().Add(ctx, []float32{0.1, 0.2, 0.9}, "Go 很棒")
+	// 2. 添加文档和向量
+	// sqvect 管理文档和分块之间的关系
+	db.Vector().CreateDocument(ctx, &core.Document{
+		ID:    "doc1",
+		Title: "Go 指南",
+	})
 
-    // 3. 搜索
-    results, _ := db.Quick().Search(ctx, []float32{0.1, 0.2, 0.8}, 1)
-    fmt.Printf("找到: %s\n", results[0].Content)
+	db.Quick().Add(ctx, []float32{0.1, 0.2, 0.9}, "Go 很棒")
+
+	// 3. 搜索
+	results, _ := db.Quick().Search(ctx, []float32{0.1, 0.2, 0.8}, 1)
+	if len(results) > 0 {
+		fmt.Printf("找到: %s\n", results[0].Content)
+	}
 }
 ```
 
@@ -103,28 +114,31 @@ sqvect 内置 **Hindsight**，一个仿生记忆系统，用于让智能体在�
 ```go
 import "github.com/liliang-cn/sqvect/v2/pkg/hindsight"
 
-sys, _ := hindsight.New(&hindsight.Config{DBPath: "agent_memory.db"})
+sys, _ := hindsight.New(&hindsight.Config{
+	DBPath: "agent_memory.db",
+})
+defer sys.Close()
 
 // RETAIN：写入记忆（调用方提供向量）
 sys.Retain(ctx, &hindsight.Memory{
-    Type:     hindsight.WorldMemory,
-    Content:  "Alice works at Google as a senior engineer",
-    Vector:   embedding,
-    Entities: []string{"Alice", "Google"},
+	Type:     hindsight.WorldMemory,
+	Content:  "Alice works at Google as a senior engineer",
+	Vector:   embedding,
+	Entities: []string{"Alice", "Google"},
 })
 
 // RECALL：基于 TEMPR 策略检索
 results, _ := sys.Recall(ctx, &hindsight.RecallRequest{
-    BankID:      "agent-1",
-    QueryVector: queryEmbedding,
-    Strategy:    hindsight.DefaultStrategy(),
+	BankID:      "agent-1",
+	QueryVector: queryEmbedding,
+	Strategy:    hindsight.DefaultStrategy(),
 })
 
 // OBSERVE：反思生成新洞察
 resp, _ := sys.Observe(ctx, &hindsight.ReflectRequest{
-    BankID:      "agent-1",
-    Query:       "What does Alice prefer?",
-    QueryVector: queryEmbedding,
+	BankID:      "agent-1",
+	Query:       "What does Alice prefer?",
+	QueryVector: queryEmbedding,
 })
 // resp.Observations 包含新洞察
 ```
@@ -152,9 +166,9 @@ Hindsight 同时运行四种检索并用 RRF 融合：
 
 ```go
 bank := hindsight.NewBank("agent-1", "Assistant Agent")
-bank.Skepticism = 3  // 1=易信, 5=怀疑
-bank.Literalism = 3  // 1=灵活, 5=字面
-bank.Empathy = 4     // 1=冷静, 5=共情
+bank.Skepticism = 3 // 1=易信, 5=怀疑
+bank.Literalism = 3 // 1=灵活, 5=字面
+bank.Empathy = 4    // 1=冷静, 5=共情
 sys.CreateBank(ctx, bank)
 ```
 
@@ -173,11 +187,15 @@ sys.CreateBank(ctx, bank)
 
 ```go
 sys.SetFactExtractor(func(ctx context.Context, bankID string, msgs []*core.Message) ([]hindsight.ExtractedFact, error) {
-    // 调用您的 LLM / 模型提取结构化事实并计算嵌入
-    return []hindsight.ExtractedFact{
-        {ID: "lang_pref", Type: hindsight.WorldMemory,
-         Content: "Alice 偏好 Go", Vector: embed("Alice 偏好 Go")},
-    }, nil
+	// 调用您的 LLM / 模型提取结构化事实并计算嵌入
+	return []hindsight.ExtractedFact{
+		{
+			ID:      "lang_pref",
+			Type:    hindsight.WorldMemory,
+			Content: "Alice 偏好 Go",
+			Vector:  []float32{0.1, 0.2, 0.3},
+		},
+	}, nil
 })
 
 // 传入原始对话消息，自动完成提取与存储
@@ -189,10 +207,12 @@ result, err := sys.RetainFromText(ctx, "agent-1", messages)
 
 ```go
 sys.SetReranker(func(ctx context.Context, query string, candidates []*hindsight.RecallResult) ([]*hindsight.RecallResult, error) {
-    // 调用 Cohere Rerank / 本地 Cross-Encoder
-    scores := crossEncoder.Score(query, texts(candidates))
-    sort.Slice(candidates, func(i, j int) bool { return scores[i] > scores[j] })
-    return candidates, nil
+	// 调用 Cohere Rerank / 本地 Cross-Encoder
+	scores := crossEncoder.Score(query, texts(candidates))
+	sort.Slice(candidates, func(i, j int) bool {
+		return scores[i] > scores[j]
+	})
+	return candidates, nil
 })
 // Recall() 自动应用重排；出错时静默回退到 RRF 顺序。
 ```
@@ -205,23 +225,23 @@ sys.SetReranker(func(ctx context.Context, query string, candidates []*hindsight.
 
 ```go
 import (
-    "context"
-    "fmt"
+	"context"
+	"fmt"
 
-    "github.com/liliang-cn/sqvect/v2/pkg/core"
-    semanticrouter "github.com/liliang-cn/sqvect/v2/pkg/semantic-router"
+	"github.com/liliang-cn/sqvect/v2/pkg/core"
+	semanticrouter "github.com/liliang-cn/sqvect/v2/pkg/semantic-router"
 )
 
 embedder := semanticrouter.NewMockEmbedder(1536)
 router, _ := semanticrouter.NewRouter(
-    embedder,
-    semanticrouter.WithThreshold(0.82),
-    semanticrouter.WithSimilarityFunc(core.CosineSimilarity),
+	embedder,
+	semanticrouter.WithThreshold(0.82),
+	semanticrouter.WithSimilarityFunc(core.CosineSimilarity),
 )
 
 router.Add(&semanticrouter.Route{
-    Name:       "refund",
-    Utterances: []string{"我要退款", "申请退款"},
+	Name:       "refund",
+	Utterances: []string{"我要退款", "申请退款"},
 })
 
 result, _ := router.Route(context.Background(), "我要退款")
@@ -237,8 +257,8 @@ sqvect 超越简单的向量存储，为复杂的 RAG 应用提供架构和 API�
 ```go
 // 搜索 "apple" (关键词) 并结合向量相似度
 results, _ := db.Vector().HybridSearch(ctx, queryVec, "apple", core.HybridSearchOptions{
-    TopK: 5,
-    RRFK: 60, // 融合参数
+	TopK: 5,
+	RRFK: 60, // 融合参数
 })
 ```
 
@@ -248,13 +268,16 @@ results, _ := db.Vector().HybridSearch(ctx, queryVec, "apple", core.HybridSearch
 
 ```go
 // 1. 创建会话
-db.Vector().CreateSession(ctx, &core.Session{ID: "sess_1", UserID: "user_123"})
+db.Vector().CreateSession(ctx, &core.Session{
+	ID:     "sess_1",
+	UserID: "user_123",
+})
 
 // 2. 添加消息 (用户和助手)
 db.Vector().AddMessage(ctx, &core.Message{
-    SessionID: "sess_1",
-    Role:      "user",
-    Content:   "什么是 sqvect？",
+	SessionID: "sess_1",
+	Role:      "user",
+	Content:   "什么是 sqvect？",
 })
 
 // 3. 检索历史用于上下文窗口
@@ -268,9 +291,9 @@ history, _ := db.Vector().GetSessionHistory(ctx, "sess_1", 10)
 ```go
 // 插入受限文档
 db.Vector().Upsert(ctx, &core.Embedding{
-    ID: "secret_doc",
-    Vector: vec,
-    ACL: []string{"group:admin", "user:alice"}, // 仅管理员和爱丽丝
+	ID:     "secret_doc",
+	Vector: vec,
+	ACL:    []string{"group:admin", "user:alice"}, // 仅管理员和爱丽丝
 })
 
 // 使用用户上下文搜索 (自动过滤结果)
@@ -284,9 +307,9 @@ results, _ := db.Vector().SearchWithACL(ctx, queryVec, []string{"user:bob"}, opt
 
 ```go
 db.Vector().CreateDocument(ctx, &core.Document{
-    ID: "manual_v1",
-    Title: "用户手册",
-    Version: 1,
+	ID:      "manual_v1",
+	Title:   "用户手册",
+	Version: 1,
 })
 // ... 添加链接到 "manual_v1" 的嵌入 ...
 
