@@ -1,6 +1,6 @@
-// Package sqvect provides a lightweight, embeddable vector database for Go AI projects.
+// Package cortexdb provides a lightweight, embeddable vector database for Go AI projects.
 //
-// sqvect is a 100% pure Go library designed to be the storage kernel for RAG (Retrieval-Augmented Generation)
+// cortexdb is a 100% pure Go library designed to be the storage kernel for RAG (Retrieval-Augmented Generation)
 // systems. Built on SQLite using modernc.org/sqlite (NO CGO REQUIRED!), it provides vector storage,
 // full-text search (FTS5), knowledge graphs, and chat memory management in a single database file.
 //
@@ -19,13 +19,13 @@
 //
 //	import (
 //	    "context"
-//	    "github.com/liliang-cn/sqvect/v2/pkg/sqvect"
+//	    "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 //	)
 //
 //	func main() {
 //	    // 1. Open database with default configuration
-//	    config := sqvect.DefaultConfig("vectors.db")
-//	    db, _ := sqvect.Open(config)
+//	    config := cortexdb.DefaultConfig("vectors.db")
+//	    db, _ := cortexdb.Open(config)
 //	    defer db.Close()
 //
 //	    // 2. Use the Quick interface for simple operations
@@ -41,9 +41,9 @@
 //
 // # RAG and Hybrid Search
 //
-// sqvect provides high-level APIs for building RAG applications:
+// cortexdb provides high-level APIs for building RAG applications:
 //
-//	import "github.com/liliang-cn/sqvect/v2/pkg/core"
+//	import "github.com/liliang-cn/cortexdb/v2/pkg/core"
 //
 //	// Perform hybrid search (Vector + Full-Text Search)
 //	results, err := db.Vector().HybridSearch(ctx, queryVec, "search term", core.HybridSearchOptions{
@@ -58,25 +58,25 @@
 //	db.Vector().AddMessage(ctx, &core.Message{
 //	    SessionID: "session_123",
 //	    Role:      "user",
-//	    Content:   "How do I use sqvect?",
+//	    Content:   "How do I use cortexdb?",
 //	})
 //
 // # Advanced Configuration
 //
 // Configure indexing and quantization for production:
 //
-//	config := sqvect.DefaultConfig("data.db")
+//	config := cortexdb.DefaultConfig("data.db")
 //	config.IndexType = core.IndexTypeHNSW // or core.IndexTypeIVF
 //	config.SimilarityFn = core.CosineSimilarity
 //	config.Dimensions = 1536
 //
-//	db, err := sqvect.Open(config)
+//	db, err := cortexdb.Open(config)
 //
 // For deeper control (quantization, logger, text similarity), use core.Config with core.NewWithConfig.
 //
 // # Observability
 //
-// sqvect v2.0.0+ supports structured logging via core.Config.Logger when using core.NewWithConfig.
+// cortexdb v2.0.0+ supports structured logging via core.Config.Logger when using core.NewWithConfig.
 //
 // # Semantic Router
 //
@@ -84,8 +84,8 @@
 //
 //	import (
 //	    "context"
-//	    "github.com/liliang-cn/sqvect/v2/pkg/core"
-//	    semanticrouter "github.com/liliang-cn/sqvect/v2/pkg/semantic-router"
+//	    "github.com/liliang-cn/cortexdb/v2/pkg/core"
+//	    semanticrouter "github.com/liliang-cn/cortexdb/v2/pkg/semantic-router"
 //	)
 //
 //	router, _ := semanticrouter.NewRouter(
@@ -106,10 +106,10 @@
 //
 // Long-term agent memory with TEMPR retrieval:
 //
-//	import "github.com/liliang-cn/sqvect/v2/pkg/hindsight"
+//	import "github.com/liliang-cn/cortexdb/v2/pkg/hindsight"
 //
 //	sys, _ := hindsight.New(&hindsight.Config{DBPath: "agent_memory.db"})
 //	_ = sys
 //
 // For more detailed examples, see the examples/ directory.
-package sqvect
+package cortexdb

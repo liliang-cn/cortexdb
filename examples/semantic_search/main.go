@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
-	"github.com/liliang-cn/sqvect/v2/pkg/sqvect"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
 // Document represents a text document with metadata
@@ -54,19 +54,19 @@ func generateEmbedding(text string, dim int) []float32 {
 
 func main() {
 	fmt.Println("=== Semantic Search Example ===")
-	fmt.Println("This example demonstrates semantic search capabilities of sqvect")
+	fmt.Println("This example demonstrates semantic search capabilities of cortexdb")
 	fmt.Println()
 
 	// Initialize database
 	dbPath := "semantic_search.db"
 	defer func() { _ = os.Remove(dbPath) }()
 
-	config := sqvect.Config{
+	config := cortexdb.Config{
 		Path:       dbPath,
 		Dimensions: 384, // Typical dimension for sentence transformers
 	}
 
-	db, err := sqvect.Open(config)
+	db, err := cortexdb.Open(config)
 	if err != nil {
 		log.Fatal("Failed to open database:", err)
 	}

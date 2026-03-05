@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/liliang-cn/sqvect/v2/internal/encoding"
+	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 )
 
 // Search performs vector similarity search

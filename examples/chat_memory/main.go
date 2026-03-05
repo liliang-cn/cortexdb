@@ -7,17 +7,17 @@ import (
 	"os"
 	"time"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
-	"github.com/liliang-cn/sqvect/v2/pkg/sqvect"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
 func main() {
 	dbPath := "chat_memory.db"
 	_ = os.Remove(dbPath)
 
-	config := sqvect.DefaultConfig(dbPath)
+	config := cortexdb.DefaultConfig(dbPath)
 	config.Dimensions = 4
-	db, err := sqvect.Open(config)
+	db, err := cortexdb.Open(config)
 	if err != nil {
 		log.Fatal(err)
 	}

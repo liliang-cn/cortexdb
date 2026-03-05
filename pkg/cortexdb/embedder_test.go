@@ -1,4 +1,4 @@
-package sqvect
+package cortexdb
 
 import (
 	"context"

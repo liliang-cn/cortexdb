@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
-	"github.com/liliang-cn/sqvect/v2/pkg/hindsight"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/hindsight"
 )
 
 func main() {
@@ -43,7 +43,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Println("=== sqvect × Hindsight Memory Demo ===")
+	fmt.Println("=== cortexdb × Hindsight Memory Demo ===")
 	fmt.Println()
 
 	// -----------------------------------------------------------------------

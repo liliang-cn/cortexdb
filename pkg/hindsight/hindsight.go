@@ -1,4 +1,4 @@
-// Package hindsight provides a Hindsight-style AI agent memory system built on sqvect.
+// Package hindsight provides a Hindsight-style AI agent memory system built on cortexdb.
 //
 // It implements three core operations: Retain, Recall, and Reflect.
 // This is a pure memory system - no LLM or HTTP dependencies.
@@ -13,15 +13,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
-	"github.com/liliang-cn/sqvect/v2/pkg/graph"
-	"github.com/liliang-cn/sqvect/v2/pkg/sqvect"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
-// System is the Hindsight memory system built on sqvect.
+// System is the Hindsight memory system built on cortexdb.
 // It provides Retain, Recall, and Reflect operations for AI agent memory.
 type System struct {
-	db         *sqvect.DB
+	db         *cortexdb.DB
 	store      core.Store
 	graph      *graph.GraphStore
 	collection *core.Collection
@@ -45,7 +45,7 @@ type Config struct {
 	// VectorDim is the embedding vector dimension (0 for auto-detect)
 	VectorDim int
 
-	// Collection is the sqvect collection name for memories
+	// Collection is the cortexdb collection name for memories
 	Collection string
 }
 
@@ -65,7 +65,7 @@ func New(cfg *Config) (*System, error) {
 		cfg.Collection = "memories"
 	}
 
-	db, err := sqvect.Open(sqvect.Config{
+	db, err := cortexdb.Open(cortexdb.Config{
 		Path:         cfg.DBPath,
 		Dimensions:   cfg.VectorDim,
 		SimilarityFn: core.CosineSimilarity,
@@ -118,8 +118,8 @@ func (s *System) Close() error {
 	return s.db.Close()
 }
 
-// DB returns the underlying sqvect database for advanced usage.
-func (s *System) DB() *sqvect.DB {
+// DB returns the underlying cortexdb database for advanced usage.
+func (s *System) DB() *cortexdb.DB {
 	return s.db
 }
 
@@ -143,7 +143,7 @@ func (s *System) Retain(ctx context.Context, mem *Memory) error {
 		mem.CreatedAt = time.Now()
 	}
 
-	// Build metadata for sqvect
+	// Build metadata for cortexdb
 	metadata := s.buildMetadata(mem)
 
 	// Extract entities from content for graph storage (optional, failures ignored)
@@ -181,7 +181,7 @@ func (s *System) getCollection() string {
 	return "memories"
 }
 
-// buildMetadata converts a Memory to sqvect metadata map.
+// buildMetadata converts a Memory to cortexdb metadata map.
 func (s *System) buildMetadata(mem *Memory) map[string]string {
 	metadata := make(map[string]string)
 

@@ -8,11 +8,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
-	"github.com/liliang-cn/sqvect/v2/pkg/index"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/index"
 )
 
-// RAGExample demonstrates a complete RAG system using sqvect
+// RAGExample demonstrates a complete RAG system using cortexdb
 type RAGExample struct {
 	vectorStore *core.SQLiteStore
 	lshIndex    *index.LSHIndex
@@ -439,7 +439,7 @@ func main() {
 			Content: `Vector databases are specialized databases designed to store and search 
 			high-dimensional vector embeddings. They use similarity metrics like cosine similarity 
 			or Euclidean distance to find the most similar vectors to a query. Popular vector 
-			databases include Pinecone, Weaviate, and Qdrant. sqvect is a lightweight, pure Go 
+			databases include Pinecone, Weaviate, and Qdrant. cortexdb is a lightweight, pure Go 
 			implementation that can be embedded directly in applications.`,
 			Metadata: map[string]string{
 				"category": "Database",

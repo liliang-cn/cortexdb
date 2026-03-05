@@ -1,4 +1,4 @@
-package sqvect
+package cortexdb
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 
 // Embedder defines the interface for text-to-vector embedding.
 // Users can implement this interface to integrate any embedding model
-// (OpenAI, Ollama, local models, etc.) with sqvect.
+// (OpenAI, Ollama, local models, etc.) with cortexdb.
 type Embedder interface {
 	// Embed converts a single text string into a vector.
 	Embed(ctx context.Context, text string) ([]float32, error)
@@ -24,13 +24,13 @@ type Embedder interface {
 var (
 	// ErrEmbedderNotConfigured is returned when text operations are called
 	// but no embedder was configured during initialization.
-	ErrEmbedderNotConfigured = errors.New("sqvect: embedder not configured, use WithEmbedder option or call vector methods directly")
+	ErrEmbedderNotConfigured = errors.New("cortexdb: embedder not configured, use WithEmbedder option or call vector methods directly")
 
 	// ErrEmptyText is returned when an empty text string is provided.
-	ErrEmptyText = errors.New("sqvect: empty text provided")
+	ErrEmptyText = errors.New("cortexdb: empty text provided")
 
 	// ErrEmbeddingFailed is returned when the embedder fails to produce a vector.
-	ErrEmbeddingFailed = errors.New("sqvect: embedding failed")
+	ErrEmbeddingFailed = errors.New("cortexdb: embedding failed")
 )
 
 // BaseEmbedder provides a default implementation of EmbedBatch that calls Embed for each text.

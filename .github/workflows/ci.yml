@@ -40,7 +40,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Verify library can be imported
-        run: go list -m github.com/liliang-cn/sqvect/v2
+        run: go list -m github.com/liliang-cn/cortexdb/v2
 
       - name: Check examples compile (without running)
         run: |

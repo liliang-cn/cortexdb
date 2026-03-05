@@ -7,7 +7,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
 // Route represents a single semantic route with associated example utterances.

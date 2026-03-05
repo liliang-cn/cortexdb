@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
 var (
@@ -20,7 +20,7 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "sqvect",
+	Use:   "cortexdb",
 	Short: "CLI tool for SQLite vector storage",
 	Long:  `A command-line interface for managing vector embeddings in SQLite database.`,
 }

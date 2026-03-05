@@ -1,15 +1,15 @@
-# sqvect
+# cortexdb
 
-[![CI/CD](https://github.com/liliang-cn/sqvect/actions/workflows/ci.yml/badge.svg)](https://github.com/liliang-cn/sqvect/v2/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/liliang-cn/sqvect/v2/branch/main/graph/badge.svg)](https://codecov.io/gh/liliang-cn/sqvect/v2)
-[![Go Report Card](https://goreportcard.com/badge/github.com/liliang-cn/sqvect/v2)](https://goreportcard.com/report/github.com/liliang-cn/sqvect/v2)
-[![Go Reference](https://pkg.go.dev/badge/github.com/liliang-cn/sqvect/v2.svg)](https://pkg.go.dev/github.com/liliang-cn/sqvect/v2)
-[![GitHub release](https://img.shields.io/github/release/liliang-cn/sqvect/v2.svg)](https://github.com/liliang-cn/sqvect/releases)
+[![CI/CD](https://github.com/liliang-cn/cortexdb/actions/workflows/ci.yml/badge.svg)](https://github.com/liliang-cn/cortexdb/v2/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/liliang-cn/cortexdb/v2/branch/main/graph/badge.svg)](https://codecov.io/gh/liliang-cn/cortexdb/v2)
+[![Go Report Card](https://goreportcard.com/badge/github.com/liliang-cn/cortexdb/v2)](https://goreportcard.com/report/github.com/liliang-cn/cortexdb/v2)
+[![Go Reference](https://pkg.go.dev/badge/github.com/liliang-cn/cortexdb/v2.svg)](https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2)
+[![GitHub release](https://img.shields.io/github/release/liliang-cn/cortexdb/v2.svg)](https://github.com/liliang-cn/cortexdb/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **一个轻量级、可嵌入的 Go AI 项目向量数据库库。**
 
-sqvect 是一个 **100% 纯 Go 库**，旨在为您的 RAG 应用提供存储内核。它在单个 SQLite 文件中提供向量存储、关键词搜索 (FTS5)、图关系和聊天内存管理功能。
+cortexdb 是一个 **100% 纯 Go 库**，旨在为您的 RAG 应用提供存储内核。它在单个 SQLite 文件中提供向量存储、关键词搜索 (FTS5)、图关系和聊天内存管理功能。
 
 ## ✨ 特性
 
@@ -26,7 +26,7 @@ sqvect 是一个 **100% 纯 Go 库**，旨在为您的 RAG 应用提供存储内
 ## 🚀 快速开始
 
 ```bash
-go get github.com/liliang-cn/sqvect/v2
+go get github.com/liliang-cn/cortexdb/v2
 ```
 
 ```go
@@ -37,13 +37,13 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
-	"github.com/liliang-cn/sqvect/v2/pkg/sqvect"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
 func main() {
 	// 1. 打开数据库 (自动为向量、文档、聊天创建表)
-	db, err := sqvect.Open(sqvect.DefaultConfig("rag.db"))
+	db, err := cortexdb.Open(cortexdb.DefaultConfig("rag.db"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func main() {
 	ctx := context.Background()
 
 	// 2. 添加文档和向量
-	// sqvect 管理文档和分块之间的关系
+	// cortexdb 管理文档和分块之间的关系
 	db.Vector().CreateDocument(ctx, &core.Document{
 		ID:    "doc1",
 		Title: "Go 指南",
@@ -68,7 +68,7 @@ func main() {
 }
 ```
 
-## 💡 为什么选择 sqvect？
+## 💡 为什么选择 cortexdb？
 
 ### 核心优势
 
@@ -107,12 +107,12 @@ func main() {
 
 ## 🧠 Hindsight：AI 智能体记忆系统
 
-sqvect 内置 **Hindsight**，一个仿生记忆系统，用于让智能体在多轮交互中长期学习与改进。
+cortexdb 内置 **Hindsight**，一个仿生记忆系统，用于让智能体在多轮交互中长期学习与改进。
 
 ### 三大核心操作
 
 ```go
-import "github.com/liliang-cn/sqvect/v2/pkg/hindsight"
+import "github.com/liliang-cn/cortexdb/v2/pkg/hindsight"
 
 sys, _ := hindsight.New(&hindsight.Config{
 	DBPath: "agent_memory.db",
@@ -228,8 +228,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
-	semanticrouter "github.com/liliang-cn/sqvect/v2/pkg/semantic-router"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	semanticrouter "github.com/liliang-cn/cortexdb/v2/pkg/semantic-router"
 )
 
 embedder := semanticrouter.NewMockEmbedder(1536)
@@ -248,7 +248,7 @@ result, _ := router.Route(context.Background(), "我要退款")
 fmt.Printf("Route: %s, Score: %.4f, Matched: %v\n", result.RouteName, result.Score, result.Matched)
 ```
 
-sqvect 超越简单的向量存储，为复杂的 RAG 应用提供架构和 API。
+cortexdb 超越简单的向量存储，为复杂的 RAG 应用提供架构和 API。
 
 ### 1. 混合搜索 (向量 + 关键词)
 
@@ -277,7 +277,7 @@ db.Vector().CreateSession(ctx, &core.Session{
 db.Vector().AddMessage(ctx, &core.Message{
 	SessionID: "sess_1",
 	Role:      "user",
-	Content:   "什么是 sqvect？",
+	Content:   "什么是 cortexdb？",
 })
 
 // 3. 检索历史用于上下文窗口
@@ -286,11 +286,11 @@ history, _ := db.Vector().GetSessionHistory(ctx, "sess_1", 10)
 
 ### 3. 高级文本与结构化数据 API
 
-sqvect 提供了直接处理文本（自动向量化）和结构化数据的顶层 API。
+cortexdb 提供了直接处理文本（自动向量化）和结构化数据的顶层 API。
 
 ```go
 // 注入大模型嵌入接口
-db, _ := sqvect.Open(config, sqvect.WithEmbedder(myOpenAIEmbedder))
+db, _ := cortexdb.Open(config, cortexdb.WithEmbedder(myOpenAIEmbedder))
 
 // 查看数据库当前配置信息
 info := db.Info()
@@ -303,7 +303,7 @@ db.InsertText(ctx, "doc_1", "SQLite 是非常棒的数据库", map[string]string
 results, _ := db.SearchText(ctx, "快速的数据库", 5)
 
 // 纯 FTS5 关键词搜索（无需依赖任何大模型或向量！）
-textResults, _ := db.SearchTextOnly(ctx, "快速的数据库", sqvect.TextSearchOptions{TopK: 5})
+textResults, _ := db.SearchTextOnly(ctx, "快速的数据库", cortexdb.TextSearchOptions{TopK: 5})
 ```
 
 *参考 `examples/structured_data` 和 `examples/text_api` 获取关于高级 RAG（如文本化、GraphRAG、SQL实体映射）的完整代码示例。*
@@ -343,7 +343,7 @@ db.Vector().DeleteDocument(ctx, "manual_v1")
 
 ## 📚 数据库架构
 
-sqvect 为您管理以下表：
+cortexdb 为您管理以下表：
 
 | 表             | 描述                                     |
 | :------------- | :--------------------------------------- |
@@ -370,7 +370,7 @@ _在 Apple M2 Pro 上测试。_
 
 ### 非常适合 ✅
 
-| 使用场景              | 为什么选择 sqvect？               |
+| 使用场景              | 为什么选择 cortexdb？               |
 | :-------------------- | :-------------------------------- |
 | **本地优先 RAG 应用** | 单文件、无服务器、离线工作        |
 | **边缘 AI 设备**      | 低内存 (SQ8)、无外部依赖、纯 Go   |
@@ -403,7 +403,7 @@ _在 Apple M2 Pro 上测试。_
 
 ### 向量数据库对比
 
-| 特性           |    sqvect     |   Chroma    |  Weaviate   |   Milvus    |   Qdrant    |
+| 特性           |    cortexdb     |   Chroma    |  Weaviate   |   Milvus    |   Qdrant    |
 | :------------- | :-----------: | :---------: | :---------: | :---------: | :---------: |
 | **架构**       |    嵌入式     |   服务器    |   服务器    |   分布式    |   服务器    |
 | **语言**       |      Go       |   Python    |     Go      |     Go      |    Rust     |
@@ -419,9 +419,9 @@ _在 Apple M2 Pro 上测试。_
 | **备份**       |   复制文件    |    导出     |    快照     |    复杂     |    快照     |
 | **适合场景**   |   边缘/本地   |  Python ML  |    企业     |   大数据    |    生产     |
 
-### 何时选择 sqvect？
+### 何时选择 cortexdb？
 
-**选择 sqvect 如果：**
+**选择 cortexdb 如果：**
 
 - ✅ 您想要 **单文件** 数据库 (无独立服务)
 - ✅ 您正在构建 **本地优先** 或 **边缘 AI** 应用

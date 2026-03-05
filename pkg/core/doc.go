@@ -1,4 +1,4 @@
-// Package core provides the core storage and retrieval engine for sqvect.
+// Package core provides the core storage and retrieval engine for cortexdb.
 //
 // It implements vector storage using SQLite as the primary backend, supported by
 // specialized in-memory indexes (HNSW, IVF) for high-performance approximate

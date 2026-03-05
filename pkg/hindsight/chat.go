@@ -1,4 +1,4 @@
-// Package hindsight: chat.go provides a thin wrapper around the sqvect
+// Package hindsight: chat.go provides a thin wrapper around the cortexdb
 // session/message API that optionally auto-triggers fact extraction.
 //
 // Usage pattern:
@@ -22,12 +22,12 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
 // CreateSession is a convenience wrapper that creates a chat session in the
 // underlying store. It is provided so callers that use hindsight as their
-// primary entry-point don't need a separate reference to sqvect.DB.
+// primary entry-point don't need a separate reference to cortexdb.DB.
 func (s *System) CreateSession(ctx context.Context, session *core.Session) error {
 	return s.store.CreateSession(ctx, session)
 }

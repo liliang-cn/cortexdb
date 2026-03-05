@@ -1,5 +1,5 @@
-// Package sqvect provides a lightweight SQLite-based vector database for Go AI projects
-package sqvect
+// Package cortexdb provides a lightweight SQLite-based vector database for Go AI projects
+package cortexdb
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
-	"github.com/liliang-cn/sqvect/v2/pkg/graph"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
 // DB represents a SQLite vector database instance

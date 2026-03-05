@@ -1,4 +1,4 @@
-// Package geo provides geo-spatial indexing and search capabilities for sqvect
+// Package geo provides geo-spatial indexing and search capabilities for cortexdb
 package geo
 
 import (

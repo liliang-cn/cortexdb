@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
-	graphpkg "github.com/liliang-cn/sqvect/v2/pkg/graph"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	graphpkg "github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
 var (
@@ -21,7 +21,7 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "sqvect-graph",
+	Use:   "cortexdb-graph",
 	Short: "CLI tool for managing SQLite vector graph database",
 	Long:  `A command-line interface for managing nodes, edges, and performing searches in the SQLite vector graph store.`,
 }

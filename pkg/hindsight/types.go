@@ -1,4 +1,4 @@
-// Package hindsight provides a Hindsight-style AI agent memory system built on sqvect.
+// Package hindsight provides a Hindsight-style AI agent memory system built on cortexdb.
 //
 // It implements three core operations: Retain, Recall, and Reflect.
 // This is a pure memory system - no LLM or HTTP dependencies.

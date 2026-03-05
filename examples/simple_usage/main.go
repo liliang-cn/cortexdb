@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/sqvect"
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
 func main() {
 	// Example: Simple vector database usage for AI applications
 	
 	// 1. Open database with simple config
-	config := sqvect.DefaultConfig("embeddings.db")
+	config := cortexdb.DefaultConfig("embeddings.db")
 	config.Dimensions = 384 // Dimension for models like all-MiniLM-L6-v2 (OpenAI is 1536)
 	
-	db, err := sqvect.Open(config)
+	db, err := cortexdb.Open(config)
 	if err != nil {
 		log.Fatal("Failed to open database:", err)
 	}

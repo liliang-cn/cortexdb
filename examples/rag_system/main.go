@@ -7,8 +7,8 @@ import (
 	"math/rand"
 	"os"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
-	"github.com/liliang-cn/sqvect/v2/pkg/sqvect"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
 func main() {
@@ -17,12 +17,12 @@ func main() {
 
 	// 1. Initialize RAG Database
 	fmt.Println("Initializing RAG Database...")
-	config := sqvect.DefaultConfig(dbPath)
+	config := cortexdb.DefaultConfig(dbPath)
 	config.Dimensions = 4 // Small dim for demo
 	// Enable HNSW for vectors
 	config.IndexType = core.IndexTypeHNSW 
 	
-db, err := sqvect.Open(config)
+db, err := cortexdb.Open(config)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -40,7 +40,7 @@ db, err := sqvect.Open(config)
 docID := "tech_manual_v1"
 	err = store.CreateDocument(ctx, &core.Document{
 		ID:    docID,
-		Title: "Sqvect Technical Manual",
+		Title: "Cortexdb Technical Manual",
 		Author: "Engineering Team",
 		Metadata: map[string]interface{}{"type": "manual"},
 	})
@@ -73,7 +73,7 @@ docID := "tech_manual_v1"
 		ID:      "chunk_3",
 		DocID:   docID,
 		Vector:  chunk3Vec,
-		Content: "To install sqvect, simply run go get.",
+		Content: "To install cortexdb, simply run go get.",
 	})
 
 	// 3. Perform Hybrid Search

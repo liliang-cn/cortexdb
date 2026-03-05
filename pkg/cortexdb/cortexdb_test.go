@@ -1,4 +1,4 @@
-package sqvect
+package cortexdb
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
-	"github.com/liliang-cn/sqvect/v2/pkg/graph"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -29,7 +29,7 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 func TestOpen(t *testing.T) {
-	dbPath := fmt.Sprintf("test_sqvect_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_cortexdb_%d.db", time.Now().UnixNano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	config := DefaultConfig(dbPath)

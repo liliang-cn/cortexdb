@@ -7,8 +7,8 @@ import (
 	"math/rand"
 	"sort"
 	"sync"
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
-	"github.com/liliang-cn/sqvect/v2/internal/encoding"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 )
 
 // SimpleHNSW implements a simplified HNSW-like index for vector search

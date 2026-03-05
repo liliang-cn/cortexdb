@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/hindsight"
+	"github.com/liliang-cn/cortexdb/v2/pkg/hindsight"
 )
 
 // mockEmbedding returns a simple mock embedding vector.

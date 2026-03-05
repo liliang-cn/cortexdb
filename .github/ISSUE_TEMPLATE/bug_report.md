@@ -27,7 +27,7 @@ A clear and concise description of what you expected to happen.
 **Environment (please complete the following information):**
 - OS: [e.g. macOS, Linux, Windows]
 - Go version: [e.g. 1.21.0]
-- sqvect version: [e.g. v0.1.0]
+- cortexdb version: [e.g. v0.1.0]
 
 **Additional context**
 Add any other context about the problem here.

@@ -9,8 +9,8 @@ import (
 	"log"
 	"strings"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
-	semanticrouter "github.com/liliang-cn/sqvect/v2/pkg/semantic-router"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	semanticrouter "github.com/liliang-cn/cortexdb/v2/pkg/semantic-router"
 )
 
 func main() {

@@ -1,7 +1,7 @@
 package graph
 
 import (
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"context"
 	"fmt"
 	"os"

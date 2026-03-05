@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/sqvect"
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
 func main() {
@@ -18,10 +18,10 @@ func main() {
 	// Clean start
 	_ = os.Remove("benchmark.db")
 	
-	config := sqvect.DefaultConfig("benchmark.db")
+	config := cortexdb.DefaultConfig("benchmark.db")
 	config.Dimensions = 384 // Common embedding dimension
 	
-	db, err := sqvect.Open(config)
+	db, err := cortexdb.Open(config)
 	if err != nil {
 		log.Fatal("Failed to open database:", err)
 	}

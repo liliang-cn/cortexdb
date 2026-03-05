@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/liliang-cn/sqvect/v2/internal/encoding"
+	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 )
 
 // MultiVectorEntity represents an entity with multiple vectors

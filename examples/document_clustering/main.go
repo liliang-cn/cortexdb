@@ -9,8 +9,8 @@ import (
 	"os"
 	"sort"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
-	"github.com/liliang-cn/sqvect/v2/pkg/sqvect"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
 // Cluster represents a document cluster
@@ -108,12 +108,12 @@ func main() {
 	dbPath := "document_clustering.db"
 	defer func() { _ = os.Remove(dbPath) }()
 
-	config := sqvect.Config{
+	config := cortexdb.Config{
 		Path:       dbPath,
 		Dimensions: 128,
 	}
 
-	db, err := sqvect.Open(config)
+	db, err := cortexdb.Open(config)
 	if err != nil {
 		log.Fatal("Failed to open database:", err)
 	}

@@ -1,6 +1,6 @@
-# Sqvect Examples
+# Cortexdb Examples
 
-This directory contains comprehensive examples demonstrating the full capabilities of the sqvect SQLite vector database library.
+This directory contains comprehensive examples demonstrating the full capabilities of the cortexdb SQLite vector database library.
 
 ## 🚀 Quick Start
 
@@ -99,20 +99,20 @@ go build -o simple_example examples/simple_usage/main.go
 
 ## 💻 API Usage Patterns
 
-All examples use the latest sqvect API:
+All examples use the latest cortexdb API:
 
 ```go
 import (
-    "github.com/liliang-cn/sqvect/v2/pkg/sqvect"
-    "github.com/liliang-cn/sqvect/v2/pkg/core"
-    "github.com/liliang-cn/sqvect/v2/pkg/graph"
+    "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+    "github.com/liliang-cn/cortexdb/v2/pkg/core"
+    "github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
 // Initialize database
-config := sqvect.DefaultConfig("mydb.db")
+config := cortexdb.DefaultConfig("mydb.db")
 config.Dimensions = 384 // or 0 for auto-detect
 
-db, err := sqvect.Open(config)
+db, err := cortexdb.Open(config)
 defer db.Close()
 
 // Use Quick API for simple operations
@@ -174,7 +174,7 @@ err := graphStore.UpsertEdge(ctx, &graph.GraphEdge{...})
 ## 🤝 Contributing
 
 Feel free to add more examples! Make sure to:
-1. Use the latest sqvect API
+1. Use the latest cortexdb API
 2. Include comprehensive comments
 3. Provide realistic use cases
 4. Clean up resources after execution
@@ -182,6 +182,6 @@ Feel free to add more examples! Make sure to:
 
 ## 📖 Further Reading
 
-- [Sqvect Documentation](../README.md)
+- [Cortexdb Documentation](../README.md)
 - [API Reference](../doc.go)
 - [Feature Comparison](../FEATURE_COMPARISON.md)

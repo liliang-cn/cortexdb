@@ -1,6 +1,6 @@
-# Using sqvect with Large Language Models (LLMs)
+# Using cortexdb with Large Language Models (LLMs)
 
-sqvect is perfect for building LLM-powered applications like RAG systems, semantic search, and AI agents. This guide shows how to integrate sqvect with popular LLM providers.
+cortexdb is perfect for building LLM-powered applications like RAG systems, semantic search, and AI agents. This guide shows how to integrate cortexdb with popular LLM providers.
 
 ## Table of Contents
 1. [Quick Start](#quick-start)
@@ -14,7 +14,7 @@ sqvect is perfect for building LLM-powered applications like RAG systems, semant
 
 ### Installation
 ```bash
-go get github.com/liliang-cn/sqvect
+go get github.com/liliang-cn/cortexdb
 ```
 
 ### Basic Setup with OpenAI
@@ -23,13 +23,13 @@ package main
 
 import (
     "context"
-    "github.com/liliang-cn/sqvect/pkg/sqvect"
+    "github.com/liliang-cn/cortexdb/pkg/cortexdb"
     "github.com/sashabaranov/go-openai"
 )
 
 func main() {
-    // Initialize sqvect
-    db, err := sqvect.Open("vectors.db", sqvect.Config{
+    // Initialize cortexdb
+    db, err := cortexdb.Open("vectors.db", cortexdb.Config{
         VectorDim: 1536, // OpenAI ada-002 dimension
     })
     if err != nil {
@@ -47,7 +47,7 @@ func main() {
             Model: openai.AdaEmbeddingV2,
         })
     
-    // Store in sqvect
+    // Store in cortexdb
     embedding := resp.Data[0].Embedding
     db.Add("doc1", embedding, map[string]string{
         "text": "Hello, world!",
@@ -69,7 +69,7 @@ import (
     "fmt"
     "strings"
     
-    "github.com/liliang-cn/sqvect/pkg/core"
+    "github.com/liliang-cn/cortexdb/pkg/core"
     "github.com/sashabaranov/go-openai"
 )
 
@@ -219,7 +219,7 @@ func splitIntoChunks(text string, chunkSize int) []string {
 
 ## Semantic Search
 
-Build powerful semantic search with sqvect's advanced features:
+Build powerful semantic search with cortexdb's advanced features:
 
 ```go
 // Semantic search with filtering and streaming
@@ -356,7 +356,7 @@ func (cm *ChatMemory) Chat(userInput string) (string, error) {
 
 ## Document Q&A
 
-Advanced document Q&A with sqvect's features:
+Advanced document Q&A with cortexdb's features:
 
 ```go
 type DocumentQA struct {
@@ -519,7 +519,7 @@ resp, _ := http.Post("http://localhost:11434/api/embeddings",
 
 ## Resources
 
-- [sqvect Documentation](https://github.com/liliang-cn/sqvect/v2
+- [cortexdb Documentation](https://github.com/liliang-cn/cortexdb/v2
 - [OpenAI Embeddings Guide](https://platform.openai.com/docs/guides/embeddings)
 - [RAG Best Practices](https://www.pinecone.io/learn/retrieval-augmented-generation/)
 - [Vector Database Benchmarks](https://ann-benchmarks.com/)

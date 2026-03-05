@@ -1,4 +1,4 @@
-package sqvect
+package cortexdb
 
-// Version represents the current version of the sqvect library.
+// Version represents the current version of the cortexdb library.
 const Version = "2.6.0"

@@ -5,7 +5,7 @@ A command-line interface for managing vector embeddings in SQLite database.
 ## Installation
 
 ```bash
-go install github.com/liliang-cn/sqvect/cmd/sqvect
+go install github.com/liliang-cn/cortexdb/cmd/cortexdb
 ```
 
 ## Usage
@@ -14,31 +14,31 @@ go install github.com/liliang-cn/sqvect/cmd/sqvect
 
 ```bash
 # Create a new vector database
-sqvect init --db vectors.db --dimensions 384
+cortexdb init --db vectors.db --dimensions 384
 
 # Auto-detect dimensions (from first insert)
-sqvect init --db vectors.db --dimensions 0
+cortexdb init --db vectors.db --dimensions 0
 ```
 
 ### Embedding Management
 
 ```bash
 # Add an embedding
-sqvect embed add "emb1" \
+cortexdb embed add "emb1" \
   --vector "0.1,0.2,0.3" \
   --content "Sample text" \
   --doc-id "doc1" \
   --metadata '{"category":"example","lang":"en"}'
 
 # Get embedding details
-sqvect embed get "emb1"
-sqvect embed get "emb1" --json
+cortexdb embed get "emb1"
+cortexdb embed get "emb1" --json
 
 # Delete an embedding
-sqvect embed delete "emb1"
+cortexdb embed delete "emb1"
 
 # Batch import from JSON file
-sqvect embed batch embeddings.json
+cortexdb embed batch embeddings.json
 ```
 
 Example JSON file for batch import:
@@ -65,55 +65,55 @@ Example JSON file for batch import:
 
 ```bash
 # Basic similarity search
-sqvect search --vector "0.1,0.2,0.3" --top-k 5
+cortexdb search --vector "0.1,0.2,0.3" --top-k 5
 
 # Search with threshold
-sqvect search --vector "0.1,0.2,0.3" --top-k 10 --threshold 0.8
+cortexdb search --vector "0.1,0.2,0.3" --top-k 10 --threshold 0.8
 
 # Search with metadata filters
-sqvect search --vector "0.1,0.2,0.3" \
+cortexdb search --vector "0.1,0.2,0.3" \
   --filter "category=example,lang=en"
 
 # Output as JSON
-sqvect search --vector "0.1,0.2,0.3" --json
+cortexdb search --vector "0.1,0.2,0.3" --json
 ```
 
 ### Collection Management
 
 ```bash
 # Create a collection
-sqvect collection create "documents" --dimensions 768
+cortexdb collection create "documents" --dimensions 768
 
 # List all collections
-sqvect collection list
-sqvect collection list --json
+cortexdb collection list
+cortexdb collection list --json
 
 # Delete a collection
-sqvect collection delete "documents" --force
+cortexdb collection delete "documents" --force
 ```
 
 ### Database Operations
 
 ```bash
 # Display statistics
-sqvect stats
-sqvect stats --json
+cortexdb stats
+cortexdb stats --json
 
 # Optimize database (VACUUM and ANALYZE)
-sqvect optimize
+cortexdb optimize
 ```
 
 ### Similarity Calculation
 
 ```bash
 # Calculate cosine similarity
-sqvect similarity \
+cortexdb similarity \
   --vector1 "0.1,0.2,0.3" \
   --vector2 "0.4,0.5,0.6" \
   --method cosine
 
 # Other methods: dot, euclidean
-sqvect similarity \
+cortexdb similarity \
   --vector1 "0.1,0.2,0.3" \
   --vector2 "0.4,0.5,0.6" \
   --method euclidean
@@ -131,21 +131,21 @@ sqvect similarity \
 
 ```bash
 # Initialize database
-sqvect init --db documents.db --dimensions 384
+cortexdb init --db documents.db --dimensions 384
 
 # Add document embeddings
-sqvect embed add "doc001" \
+cortexdb embed add "doc001" \
   --vector "$(python generate_embedding.py 'Machine learning basics')" \
   --content "Machine learning basics" \
   --metadata '{"topic":"ML","level":"beginner"}'
 
-sqvect embed add "doc002" \
+cortexdb embed add "doc002" \
   --vector "$(python generate_embedding.py 'Deep learning introduction')" \
   --content "Deep learning introduction" \
   --metadata '{"topic":"DL","level":"intermediate"}'
 
 # Search for similar documents
-sqvect search \
+cortexdb search \
   --vector "$(python generate_embedding.py 'Neural networks')" \
   --top-k 5 \
   --verbose
@@ -155,16 +155,16 @@ sqvect search \
 
 ```bash
 # Create image collection
-sqvect collection create "images" --dimensions 512
+cortexdb collection create "images" --dimensions 512
 
 # Add image embeddings
-sqvect embed add "img_001" \
+cortexdb embed add "img_001" \
   --vector "$(python extract_image_features.py image1.jpg)" \
   --content "sunset_beach.jpg" \
   --metadata '{"type":"landscape","location":"hawaii"}'
 
 # Find similar images
-sqvect search \
+cortexdb search \
   --vector "$(python extract_image_features.py query.jpg)" \
   --filter "type=landscape" \
   --top-k 10
@@ -176,17 +176,17 @@ sqvect search \
 # Generate test data
 for i in {1..1000}; do
   vector=$(python -c "import random; print(','.join(str(random.random()) for _ in range(384)))")
-  sqvect embed add "test_$i" --vector "$vector" --content "Test $i"
+  cortexdb embed add "test_$i" --vector "$vector" --content "Test $i"
 done
 
 # Test search performance
-time sqvect search --vector "$(python -c "import random; print(','.join(str(random.random()) for _ in range(384)))")" --top-k 100
+time cortexdb search --vector "$(python -c "import random; print(','.join(str(random.random()) for _ in range(384)))")" --top-k 100
 
 # Check database stats
-sqvect stats
+cortexdb stats
 
 # Optimize for better performance
-sqvect optimize
+cortexdb optimize
 ```
 
 ## Output Formats
@@ -195,13 +195,13 @@ Most commands support JSON output with the `--json` flag for programmatic proces
 
 ```bash
 # Pipe to jq for processing
-sqvect search --vector "0.1,0.2,0.3" --json | jq '.[] | .id'
+cortexdb search --vector "0.1,0.2,0.3" --json | jq '.[] | .id'
 
 # Get embedding count
-sqvect stats --json | jq '.Count'
+cortexdb stats --json | jq '.Count'
 
 # List collection dimensions
-sqvect collection list --json | jq '.[] | "\(.Name): \(.Dimensions)"'
+cortexdb collection list --json | jq '.[] | "\(.Name): \(.Dimensions)"'
 ```
 
 ## Similarity Methods

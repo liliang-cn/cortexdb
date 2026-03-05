@@ -346,8 +346,8 @@ func (g *GraphStore) ExportGEXF(ctx context.Context, writer io.Writer) error {
 		XMLNS:   "http://www.gexf.net/1.3",
 		Version: "1.3",
 		Meta: GEXFMeta{
-			Creator:     "sqvect",
-			Description: "Graph exported from sqvect",
+			Creator:     "cortexdb",
+			Description: "Graph exported from cortexdb",
 		},
 		Graph: GEXFGraph{
 			Mode:            "static",
@@ -543,7 +543,7 @@ func (g *GraphStore) ExportJSON(ctx context.Context, writer io.Writer) error {
 		"metadata": map[string]interface{}{
 			"node_count": len(nodes),
 			"edge_count": len(allEdges),
-			"format":     "sqvect-graph-v1",
+			"format":     "cortexdb-graph-v1",
 		},
 	}
 	

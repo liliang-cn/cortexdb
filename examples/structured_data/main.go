@@ -6,10 +6,10 @@ import (
 	"log"
 	"math"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
-	"github.com/liliang-cn/sqvect/v2/pkg/graph"
-	"github.com/liliang-cn/sqvect/v2/pkg/hindsight"
-	"github.com/liliang-cn/sqvect/v2/pkg/sqvect"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
+	"github.com/liliang-cn/cortexdb/v2/pkg/hindsight"
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
 // DummyEmbedder for demonstration
@@ -44,7 +44,7 @@ func (d *DummyEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]flo
 func (d *DummyEmbedder) Dim() int { return d.dim }
 
 func main() {
-	fmt.Println("=== Working with Structured Data (SQL/CSV) in sqvect ===")
+	fmt.Println("=== Working with Structured Data (SQL/CSV) in cortexdb ===")
 	ctx := context.Background()
 	embedder := &DummyEmbedder{dim: 128}
 
@@ -61,9 +61,9 @@ func main() {
 // ---------------------------------------------------------
 // Strategy 1: Flattening CSV/SQL rows into text + Metadata
 // ---------------------------------------------------------
-func demoTextification(ctx context.Context, embedder sqvect.Embedder) {
+func demoTextification(ctx context.Context, embedder cortexdb.Embedder) {
 	fmt.Println("\n--- Strategy 1: Textification + Advanced Filtering ---")
-	db, err := sqvect.Open(sqvect.DefaultConfig("structured_rag.db"), sqvect.WithEmbedder(embedder))
+	db, err := cortexdb.Open(cortexdb.DefaultConfig("structured_rag.db"), cortexdb.WithEmbedder(embedder))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func demoTextification(ctx context.Context, embedder sqvect.Embedder) {
 // ---------------------------------------------------------
 // Strategy 2: Using Hindsight for CRM / Agent State
 // ---------------------------------------------------------
-func demoHindsightMemory(ctx context.Context, embedder sqvect.Embedder) {
+func demoHindsightMemory(ctx context.Context, embedder cortexdb.Embedder) {
 	fmt.Println("\n--- Strategy 2: Agent Memory with SQL Entities ---")
 	sys, err := hindsight.New(&hindsight.Config{
 		DBPath:    "structured_memory.db",
@@ -182,9 +182,9 @@ func demoHindsightMemory(ctx context.Context, embedder sqvect.Embedder) {
 // ---------------------------------------------------------
 // Strategy 3: Relational Data to Knowledge Graph (GraphRAG)
 // ---------------------------------------------------------
-func demoGraphRAG(ctx context.Context, embedder sqvect.Embedder) {
+func demoGraphRAG(ctx context.Context, embedder cortexdb.Embedder) {
 	fmt.Println("\n--- Strategy 3: Relational Data to Graph (GraphRAG) ---")
-	db, err := sqvect.Open(sqvect.DefaultConfig("structured_graph.db"))
+	db, err := cortexdb.Open(cortexdb.DefaultConfig("structured_graph.db"))
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -1,15 +1,15 @@
-# sqvect
+# cortexdb
 
-[![CI/CD](https://github.com/liliang-cn/sqvect/v2/actions/workflows/ci.yml/badge.svg)](https://github.com/liliang-cn/sqvect/v2/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/liliang-cn/sqvect/branch/main/graph/badge.svg)](https://codecov.io/gh/liliang-cn/sqvect)
-[![Go Report Card](https://goreportcard.com/badge/github.com/liliang-cn/sqvect/v2)](https://goreportcard.com/report/github.com/liliang-cn/sqvect/v2)
-[![Go Reference](https://pkg.go.dev/badge/github.com/liliang-cn/sqvect/v2.svg)](https://pkg.go.dev/github.com/liliang-cn/sqvect/v2)
-[![GitHub release](https://img.shields.io/github/release/liliang-cn/sqvect.svg)](https://github.com/liliang-cn/sqvect/v2/releases)
+[![CI/CD](https://github.com/liliang-cn/cortexdb/v2/actions/workflows/ci.yml/badge.svg)](https://github.com/liliang-cn/cortexdb/v2/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/liliang-cn/cortexdb/branch/main/graph/badge.svg)](https://codecov.io/gh/liliang-cn/cortexdb)
+[![Go Report Card](https://goreportcard.com/badge/github.com/liliang-cn/cortexdb/v2)](https://goreportcard.com/report/github.com/liliang-cn/cortexdb/v2)
+[![Go Reference](https://pkg.go.dev/badge/github.com/liliang-cn/cortexdb/v2.svg)](https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2)
+[![GitHub release](https://img.shields.io/github/release/liliang-cn/cortexdb.svg)](https://github.com/liliang-cn/cortexdb/v2/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **A lightweight, embeddable vector database library for Go AI projects.**
 
-sqvect is a **100% pure Go library** that bundles vector storage, keyword search (FTS5), knowledge graph relationships, and a Hindsight-inspired AI Agent memory system into a **single SQLite file** — no external services required.
+cortexdb is a **100% pure Go library** that bundles vector storage, keyword search (FTS5), knowledge graph relationships, and a Hindsight-inspired AI Agent memory system into a **single SQLite file** — no external services required.
 
 ## ✨ Features
 
@@ -25,7 +25,7 @@ sqvect is a **100% pure Go library** that bundles vector storage, keyword search
 ## 🚀 Quick Start
 
 ```bash
-go get github.com/liliang-cn/sqvect/v2
+go get github.com/liliang-cn/cortexdb/v2
 ```
 
 ```go
@@ -36,12 +36,12 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/sqvect"
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
 func main() {
 	// Open database (auto-creates tables for vectors, docs, chat)
-	db, err := sqvect.Open(sqvect.DefaultConfig("app.db"))
+	db, err := cortexdb.Open(cortexdb.DefaultConfig("app.db"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -103,7 +103,7 @@ TEMPR retrieval pipeline and RRF fusion — all over SQLite, zero external servi
 #### Architecture
 
 ```
-retain()   →  sqvect embeddings collection ("memories")
+retain()   →  cortexdb embeddings collection ("memories")
                 ├── WorldMemory      (objective facts about the world)
                 ├── BankMemory       (agent's own past actions)
                 ├── OpinionMemory    (formed beliefs with confidence)
@@ -126,7 +126,7 @@ reflect()  →  formatted context string (ready for LLM injection)
 #### Basic Usage
 
 ```go
-import "github.com/liliang-cn/sqvect/v2/pkg/hindsight"
+import "github.com/liliang-cn/cortexdb/v2/pkg/hindsight"
 
 sys, _ := hindsight.New(&hindsight.Config{
 	DBPath: "agent.db",
@@ -218,11 +218,11 @@ resp, _ := sys.Observe(ctx, &hindsight.ReflectRequest{
 
 ### 4. Text & Structured Data APIs
 
-sqvect provides high-level APIs for working directly with text (auto-embedding) and structured data.
+cortexdb provides high-level APIs for working directly with text (auto-embedding) and structured data.
 
 ```go
 // Configure an embedder
-db, _ := sqvect.Open(config, sqvect.WithEmbedder(myOpenAIEmbedder))
+db, _ := cortexdb.Open(config, cortexdb.WithEmbedder(myOpenAIEmbedder))
 
 // Check DB Configuration
 info := db.Info()
@@ -235,7 +235,7 @@ db.InsertText(ctx, "doc_1", "SQLite is awesome", map[string]string{"type": "data
 results, _ := db.SearchText(ctx, "fast database", 5)
 
 // FTS5 Keyword-only search (no embeddings needed!)
-textResults, _ := db.SearchTextOnly(ctx, "fast database", sqvect.TextSearchOptions{TopK: 5})
+textResults, _ := db.SearchTextOnly(ctx, "fast database", cortexdb.TextSearchOptions{TopK: 5})
 ```
 
 *See `examples/structured_data` and `examples/text_api` for advanced RAG patterns (Textification, GraphRAG, SQL-entity memory).*

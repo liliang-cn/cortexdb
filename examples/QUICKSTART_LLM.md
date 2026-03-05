@@ -1,4 +1,4 @@
-# Quick Start: Using sqvect with LLMs
+# Quick Start: Using cortexdb with LLMs
 
 ## 1. Basic Setup (5 minutes)
 
@@ -8,14 +8,14 @@ package main
 import (
     "context"
     "fmt"
-    "github.com/liliang-cn/sqvect/pkg/sqvect"
+    "github.com/liliang-cn/cortexdb/pkg/cortexdb"
     // Your favorite LLM client
 )
 
 func main() {
     // Open database
-    config := sqvect.DefaultConfig("vectors.db")
-    db, _ := sqvect.Open(config)
+    config := cortexdb.DefaultConfig("vectors.db")
+    db, _ := cortexdb.Open(config)
     defer db.Close()
     
     ctx := context.Background()
@@ -40,7 +40,7 @@ func main() {
 ## 2. RAG in 50 Lines
 
 ```go
-func SimpleRAG(ctx context.Context, db *sqvect.DB, question string) string {
+func SimpleRAG(ctx context.Context, db *cortexdb.DB, question string) string {
     quick := db.Quick()
 
     // 1. Generate query embedding (mock implementation)
@@ -69,7 +69,7 @@ func SimpleRAG(ctx context.Context, db *sqvect.DB, question string) string {
 
 ### Indexing Strategies (HNSW vs IVF)
 ```go
-config := sqvect.DefaultConfig("vectors.db")
+config := cortexdb.DefaultConfig("vectors.db")
 
 // HNSW (Default): Good for real-time, incremental updates
 config.IndexType = core.IndexTypeHNSW 
@@ -77,7 +77,7 @@ config.IndexType = core.IndexTypeHNSW
 // IVF: Good for bulk loading and training
 // config.IndexType = core.IndexTypeIVF
 
-db, _ := sqvect.Open(config)
+db, _ := cortexdb.Open(config)
 ```
 
 ### Advanced Filtering
@@ -200,7 +200,7 @@ resp := ollama.Embed("nomic-embed-text", text)
 embedding := resp.Embedding
 ```
 
-## Why sqvect for LLM Apps?
+## Why cortexdb for LLM Apps?
 
 - **Pure Go**: No CGO, deploys anywhere
 - **Embedded**: No separate service to manage
@@ -208,4 +208,4 @@ embedding := resp.Embedding
 - **Feature-rich**: GraphRAG, aggregations, advanced filtering
 - **Production-ready**: Thread-safe, tested, benchmarked
 
-Start building your LLM application with sqvect today!
+Start building your LLM application with cortexdb today!

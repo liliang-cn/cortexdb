@@ -6,10 +6,10 @@ import (
 	"log"
 	"math"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/sqvect"
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
-// DummyEmbedder implements sqvect.Embedder for demonstration purposes.
+// DummyEmbedder implements cortexdb.Embedder for demonstration purposes.
 // In a real application, you would use an embedder that calls OpenAI, Ollama, HuggingFace, etc.
 type DummyEmbedder struct {
 	dim int
@@ -54,15 +54,15 @@ func (d *DummyEmbedder) Dim() int {
 }
 
 func main() {
-	fmt.Println("--- sqvect High-Level Text APIs Example ---")
+	fmt.Println("--- cortexdb High-Level Text APIs Example ---")
 
 	// 1. Initialize the database with an Embedder
 	embedder := &DummyEmbedder{dim: 384}
 	
 	// Create the DB instance and pass the embedder
-	db, err := sqvect.Open(
-		sqvect.DefaultConfig("text_api_demo.db"), 
-		sqvect.WithEmbedder(embedder),
+	db, err := cortexdb.Open(
+		cortexdb.DefaultConfig("text_api_demo.db"), 
+		cortexdb.WithEmbedder(embedder),
 	)
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
@@ -133,7 +133,7 @@ func main() {
 	fmt.Printf("--- FTS5 Keyword SearchTextOnly ---\nQuery: '%s'\n", ftsQuery)
 	// This bypasses the embedder and vectors entirely, running a pure SQLite FTS5 MATCH query.
 	// It's incredibly fast and useful for exact matching or when you don't have an embedding model.
-	textResults, err := db.SearchTextOnly(ctx, ftsQuery, sqvect.TextSearchOptions{TopK: 3})
+	textResults, err := db.SearchTextOnly(ctx, ftsQuery, cortexdb.TextSearchOptions{TopK: 3})
 	if err != nil {
 		log.Fatal(err)
 	}

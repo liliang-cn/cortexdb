@@ -6,9 +6,9 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/liliang-cn/sqvect/v2/internal/encoding"
-	"github.com/liliang-cn/sqvect/v2/pkg/index"
-	"github.com/liliang-cn/sqvect/v2/pkg/quantization"
+	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
+	"github.com/liliang-cn/cortexdb/v2/pkg/index"
+	"github.com/liliang-cn/cortexdb/v2/pkg/quantization"
 )
 
 // initHNSWIndex initializes the HNSW index if enabled in configuration

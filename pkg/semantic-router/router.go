@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
 // Router performs semantic routing using vector similarity.

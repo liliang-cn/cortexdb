@@ -9,8 +9,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/core"
-	"github.com/liliang-cn/sqvect/v2/pkg/sqvect"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
 const (
@@ -55,11 +55,11 @@ func runBenchmark(name string, indexType core.IndexType, vectors [][]float32, id
 	os.Remove(dbPath)
 	defer os.Remove(dbPath)
 
-	config := sqvect.DefaultConfig(dbPath)
+	config := cortexdb.DefaultConfig(dbPath)
 	config.Dimensions = VectorDim
 	config.IndexType = indexType
 
-	db, err := sqvect.Open(config)
+	db, err := cortexdb.Open(config)
 	if err != nil {
 		log.Fatalf("Failed to open DB: %v", err)
 	}

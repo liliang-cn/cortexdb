@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/liliang-cn/sqvect/v2/internal/encoding"
+	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 )
 
 // HybridSearchOptions for combined vector + keyword search

@@ -7,8 +7,8 @@ import (
 	"math/rand"
 	"os"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/sqvect"
-	"github.com/liliang-cn/sqvect/v2/pkg/graph"
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
 // generateEmbedding creates a simple embedding for demonstration
@@ -30,11 +30,11 @@ func main() {
 	fmt.Println()
 
 	// Initialize database
-	config := sqvect.Config{
+	config := cortexdb.Config{
 		Path:       dbPath,
 		Dimensions: 128, // 128-dimensional embeddings
 	}
-	db, err := sqvect.Open(config)
+	db, err := cortexdb.Open(config)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-package sqvect_test
+package cortexdb_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"math"
 	mrand "math/rand"
 
-	"github.com/liliang-cn/sqvect/v2/pkg/sqvect"
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
 // DummyEmbedder is a simple embedder for testing purposes.
@@ -71,9 +71,9 @@ func Example_embedder() {
 	ctx := context.Background()
 
 	// 1. Open database with an embedder
-	db, err := sqvect.Open(
-		sqvect.DefaultConfig("test.db"),
-		sqvect.WithEmbedder(NewDummyEmbedder(128)),
+	db, err := cortexdb.Open(
+		cortexdb.DefaultConfig("test.db"),
+		cortexdb.WithEmbedder(NewDummyEmbedder(128)),
 	)
 	if err != nil {
 		panic(err)
@@ -102,7 +102,7 @@ func Example_textOnly() {
 	ctx := context.Background()
 
 	// 1. Open database WITHOUT an embedder
-	db, err := sqvect.Open(sqvect.DefaultConfig("test.db"))
+	db, err := cortexdb.Open(cortexdb.DefaultConfig("test.db"))
 	if err != nil {
 		panic(err)
 	}
@@ -122,7 +122,7 @@ func Example_textOnly() {
 	fmt.Println("Inserted:", id)
 
 	// 3. Search using FTS5 text search (no embedding needed!)
-	results, err := db.SearchTextOnly(ctx, "fox OR dog", sqvect.TextSearchOptions{
+	results, err := db.SearchTextOnly(ctx, "fox OR dog", cortexdb.TextSearchOptions{
 		TopK: 5,
 	})
 	if err != nil {
