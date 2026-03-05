@@ -1,26 +1,23 @@
-# cortexdb
+# CortexDB
 
-[![CI/CD](https://github.com/liliang-cn/cortexdb/v2/actions/workflows/ci.yml/badge.svg)](https://github.com/liliang-cn/cortexdb/v2/actions/workflows/ci.yml)
+[![CI/CD](https://github.com/liliang-cn/cortexdb/actions/workflows/ci.yml/badge.svg)](https://github.com/liliang-cn/cortexdb/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/liliang-cn/cortexdb/branch/main/graph/badge.svg)](https://codecov.io/gh/liliang-cn/cortexdb)
 [![Go Report Card](https://goreportcard.com/badge/github.com/liliang-cn/cortexdb/v2)](https://goreportcard.com/report/github.com/liliang-cn/cortexdb/v2)
 [![Go Reference](https://pkg.go.dev/badge/github.com/liliang-cn/cortexdb/v2.svg)](https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2)
-[![GitHub release](https://img.shields.io/github/release/liliang-cn/cortexdb.svg)](https://github.com/liliang-cn/cortexdb/v2/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**A lightweight, embeddable vector database library for Go AI projects.**
+**An embedded cognitive memory and graph database for AI Agents.**
 
-cortexdb is a **100% pure Go library** that bundles vector storage, keyword search (FTS5), knowledge graph relationships, and a Hindsight-inspired AI Agent memory system into a **single SQLite file** — no external services required.
+CortexDB is a **100% pure Go library** that transforms a single SQLite file into a powerful AI storage engine. It seamlessly blends **Hybrid Vector Search**, **GraphRAG**, and a **Hindsight-inspired Agent Memory System**, giving your AI applications a structured, persistent, and intelligent brain without the need for complex external infrastructure.
 
-## ✨ Features
+## ✨ Why CortexDB?
 
-- 🪶 **Lightweight** – Single SQLite file, zero external dependencies.
-- 🚀 **RAG-Ready** – Built-in tables for **Documents**, **Chat Sessions**, and **Messages**.
-- 🔍 **Hybrid Search** – **Vector (HNSW/IVF)** + **Keyword (FTS5)** with RRF fusion.
-- 🧠 **AI Agent Memory** – Full `retain → recall → reflect` lifecycle with TEMPR retrieval.
-- 🛡️ **Secure** – Row-Level Security via **ACL** fields and query filtering.
-- 📦 **Memory Efficient** – **SQ8 Quantization** reduces RAM by 75%.
-- ⚡ **High Performance** – WAL mode, HNSW index, concurrent-safe.
-- 🎯 **Zero Config** – Works out of the box.
+- 🧠 **Agent Memory (Hindsight)** – Full `retain → recall → reflect` lifecycle with multi-channel TEMPR retrieval.
+- 🕸️ **GraphRAG Ready** – Built-in knowledge graph `nodes` and `edges` for complex relationship traversal.
+- 🔍 **Hybrid Search** – Combines Vector similarity (HNSW) and precise Keyword matching (FTS5) using RRF fusion.
+- 🏗️ **Structured Data Friendly** – Easily map SQL/CSV rows to natural language + metadata for advanced `PreFilter` querying.
+- 🪶 **Ultra Lightweight** – Single SQLite file, zero external dependencies. Pure Go.
+- 🛡️ **Secure** – Row-Level Security via **ACL** fields to isolate multi-tenant data.
 
 ## 🚀 Quick Start
 
@@ -40,8 +37,8 @@ import (
 )
 
 func main() {
-	// Open database (auto-creates tables for vectors, docs, chat)
-	db, err := cortexdb.Open(cortexdb.DefaultConfig("app.db"))
+	// Initialize CortexDB (auto-creates tables for vectors, docs, memory, graph)
+	db, err := cortexdb.Open(cortexdb.DefaultConfig("brain.db"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -49,223 +46,129 @@ func main() {
 
 	ctx := context.Background()
 
-	// Add a vector with content
-	db.Quick().Add(ctx, []float32{0.1, 0.2, 0.9}, "Go is a statically typed language")
+	// 1. Store a memory/fact
+	db.Quick().Add(ctx, []float32{0.1, 0.2, 0.9}, "Go is a statically typed, compiled language.")
 
-	// Search for similar vectors
+	// 2. Recall similar concepts
 	results, _ := db.Quick().Search(ctx, []float32{0.1, 0.2, 0.8}, 1)
 	if len(results) > 0 {
-		fmt.Println(results[0].Content)
+		fmt.Println("Recalled:", results[0].Content)
 	}
 }
 ```
 
-## 🏗 Capabilities
+## 🏗 Core Capabilities
 
-### 1. Hybrid Search (Vector + Keyword)
+### 1. The Agent Memory System (Hindsight)
 
-Combine semantic understanding with precise keyword matching using Reciprocal Rank Fusion (RRF).
-
-```go
-results, _ := db.Vector().HybridSearch(ctx, queryVec, "apple", core.HybridSearchOptions{
-	TopK: 5,
-	RRFK: 60,
-})
-```
-
-### 2. Knowledge Graph
-
-Store entities and relationships alongside vector embeddings.
-
-```go
-db.Graph().InitGraphSchema(ctx)
-
-db.Graph().UpsertNode(ctx, &graph.GraphNode{
-	ID:       "alice",
-	NodeType: "person",
-	Content:  "Alice is a software engineer",
-	Vector:   []float32{0.1, 0.2, 0.3}, // Example vector
-})
-
-db.Graph().UpsertEdge(ctx, &graph.GraphEdge{
-	FromNodeID: "alice",
-	ToNodeID:   "google",
-	EdgeType:   "works_at",
-	Weight:     1.0,
-})
-```
-
-### 3. AI Agent Memory (Hindsight-style)
-
-`pkg/hindsight` implements the full **retain → recall → reflect** lifecycle with a four-channel
-TEMPR retrieval pipeline and RRF fusion — all over SQLite, zero external services.
-
-#### Architecture
-
-```
-retain()   →  cortexdb embeddings collection ("memories")
-                ├── WorldMemory      (objective facts about the world)
-                ├── BankMemory       (agent's own past actions)
-                ├── OpinionMemory    (formed beliefs with confidence)
-                └── ObservationMemory (insights derived from reflection)
-
-recall()   →  TEMPR × 4 channels (concurrent)
-                ├── T Temporal  — time-range filtered search
-                ├── E Entity    — graph-based entity relationships
-                ├── M Memory    — semantic vector similarity
-                └── P Priming   — BM25 FTS5 keyword search
-              ↓
-              RRF fusion  →  optional RerankerFn hook  →  ranked results
-
-observe()  →  Disposition (Skepticism / Literalism / Empathy)
-              ↓ derives new Observations from patterns in recalled memories
-
-reflect()  →  formatted context string (ready for LLM injection)
-```
-
-#### Basic Usage
+CortexDB includes `hindsight`, a dedicated bionic memory module for Agents. It doesn't just store logs; it categorizes memories (Facts, Beliefs, Observations) and recalls them dynamically.
 
 ```go
 import "github.com/liliang-cn/cortexdb/v2/pkg/hindsight"
 
-sys, _ := hindsight.New(&hindsight.Config{
-	DBPath: "agent.db",
-})
+sys, _ := hindsight.New(&hindsight.Config{DBPath: "agent_memory.db"})
 defer sys.Close()
 
-// Create a memory bank with personality traits
-bank := hindsight.NewBank("agent-1", "Travel Assistant")
-bank.Empathy = 4
+// Create an Agent profile with personality traits
+bank := hindsight.NewBank("travel-agent-1", "Travel Assistant")
+bank.Empathy = 4      // 1-5 scale
+bank.Skepticism = 2   // 1-5 scale
 sys.CreateBank(ctx, bank)
 
-// Retain: store a structured fact
+// RETAIN: Store structured observations about the user
 sys.Retain(ctx, &hindsight.Memory{
-	ID:      "home_city",
-	BankID:  "agent-1",
-	Type:    hindsight.WorldMemory,
-	Content: "Alice lives in Berlin",
-	Vector:  []float32{0.1, 0.2, 0.3},
+	BankID:   "travel-agent-1",
+	Type:     hindsight.WorldMemory,
+	Content:  "Alice prefers window seats and vegetarian meals.",
+	Vector:   embed("Alice prefers window seats..."),
+	Entities: []string{"user:alice", "preference:flight", "preference:food"},
 })
 
-// Recall: four-channel TEMPR retrieval + RRF fusion
+// RECALL: Multi-channel TEMPR retrieval (Temporal, Entity, Memory, Priming, Recall)
 results, _ := sys.Recall(ctx, &hindsight.RecallRequest{
-	BankID:      "agent-1",
-	Query:       "Where does Alice live?",
-	QueryVector: queryVec,
-	Strategy:    hindsight.DefaultStrategy(),
-	TopK:        5,
+	BankID:      "travel-agent-1",
+	QueryVector: embed("What food should I order for Alice?"),
+	Strategy:    hindsight.DefaultStrategy(), // Uses all channels + RRF Fusion
 })
-
-// Reflect: get LLM-ready formatted context
-ctxResp, _ := sys.Reflect(ctx, &hindsight.ContextRequest{
-	BankID:      "agent-1",
-	Query:       "Where does Alice live?",
-	QueryVector: queryVec,
-	TopK:        4,
-})
-// ctxResp.Context – ready for LLM system message injection
 ```
 
-#### Extensibility Hooks
+### 2. High-Level Text & Structured Data APIs
 
-Two injection points let you plug in any LLM or model without coupling to a specific provider.
-
-**Hook 1 — `FactExtractorFn`: automatic fact extraction**
+Stop dealing with raw `[]float32` arrays manually. Hook up your Embedder and let CortexDB handle the rest.
 
 ```go
-sys.SetFactExtractor(func(ctx context.Context, bankID string, msgs []*core.Message) ([]hindsight.ExtractedFact, error) {
-	// Call your LLM / model to extract structured facts + compute embeddings
-	return []hindsight.ExtractedFact{
-		{
-			ID:      "lang_pref",
-			Type:    hindsight.WorldMemory,
-			Content: "Alice prefers Go",
-			Vector:  []float32{0.1, 0.2, 0.3},
-		},
-	}, nil
-})
-
-// Feed raw conversation messages – extraction + retention happens automatically
-result, err := sys.RetainFromText(ctx, "agent-1", messages)
-// result.Retained / result.Skipped / result.Err()
-```
-
-**Hook 2 — `RerankerFn`: cross-encoder reranking after RRF**
-
-```go
-sys.SetReranker(func(ctx context.Context, query string, candidates []*hindsight.RecallResult) ([]*hindsight.RecallResult, error) {
-	// Call your cross-encoder / Cohere Rerank / LLM scorer
-	scores := crossEncoder.Score(query, texts(candidates))
-	sort.Slice(candidates, func(i, j int) bool {
-		return scores[i] > scores[j]
-	})
-	return candidates, nil
-})
-// Recall() applies reranking automatically. Errors silently fall back to RRF order.
-```
-
-**Deriving observations via `Observe`**
-
-```go
-resp, _ := sys.Observe(ctx, &hindsight.ReflectRequest{
-	BankID:      "agent-1",
-	Query:       "What patterns can we infer about Alice?",
-	QueryVector: queryVec,
-	Strategy:    hindsight.DefaultStrategy(),
-})
-// resp.Observations – new insights auto-derived from recalled memories
-```
-
-### 4. Text & Structured Data APIs
-
-cortexdb provides high-level APIs for working directly with text (auto-embedding) and structured data.
-
-```go
-// Configure an embedder
+// 1. Inject your embedding model (OpenAI, Ollama, etc.)
 db, _ := cortexdb.Open(config, cortexdb.WithEmbedder(myOpenAIEmbedder))
 
-// Check DB Configuration
-info := db.Info()
-fmt.Println("Dimensions:", info.Dimensions)
-
-// Auto-embed and insert text
-db.InsertText(ctx, "doc_1", "SQLite is awesome", map[string]string{"type": "database"})
-
-// Search directly with text
-results, _ := db.SearchText(ctx, "fast database", 5)
-
-// FTS5 Keyword-only search (no embeddings needed!)
-textResults, _ := db.SearchTextOnly(ctx, "fast database", cortexdb.TextSearchOptions{TopK: 5})
-```
-
-*See `examples/structured_data` and `examples/text_api` for advanced RAG patterns (Textification, GraphRAG, SQL-entity memory).*
-
-### 5. Row-Level Security (ACL)
-
-```go
-db.Vector().Upsert(ctx, &core.Embedding{
-	ID:     "secret",
-	Vector: vec,
-	ACL:    []string{"group:admin", "user:alice"},
+// 2. Insert raw text directly
+db.InsertText(ctx, "doc_1", "The new iPhone 15 Pro features a titanium body.", map[string]string{
+	"category": "electronics",
+	"price":    "999",
 })
 
-results, _ := db.Vector().SearchWithACL(ctx, queryVec, []string{"user:bob"}, opts)
-// Returns nothing for Bob
-```
+// 3. Search purely by text
+results, _ := db.SearchText(ctx, "latest Apple phones", 5)
 
-### 6. Document Management
+// 4. Hybrid Search (Semantic + Exact Keyword)
+hybridRes, _ := db.HybridSearchText(ctx, "titanium body", 5)
+
+// 5. FTS5 Only (No vectors needed, super fast!)
+ftsRes, _ := db.SearchTextOnly(ctx, "iPhone", cortexdb.TextSearchOptions{TopK: 5})
+```
+*See `examples/text_api` for the full code.*
+
+### 3. GraphRAG (Knowledge Graph)
+
+Transform relational data (like SQL tables) into a Knowledge Graph for multi-hop reasoning.
 
 ```go
-db.Vector().CreateDocument(ctx, &core.Document{
-	ID:    "manual_v1",
-	Title: "User Manual",
-	Version: 1,
+// 1. Insert Nodes
+db.Graph().UpsertNode(ctx, &graph.GraphNode{
+	ID: "dept_eng", NodeType: "department", Content: "Engineering Department", Vector: vec1,
 })
-// ... add embeddings linked to manual_v1 ...
-db.Vector().DeleteDocument(ctx, "manual_v1") // cascades to all chunks
+db.Graph().UpsertNode(ctx, &graph.GraphNode{
+	ID: "emp_alice", NodeType: "employee", Content: "Alice (Senior Go Dev)", Vector: vec2,
+})
+
+// 2. Create Relationships (Edges)
+db.Graph().UpsertEdge(ctx, &graph.GraphEdge{
+	FromNodeID: "emp_alice",
+	ToNodeID:   "dept_eng",
+	EdgeType:   "BELONGS_TO",
+	Weight:     1.0,
+})
+
+// 3. Traverse the Graph automatically during RAG
+neighbors, _ := db.Graph().Neighbors(ctx, "emp_alice", graph.TraversalOptions{
+	EdgeTypes: []string{"BELONGS_TO"},
+	MaxDepth:  1,
+})
+// Finds that Alice belongs to the Engineering Department without complex SQL JOINs!
+```
+*See `examples/structured_data` for the full code.*
+
+### 4. Advanced Metadata Filtering
+
+Filter large datasets before performing vector search using a SQL-like expression builder.
+
+```go
+// Find laptops under $2000 that are currently in stock
+filter := core.NewMetadataFilter().
+	And(core.NewMetadataFilter().Equal("category", "laptop")).
+	And(core.NewMetadataFilter().LessThan("price", 2000.0)).
+	And(core.NewMetadataFilter().GreaterThan("stock", 0)).
+	Build()
+
+opts := core.AdvancedSearchOptions{
+	SearchOptions: core.SearchOptions{TopK: 5},
+	PreFilter:     filter, 
+}
+results, _ := db.Vector().SearchWithAdvancedFilter(ctx, queryVec, opts)
 ```
 
 ## 📚 Database Schema
+
+CortexDB manages the following tables automatically inside your single `.db` file:
 
 | Table          | Description                                                   |
 | :------------- | :------------------------------------------------------------ |
