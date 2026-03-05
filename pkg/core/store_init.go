@@ -60,6 +60,11 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 
 	s.logger.Info("database initialized", "path", s.config.Path)
 
+	// Start auto-save if enabled
+	if s.config.AutoSave.Enabled {
+		s.startAutoSave()
+	}
+
 	return nil
 }
 

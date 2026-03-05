@@ -627,6 +627,116 @@ func DotProductDistance(a, b []float32) float32 {
 	return -dotProduct // Negative so smaller is better
 }
 
+// InsertBatch inserts multiple vectors into the index efficiently
+// This is faster than calling Insert multiple times as it avoids repeated lock/unlock overhead
+func (h *HNSW) InsertBatch(vectors []struct {
+	ID     string
+	Vector []float32
+}) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	for _, v := range vectors {
+		if _, exists := h.Nodes[v.ID]; exists {
+			continue // Skip duplicates
+		}
+
+		// Prepare node data
+		var quantized []byte
+		var storedVector []float32 = v.Vector
+
+		if h.Quantizer != nil {
+			var err error
+			quantized, err = h.Quantizer.Encode(v.Vector)
+			if err == nil {
+				storedVector = nil
+			}
+		}
+
+		// Create new node
+		level := h.selectLevel()
+		node := &HNSWNode{
+			ID:        v.ID,
+			Vector:    storedVector,
+			Quantized: quantized,
+			Level:     level,
+			Neighbors: make([][]string, level+1),
+		}
+
+		// Initialize neighbor lists
+		for i := 0; i <= level; i++ {
+			node.Neighbors[i] = make([]string, 0)
+		}
+
+		h.Nodes[v.ID] = node
+
+		// If this is the first node, set as entry point
+		if h.EntryPoint == "" {
+			h.EntryPoint = v.ID
+			continue
+		}
+
+		// Search for closest points at all levels
+		currNearest := []string{h.EntryPoint}
+
+		// Search from top layer to target layer
+		entryNode := h.Nodes[h.EntryPoint]
+		for lc := entryNode.Level; lc > level; lc-- {
+			currNearest = h.searchLayerClosest(v.Vector, currNearest, 1, lc)
+		}
+
+		// Insert into all layers from level to 0
+		for lc := level; lc >= 0; lc-- {
+			m := h.M
+			if lc == 0 {
+				m = h.MaxM
+			}
+
+			candidates := h.searchLayer(v.Vector, currNearest, h.EfConstruction, lc)
+			neighbors := h.selectNeighborsHeuristic(v.Vector, candidates, m, lc)
+
+			// Add bidirectional links
+			node.Neighbors[lc] = neighbors
+			for _, neighbor := range neighbors {
+				h.addConnection(neighbor, v.ID, lc)
+
+				// Prune connections
+				neighborNode := h.Nodes[neighbor]
+				maxConn := h.M
+				if lc == 0 {
+					maxConn = h.MaxM
+				}
+
+				if lc < len(neighborNode.Neighbors) && len(neighborNode.Neighbors[lc]) > maxConn {
+					neighborVec := neighborNode.Vector
+					if neighborVec == nil && neighborNode.Quantized != nil && h.Quantizer != nil {
+						neighborVec, _ = h.Quantizer.Decode(neighborNode.Quantized)
+					}
+
+					if neighborVec != nil {
+						newNeighbors := h.selectNeighborsHeuristic(
+							neighborVec,
+							neighborNode.Neighbors[lc],
+							maxConn,
+							lc,
+						)
+						neighborNode.Neighbors[lc] = newNeighbors
+					}
+				}
+			}
+
+			currNearest = neighbors
+		}
+
+		// Update entry point if necessary
+		if level > h.Nodes[h.EntryPoint].Level {
+			h.EntryPoint = v.ID
+		}
+	}
+
+	return nil
+}
+
 // VectorIndex interface compatibility methods
 
 // SearchVectorIndex provides VectorIndex-compatible search with default ef
@@ -637,4 +747,177 @@ func (h *HNSW) SearchVectorIndex(query []float32, k int) ([]string, []float32) {
 		ef = k * 2
 	}
 	return h.Search(query, k, ef)
+}
+// InsertBatchParallel inserts vectors in parallel using multiple goroutines
+func (h *HNSW) InsertBatchParallel(vectors []struct {
+	ID     string
+	Vector []float32
+}, numWorkers int) error {
+	if numWorkers <= 1 {
+		return h.InsertBatch(vectors)
+	}
+
+	// For parallel construction, we use a simplified approach:
+	// Split vectors into chunks, build sub-graphs in parallel, then merge
+	chunkSize := len(vectors) / numWorkers
+	if chunkSize < 10 {
+		return h.InsertBatch(vectors) // Too few vectors, use single-threaded
+	}
+
+	type partialGraph struct {
+		nodes      map[string]*HNSWNode
+		entryPoint string
+		maxLevel   int
+	}
+
+	var wg sync.WaitGroup
+	graphs := make([]partialGraph, numWorkers)
+	errors := make([]error, numWorkers)
+
+	// Build sub-graphs in parallel
+	for w := 0; w < numWorkers; w++ {
+		start := w * chunkSize
+		end := start + chunkSize
+		if w == numWorkers-1 {
+			end = len(vectors) // Last worker gets remaining
+		}
+
+		wg.Add(1)
+		go func(chunk []struct {
+			ID     string
+			Vector []float32
+		}, idx int) {
+			defer wg.Done()
+
+			// Create a temporary HNSW for this chunk
+			tempHNSW := &HNSW{
+				M:              h.M,
+				MaxM:           h.MaxM,
+				EfConstruction: h.EfConstruction,
+				ML:             h.ML,
+				Seed:           h.Seed + int64(idx),
+				Nodes:          make(map[string]*HNSWNode),
+				DistFunc:       h.DistFunc,
+				Quantizer:      h.Quantizer,
+				rng:            rand.New(rand.NewSource(h.Seed + int64(idx))),
+			}
+
+			for _, v := range chunk {
+				if _, exists := tempHNSW.Nodes[v.ID]; exists {
+					continue
+				}
+
+				// Prepare node data
+				var quantized []byte
+				var storedVector []float32 = v.Vector
+
+				if tempHNSW.Quantizer != nil {
+					var err error
+					quantized, err = tempHNSW.Quantizer.Encode(v.Vector)
+					if err == nil {
+						storedVector = nil
+					}
+				}
+
+				level := tempHNSW.selectLevel()
+				node := &HNSWNode{
+					ID:        v.ID,
+					Vector:    storedVector,
+					Quantized: quantized,
+					Level:     level,
+					Neighbors: make([][]string, level+1),
+				}
+
+				for i := 0; i <= level; i++ {
+					node.Neighbors[i] = make([]string, 0)
+				}
+
+				tempHNSW.Nodes[v.ID] = node
+
+				if tempHNSW.EntryPoint == "" {
+					tempHNSW.EntryPoint = v.ID
+					continue
+				}
+
+				// Build connections within this chunk
+				currNearest := []string{tempHNSW.EntryPoint}
+				entryNode := tempHNSW.Nodes[tempHNSW.EntryPoint]
+				for lc := entryNode.Level; lc > level; lc-- {
+					currNearest = tempHNSW.searchLayerClosest(v.Vector, currNearest, 1, lc)
+				}
+
+				for lc := level; lc >= 0; lc-- {
+					m := tempHNSW.M
+					if lc == 0 {
+						m = tempHNSW.MaxM
+					}
+
+					candidates := tempHNSW.searchLayer(v.Vector, currNearest, tempHNSW.EfConstruction, lc)
+					neighbors := tempHNSW.selectNeighborsHeuristic(v.Vector, candidates, m, lc)
+
+					node.Neighbors[lc] = neighbors
+					for _, neighbor := range neighbors {
+						tempHNSW.addConnection(neighbor, v.ID, lc)
+					}
+
+					currNearest = neighbors
+				}
+
+				if level > tempHNSW.Nodes[tempHNSW.EntryPoint].Level {
+					tempHNSW.EntryPoint = v.ID
+				}
+			}
+
+			graphs[idx] = partialGraph{
+				nodes:      tempHNSW.Nodes,
+				entryPoint: tempHNSW.EntryPoint,
+			}
+
+			// Find max level
+			for _, node := range tempHNSW.Nodes {
+				if node.Level > graphs[idx].maxLevel {
+					graphs[idx].maxLevel = node.Level
+				}
+			}
+		}(vectors[start:end], w)
+	}
+
+	wg.Wait()
+
+	// Check for errors
+	for _, err := range errors {
+		if err != nil {
+			return err
+		}
+	}
+
+	// Merge graphs into main index
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	for _, pg := range graphs {
+		for id, node := range pg.nodes {
+			if _, exists := h.Nodes[id]; !exists {
+				h.Nodes[id] = node
+			}
+		}
+	}
+
+	// Update entry point
+	for _, pg := range graphs {
+		if pg.entryPoint == "" {
+			continue
+		}
+		if h.EntryPoint == "" {
+			h.EntryPoint = pg.entryPoint
+		} else {
+			entryNode := h.Nodes[h.EntryPoint]
+			pgEntryNode := h.Nodes[pg.entryPoint]
+			if pgEntryNode != nil && entryNode != nil && pgEntryNode.Level > entryNode.Level {
+				h.EntryPoint = pg.entryPoint
+			}
+		}
+	}
+
+	return nil
 }

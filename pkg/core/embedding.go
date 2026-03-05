@@ -1,6 +1,9 @@
 package core
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Embedding represents a vector embedding with associated metadata
 type Embedding struct {
@@ -49,8 +52,10 @@ type DocumentInfo struct {
 type HNSWConfig struct {
 	Enabled        bool `json:"enabled"`
 	M              int  `json:"m"`              // Maximum connections per node (default: 16)
-	EfConstruction int  `json:"efConstruction"` // Candidates during construction (default: 200)
+	EfConstruction int  `json:"efConstruction"` // Candidates during construction (default: 64)
 	EfSearch       int  `json:"efSearch"`       // Candidates during search (default: 50)
+	NumWorkers     int  `json:"numWorkers"`     // Number of parallel workers for index building (default: 4)
+	Incremental    bool `json:"incremental"`    // Enable incremental indexing (default: true)
 }
 
 // DefaultHNSWConfig returns default HNSW configuration
@@ -58,8 +63,10 @@ func DefaultHNSWConfig() HNSWConfig {
 	return HNSWConfig{
 		Enabled:        false,
 		M:              16,
-		EfConstruction: 200,
+		EfConstruction: 64,
 		EfSearch:       50,
+		NumWorkers:     4,  // Use 4 parallel workers
+		Incremental:    true, // Enable incremental indexing
 	}
 }
 
@@ -141,6 +148,15 @@ type Config struct {
 	TextSimilarity TextSimilarityConfig `json:"textSimilarity,omitempty"` // Text similarity configuration
 	Quantization   QuantizationConfig   `json:"quantization,omitempty"`   // Quantization configuration
 	Logger         Logger               `json:"-"`                       // Logger instance (defaults to nop logger)
+	AutoSave       AutoSaveConfig       `json:"autoSave,omitempty"`      // Auto-save configuration
+}
+
+// AutoSaveConfig defines configuration for automatic index snapshot saving
+type AutoSaveConfig struct {
+	Enabled     bool          `json:"enabled"`      // Enable auto-save (default: true)
+	Interval    time.Duration `json:"interval"`     // Save interval (default: 5 minutes)
+	SaveOnClose bool          `json:"saveOnClose"`  // Save on database close (default: true)
+	MinChanges  int           `json:"minChanges"`  // Minimum changes before saving (default: 100)
 }
 
 // DefaultConfig returns a default configuration
@@ -154,6 +170,17 @@ func DefaultConfig() Config {
 		IVF:            DefaultIVFConfig(),             // IVF configuration
 		TextSimilarity: DefaultTextSimilarityConfig(),  // Text similarity configuration
 		Quantization:   DefaultQuantizationConfig(),    // Quantization configuration
+		AutoSave:       DefaultAutoSaveConfig(),        // Auto-save configuration
+	}
+}
+
+// DefaultAutoSaveConfig returns default auto-save configuration
+func DefaultAutoSaveConfig() AutoSaveConfig {
+	return AutoSaveConfig{
+		Enabled:     true,
+		Interval:    5 * time.Minute,
+		SaveOnClose: true,
+		MinChanges:  100,
 	}
 }
 

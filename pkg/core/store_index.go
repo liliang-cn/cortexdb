@@ -5,6 +5,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync/atomic"
+	"time"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 	"github.com/liliang-cn/cortexdb/v2/pkg/index"
@@ -88,41 +90,81 @@ func (s *SQLiteStore) rebuildHNSWIndex(ctx context.Context) error {
 		}
 	}()
 
-	var insertCount int
-	var errorCount int
+	// Collect vectors first for batch insert
+	type vecData struct {
+		id     string
+		vector []float32
+	}
+	var vectors []vecData
 
-	// Insert each vector into HNSW index
 	for rows.Next() {
 		var id string
 		var vectorBytes []byte
 
 		if err := rows.Scan(&id, &vectorBytes); err != nil {
 			s.logger.Warn("failed to scan row during HNSW rebuild", "error", err)
-			errorCount++
 			continue
 		}
 
 		vec, err := encoding.DecodeVector(vectorBytes)
 		if err != nil {
 			s.logger.Warn("failed to decode vector during HNSW rebuild", "id", id, "error", err)
-			errorCount++
 			continue
 		}
 
-		// Insert into HNSW index
-		if err := s.hnswIndex.Insert(id, vec); err != nil {
-			s.logger.Warn("failed to insert vector into HNSW index", "id", id, "error", err)
-			errorCount++
-			continue
-		}
-		insertCount++
+		vectors = append(vectors, vecData{id: id, vector: vec})
 	}
 
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("error iterating rows: %w", err)
 	}
 
-	s.logger.Info("HNSW index rebuild complete", "inserted", insertCount, "errors", errorCount)
+	// Use parallel batch insert for faster indexing
+	if len(vectors) > 0 {
+		batch := make([]struct {
+			ID     string
+			Vector []float32
+		}, len(vectors))
+		for i, v := range vectors {
+			batch[i] = struct {
+				ID     string
+				Vector []float32
+			}{ID: v.id, Vector: v.vector}
+		}
+
+		// Use parallel construction if configured and enough vectors
+		numWorkers := s.config.HNSW.NumWorkers
+		if numWorkers <= 0 {
+			numWorkers = 4
+		}
+
+		if len(vectors) >= 100 && numWorkers > 1 {
+			s.logger.Info("using parallel index construction", "vectors", len(vectors), "workers", numWorkers)
+			if err := s.hnswIndex.InsertBatchParallel(batch, numWorkers); err != nil {
+				s.logger.Warn("parallel insert failed, using batch insert", "error", err)
+				if err := s.hnswIndex.InsertBatch(batch); err != nil {
+					s.logger.Warn("batch insert failed, using single inserts", "error", err)
+					for _, v := range vectors {
+						if err := s.hnswIndex.Insert(v.id, v.vector); err != nil {
+							s.logger.Warn("failed to insert vector", "id", v.id, "error", err)
+						}
+					}
+				}
+			}
+		} else {
+			if err := s.hnswIndex.InsertBatch(batch); err != nil {
+				s.logger.Warn("batch insert failed, using single inserts", "error", err)
+				// Fallback to single inserts
+				for _, v := range vectors {
+					if err := s.hnswIndex.Insert(v.id, v.vector); err != nil {
+						s.logger.Warn("failed to insert vector", "id", v.id, "error", err)
+					}
+				}
+			}
+		}
+	}
+
+	s.logger.Info("HNSW index rebuild complete", "inserted", len(vectors))
 
 	return nil
 }
@@ -418,4 +460,58 @@ func (s *SQLiteStore) loadIndexSnapshot(ctx context.Context, indexType string) (
 	}
 
 	return false, nil
+}
+
+// startAutoSave starts the periodic auto-save timer
+func (s *SQLiteStore) startAutoSave() {
+	interval := s.config.AutoSave.Interval
+	if interval <= 0 {
+		interval = 5 * time.Minute // Default 5 minutes
+	}
+
+	s.saveTimer = time.AfterFunc(interval, func() {
+		s.autoSaveLoop()
+	})
+	s.logger.Info("auto-save started", "interval", interval)
+}
+
+// autoSaveLoop runs the periodic save loop
+func (s *SQLiteStore) autoSaveLoop() {
+	s.mu.RLock()
+	closed := s.closed
+	s.mu.RUnlock()
+
+	if closed {
+		return
+	}
+
+	// Try to save snapshot
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if err := s.saveIndexSnapshot(ctx); err != nil {
+		s.logger.Warn("auto-save failed", "error", err)
+	} else {
+		s.logger.Debug("auto-save completed")
+	}
+	cancel()
+
+	// Schedule next save
+	s.saveMu.Lock()
+	if s.saveTimer != nil {
+		s.saveTimer.Stop()
+	}
+	interval := s.config.AutoSave.Interval
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
+	s.saveTimer = time.AfterFunc(interval, func() {
+		s.autoSaveLoop()
+	})
+	s.saveMu.Unlock()
+}
+
+// IncrementChanges increments the change counter for auto-save tracking
+func (s *SQLiteStore) IncrementChanges() {
+	if s.config.AutoSave.Enabled {
+		atomic.AddInt32(&s.changesCounter, 1)
+	}
 }

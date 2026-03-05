@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 	"sync"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/index"
@@ -13,6 +14,9 @@ import (
 
 // SQLiteStore implements the Store interface using SQLite as backend
 type SQLiteStore struct {
+	changesCounter  int32              // Counter for tracking changes
+	saveMu          sync.Mutex         // Mutex for save operations
+	saveTimer      *time.Timer        // Timer for periodic saves
 	db             *sql.DB
 	config         Config
 	mu             sync.RWMutex
