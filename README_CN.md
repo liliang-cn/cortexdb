@@ -284,7 +284,31 @@ db.Vector().AddMessage(ctx, &core.Message{
 history, _ := db.Vector().GetSessionHistory(ctx, "sess_1", 10)
 ```
 
-### 3. 行级安全 (ACL)
+### 3. 高级文本与结构化数据 API
+
+sqvect 提供了直接处理文本（自动向量化）和结构化数据的顶层 API。
+
+```go
+// 注入大模型嵌入接口
+db, _ := sqvect.Open(config, sqvect.WithEmbedder(myOpenAIEmbedder))
+
+// 查看数据库当前配置信息
+info := db.Info()
+fmt.Println("当前向量维度:", info.Dimensions)
+
+// 直接插入文本，无需手动处理向量
+db.InsertText(ctx, "doc_1", "SQLite 是非常棒的数据库", map[string]string{"type": "db"})
+
+// 直接使用文本进行语义搜索
+results, _ := db.SearchText(ctx, "快速的数据库", 5)
+
+// 纯 FTS5 关键词搜索（无需依赖任何大模型或向量！）
+textResults, _ := db.SearchTextOnly(ctx, "快速的数据库", sqvect.TextSearchOptions{TopK: 5})
+```
+
+*参考 `examples/structured_data` 和 `examples/text_api` 获取关于高级 RAG（如文本化、GraphRAG、SQL实体映射）的完整代码示例。*
+
+### 4. 行级安全 (ACL)
 
 在数据库级别强制执行权限。
 
@@ -301,7 +325,7 @@ results, _ := db.Vector().SearchWithACL(ctx, queryVec, []string{"user:bob"}, opt
 // 对 Bob 返回空结果！
 ```
 
-### 4. 文档管理
+### 5. 文档管理
 
 跟踪源文件、版本和元数据。删除文档会自动删除其所有向量分块 (级联删除)。
 

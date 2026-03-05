@@ -216,7 +216,31 @@ resp, _ := sys.Observe(ctx, &hindsight.ReflectRequest{
 // resp.Observations – new insights auto-derived from recalled memories
 ```
 
-### 4. Row-Level Security (ACL)
+### 4. Text & Structured Data APIs
+
+sqvect provides high-level APIs for working directly with text (auto-embedding) and structured data.
+
+```go
+// Configure an embedder
+db, _ := sqvect.Open(config, sqvect.WithEmbedder(myOpenAIEmbedder))
+
+// Check DB Configuration
+info := db.Info()
+fmt.Println("Dimensions:", info.Dimensions)
+
+// Auto-embed and insert text
+db.InsertText(ctx, "doc_1", "SQLite is awesome", map[string]string{"type": "database"})
+
+// Search directly with text
+results, _ := db.SearchText(ctx, "fast database", 5)
+
+// FTS5 Keyword-only search (no embeddings needed!)
+textResults, _ := db.SearchTextOnly(ctx, "fast database", sqvect.TextSearchOptions{TopK: 5})
+```
+
+*See `examples/structured_data` and `examples/text_api` for advanced RAG patterns (Textification, GraphRAG, SQL-entity memory).*
+
+### 5. Row-Level Security (ACL)
 
 ```go
 db.Vector().Upsert(ctx, &core.Embedding{
@@ -229,7 +253,7 @@ results, _ := db.Vector().SearchWithACL(ctx, queryVec, []string{"user:bob"}, opt
 // Returns nothing for Bob
 ```
 
-### 5. Document Management
+### 6. Document Management
 
 ```go
 db.Vector().CreateDocument(ctx, &core.Document{
