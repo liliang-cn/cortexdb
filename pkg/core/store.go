@@ -92,6 +92,13 @@ func (s *SQLiteStore) GetSimilarityFunc() SimilarityFunc {
 	return s.similarityFn
 }
 
+// Config returns the current configuration of the store
+func (s *SQLiteStore) Config() Config {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.config
+}
+
 // Stats returns statistics about the store
 func (s *SQLiteStore) Stats(ctx context.Context) (StoreStats, error) {
 	s.mu.RLock()

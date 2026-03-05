@@ -288,6 +288,33 @@ func TestGenerateID(t *testing.T) {
 	}
 }
 
+func TestDBInfo(t *testing.T) {
+	dbPath := fmt.Sprintf("test_info_%d.db", time.Now().UnixNano())
+	defer func() { _ = os.Remove(dbPath) }()
+
+	config := Config{
+		Path:       dbPath,
+		Dimensions: 128,
+		IndexType:  core.IndexTypeHNSW,
+	}
+	db, err := Open(config)
+	if err != nil {
+		t.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	info := db.Info()
+	if info.Path != dbPath {
+		t.Errorf("Expected path %s, got %s", dbPath, info.Path)
+	}
+	if info.Dimensions != 128 {
+		t.Errorf("Expected dimensions 128, got %d", info.Dimensions)
+	}
+	if info.IndexType != "HNSW" {
+		t.Errorf("Expected IndexType HNSW, got %s", info.IndexType)
+	}
+}
+
 func TestDBClose(t *testing.T) {
 	dbPath := fmt.Sprintf("test_close_%d.db", time.Now().UnixNano())
 	defer func() { _ = os.Remove(dbPath) }()

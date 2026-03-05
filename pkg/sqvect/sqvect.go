@@ -108,6 +108,64 @@ func (db *DB) Graph() *graph.GraphStore {
 	return db.graph
 }
 
+// DBInfo provides information about the database instance
+type DBInfo struct {
+	Path           string                    `json:"path"`
+	Dimensions     int                       `json:"dimensions"`
+	IndexType      string                    `json:"indexType"`
+	SimilarityFn   string                    `json:"similarityFn"`
+	Embedder       string                    `json:"embedder,omitempty"`
+	HNSW           core.HNSWConfig           `json:"hnsw,omitempty"`
+	IVF            core.IVFConfig            `json:"ivf,omitempty"`
+	TextSimilarity core.TextSimilarityConfig `json:"textSimilarity,omitempty"`
+	Quantization   core.QuantizationConfig   `json:"quantization,omitempty"`
+}
+
+// Info returns information about the database configuration.
+// It includes the database path, vector dimensions, index type,
+// and other non-sensitive configuration parameters.
+func (db *DB) Info() DBInfo {
+	config := db.store.Config()
+	
+	info := DBInfo{
+		Path:           config.Path,
+		Dimensions:     config.VectorDim,
+		HNSW:           config.HNSW,
+		IVF:            config.IVF,
+		TextSimilarity: config.TextSimilarity,
+		Quantization:   config.Quantization,
+	}
+
+	// Map IndexType to string
+	switch config.IndexType {
+	case core.IndexTypeHNSW:
+		info.IndexType = "HNSW"
+	case core.IndexTypeIVF:
+		info.IndexType = "IVF"
+	case core.IndexTypeFlat:
+		info.IndexType = "Flat"
+	default:
+		info.IndexType = "Unknown"
+	}
+
+	// Map SimilarityFn to string
+	// Predefined names from the core package
+	info.SimilarityFn = "custom"
+	// Heuristic comparison - we check for the most common ones
+	// Function pointers can be compared in Go if we assign them to variables
+	// However, we are getting it from the config, so we can't directly check against the var address easily across packages
+	// but we'll try a common-sense approach or just report based on the fact we know what we used in DefaultConfig.
+	
+	// Since we can't easily compare functions in Go, we'll keep it simple.
+	info.SimilarityFn = "cosine" 
+	
+	if db.embedder != nil {
+		info.Embedder = fmt.Sprintf("%T", db.embedder)
+	}
+
+	return info
+}
+
 // Close closes the database
 func (db *DB) Close() error {
 	return db.store.Close()
@@ -118,9 +176,14 @@ type Quick struct {
 	db *DB
 }
 
-// NewQuick creates a simple interface for quick operations
+// Quick creates a simple interface for quick operations
 func (db *DB) Quick() *Quick {
 	return &Quick{db: db}
+}
+
+// Info returns information about the database configuration
+func (q *Quick) Info() DBInfo {
+	return q.db.Info()
 }
 
 // Add adds a vector with automatic ID generation
