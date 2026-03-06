@@ -269,8 +269,39 @@ func (s *System) Recall(ctx context.Context, req *RecallRequest) ([]*RecallResul
 
 	wg.Wait()
 
-	// Apply RRF (Reciprocal Rank Fusion) to combine results
-	merged := s.rrfFuse(allResults)
+	// Count how many strategies returned results
+	strategyCount := 0
+	if req.Strategy.Memory && req.QueryVector != nil {
+		strategyCount++
+	}
+	if req.Strategy.Priming && req.Query != "" {
+		strategyCount++
+	}
+	if req.Strategy.Temporal != nil {
+		strategyCount++
+	}
+	if len(req.Strategy.Entity) > 0 {
+		strategyCount++
+	}
+
+	// Only apply RRF when multiple strategies are enabled and have results
+	// When only one strategy is used, return original scores directly
+	var merged []*RecallResult
+	if strategyCount > 1 && len(allResults) > 0 {
+		merged = s.rrfFuse(allResults)
+	} else {
+		// Single strategy or no results - sort by original score
+		merged = allResults
+		if len(merged) > 1 {
+			for i := 0; i < len(merged); i++ {
+				for j := i + 1; j < len(merged); j++ {
+					if merged[j].Score > merged[i].Score {
+						merged[i], merged[j] = merged[j], merged[i]
+					}
+				}
+			}
+		}
+	}
 
 	// Apply optional RerankerFn after RRF; silently fall back on error or empty result.
 	s.mu.RLock()
