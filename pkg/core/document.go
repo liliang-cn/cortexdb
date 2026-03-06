@@ -13,6 +13,7 @@ type Document struct {
 	ID        string                 `json:"id"`
 	Title     string                 `json:"title"`
 	SourceURL string                 `json:"source_url,omitempty"`
+	Content   string                 `json:"content,omitempty"` // Full document content
 	Version   int                    `json:"version"`
 	Author    string                 `json:"author,omitempty"`
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
@@ -41,11 +42,11 @@ func (s *SQLiteStore) CreateDocument(ctx context.Context, doc *Document) error {
 	}
 
 	query := `
-		INSERT INTO documents (id, title, source_url, version, author, metadata, acl, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		INSERT INTO documents (id, title, source_url, content, version, author, metadata, acl, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 	`
 
-	_, err = s.db.ExecContext(ctx, query, doc.ID, doc.Title, doc.SourceURL, doc.Version, doc.Author, metadataJSON, aclJSON)
+	_, err = s.db.ExecContext(ctx, query, doc.ID, doc.Title, doc.SourceURL, doc.Content, doc.Version, doc.Author, metadataJSON, aclJSON)
 	if err != nil {
 		return wrapError("create_document", fmt.Errorf("failed to insert document: %w", err))
 	}
@@ -66,12 +67,12 @@ func (s *SQLiteStore) GetDocument(ctx context.Context, id string) (*Document, er
 	var metadataJSON, aclJSON []byte
 
 	query := `
-		SELECT id, title, source_url, version, author, metadata, acl, created_at, updated_at
+		SELECT id, title, source_url, content, version, author, metadata, acl, created_at, updated_at
 		FROM documents WHERE id = ?
 	`
 
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
-		&doc.ID, &doc.Title, &doc.SourceURL, &doc.Version, &doc.Author,
+		&doc.ID, &doc.Title, &doc.SourceURL, &doc.Content, &doc.Version, &doc.Author,
 		&metadataJSON, &aclJSON, &doc.CreatedAt, &doc.UpdatedAt,
 	)
 
@@ -151,11 +152,11 @@ func (s *SQLiteStore) UpdateDocument(ctx context.Context, doc *Document) error {
 
 	query := `
 		UPDATE documents
-		SET title = ?, source_url = ?, version = ?, author = ?, metadata = ?, acl = ?, updated_at = CURRENT_TIMESTAMP
+		SET title = ?, source_url = ?, content = ?, version = ?, author = ?, metadata = ?, acl = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`
 
-	result, err := s.db.ExecContext(ctx, query, doc.Title, doc.SourceURL, doc.Version, doc.Author, metadataJSON, aclJSON, doc.ID)
+	result, err := s.db.ExecContext(ctx, query, doc.Title, doc.SourceURL, doc.Content, doc.Version, doc.Author, metadataJSON, aclJSON, doc.ID)
 	if err != nil {
 		return wrapError("update_document", fmt.Errorf("failed to update document: %w", err))
 	}
@@ -178,7 +179,7 @@ func (s *SQLiteStore) ListDocumentsWithFilter(ctx context.Context, author string
 	defer s.mu.RUnlock()
 
 	query := `
-		SELECT id, title, source_url, version, author, metadata, acl, created_at, updated_at
+		SELECT id, title, source_url, content, version, author, metadata, acl, created_at, updated_at
 		FROM documents WHERE 1=1
 	`
 	args := []interface{}{}
@@ -201,7 +202,7 @@ func (s *SQLiteStore) ListDocumentsWithFilter(ctx context.Context, author string
 	for rows.Next() {
 		var doc Document
 		var metadataJSON, aclJSON []byte
-		if err := rows.Scan(&doc.ID, &doc.Title, &doc.SourceURL, &doc.Version, &doc.Author, &metadataJSON, &aclJSON, &doc.CreatedAt, &doc.UpdatedAt); err != nil {
+		if err := rows.Scan(&doc.ID, &doc.Title, &doc.SourceURL, &doc.Content, &doc.Version, &doc.Author, &metadataJSON, &aclJSON, &doc.CreatedAt, &doc.UpdatedAt); err != nil {
 			continue
 		}
 		if len(metadataJSON) > 0 {

@@ -84,6 +84,7 @@ func (s *SQLiteStore) createTables(ctx context.Context) error {
 	CREATE TABLE IF NOT EXISTS documents (
 		id TEXT PRIMARY KEY,
 		title TEXT,
+		content TEXT,
 		source_url TEXT,
 		version INTEGER DEFAULT 1,
 		author TEXT,
