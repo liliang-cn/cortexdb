@@ -1,12 +1,13 @@
 package graph
 
 import (
-	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
-	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	"strings"
 	"time"
 )
 
@@ -42,17 +43,17 @@ type GraphFilter struct {
 
 // HybridQuery represents a combined vector and graph query
 type HybridQuery struct {
-	Vector           []float32    `json:"vector,omitempty"`
-	StartNodeID      string       `json:"start_node_id,omitempty"`
-	CenterNodes      []string     `json:"center_nodes,omitempty"`
-	GraphFilter      *GraphFilter `json:"graph_filter,omitempty"`
-	TopK             int          `json:"top_k"`
-	Threshold        float64      `json:"threshold,omitempty"`
-	VectorThreshold  float64      `json:"vector_threshold,omitempty"`
-	TotalThreshold   float64      `json:"total_threshold,omitempty"`
-	VectorWeight     float64      `json:"vector_weight"`
-	GraphWeight      float64      `json:"graph_weight"`
-	Weights          HybridWeights `json:"weights"`
+	Vector          []float32     `json:"vector,omitempty"`
+	StartNodeID     string        `json:"start_node_id,omitempty"`
+	CenterNodes     []string      `json:"center_nodes,omitempty"`
+	GraphFilter     *GraphFilter  `json:"graph_filter,omitempty"`
+	TopK            int           `json:"top_k"`
+	Threshold       float64       `json:"threshold,omitempty"`
+	VectorThreshold float64       `json:"vector_threshold,omitempty"`
+	TotalThreshold  float64       `json:"total_threshold,omitempty"`
+	VectorWeight    float64       `json:"vector_weight"`
+	GraphWeight     float64       `json:"graph_weight"`
+	Weights         HybridWeights `json:"weights"`
 }
 
 // HybridWeights defines the weights for hybrid scoring
@@ -64,13 +65,13 @@ type HybridWeights struct {
 
 // HybridResult represents a result from hybrid search
 type HybridResult struct {
-	Node         *GraphNode `json:"node"`
-	VectorScore  float64    `json:"vector_score"`
-	GraphScore   float64    `json:"graph_score"`
-	CombinedScore float64   `json:"combined_score"`
-	TotalScore   float64    `json:"total_score"`
-	Path         []string   `json:"path,omitempty"` // Path from start node
-	Distance     int        `json:"distance"`       // Graph distance from start
+	Node          *GraphNode `json:"node"`
+	VectorScore   float64    `json:"vector_score"`
+	GraphScore    float64    `json:"graph_score"`
+	CombinedScore float64    `json:"combined_score"`
+	TotalScore    float64    `json:"total_score"`
+	Path          []string   `json:"path,omitempty"` // Path from start node
+	Distance      int        `json:"distance"`       // Graph distance from start
 }
 
 // GraphStore provides graph operations on top of the vector store
@@ -172,7 +173,18 @@ func (g *GraphStore) UpsertNode(ctx context.Context, node *GraphNode) error {
 		string(propertiesJSON),
 	)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	if g.hnswIndex != nil {
+		g.hnswIndex.index.Remove(node.ID)
+		if err := g.hnswIndex.index.Add(node.ID, node.Vector); err != nil {
+			return fmt.Errorf("failed to update hnsw index: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // GetNode retrieves a node by ID
@@ -237,6 +249,10 @@ func (g *GraphStore) DeleteNode(ctx context.Context, nodeID string) error {
 
 	if rowsAffected == 0 {
 		return fmt.Errorf("node not found: %s", nodeID)
+	}
+
+	if g.hnswIndex != nil {
+		g.hnswIndex.index.Remove(nodeID)
 	}
 
 	return nil
@@ -321,13 +337,13 @@ func (g *GraphStore) GetEdges(ctx context.Context, nodeID string, direction stri
 
 	var rows *sql.Rows
 	var err error
-	
+
 	if direction == "both" || direction == "" {
 		rows, err = g.db.QueryContext(ctx, query, nodeID, nodeID)
 	} else {
 		rows, err = g.db.QueryContext(ctx, query, nodeID)
 	}
-	
+
 	if err != nil {
 		return nil, err
 	}
@@ -393,4 +409,66 @@ func (g *GraphStore) DeleteEdge(ctx context.Context, edgeID string) error {
 	}
 
 	return nil
+}
+
+func (g *GraphStore) getNodesByIDs(ctx context.Context, nodeIDs []string) (map[string]*GraphNode, error) {
+	if len(nodeIDs) == 0 {
+		return map[string]*GraphNode{}, nil
+	}
+
+	placeholders := make([]string, len(nodeIDs))
+	args := make([]interface{}, len(nodeIDs))
+	for i, nodeID := range nodeIDs {
+		placeholders[i] = "?"
+		args[i] = nodeID
+	}
+
+	query := fmt.Sprintf(`
+	SELECT id, vector, content, node_type, properties, created_at, updated_at
+	FROM graph_nodes
+	WHERE id IN (%s)
+	`, strings.Join(placeholders, ","))
+
+	rows, err := g.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	nodes := make(map[string]*GraphNode, len(nodeIDs))
+	for rows.Next() {
+		var node GraphNode
+		var vectorBytes []byte
+		var propertiesJSON sql.NullString
+
+		err := rows.Scan(
+			&node.ID,
+			&vectorBytes,
+			&node.Content,
+			&node.NodeType,
+			&propertiesJSON,
+			&node.CreatedAt,
+			&node.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		node.Vector, err = encoding.DecodeVector(vectorBytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode vector: %w", err)
+		}
+
+		if propertiesJSON.Valid && propertiesJSON.String != "" {
+			err = json.Unmarshal([]byte(propertiesJSON.String), &node.Properties)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode properties: %w", err)
+			}
+		}
+
+		nodeCopy := node
+		nodes[node.ID] = &nodeCopy
+	}
+
+	return nodes, rows.Err()
 }

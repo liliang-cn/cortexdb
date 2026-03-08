@@ -1,20 +1,20 @@
 package graph
 
 import (
-	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 )
 
 // TraversalOptions defines options for graph traversal
 type TraversalOptions struct {
-	MaxDepth   int      `json:"max_depth"`
-	EdgeTypes  []string `json:"edge_types,omitempty"`
-	NodeTypes  []string `json:"node_types,omitempty"`
-	Direction  string   `json:"direction"` // "out", "in", "both"
-	Limit      int      `json:"limit"`
+	MaxDepth  int      `json:"max_depth"`
+	EdgeTypes []string `json:"edge_types,omitempty"`
+	NodeTypes []string `json:"node_types,omitempty"`
+	Direction string   `json:"direction"` // "out", "in", "both"
+	Limit     int      `json:"limit"`
 }
 
 // PathResult represents a path in the graph
@@ -39,8 +39,8 @@ func (g *GraphStore) Neighbors(ctx context.Context, nodeID string, opts Traversa
 		nodeID string
 		depth  int
 	}{{nodeID, 0}}
-	
-	var neighbors []*GraphNode
+
+	var neighborIDs []string
 	visited[nodeID] = true
 
 	for len(queue) > 0 {
@@ -79,18 +79,7 @@ func (g *GraphStore) Neighbors(ctx context.Context, nodeID string, opts Traversa
 			// Mark as visited
 			visited[neighborID] = true
 
-			// Get the neighbor node
-			node, err := g.GetNode(ctx, neighborID)
-			if err != nil {
-				continue // Skip if node not found
-			}
-
-			// Filter by node type if specified
-			if len(opts.NodeTypes) > 0 && !contains(opts.NodeTypes, node.NodeType) {
-				continue
-			}
-
-			neighbors = append(neighbors, node)
+			neighborIDs = append(neighborIDs, neighborID)
 
 			// Add to queue for further traversal
 			if current.depth+1 < opts.MaxDepth {
@@ -101,13 +90,13 @@ func (g *GraphStore) Neighbors(ctx context.Context, nodeID string, opts Traversa
 			}
 
 			// Check limit
-			if opts.Limit > 0 && len(neighbors) >= opts.Limit {
-				return neighbors, nil
+			if opts.Limit > 0 && len(neighborIDs) >= opts.Limit {
+				return g.loadNeighborNodes(ctx, neighborIDs, opts.NodeTypes)
 			}
 		}
 	}
 
-	return neighbors, nil
+	return g.loadNeighborNodes(ctx, neighborIDs, opts.NodeTypes)
 }
 
 // ShortestPath finds the shortest path between two nodes using BFS
@@ -156,10 +145,14 @@ func (g *GraphStore) ShortestPath(ctx context.Context, fromID, toID string) (*Pa
 			}
 
 			// Get all nodes in the path
+			nodesByID, err := g.getNodesByIDs(ctx, current.path)
+			if err != nil {
+				return nil, err
+			}
 			for _, nodeID := range current.path {
-				node, err := g.GetNode(ctx, nodeID)
-				if err != nil {
-					return nil, err
+				node, ok := nodesByID[nodeID]
+				if !ok {
+					return nil, fmt.Errorf("node not found: %s", nodeID)
 				}
 				result.Nodes = append(result.Nodes, node)
 			}
@@ -191,7 +184,7 @@ func (g *GraphStore) ShortestPath(ctx context.Context, fromID, toID string) (*Pa
 			if !visited[edge.ToNodeID] {
 				newPath := append([]string{}, current.path...)
 				newPath = append(newPath, edge.ToNodeID)
-				
+
 				newEdges := append([]string{}, current.edges...)
 				newEdges = append(newEdges, edge.ID)
 
@@ -370,4 +363,25 @@ func contains(slice []string, value string) bool {
 		}
 	}
 	return false
+}
+
+func (g *GraphStore) loadNeighborNodes(ctx context.Context, nodeIDs []string, nodeTypes []string) ([]*GraphNode, error) {
+	nodesByID, err := g.getNodesByIDs(ctx, nodeIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	neighbors := make([]*GraphNode, 0, len(nodeIDs))
+	for _, nodeID := range nodeIDs {
+		node, ok := nodesByID[nodeID]
+		if !ok {
+			continue
+		}
+		if len(nodeTypes) > 0 && !contains(nodeTypes, node.NodeType) {
+			continue
+		}
+		neighbors = append(neighbors, node)
+	}
+
+	return neighbors, nil
 }

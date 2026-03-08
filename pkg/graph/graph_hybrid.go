@@ -1,12 +1,12 @@
 package graph
 
 import (
-	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
-	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"math"
 	"sort"
 )
@@ -32,17 +32,16 @@ func (g *GraphStore) HybridSearch(ctx context.Context, query *HybridQuery) ([]*H
 	}
 
 	// Phase 1: Vector similarity search if vector provided
-	var vectorResults map[string]float64
+	vectorResults := make(map[string]float64)
+	nodeCache := make(map[string]*GraphNode)
 	if len(query.Vector) > 0 {
-		vectorResults = make(map[string]float64)
-		
-		// Search all nodes by vector similarity
-		allNodes, err := g.GetAllNodes(ctx, query.GraphFilter)
+		nodes, err := g.vectorCandidates(ctx, query)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get nodes: %w", err)
+			return nil, fmt.Errorf("failed to get vector candidates: %w", err)
 		}
 
-		for _, node := range allNodes {
+		for _, node := range nodes {
+			nodeCache[node.ID] = node
 			score := g.store.GetSimilarityFunc()(query.Vector, node.Vector)
 			if query.Threshold == 0 || score >= query.Threshold {
 				vectorResults[node.ID] = score
@@ -53,63 +52,10 @@ func (g *GraphStore) HybridSearch(ctx context.Context, query *HybridQuery) ([]*H
 	// Phase 2: Graph traversal if start node provided
 	var graphResults map[string]*graphDistance
 	if query.StartNodeID != "" {
-		graphResults = make(map[string]*graphDistance)
-		
-		// BFS from start node
-		visited := make(map[string]int)
-		queue := []struct {
-			nodeID   string
-			distance int
-			weight   float64
-		}{{query.StartNodeID, 0, 1.0}}
-		
-		maxDepth := 3 // Default max depth
-		if query.GraphFilter != nil && query.GraphFilter.MaxDepth > 0 {
-			maxDepth = query.GraphFilter.MaxDepth
-		}
-
-		for len(queue) > 0 {
-			current := queue[0]
-			queue = queue[1:]
-
-			if current.distance > maxDepth {
-				continue
-			}
-
-			if prevDist, exists := visited[current.nodeID]; exists && prevDist <= current.distance {
-				continue
-			}
-			visited[current.nodeID] = current.distance
-
-			graphResults[current.nodeID] = &graphDistance{
-				distance: current.distance,
-				weight:   current.weight,
-			}
-
-			// Get edges
-			edges, err := g.GetEdges(ctx, current.nodeID, "out")
-			if err != nil {
-				continue
-			}
-
-			for _, edge := range edges {
-				// Filter by edge type
-				if query.GraphFilter != nil && len(query.GraphFilter.EdgeTypes) > 0 {
-					if !contains(query.GraphFilter.EdgeTypes, edge.EdgeType) {
-						continue
-					}
-				}
-
-				queue = append(queue, struct {
-					nodeID   string
-					distance int
-					weight   float64
-				}{
-					nodeID:   edge.ToNodeID,
-					distance: current.distance + 1,
-					weight:   current.weight * edge.Weight,
-				})
-			}
+		var err error
+		graphResults, err = g.collectGraphDistances(ctx, query.StartNodeID, query.GraphFilter)
+		if err != nil {
+			return nil, fmt.Errorf("failed to traverse graph: %w", err)
 		}
 	}
 
@@ -118,55 +64,65 @@ func (g *GraphStore) HybridSearch(ctx context.Context, query *HybridQuery) ([]*H
 
 	// Add vector search results
 	for nodeID, vectorScore := range vectorResults {
-			node, err := g.GetNode(ctx, nodeID)
+		node, ok := nodeCache[nodeID]
+		if !ok {
+			var err error
+			node, err = g.GetNode(ctx, nodeID)
 			if err != nil {
 				continue
 			}
+			nodeCache[nodeID] = node
+		}
 
-			result := &HybridResult{
-				Node:        node,
-				VectorScore: vectorScore,
-				GraphScore:  0,
-				Distance:    -1,
+		result := &HybridResult{
+			Node:        node,
+			VectorScore: vectorScore,
+			GraphScore:  0,
+			Distance:    -1,
+		}
+
+		// Add graph score if available
+		if graphResults != nil {
+			if gd, exists := graphResults[nodeID]; exists {
+				result.GraphScore = 1.0 / float64(gd.distance+1) // Inverse distance
+				result.Distance = gd.distance
 			}
+		}
 
-			// Add graph score if available
-			if graphResults != nil {
-				if gd, exists := graphResults[nodeID]; exists {
-					result.GraphScore = 1.0 / float64(gd.distance+1) // Inverse distance
-					result.Distance = gd.distance
-				}
-			}
-
-			result.CombinedScore = result.VectorScore*query.Weights.VectorWeight +
-				result.GraphScore*query.Weights.GraphWeight
+		result.CombinedScore = result.VectorScore*query.Weights.VectorWeight +
+			result.GraphScore*query.Weights.GraphWeight
 
 		nodeScores[nodeID] = result
 	}
 
 	// Add graph traversal results not in vector results
 	for nodeID, gd := range graphResults {
-			if _, exists := nodeScores[nodeID]; !exists {
-				node, err := g.GetNode(ctx, nodeID)
+		if _, exists := nodeScores[nodeID]; !exists {
+			node, ok := nodeCache[nodeID]
+			if !ok {
+				var err error
+				node, err = g.GetNode(ctx, nodeID)
 				if err != nil {
 					continue
 				}
+				nodeCache[nodeID] = node
+			}
 
-				result := &HybridResult{
-					Node:        node,
-					VectorScore: 0,
-					GraphScore:  1.0 / float64(gd.distance+1),
-					Distance:    gd.distance,
-				}
+			result := &HybridResult{
+				Node:        node,
+				VectorScore: 0,
+				GraphScore:  1.0 / float64(gd.distance+1),
+				Distance:    gd.distance,
+			}
 
-				// Calculate vector score if query vector provided
-				if len(query.Vector) > 0 {
-					result.VectorScore = g.store.GetSimilarityFunc()(query.Vector, node.Vector)
-				}
+			// Calculate vector score if query vector provided
+			if len(query.Vector) > 0 {
+				result.VectorScore = g.store.GetSimilarityFunc()(query.Vector, node.Vector)
+			}
 
-				result.CombinedScore = result.VectorScore*query.Weights.VectorWeight +
-					result.GraphScore*query.Weights.GraphWeight +
-					gd.weight*query.Weights.EdgeWeight
+			result.CombinedScore = result.VectorScore*query.Weights.VectorWeight +
+				result.GraphScore*query.Weights.GraphWeight +
+				gd.weight*query.Weights.EdgeWeight
 
 			nodeScores[nodeID] = result
 		}
@@ -208,7 +164,7 @@ func (g *GraphStore) GraphVectorSearch(ctx context.Context, startNodeID string, 
 	results := make([]*HybridResult, 0, len(neighbors))
 	for _, node := range neighbors {
 		score := g.store.GetSimilarityFunc()(vector, node.Vector)
-		
+
 		results = append(results, &HybridResult{
 			Node:          node,
 			VectorScore:   score,
@@ -253,7 +209,7 @@ func (g *GraphStore) SimilarityInGraph(ctx context.Context, nodeID string, opts 
 		}
 
 		score := g.store.GetSimilarityFunc()(node.Vector, otherNode.Vector)
-		
+
 		if opts.Threshold == 0 || score >= opts.Threshold {
 			results = append(results, &HybridResult{
 				Node:          otherNode,
@@ -343,4 +299,116 @@ func (g *GraphStore) GetAllNodes(ctx context.Context, filter *GraphFilter) ([]*G
 type graphDistance struct {
 	distance int
 	weight   float64
+}
+
+func (g *GraphStore) vectorCandidates(ctx context.Context, query *HybridQuery) ([]*GraphNode, error) {
+	if g.hnswIndex != nil && query.TopK > 0 {
+		candidateLimit := query.TopK * 5
+		if candidateLimit < 50 {
+			candidateLimit = 50
+		}
+
+		candidates := g.hnswIndex.index.Search(query.Vector, candidateLimit)
+		nodeIDs := make([]string, 0, len(candidates))
+		for _, candidate := range candidates {
+			nodeIDs = append(nodeIDs, candidate.nodeID)
+		}
+
+		nodesByID, err := g.getNodesByIDs(ctx, nodeIDs)
+		if err != nil {
+			return nil, err
+		}
+
+		nodes := make([]*GraphNode, 0, len(candidates))
+		for _, candidate := range candidates {
+			node, ok := nodesByID[candidate.nodeID]
+			if !ok {
+				continue
+			}
+			if query.GraphFilter != nil && len(query.GraphFilter.NodeTypes) > 0 && !contains(query.GraphFilter.NodeTypes, node.NodeType) {
+				continue
+			}
+			nodes = append(nodes, node)
+		}
+		if len(nodes) > 0 {
+			return nodes, nil
+		}
+	}
+
+	return g.GetAllNodes(ctx, query.GraphFilter)
+}
+
+func (g *GraphStore) collectGraphDistances(ctx context.Context, startNodeID string, filter *GraphFilter) (map[string]*graphDistance, error) {
+	graphResults := make(map[string]*graphDistance)
+
+	visited := make(map[string]int)
+	queue := []struct {
+		nodeID   string
+		distance int
+		weight   float64
+	}{{startNodeID, 0, 1.0}}
+
+	maxDepth := 3
+	if filter != nil && filter.MaxDepth > 0 {
+		maxDepth = filter.MaxDepth
+	}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		if current.distance > maxDepth {
+			continue
+		}
+
+		if prevDist, exists := visited[current.nodeID]; exists && prevDist <= current.distance {
+			continue
+		}
+		visited[current.nodeID] = current.distance
+
+		graphResults[current.nodeID] = &graphDistance{
+			distance: current.distance,
+			weight:   current.weight,
+		}
+
+		edges, err := g.GetEdges(ctx, current.nodeID, "out")
+		if err != nil {
+			return nil, err
+		}
+
+		for _, edge := range edges {
+			if filter != nil && len(filter.EdgeTypes) > 0 && !contains(filter.EdgeTypes, edge.EdgeType) {
+				continue
+			}
+
+			queue = append(queue, struct {
+				nodeID   string
+				distance int
+				weight   float64
+			}{
+				nodeID:   edge.ToNodeID,
+				distance: current.distance + 1,
+				weight:   current.weight * edge.Weight,
+			})
+		}
+	}
+
+	if filter != nil && len(filter.NodeTypes) > 0 {
+		nodeIDs := make([]string, 0, len(graphResults))
+		for nodeID := range graphResults {
+			nodeIDs = append(nodeIDs, nodeID)
+		}
+		nodesByID, err := g.getNodesByIDs(ctx, nodeIDs)
+		if err != nil {
+			return nil, err
+		}
+		for nodeID := range graphResults {
+			node, ok := nodesByID[nodeID]
+			if !ok || !contains(filter.NodeTypes, node.NodeType) {
+				delete(graphResults, nodeID)
+			}
+		}
+	}
+
+	return graphResults, nil
 }
