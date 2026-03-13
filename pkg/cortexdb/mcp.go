@@ -147,6 +147,106 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *resp, nil
 	})
+	addGraphRAGMCPTool(server, definitions["knowledge_save"], func(ctx context.Context, req KnowledgeSaveRequest) (KnowledgeSaveResponse, error) {
+		resp, err := toolbox.SaveKnowledge(ctx, req)
+		if err != nil {
+			return KnowledgeSaveResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeSaveResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["knowledge_update"], func(ctx context.Context, req KnowledgeUpdateRequest) (KnowledgeSaveResponse, error) {
+		resp, err := toolbox.UpdateKnowledge(ctx, req)
+		if err != nil {
+			return KnowledgeSaveResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeSaveResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["knowledge_get"], func(ctx context.Context, req KnowledgeGetRequest) (KnowledgeGetResponse, error) {
+		resp, err := toolbox.GetKnowledge(ctx, req)
+		if err != nil {
+			return KnowledgeGetResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeGetResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["knowledge_search"], func(ctx context.Context, req KnowledgeSearchRequest) (KnowledgeSearchResponse, error) {
+		resp, err := toolbox.SearchKnowledge(ctx, req)
+		if err != nil {
+			return KnowledgeSearchResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeSearchResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["knowledge_delete"], func(ctx context.Context, req KnowledgeDeleteRequest) (KnowledgeDeleteResponse, error) {
+		resp, err := toolbox.DeleteKnowledge(ctx, req)
+		if err != nil {
+			return KnowledgeDeleteResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeDeleteResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["memory_save"], func(ctx context.Context, req MemorySaveRequest) (MemorySaveResponse, error) {
+		resp, err := toolbox.SaveMemory(ctx, req)
+		if err != nil {
+			return MemorySaveResponse{}, err
+		}
+		if resp == nil {
+			return MemorySaveResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["memory_update"], func(ctx context.Context, req MemoryUpdateRequest) (MemorySaveResponse, error) {
+		resp, err := toolbox.UpdateMemory(ctx, req)
+		if err != nil {
+			return MemorySaveResponse{}, err
+		}
+		if resp == nil {
+			return MemorySaveResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["memory_get"], func(ctx context.Context, req MemoryGetRequest) (MemoryGetResponse, error) {
+		resp, err := toolbox.GetMemory(ctx, req)
+		if err != nil {
+			return MemoryGetResponse{}, err
+		}
+		if resp == nil {
+			return MemoryGetResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["memory_search"], func(ctx context.Context, req MemorySearchRequest) (MemorySearchResponse, error) {
+		resp, err := toolbox.SearchMemory(ctx, req)
+		if err != nil {
+			return MemorySearchResponse{}, err
+		}
+		if resp == nil {
+			return MemorySearchResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["memory_delete"], func(ctx context.Context, req MemoryDeleteRequest) (MemoryDeleteResponse, error) {
+		resp, err := toolbox.DeleteMemory(ctx, req)
+		if err != nil {
+			return MemoryDeleteResponse{}, err
+		}
+		if resp == nil {
+			return MemoryDeleteResponse{}, nil
+		}
+		return *resp, nil
+	})
 
 	return server
 }
@@ -170,4 +270,4 @@ func addGraphRAGMCPTool[In, Out any](server *mcp.Server, definition ToolDefiniti
 	})
 }
 
-const defaultMCPInstructions = "Use the CortexDB GraphRAG tools for deterministic storage and retrieval. When searching, first expand the user's goal into many keywords, aliases, synonyms, abbreviations, and multilingual variants, then pass them through the keywords and alternate_queries fields. Supply entity_names when known so graph expansion can recover results even if lexical seeds are sparse. Prefer retrieval_mode=lexical|graph|auto to control graph cost; disable_graph remains only as a legacy compatibility alias."
+const defaultMCPInstructions = "Use the CortexDB high-level knowledge_* and memory_* tools for durable storage, retrieval, and memory management; fall back to the lower-level GraphRAG tools only when you need finer control. When searching, first expand the user's goal into many keywords, aliases, synonyms, abbreviations, and multilingual variants, then pass them through the keywords and alternate_queries fields. Supply entity_names when known so graph expansion can recover results even if lexical seeds are sparse. Prefer retrieval_mode=lexical|graph|auto to control graph cost; disable_graph remains only as a legacy compatibility alias."

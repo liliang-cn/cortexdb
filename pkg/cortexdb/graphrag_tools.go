@@ -210,7 +210,7 @@ func (db *DB) GraphRAGTools() *GraphRAGToolbox {
 
 // Definitions returns the JSON-schema-like definitions for the available tools.
 func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
-	return []ToolDefinition{
+	definitions := []ToolDefinition{
 		{
 			Name:        "ingest_document",
 			Description: "Store a document, split it into chunks, index it lexically, and create document/chunk graph nodes.",
@@ -379,6 +379,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			),
 		},
 	}
+	return append(definitions, knowledgeMemoryToolDefinitions()...)
 }
 
 // Call dispatches a tool request from JSON input to a typed implementation.
@@ -444,6 +445,66 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.SearchGraphRAGLexical(ctx, req)
+	case "knowledge_save":
+		var req KnowledgeSaveRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.SaveKnowledge(ctx, req)
+	case "knowledge_update":
+		var req KnowledgeUpdateRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.UpdateKnowledge(ctx, req)
+	case "knowledge_get":
+		var req KnowledgeGetRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.GetKnowledge(ctx, req)
+	case "knowledge_search":
+		var req KnowledgeSearchRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.SearchKnowledge(ctx, req)
+	case "knowledge_delete":
+		var req KnowledgeDeleteRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.DeleteKnowledge(ctx, req)
+	case "memory_save":
+		var req MemorySaveRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.SaveMemory(ctx, req)
+	case "memory_update":
+		var req MemoryUpdateRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.UpdateMemory(ctx, req)
+	case "memory_get":
+		var req MemoryGetRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.GetMemory(ctx, req)
+	case "memory_search":
+		var req MemorySearchRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.SearchMemory(ctx, req)
+	case "memory_delete":
+		var req MemoryDeleteRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.DeleteMemory(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}

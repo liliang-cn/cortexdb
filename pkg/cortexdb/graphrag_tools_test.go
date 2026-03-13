@@ -270,8 +270,18 @@ func TestGraphRAGToolsDispatcherAndDefinitions(t *testing.T) {
 
 	tools := db.GraphRAGTools()
 	defs := tools.Definitions()
-	if len(defs) < 10 {
-		t.Fatalf("expected at least 10 tool definitions, got %d", len(defs))
+	if len(defs) < 20 {
+		t.Fatalf("expected at least 20 tool definitions, got %d", len(defs))
+	}
+
+	defByName := make(map[string]ToolDefinition, len(defs))
+	for _, def := range defs {
+		defByName[def.Name] = def
+	}
+	for _, name := range []string{"knowledge_save", "knowledge_search", "memory_save", "memory_search"} {
+		if _, ok := defByName[name]; !ok {
+			t.Fatalf("expected tool definition %q", name)
+		}
 	}
 
 	ctx := context.Background()
@@ -295,6 +305,49 @@ func TestGraphRAGToolsDispatcherAndDefinitions(t *testing.T) {
 	}
 	if typedResp.DocumentNodeID == "" {
 		t.Fatal("expected non-empty document node ID")
+	}
+
+	knowledgePayload, err := json.Marshal(KnowledgeSaveRequest{
+		KnowledgeID: "knowledge-dispatch",
+		Title:       "Dispatch Knowledge",
+		Content:     "Alice works at Acme.",
+		ChunkSize:   16,
+	})
+	if err != nil {
+		t.Fatalf("marshal knowledge payload: %v", err)
+	}
+	knowledgeRespAny, err := tools.Call(ctx, "knowledge_save", knowledgePayload)
+	if err != nil {
+		t.Fatalf("dispatch knowledge_save: %v", err)
+	}
+	knowledgeResp, ok := knowledgeRespAny.(*KnowledgeSaveResponse)
+	if !ok {
+		t.Fatalf("expected typed knowledge response, got %T", knowledgeRespAny)
+	}
+	if knowledgeResp.Knowledge.ID != "knowledge-dispatch" {
+		t.Fatalf("unexpected knowledge id: %s", knowledgeResp.Knowledge.ID)
+	}
+
+	memoryPayload, err := json.Marshal(MemorySaveRequest{
+		MemoryID:  "memory-dispatch",
+		UserID:    "user-dispatch",
+		Scope:     MemoryScopeUser,
+		Namespace: "assistant",
+		Content:   "Alice likes concise replies.",
+	})
+	if err != nil {
+		t.Fatalf("marshal memory payload: %v", err)
+	}
+	memoryRespAny, err := tools.Call(ctx, "memory_save", memoryPayload)
+	if err != nil {
+		t.Fatalf("dispatch memory_save: %v", err)
+	}
+	memoryResp, ok := memoryRespAny.(*MemorySaveResponse)
+	if !ok {
+		t.Fatalf("expected typed memory response, got %T", memoryRespAny)
+	}
+	if memoryResp.Memory.Scope != MemoryScopeUser {
+		t.Fatalf("unexpected memory scope: %s", memoryResp.Memory.Scope)
 	}
 
 	if _, err := tools.Call(ctx, "unknown_tool", json.RawMessage(`{}`)); err == nil {

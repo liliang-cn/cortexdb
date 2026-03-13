@@ -195,8 +195,38 @@ if err := db.RunMCPStdio(context.Background(), cortexdb.MCPServerOptions{}); err
 }
 ```
 
+高阶 Go API：
+
+```go
+knowledge, _ := db.SaveKnowledge(ctx, cortexdb.KnowledgeSaveRequest{
+	KnowledgeID: "doc-1",
+	Title:       "Alice at Acme",
+	Content:     "Alice works at Acme on GraphRAG.",
+})
+
+memory, _ := db.SaveMemory(ctx, cortexdb.MemorySaveRequest{
+	MemoryID:  "mem-1",
+	UserID:    "user-1",
+	Scope:     cortexdb.MemoryScopeUser,
+	Namespace: "assistant",
+	Content:   "Alice prefers concise answers.",
+})
+
+_, _ = knowledge, memory
+```
+
 主要 MCP tools：
 
+- `knowledge_save`
+- `knowledge_update`
+- `knowledge_get`
+- `knowledge_search`
+- `knowledge_delete`
+- `memory_save`
+- `memory_update`
+- `memory_get`
+- `memory_search`
+- `memory_delete`
 - `ingest_document`
 - `upsert_entities`
 - `upsert_relations`
