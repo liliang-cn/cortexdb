@@ -213,6 +213,67 @@ func TestGraphRAGDefaultExtractor(t *testing.T) {
 	}
 }
 
+func TestGraphRAGSearchCanDisableGraphExpansion(t *testing.T) {
+	dbPath := fmt.Sprintf("test_graphrag_disable_graph_%d.db", time.Now().UnixNano())
+	defer func() { _ = os.Remove(dbPath) }()
+
+	db, err := Open(DefaultConfig(dbPath), WithEmbedder(newKeywordEmbedder(
+		"alice", "acme", "graphrag", "research", "works", "company", "retrieval",
+	)))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	ctx := context.Background()
+	doc := GraphRAGDocument{
+		ID:    "doc-disable",
+		Title: "Alice at Acme",
+		Content: strings.Join([]string{
+			"Alice works at Acme and leads GraphRAG research.",
+			"Acme uses GraphRAG retrieval to organize research knowledge.",
+		}, "\n\n"),
+	}
+
+	if _, err := db.InsertGraphDocument(ctx, doc, GraphRAGIngestOptions{
+		ChunkSize: 32,
+		Extractor: fixtureExtractor{},
+	}); err != nil {
+		t.Fatalf("insert graph document: %v", err)
+	}
+
+	results, err := db.SearchGraphRAG(ctx, "Where does Alice work?", GraphRAGQueryOptions{
+		TopK:          2,
+		RetrievalMode: RetrievalModeLexical,
+	})
+	if err != nil {
+		t.Fatalf("search graphrag disable graph: %v", err)
+	}
+
+	if len(results.Chunks) == 0 {
+		t.Fatal("expected lexical-only chunk results")
+	}
+	if len(results.Entities) != 0 {
+		t.Fatalf("expected no graph entities when graph is disabled, got %v", results.Entities)
+	}
+	for _, chunk := range results.Chunks {
+		if len(chunk.Entities) != 0 {
+			t.Fatalf("expected chunk entities to be empty when graph is disabled, got %+v", chunk)
+		}
+	}
+
+	autoResults, err := db.SearchGraphRAG(ctx, "Where does Alice work?", GraphRAGQueryOptions{
+		TopK:          2,
+		RetrievalMode: RetrievalModeAuto,
+	})
+	if err != nil {
+		t.Fatalf("search graphrag auto mode: %v", err)
+	}
+	if len(autoResults.Entities) == 0 {
+		t.Fatal("expected auto mode to use graph when entity signal exists")
+	}
+}
+
 func TestGraphRAGContextPackingAndDiversity(t *testing.T) {
 	dbPath := fmt.Sprintf("test_graphrag_packing_%d.db", time.Now().UnixNano())
 	defer func() { _ = os.Remove(dbPath) }()

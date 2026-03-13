@@ -8,13 +8,14 @@
 
 **An embedded cognitive memory and graph database for AI Agents.**
 
-CortexDB is a **100% pure Go library** that transforms a single SQLite file into a powerful AI storage engine. It seamlessly blends **Hybrid Vector Search**, **GraphRAG**, and a **Hindsight-inspired Agent Memory System**, giving your AI applications a structured, persistent, and intelligent brain without the need for complex external infrastructure.
+CortexDB is a **100% pure Go library** that transforms a single SQLite file into a powerful AI storage engine. It blends **Hybrid Vector Search**, **GraphRAG**, **MCP Tool Calling**, and a **Hindsight-inspired Agent Memory System**, giving AI applications a structured, persistent, and intelligent brain without complex external infrastructure.
 
 ## ✨ Why CortexDB?
 
 - 🧠 **Agent Memory (Hindsight)** – Full `retain → recall → reflect` lifecycle with multi-channel TEMPR retrieval.
-- 🕸️ **GraphRAG Ready** – Built-in knowledge graph `nodes` and `edges` for complex relationship traversal.
+- 🕸️ **Dual-Mode GraphRAG** – Use embedder-backed GraphRAG when vectors are available, or lexical/tool-calling GraphRAG when only an LLM is available.
 - 🔍 **Hybrid Search** – Combines Vector similarity (HNSW) and precise Keyword matching (FTS5) using RRF fusion.
+- 🔌 **MCP Stdio Server** – Expose CortexDB tools to external LLMs through the official Model Context Protocol Go SDK.
 - 🏗️ **Structured Data Friendly** – Easily map SQL/CSV rows to natural language + metadata for advanced `PreFilter` querying.
 - 🪶 **Ultra Lightweight** – Single SQLite file, zero external dependencies. Pure Go.
 - 🛡️ **Secure** – Row-Level Security via **ACL** fields to isolate multi-tenant data.
@@ -23,6 +24,12 @@ CortexDB is a **100% pure Go library** that transforms a single SQLite file into
 
 ```bash
 go get github.com/liliang-cn/cortexdb/v2
+```
+
+Run the built-in MCP stdio server:
+
+```bash
+go run ./cmd/cortexdb-mcp-stdio
 ```
 
 ```go
@@ -147,7 +154,59 @@ neighbors, _ := db.Graph().Neighbors(ctx, "emp_alice", graph.TraversalOptions{
 ```
 *See `examples/structured_data` for the full code.*
 
-### 4. Advanced Metadata Filtering
+Higher-level GraphRAG retrieval is also available when an embedder is configured:
+
+```go
+result, _ := db.SearchGraphRAG(ctx, "Where does Alice work?", cortexdb.GraphRAGQueryOptions{
+	TopK:          4,
+	RetrievalMode: cortexdb.RetrievalModeAuto, // auto | lexical | graph
+})
+```
+
+`RetrievalMode` is useful because graph expansion can be expensive on large graphs:
+
+- `lexical` keeps retrieval fast by skipping graph expansion.
+- `graph` always expands the graph.
+- `auto` uses lightweight entity heuristics to decide whether graph expansion is worth the cost.
+
+If you already have external LLM orchestration, the no-embedder tool surface exposes the same idea through `retrieval_mode` and `keywords` / `alternate_queries`.
+
+### 4. MCP Tool Calling / No-Embedder Mode
+
+If you do not have an embedding model but you do have an LLM, CortexDB can still be used as an MCP tool server. In this mode:
+
+- the LLM expands the user goal into many `keywords`, aliases, synonyms, abbreviations, and multilingual variants
+- CortexDB uses `FTS5/BM25` for seed retrieval
+- graph expansion is optional through `retrieval_mode=lexical|graph|auto`
+
+Run the stdio MCP server:
+
+```bash
+go run ./cmd/cortexdb-mcp-stdio
+```
+
+Or embed it directly in your own Go process:
+
+```go
+if err := db.RunMCPStdio(context.Background(), cortexdb.MCPServerOptions{}); err != nil {
+	log.Fatal(err)
+}
+```
+
+Main MCP tools:
+
+- `ingest_document`
+- `upsert_entities`
+- `upsert_relations`
+- `search_text`
+- `search_chunks_by_entities`
+- `expand_graph`
+- `get_nodes`
+- `get_chunks`
+- `build_context`
+- `search_graphrag_lexical`
+
+### 5. Advanced Metadata Filtering
 
 Filter large datasets before performing vector search using a SQL-like expression builder.
 

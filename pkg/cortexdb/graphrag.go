@@ -15,6 +15,15 @@ import (
 
 const defaultGraphRAGCollection = "graphrag_chunks"
 
+const (
+	// RetrievalModeAuto enables lightweight heuristics to decide whether graph expansion is worth the cost.
+	RetrievalModeAuto = "auto"
+	// RetrievalModeLexical disables graph expansion and uses only lexical/vector seed retrieval plus packing.
+	RetrievalModeLexical = "lexical"
+	// RetrievalModeGraph always enables graph expansion and entity enrichment.
+	RetrievalModeGraph = "graph"
+)
+
 // GraphRAGDocument is the source unit ingested into the GraphRAG workflow.
 type GraphRAGDocument struct {
 	ID       string
@@ -74,6 +83,8 @@ type GraphRAGQueryOptions struct {
 	PerDocumentLimit int
 	Rerank           bool
 	DiversityLambda  float64
+	DisableGraph     bool
+	RetrievalMode    string
 }
 
 // GraphRAGChunkResult is a retrieved chunk plus graph context.
@@ -375,6 +386,8 @@ func (db *DB) SearchGraphRAG(ctx context.Context, query string, opts GraphRAGQue
 		return result, nil
 	}
 
+	useGraph := shouldUseGraphRetrieval(opts.RetrievalMode, opts.DisableGraph, query, nil)
+
 	chunkResults := make(map[string]*GraphRAGChunkResult)
 	entitySet := make(map[string]struct{})
 	seedIDs := make(map[string]struct{})
@@ -387,6 +400,10 @@ func (db *DB) SearchGraphRAG(ctx context.Context, query string, opts GraphRAGQue
 			Score:      seed.Score,
 		}
 		seedIDs[seed.ID] = struct{}{}
+
+		if !useGraph {
+			continue
+		}
 
 		neighbors, err := db.graph.Neighbors(ctx, seed.ID, graph.TraversalOptions{
 			MaxDepth:  opts.MaxHops,
@@ -421,6 +438,28 @@ func (db *DB) SearchGraphRAG(ctx context.Context, query string, opts GraphRAGQue
 				}
 			}
 		}
+	}
+
+	if !useGraph {
+		seedChunkList := make([]GraphRAGChunkResult, 0, len(seeds))
+		for _, seed := range seeds {
+			if chunk, ok := chunkResults[seed.ID]; ok {
+				chunk.BaseScore = chunk.Score
+				seedChunkList = append(seedChunkList, *chunk)
+			}
+		}
+		result.Chunks = append(result.Chunks, seedChunkList...)
+		if opts.Rerank {
+			result.Chunks = rerankGraphRAGChunks(query, result.Chunks, opts)
+		} else {
+			sort.Slice(result.Chunks, func(i, j int) bool { return result.Chunks[i].Score > result.Chunks[j].Score })
+			for i := range result.Chunks {
+				result.Chunks[i].RerankScore = result.Chunks[i].Score
+			}
+		}
+		result.Chunks = packGraphRAGContext(result.Chunks, opts)
+		result.Context = buildGraphRAGContext(result.Chunks)
+		return result, nil
 	}
 
 	for chunkID, chunk := range chunkResults {
@@ -501,6 +540,7 @@ func applyGraphRAGIngestDefaults(opts *GraphRAGIngestOptions) {
 }
 
 func applyGraphRAGQueryDefaults(opts *GraphRAGQueryOptions) {
+	opts.RetrievalMode = normalizeRetrievalMode(opts.RetrievalMode)
 	if opts.Collection == "" {
 		opts.Collection = defaultGraphRAGCollection
 	}
@@ -810,6 +850,55 @@ func extractEntityNames(entities []GraphEntity) []string {
 		}
 	}
 	return result
+}
+
+func normalizeRetrievalMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", RetrievalModeAuto:
+		return RetrievalModeAuto
+	case RetrievalModeLexical:
+		return RetrievalModeLexical
+	case RetrievalModeGraph:
+		return RetrievalModeGraph
+	default:
+		return RetrievalModeAuto
+	}
+}
+
+func shouldUseGraphRetrieval(mode string, disableGraph bool, query string, entityNames []string) bool {
+	if disableGraph {
+		return false
+	}
+
+	switch normalizeRetrievalMode(mode) {
+	case RetrievalModeLexical:
+		return false
+	case RetrievalModeGraph:
+		return true
+	default:
+		if len(entityNames) > 0 {
+			return true
+		}
+		return len(extractEntityNames(extractTitleEntities(query))) > 0
+	}
+}
+
+func shouldLoadChunkEntities(mode string, disableGraph bool, query string) bool {
+	if disableGraph {
+		return false
+	}
+
+	switch normalizeRetrievalMode(mode) {
+	case RetrievalModeLexical:
+		return false
+	case RetrievalModeGraph:
+		return true
+	default:
+		if strings.TrimSpace(query) == "" {
+			return true
+		}
+		return len(extractEntityNames(extractTitleEntities(query))) > 0
+	}
 }
 
 func min(a, b int) int {
