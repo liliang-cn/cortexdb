@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 
 	"github.com/google/uuid"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
@@ -271,6 +272,68 @@ func (q *Quick) SearchTextOnly(ctx context.Context, query string, topK int) ([]c
 	return q.db.SearchTextOnly(ctx, query, TextSearchOptions{TopK: topK})
 }
 
+// AddWithVector adds a vector with automatic ID generation using a pre-computed vector.
+// This is useful when you have externally computed embeddings.
+func (q *Quick) AddWithVector(ctx context.Context, vector []float32, content string, metadata map[string]string) (string, error) {
+	return q.AddWithVectorToCollection(ctx, "", vector, content, metadata)
+}
+
+// AddWithVectorToCollection adds a vector to a specific collection with automatic ID generation.
+// This is useful when you have externally computed embeddings.
+func (q *Quick) AddWithVectorToCollection(ctx context.Context, collection string, vector []float32, content string, metadata map[string]string) (string, error) {
+	id := generateID()
+	embedding := &core.Embedding{
+		ID:         id,
+		Collection: collection,
+		Vector:     vector,
+		Content:    content,
+		Metadata:   metadata,
+	}
+
+	err := q.db.store.UpsertBatchWithAdapt(ctx, []*core.Embedding{embedding})
+	return id, err
+}
+
+// AddBatchWithVectors adds multiple vectors with automatic ID generation.
+// This is useful when you have externally computed embeddings.
+// Contents and vectors must be in the same order.
+func (q *Quick) AddBatchWithVectors(ctx context.Context, vectors [][]float32, contents []string, metadata map[string]string) ([]string, error) {
+	return q.AddBatchWithVectorsToCollection(ctx, "", vectors, contents, metadata)
+}
+
+// AddBatchWithVectorsToCollection adds multiple vectors to a specific collection with automatic ID generation.
+// This is useful when you have externally computed embeddings.
+// Contents and vectors must be in the same order.
+func (q *Quick) AddBatchWithVectorsToCollection(ctx context.Context, collection string, vectors [][]float32, contents []string, metadata map[string]string) ([]string, error) {
+	if len(vectors) == 0 || len(contents) == 0 {
+		return nil, nil
+	}
+	if len(vectors) != len(contents) {
+		return nil, fmt.Errorf("vector count (%d) must match content count (%d)", len(vectors), len(contents))
+	}
+
+	ids := make([]string, len(vectors))
+	embeddings := make([]*core.Embedding, len(vectors))
+
+	for i, vector := range vectors {
+		id := generateID()
+		ids[i] = id
+		embeddings[i] = &core.Embedding{
+			ID:         id,
+			Collection: collection,
+			Vector:     vector,
+			Content:    contents[i],
+			Metadata:   metadata,
+		}
+	}
+
+	err := q.db.store.UpsertBatchWithAdapt(ctx, embeddings)
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 // generateID generates a unique ID for embeddings using UUID
 func generateID() string {
 	return uuid.New().String()
@@ -342,6 +405,73 @@ func (db *DB) InsertTextBatch(ctx context.Context, texts map[string]string, meta
 	}
 
 	return db.store.UpsertBatch(ctx, embeddings)
+}
+
+// InsertTextWithVector inserts text with a pre-computed vector.
+// This is useful when you have externally computed embeddings and don't need an embedder.
+// The vector will be validated and adapted if necessary to match the store's dimensions.
+func (db *DB) InsertTextWithVector(ctx context.Context, id string, text string, vector []float32, metadata map[string]string) error {
+	if text == "" {
+		return ErrEmptyText
+	}
+	if vector == nil {
+		return ErrInvalidVector
+	}
+
+	embedding := &core.Embedding{
+		ID:       id,
+		Vector:   vector,
+		Content:  text,
+		Metadata: metadata,
+	}
+
+	// Use UpsertBatchWithAdapt for automatic dimension handling
+	return db.store.UpsertBatchWithAdapt(ctx, []*core.Embedding{embedding})
+}
+
+// InsertTextBatchWithVectors inserts multiple texts with pre-computed vectors.
+// This is useful when you have externally computed embeddings and don't need an embedder.
+// The vectors will be validated and adapted if necessary to match the store's dimensions.
+// The texts map provides the content for each ID, and vectors must be in the same order.
+func (db *DB) InsertTextBatchWithVectors(ctx context.Context, texts map[string]string, vectors [][]float32, metadata map[string]string) error {
+	if len(texts) == 0 {
+		return nil
+	}
+	if len(vectors) == 0 {
+		return fmt.Errorf("vectors cannot be empty")
+	}
+
+	// Build ordered lists maintaining consistent ordering
+	ids := make([]string, 0, len(texts))
+	textList := make([]string, 0, len(texts))
+	for id, text := range texts {
+		if text == "" {
+			continue
+		}
+		ids = append(ids, id)
+		textList = append(textList, text)
+	}
+
+	if len(textList) == 0 {
+		return nil
+	}
+
+	if len(ids) != len(vectors) {
+		return fmt.Errorf("text count (%d) must match vector count (%d)", len(ids), len(vectors))
+	}
+
+	embeddings := make([]*core.Embedding, len(ids))
+	for i, id := range ids {
+		embeddings[i] = &core.Embedding{
+			ID:       id,
+			Vector:   vectors[i],
+			Content:  textList[i],
+			Metadata: metadata,
+		}
+	}
+
+	// Use UpsertBatchWithAdapt for automatic dimension handling
+	return db.store.UpsertBatchWithAdapt(ctx, embeddings)
 }
 
 // SearchText performs similarity search using text query.
@@ -416,10 +546,15 @@ type TextSearchOptions struct {
 	Collection string
 	TopK       int
 	Threshold  float64 // Minimum relevance score (0.0 - 1.0)
+	// LLM query expansion fields
+	Keywords        []string  // LLM-generated keywords for query expansion
+	AlternateQueries []string  // LLM-generated alternate query phrasings
 }
 
 // SearchTextOnly performs pure FTS5 full-text search without embeddings.
 // This is useful when you don't have an embedding model but still want RAG capabilities.
+// When Keywords or AlternateQueries are provided, it performs multi-query expansion
+// using LLM-generated query variants for improved recall.
 func (db *DB) SearchTextOnly(ctx context.Context, query string, opts TextSearchOptions) ([]core.ScoredEmbedding, error) {
 	if query == "" {
 		return nil, ErrEmptyText
@@ -429,9 +564,15 @@ func (db *DB) SearchTextOnly(ctx context.Context, query string, opts TextSearchO
 		opts.TopK = 10
 	}
 
+	// Check if LLM-assisted expansion is enabled
+	hasExpansion := len(opts.Keywords) > 0 || len(opts.AlternateQueries) > 0
+
+	if hasExpansion {
+		// Use multi-query expansion with LLM-generated keywords/alternate queries
+		return db.searchTextOnlyExpanded(ctx, query, opts)
+	}
+
 	// Use HybridSearch with zero vector - this will fallback to FTS5 only
-	// Create a dummy vector (will be ignored in FTS-only mode)
-	// The store's HybridSearch handles this gracefully
 	hybridOpts := core.HybridSearchOptions{
 		SearchOptions: core.SearchOptions{
 			Collection: opts.Collection,
@@ -448,6 +589,78 @@ func (db *DB) SearchTextOnly(ctx context.Context, query string, opts TextSearchO
 
 	// Fallback: direct FTS5 search through the store
 	return db.ftsSearch(ctx, query, opts)
+}
+
+// searchTextOnlyExpanded performs multi-query FTS5 search with LLM-generated expansion.
+// It generates multiple query variants from Keywords and AlternateQueries, executes
+// each, and merges results using weighted score fusion.
+func (db *DB) searchTextOnlyExpanded(ctx context.Context, query string, opts TextSearchOptions) ([]core.ScoredEmbedding, error) {
+	queries := lexicalSearchQueries(query, opts.Keywords, opts.AlternateQueries)
+	if len(queries) == 0 {
+		return nil, ErrEmptyText
+	}
+
+	merged := make(map[string]core.ScoredEmbedding)
+	var firstErr error
+
+	for idx, searchQuery := range queries {
+		results, err := db.ftsSearch(ctx, searchQuery, TextSearchOptions{
+			Collection: opts.Collection,
+			TopK:       opts.TopK * 4, // Fetch more for better merging
+			Threshold:  opts.Threshold,
+		})
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if len(results) == 0 {
+			continue
+		}
+
+		// Apply diminishing weight to later query variants
+		scoreWeight := 1.0 - float64(idx)*0.05
+		if scoreWeight < 0.8 {
+			scoreWeight = 0.8
+		}
+		for _, result := range results {
+			result.Score *= scoreWeight
+			if existing, ok := merged[result.ID]; !ok || result.Score > existing.Score {
+				merged[result.ID] = result
+			}
+		}
+		// If first query returned enough results, we can stop early
+		if idx == 0 && len(merged) >= opts.TopK {
+			break
+		}
+	}
+
+	if len(merged) == 0 {
+		if firstErr != nil {
+			return nil, firstErr
+		}
+		return nil, nil
+	}
+
+	// Convert map to slice and sort by score
+	ordered := make([]core.ScoredEmbedding, 0, len(merged))
+	for _, result := range merged {
+		ordered = append(ordered, result)
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		if ordered[i].Score == ordered[j].Score {
+			return ordered[i].ID < ordered[j].ID
+		}
+		return ordered[i].Score > ordered[j].Score
+	})
+
+	// Apply TopK limit
+	if opts.TopK > 0 && len(ordered) > opts.TopK {
+		ordered = ordered[:opts.TopK]
+	}
+
+	return ordered, nil
 }
 
 // ftsSearch performs direct FTS5 search
