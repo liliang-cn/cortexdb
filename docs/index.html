@@ -4,9 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SQVect - Embedded Vector + Graph DB in Pure Go</title>
+    <title>CortexDB - Embedded Vector + Graph DB in Pure Go</title>
     <meta name="description"
-        content="SQVect is an embedded vector + graph database in pure Go with HNSW/IVF/LSH indexing, quantization, Hindsight memory, and semantic routing.">
+        content="CortexDB is an embedded vector + graph database in pure Go with HNSW/IVF/LSH indexing, quantization, Hindsight memory, and semantic routing.">
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -102,11 +102,11 @@
                 <div class="flex items-center space-x-3">
                     <div
                         class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                        <span class="text-white font-bold text-sm">SQ</span>
+                        <span class="text-white font-bold text-sm">CX</span>
                     </div>
                     <span
                         class="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                        SQVect
+                        CortexDB
                     </span>
                 </div>
 
@@ -117,7 +117,7 @@
                         data-i18n data-en="Architecture" data-zh="架构">Architecture</a>
                     <a href="#examples" class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors" data-i18n
                         data-en="Examples" data-zh="示例">Examples</a>
-                    <a href="https://pkg.go.dev/github.com/liliang-cn/sqvect/v2"
+                    <a href="https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2"
                         class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors" data-i18n
                         data-en="Documentation" data-zh="文档">Documentation</a>
                     <div class="flex items-center space-x-2 text-sm">
@@ -198,14 +198,14 @@
 
                 <p class="text-xl md:text-2xl text-gray-600 dark:text-gray-300 mb-10 max-w-4xl mx-auto leading-relaxed font-light tracking-wide"
                     data-i18n
-                    data-en="SQVect delivers embedded vector + graph storage with HNSW/IVF/LSH indexing, quantization, Hindsight memory, and semantic routing—pure Go, SQLite-backed, production-ready."
-                    data-zh="SQVect 提供嵌入式向量 + 图存储，支持 HNSW/IVF/LSH 索引、量化、Hindsight 记忆与语义路由——纯 Go、SQLite 驱动、生产可用。">
-                    SQVect delivers embedded vector + graph storage with HNSW/IVF/LSH indexing, quantization,
+                    data-en="CortexDB delivers embedded vector + graph storage with HNSW/IVF/LSH indexing, quantization, Hindsight memory, and semantic routing—pure Go, SQLite-backed, production-ready."
+                    data-zh="CortexDB 提供嵌入式向量 + 图存储，支持 HNSW/IVF/LSH 索引、量化、Hindsight 记忆与语义路由——纯 Go、SQLite 驱动、生产可用。">
+                    CortexDB delivers embedded vector + graph storage with HNSW/IVF/LSH indexing, quantization,
                     Hindsight memory, and semantic routing—pure Go, SQLite-backed, production-ready.
                 </p>
 
                 <div class="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
-                    <a href="https://github.com/liliang-cn/sqvect"
+                    <a href="https://github.com/liliang-cn/cortexdb"
                         class="group bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-4 rounded-full font-semibold hover:from-blue-700 hover:to-purple-700 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl">
                         <span class="flex items-center">
                             <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
@@ -453,7 +453,7 @@
                     <div
                         class="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200 dark:border-blue-700">
                         <h3 class="text-xl font-bold mb-3 text-blue-900 dark:text-blue-100" data-i18n
-                            data-en="SQVect Facade" data-zh="SQVect 门面">SQVect Facade</h3>
+                            data-en="CortexDB Facade" data-zh="CortexDB 门面">CortexDB Facade</h3>
                         <p class="text-blue-800 dark:text-blue-200" data-i18n
                             data-en="High-level DB API (Open, Quick, Vector, Graph) for rapid app integration."
                             data-zh="高层 DB API（Open/Quick/Vector/Graph），便于快速集成。">
@@ -554,7 +554,7 @@
                             <div class="w-3 h-3 bg-yellow-500 rounded-full"></div>
                             <div class="w-3 h-3 bg-green-500 rounded-full"></div>
                         </div>
-                        <span class="ml-4 text-gray-400 text-sm">sqvect/example.go</span>
+                        <span class="ml-4 text-gray-400 text-sm">cortexdb/example.go</span>
                     </div>
                     <pre class="text-green-400 text-sm leading-relaxed overflow-x-auto"><code>package main
 
@@ -562,12 +562,12 @@ import (
     "context"
     "fmt"
 
-    "github.com/liliang-cn/sqvect/v2/pkg/core"
-    "github.com/liliang-cn/sqvect/v2/pkg/sqvect"
+    "github.com/liliang-cn/cortexdb/v2/pkg/core"
+    "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
 func main() {
-    db, err := sqvect.Open(sqvect.DefaultConfig("rag.db"))
+    db, err := cortexdb.Open(cortexdb.DefaultConfig("rag.db"))
     if err != nil {
         panic(err)
     }
@@ -610,7 +610,7 @@ func main() {
                             data-zh="基于自然语言理解与上下文的智能检索。">
                             Build intelligent search with natural language understanding and context awareness.
                         </p>
-                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/semantic_search"
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/semantic_search"
                             class="inline-flex items-center text-blue-600 dark:text-blue-400 hover:underline">
                             <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -633,7 +633,7 @@ func main() {
                             data-zh="文档分块与上下文检索的检索增强生成。">
                             Retrieval-Augmented Generation with document chunking and contextual search.
                         </p>
-                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/rag_system"
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/rag_system"
                             class="inline-flex items-center text-green-600 dark:text-green-400 hover:underline">
                             <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -656,7 +656,7 @@ func main() {
                             data-zh="基于 CLIP 向量的多模态视觉相似检索。">
                             Visual similarity search with CLIP embeddings and multi-modal capabilities.
                         </p>
-                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/image_search"
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/image_search"
                             class="inline-flex items-center text-purple-600 dark:text-purple-400 hover:underline">
                             <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -679,7 +679,7 @@ func main() {
                             data-zh="实体关系、图遍历与语义连接。">
                             Entity relationships with graph traversal and semantic connections.
                         </p>
-                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/knowledge_graph"
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/knowledge_graph"
                             class="inline-flex items-center text-orange-600 dark:text-orange-400 hover:underline">
                             <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -702,7 +702,7 @@ func main() {
                             data-zh="使用无监督聚类实现自动文档组织。">
                             Automatic document organization with unsupervised clustering algorithms.
                         </p>
-                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/document_clustering"
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/document_clustering"
                             class="inline-flex items-center text-indigo-600 dark:text-indigo-400 hover:underline">
                             <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -725,7 +725,7 @@ func main() {
                             data-zh="结合语义与关键词检索以获得最佳效果。">
                             Combine semantic and keyword search for optimal information retrieval.
                         </p>
-                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/hybrid_search"
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/hybrid_search"
                             class="inline-flex items-center text-teal-600 dark:text-teal-400 hover:underline">
                             <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -748,7 +748,7 @@ func main() {
                             data-zh="可配置相似度与阈值的意图路由，支持可插拔嵌入器。">
                             Intent routing with configurable similarity, thresholds, and pluggable embedders.
                         </p>
-                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/semantic-router"
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/semantic-router"
                             class="inline-flex items-center text-fuchsia-600 dark:text-fuchsia-400 hover:underline">
                             <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -771,7 +771,7 @@ func main() {
                             data-zh="支持 TEMPR 检索、反思与长期学习的智能体记忆。">
                             Agent memory with TEMPR retrieval, reflection, and long-term learning.
                         </p>
-                        <a href="https://github.com/liliang-cn/sqvect/tree/main/examples/hindsight"
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/hindsight"
                             class="inline-flex items-center text-cyan-600 dark:text-cyan-400 hover:underline">
                             <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -838,13 +838,13 @@ func main() {
                 </h2>
                 <p class="text-xl text-blue-100 mb-8">
                     <span data-i18n
-                        data-en="Join the developers building the next generation of AI applications with SQVect"
-                        data-zh="加入使用 SQVect 构建下一代 AI 应用的开发者">Join the developers building the next generation of AI
-                        applications with SQVect</span>
+                        data-en="Join the developers building the next generation of AI applications with CortexDB"
+                        data-zh="加入使用 CortexDB 构建下一代 AI 应用的开发者">Join the developers building the next generation of AI
+                        applications with CortexDB</span>
                 </p>
 
                 <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                    <a href="https://github.com/liliang-cn/sqvect"
+                    <a href="https://github.com/liliang-cn/cortexdb"
                         class="bg-white text-blue-600 px-8 py-4 rounded-full font-semibold hover:bg-gray-100 transition-colors shadow-lg">
                         <span class="flex items-center justify-center">
                             <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
@@ -855,7 +855,7 @@ func main() {
                         </span>
                     </a>
 
-                    <a href="https://pkg.go.dev/github.com/liliang-cn/sqvect/v2"
+                    <a href="https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2"
                         class="border-2 border-white text-white px-8 py-4 rounded-full font-semibold hover:bg-white hover:text-blue-600 transition-colors">
                         <span data-i18n data-en="Read Documentation" data-zh="阅读文档">Read Documentation</span>
                     </a>
@@ -872,9 +872,9 @@ func main() {
                     <div class="flex items-center space-x-3 mb-4">
                         <div
                             class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                            <span class="text-white font-bold text-sm">SQ</span>
+                            <span class="text-white font-bold text-sm">CX</span>
                         </div>
-                        <span class="text-xl font-bold text-white">SQVect</span>
+                        <span class="text-xl font-bold text-white">CortexDB</span>
                     </div>
                     <p class="text-gray-400 mb-4 max-w-md" data-i18n
                         data-en="Embedded vector + graph database in pure Go with Hindsight memory and semantic routing."
@@ -882,7 +882,7 @@ func main() {
                         Embedded vector + graph database in pure Go with Hindsight memory and semantic routing.
                     </p>
                     <div class="flex space-x-4">
-                        <a href="https://github.com/liliang-cn/sqvect"
+                        <a href="https://github.com/liliang-cn/cortexdb"
                             class="text-gray-400 hover:text-white transition-colors">
                             <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
                                 <path
@@ -895,16 +895,16 @@ func main() {
                 <div>
                     <h3 class="text-white font-semibold mb-4" data-i18n data-en="Resources" data-zh="资源">Resources</h3>
                     <ul class="space-y-2">
-                        <li><a href="https://pkg.go.dev/github.com/liliang-cn/sqvect/v2"
+                        <li><a href="https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2"
                                 class="text-gray-400 hover:text-white transition-colors" data-i18n
                                 data-en="Documentation" data-zh="文档">Documentation</a></li>
-                        <li><a href="https://github.com/liliang-cn/sqvect/tree/main/examples"
+                        <li><a href="https://github.com/liliang-cn/cortexdb/tree/main/examples"
                                 class="text-gray-400 hover:text-white transition-colors" data-i18n data-en="Examples"
                                 data-zh="示例">Examples</a></li>
-                        <li><a href="https://github.com/liliang-cn/sqvect/blob/main/ROADMAP.md"
+                        <li><a href="https://github.com/liliang-cn/cortexdb/blob/main/ROADMAP.md"
                                 class="text-gray-400 hover:text-white transition-colors" data-i18n data-en="Roadmap"
                                 data-zh="路线图">Roadmap</a></li>
-                        <li><a href="https://github.com/liliang-cn/sqvect/blob/main/FEATURE_COMPARISON.md"
+                        <li><a href="https://github.com/liliang-cn/cortexdb/blob/main/FEATURE_COMPARISON.md"
                                 class="text-gray-400 hover:text-white transition-colors" data-i18n data-en="Features"
                                 data-zh="特性">Features</a></li>
                     </ul>
@@ -913,16 +913,16 @@ func main() {
                 <div>
                     <h3 class="text-white font-semibold mb-4" data-i18n data-en="Community" data-zh="社区">Community</h3>
                     <ul class="space-y-2">
-                        <li><a href="https://github.com/liliang-cn/sqvect/issues"
+                        <li><a href="https://github.com/liliang-cn/cortexdb/issues"
                                 class="text-gray-400 hover:text-white transition-colors" data-i18n
                                 data-en="GitHub Issues" data-zh="问题反馈">GitHub Issues</a></li>
-                        <li><a href="https://github.com/liliang-cn/sqvect/discussions"
+                        <li><a href="https://github.com/liliang-cn/cortexdb/discussions"
                                 class="text-gray-400 hover:text-white transition-colors" data-i18n data-en="Discussions"
                                 data-zh="讨论区">Discussions</a></li>
-                        <li><a href="https://github.com/liliang-cn/sqvect/blob/main/CONTRIBUTING.md"
+                        <li><a href="https://github.com/liliang-cn/cortexdb/blob/main/CONTRIBUTING.md"
                                 class="text-gray-400 hover:text-white transition-colors" data-i18n
                                 data-en="Contributing" data-zh="贡献指南">Contributing</a></li>
-                        <li><a href="https://github.com/liliang-cn/sqvect/blob/main/LICENSE"
+                        <li><a href="https://github.com/liliang-cn/cortexdb/blob/main/LICENSE"
                                 class="text-gray-400 hover:text-white transition-colors" data-i18n data-en="License"
                                 data-zh="许可证">License</a></li>
                     </ul>
@@ -931,7 +931,7 @@ func main() {
 
             <div class="border-t border-gray-800 mt-8 pt-8 text-center">
                 <p class="text-gray-500">
-                    © 2026 SQVect. Open source under MIT License.
+                    © 2026 CortexDB. Open source under MIT License.
                 </p>
             </div>
         </div>

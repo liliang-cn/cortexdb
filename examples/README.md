@@ -1,6 +1,6 @@
-# Cortexdb Examples
+# CortexDB Examples
 
-This directory contains comprehensive examples demonstrating the full capabilities of the cortexdb SQLite vector database library.
+This directory contains comprehensive examples demonstrating the full capabilities of the CortexDB SQLite vector database library.
 
 ## 🚀 Quick Start
 
@@ -97,9 +97,16 @@ go build -o simple_example examples/simple_usage/main.go
 - Index training demo
 - **Perfect for:** Performance tuning
 
+### 12. **text_api** - High-Level Text & Knowledge APIs
+- Automatic text embedding
+- `SaveKnowledge` for GraphRAG ingestion
+- `SaveMemory` for agentic persistence
+- Hybrid and FTS5 search
+- **Perfect for:** Modern LLM-based applications
+
 ## 💻 API Usage Patterns
 
-All examples use the latest cortexdb API:
+All examples use the latest CortexDB API:
 
 ```go
 import (
@@ -115,51 +122,66 @@ config.Dimensions = 384 // or 0 for auto-detect
 db, err := cortexdb.Open(config)
 defer db.Close()
 
-// Use Quick API for simple operations
+// 1. High-Level Knowledge & Memory APIs
+// Ingest a full document for GraphRAG
+db.SaveKnowledge(ctx, cortexdb.KnowledgeSaveRequest{
+    KnowledgeID: "doc_1",
+    Title:       "CortexDB Overview",
+    Content:     "CortexDB is an embedded cognitive memory...",
+})
+
+// Store an agent memory
+db.SaveMemory(ctx, cortexdb.MemorySaveRequest{
+    MemoryID:  "mem_1",
+    UserID:    "user_123",
+    Content:   "Alice likes Go programming.",
+})
+
+// 2. Quick API for simple vector operations
 quick := db.Quick()
 id, err := quick.Add(ctx, vector, content)
 results, err := quick.Search(ctx, queryVector, topK)
 
-// Use Vector store for advanced operations
+// 3. Vector store for advanced operations
 vectorStore := db.Vector()
 // Creating collections
 vectorStore.CreateCollection(ctx, "products", 256)
 
-// Advanced search
+// Advanced search with SQL-like filtering
 results, err := vectorStore.Search(ctx, query, core.SearchOptions{
     Collection: "products",
     TopK:       10,
     Threshold:  0.7,
 })
 
-// Use Graph store for graph operations
+// 4. Graph store for graph operations
 graphStore := db.Graph()
-// Add nodes and edges...
 err := graphStore.UpsertNode(ctx, &graph.GraphNode{...})
 err := graphStore.UpsertEdge(ctx, &graph.GraphEdge{...})
 ```
 
 ## 🎯 Key Features Demonstrated
 
+- **Knowledge Ingestion**: Automated chunking and GraphRAG artifact creation
+- **Agent Memory**: Scoped memory persistence (User/Session/Global)
 - **Vector Operations**: Add, search, update, delete embeddings
 - **Collections**: Multi-tenant support with isolated namespaces
 - **Similarity Metrics**: Cosine, dot product, Euclidean distance
 - **Graph Operations**: Nodes, edges, traversal, PageRank
 - **Hybrid Search**: Combine vector similarity with graph relationships
 - **Performance**: Benchmarking and optimization techniques
-- **Real-world Scenarios**: E-commerce, documents, images, knowledge graphs
 
 ## 📊 Performance Tips
 
 1. **Batch Operations**: Use batch inserts for better performance
 2. **Collection Isolation**: Use collections to separate different data types
 3. **Dimension Consistency**: Keep vector dimensions consistent within collections
-4. **Index Optimization**: SQLite indexes are automatically managed
+4. **Index Optimization**: HNSW/IVF indexes are automatically managed
 5. **Connection Pooling**: Reuse database connections
 
 ## 🔧 Requirements
 
-- Go 1.19 or higher
+- Go 1.24.0 or higher
 - Pure Go implementation (no CGO required!)
 - SQLite driver included (pure Go)
 - No external dependencies
@@ -174,7 +196,7 @@ err := graphStore.UpsertEdge(ctx, &graph.GraphEdge{...})
 ## 🤝 Contributing
 
 Feel free to add more examples! Make sure to:
-1. Use the latest cortexdb API
+1. Use the latest CortexDB API
 2. Include comprehensive comments
 3. Provide realistic use cases
 4. Clean up resources after execution
@@ -182,6 +204,6 @@ Feel free to add more examples! Make sure to:
 
 ## 📖 Further Reading
 
-- [Cortexdb Documentation](../README.md)
+- [CortexDB Documentation](../README.md)
 - [API Reference](../doc.go)
 - [Feature Comparison](../FEATURE_COMPARISON.md)

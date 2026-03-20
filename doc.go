@@ -12,6 +12,8 @@
 //   - 🛡️ Secure - Row-Level Security via ACL fields and SQL-level push-down filtering.
 //   - 🔧 100% Pure Go - Easy cross-compilation and zero-dependency deployment.
 //   - 🕸️ GraphRAG - Advanced graph operations for complex relationship-based retrieval.
+//   - 🔌 MCP Stdio Server - Expose CortexDB tools to external LLMs through the official Model Context Protocol Go SDK.
+//   - 🧠 High-level Knowledge & Memory APIs - Simplified SaveKnowledge and SaveMemory operations for building agentic workflows.
 //   - 🧭 Semantic Router - Intent routing with configurable similarity and thresholds.
 //   - 🧠 Hindsight - Biomimetic agent memory with TEMPR retrieval.
 //
@@ -50,6 +52,24 @@
 //	    TopK: 5,
 //	})
 //
+// # Knowledge and Memory
+//
+// Build agentic systems with higher-level persistence:
+//
+//	// Save a document and its knowledge artifacts (chunks, entities)
+//	db.SaveKnowledge(ctx, cortexdb.KnowledgeSaveRequest{
+//	    KnowledgeID: "doc_1",
+//	    Title:       "CortexDB Overview",
+//	    Content:     "CortexDB is a lightweight vector database...",
+//	})
+//
+//	// Store a memory record with scope and importance
+//	db.SaveMemory(ctx, cortexdb.MemorySaveRequest{
+//	    MemoryID:  "mem_1",
+//	    Content:   "Alice prefers window seats.",
+//	    Importance: 4.5,
+//	})
+//
 // # Chat Memory
 //
 // Built-in conversation history management:
@@ -76,7 +96,15 @@
 //
 // # Observability
 //
-// cortexdb v2.0.0+ supports structured logging via core.Config.Logger when using core.NewWithConfig.
+// cortexdb supports structured logging via core.Config.Logger when using core.NewWithConfig.
+//
+// # MCP Tool Calling
+//
+// Run as an MCP stdio server to expose tools to LLM clients:
+//
+//	if err := db.RunMCPStdio(ctx, cortexdb.MCPServerOptions{}); err != nil {
+//	    log.Fatal(err)
+//	}
 //
 // # Semantic Router
 //
