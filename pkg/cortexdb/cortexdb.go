@@ -351,13 +351,17 @@ func (db *DB) SearchText(ctx context.Context, query string, topK int) ([]core.Sc
 }
 
 // SearchTextInCollection performs similarity search using text query within a collection.
-// Requires an embedder to be configured via WithEmbedder option.
+// When no embedder is configured, falls back to FTS5/BM25 full-text search.
 func (db *DB) SearchTextInCollection(ctx context.Context, collection string, query string, topK int) ([]core.ScoredEmbedding, error) {
-	if db.embedder == nil {
-		return nil, ErrEmbedderNotConfigured
-	}
 	if query == "" {
 		return nil, ErrEmptyText
+	}
+
+	if db.embedder == nil {
+		return db.SearchTextOnly(ctx, query, TextSearchOptions{
+			Collection: collection,
+			TopK:       topK,
+		})
 	}
 
 	vec, err := db.embedder.Embed(ctx, query)
@@ -375,13 +379,18 @@ func (db *DB) SearchTextInCollection(ctx context.Context, collection string, que
 }
 
 // HybridSearchText performs hybrid search combining vector and keyword matching.
-// Requires an embedder to be configured via WithEmbedder option.
+// When no embedder is configured, falls back to FTS5/BM25 full-text search.
 func (db *DB) HybridSearchText(ctx context.Context, query string, topK int) ([]core.ScoredEmbedding, error) {
-	if db.embedder == nil {
-		return nil, ErrEmbedderNotConfigured
-	}
 	if query == "" {
 		return nil, ErrEmptyText
+	}
+
+	if db.embedder == nil {
+		return db.store.HybridSearch(ctx, nil, query, core.HybridSearchOptions{
+			SearchOptions: core.SearchOptions{
+				TopK: topK,
+			},
+		})
 	}
 
 	vec, err := db.embedder.Embed(ctx, query)
