@@ -508,10 +508,14 @@ func main() {
 	}
 	
 	// Database statistics
-	stats, _ := vectorStore.GetCollectionStats(ctx, "")
-	fmt.Printf("\n   Total images indexed: %d\n", stats.Count)
-	fmt.Printf("   Embedding dimensions: %d\n", stats.Dimensions)
-	fmt.Printf("   Database file: %s\n", dbPath)
+	stats, err := vectorStore.Stats(ctx)
+	if err != nil {
+		log.Printf("Failed to get stats: %v", err)
+	} else {
+		fmt.Printf("\n   Total images indexed: %d\n", stats.Count)
+		fmt.Printf("   Embedding dimensions: %d\n", stats.Dimensions)
+		fmt.Printf("   Database file: %s\n", dbPath)
+	}
 
 	fmt.Println("\n✨ Image Search Example Complete!")
 	fmt.Println("This example demonstrated:")
