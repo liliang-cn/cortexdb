@@ -199,9 +199,10 @@ func TestEmbedderErrors(t *testing.T) {
 			t.Errorf("Expected ErrEmbedderNotConfigured, got %v", err)
 		}
 
+		// Without embedder, SearchText should fallback to FTS5/BM25
 		_, err = db.SearchText(ctx, "text", 5)
-		if err != ErrEmbedderNotConfigured {
-			t.Errorf("Expected ErrEmbedderNotConfigured, got %v", err)
+		if err != nil {
+			t.Errorf("Expected FTS5 fallback to succeed, got %v", err)
 		}
 	})
 }
