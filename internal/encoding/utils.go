@@ -110,11 +110,13 @@ func DecodeMetadata(jsonStr string) (map[string]string, error) {
 	return metadata, nil
 }
 
-// ValidateEmbedding validates an embedding
-func ValidateEmbedding(emb interface{}, expectedDim int) error {
-	// This function would need proper type assertion based on the actual embedding type
-	// For now, returning nil to allow compilation
-	return nil
+// ValidateEmbedding validates an embedding's vector against expected dimension.
+// If expectedDim is 0 (auto-detect mode), only validates vector values but not dimension.
+func ValidateEmbedding(vector []float32, expectedDim int) error {
+	if expectedDim > 0 && len(vector) != expectedDim {
+		return fmt.Errorf("vector dimension mismatch: got %d, expected %d", len(vector), expectedDim)
+	}
+	return ValidateVector(vector)
 }
 
 // ValidateVector validates a vector

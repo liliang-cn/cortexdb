@@ -79,7 +79,7 @@ func (s *SQLiteStore) Upsert(ctx context.Context, emb *Embedding) error {
 	}
 
 	// Validate adapted embedding
-	if err := encoding.ValidateEmbedding(*emb, currentDim); err != nil {
+	if err := encoding.ValidateEmbedding(emb.Vector, currentDim); err != nil {
 		return wrapError("upsert", err)
 	}
 
@@ -224,7 +224,7 @@ func (s *SQLiteStore) UpsertBatch(ctx context.Context, embs []*Embedding) error 
 
 	// Execute for each embedding
 	for i, emb := range embs {
-		if err := encoding.ValidateEmbedding(*emb, s.config.VectorDim); err != nil {
+		if err := encoding.ValidateEmbedding(emb.Vector, s.config.VectorDim); err != nil {
 			return wrapError("upsert_batch", fmt.Errorf("invalid embedding at index %d: %w", i, err))
 		}
 
@@ -311,6 +311,55 @@ func (s *SQLiteStore) UpsertBatch(ctx context.Context, embs []*Embedding) error 
 	}
 
 	return nil
+}
+
+// UpsertBatchWithAdapt inserts or updates multiple embeddings with automatic dimension adaptation.
+// Unlike UpsertBatch, this function handles dimension mismatches by adapting vectors to match
+// the store's configured dimension before insertion.
+func (s *SQLiteStore) UpsertBatchWithAdapt(ctx context.Context, embs []*Embedding) error {
+	s.mu.RLock()
+	currentDim := s.config.VectorDim
+	s.mu.RUnlock()
+
+	if s.closed {
+		return wrapError("upsert_batch_with_adapt", ErrStoreClosed)
+	}
+
+	if len(embs) == 0 {
+		return nil
+	}
+
+	// Get actual dimension from first embedding if store dimension is not set
+	if currentDim == 0 {
+		s.mu.Lock()
+		if s.config.VectorDim == 0 && len(embs) > 0 {
+			currentDim = len(embs[0].Vector)
+			s.config.VectorDim = currentDim
+		} else {
+			currentDim = s.config.VectorDim
+		}
+		s.mu.Unlock()
+	}
+
+	// Adapt and validate all embeddings
+	for i, emb := range embs {
+		incomingDim := len(emb.Vector)
+		if incomingDim != currentDim {
+			adaptedVector, err := s.adapter.AdaptVector(emb.Vector, incomingDim, currentDim)
+			if err != nil {
+				return wrapError("upsert_batch_with_adapt", fmt.Errorf("dimension adaptation failed at index %d: %w", i, err))
+			}
+			s.adapter.logDimensionEvent("batch_adapt", incomingDim, currentDim, emb.ID)
+			emb.Vector = adaptedVector
+		}
+
+		if err := encoding.ValidateEmbedding(emb.Vector, currentDim); err != nil {
+			return wrapError("upsert_batch_with_adapt", fmt.Errorf("invalid embedding at index %d: %w", i, err))
+		}
+	}
+
+	// Use UpsertBatch with the pre-adapted embeddings
+	return s.UpsertBatch(ctx, embs)
 }
 
 // Delete removes an embedding by ID

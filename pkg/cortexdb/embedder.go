@@ -31,6 +31,9 @@ var (
 
 	// ErrEmbeddingFailed is returned when the embedder fails to produce a vector.
 	ErrEmbeddingFailed = errors.New("cortexdb: embedding failed")
+
+	// ErrInvalidVector is returned when a vector is invalid (nil or wrong dimension).
+	ErrInvalidVector = errors.New("cortexdb: invalid vector")
 )
 
 // BaseEmbedder provides a default implementation of EmbedBatch that calls Embed for each text.
