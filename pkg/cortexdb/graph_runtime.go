@@ -22,16 +22,16 @@ func applyGraphRuntimeDefaults(opts *GraphRAGQueryOptions) {
 	}
 	if opts.MaxExpansionSeeds <= 0 {
 		if opts.GraphLight {
-			opts.MaxExpansionSeeds = min(maxInt(opts.TopK, 1), 2)
+			opts.MaxExpansionSeeds = min(max(opts.TopK, 1), 2)
 		} else {
-			opts.MaxExpansionSeeds = maxInt(opts.TopK, 1)
+			opts.MaxExpansionSeeds = max(opts.TopK, 1)
 		}
 	}
 	if opts.MaxTraversalNodes <= 0 {
 		if opts.GraphLight {
-			opts.MaxTraversalNodes = maxInt(opts.TopK*6, opts.MaxExpansionSeeds*4)
+			opts.MaxTraversalNodes = max(opts.TopK*6, opts.MaxExpansionSeeds*4)
 		} else {
-			opts.MaxTraversalNodes = maxInt(opts.TopK*12, opts.MaxExpansionSeeds*8)
+			opts.MaxTraversalNodes = max(opts.TopK*12, opts.MaxExpansionSeeds*8)
 		}
 	}
 	if opts.MaxEntitiesPerChunk <= 0 {
@@ -211,11 +211,4 @@ func topScoredIDs(scores map[string]float64, limit int) []string {
 		result = append(result, item.id)
 	}
 	return result
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

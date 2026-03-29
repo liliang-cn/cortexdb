@@ -14,11 +14,12 @@ type compiledOntologySchema struct {
 	relationTypes map[string]OntologyRelationType
 }
 
-type ontologyNodeTypeResolver func(context.Context, []string) (map[string]string, error)
-
 func validateOntologySaveRequest(req OntologySaveRequest) error {
 	if strings.TrimSpace(req.SchemaID) == "" {
 		return fmt.Errorf("schema_id is required")
+	}
+	if req.Activate && req.Deactivate {
+		return fmt.Errorf("activate and deactivate cannot both be true")
 	}
 
 	entityTypes := normalizeOntologyEntityTypes(req.EntityTypes)
@@ -46,17 +47,13 @@ func validateOntologySaveRequest(req OntologySaveRequest) error {
 		relationSet[relationType.Name] = struct{}{}
 
 		for _, fromType := range relationType.AllowedFromTypes {
-			if len(entitySet) > 0 {
-				if _, exists := entitySet[fromType]; !exists {
-					return fmt.Errorf("relation type %s references unknown source entity type %s", relationType.Name, fromType)
-				}
+			if _, exists := entitySet[fromType]; !exists {
+				return fmt.Errorf("relation type %s references unknown source entity type %s", relationType.Name, fromType)
 			}
 		}
 		for _, toType := range relationType.AllowedToTypes {
-			if len(entitySet) > 0 {
-				if _, exists := entitySet[toType]; !exists {
-					return fmt.Errorf("relation type %s references unknown target entity type %s", relationType.Name, toType)
-				}
+			if _, exists := entitySet[toType]; !exists {
+				return fmt.Errorf("relation type %s references unknown target entity type %s", relationType.Name, toType)
 			}
 		}
 	}
@@ -185,7 +182,7 @@ func (db *DB) validateRelationInputs(ctx context.Context, relations []ToolRelati
 	return db.validateRelationInputsWithResolver(ctx, relations, db.loadOntologyNodeTypes)
 }
 
-func (db *DB) validateRelationInputsWithResolver(ctx context.Context, relations []ToolRelationInput, resolver ontologyNodeTypeResolver) error {
+func (db *DB) validateRelationInputsWithResolver(ctx context.Context, relations []ToolRelationInput, resolver func(context.Context, []string) (map[string]string, error)) error {
 	schema, err := db.loadActiveOntologySchema(ctx)
 	if err != nil || schema == nil {
 		return err

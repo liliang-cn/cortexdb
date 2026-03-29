@@ -99,6 +99,7 @@ type KnowledgeSearchRequest struct {
 	MaxContextChars     int            `json:"max_context_chars,omitempty"`
 	PerDocumentLimit    int            `json:"per_document_limit,omitempty"`
 	DiversityLambda     float64        `json:"diversity_lambda,omitempty"`
+	DisableRerank       bool           `json:"disable_rerank,omitempty"`
 	EntityNames         []string       `json:"entity_names,omitempty"`
 	Keywords            []string       `json:"keywords,omitempty"`
 	AlternateQueries    []string       `json:"alternate_queries,omitempty"`
