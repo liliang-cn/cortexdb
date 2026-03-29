@@ -15,6 +15,7 @@ type DB struct {
 	store                 *core.SQLiteStore
 	graph                 *graph.GraphStore
 	embedder              Embedder // Optional embedder for text operations
+	brainReflector        BrainReflector
 	ontologySchemaInit    sync.Once
 	ontologySchemaInitErr error
 }
@@ -45,6 +46,15 @@ type Option func(*DB)
 func WithEmbedder(e Embedder) Option {
 	return func(db *DB) {
 		db.embedder = e
+	}
+}
+
+// WithBrainReflector configures the DB with a pluggable reflection/consolidation engine.
+// This lets callers keep CortexDB as the persistent brain substrate while delegating
+// higher-order summarization and synthesis to an external reasoning component.
+func WithBrainReflector(r BrainReflector) Option {
+	return func(db *DB) {
+		db.brainReflector = r
 	}
 }
 
