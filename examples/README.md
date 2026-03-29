@@ -104,6 +104,20 @@ go build -o simple_example examples/simple_usage/main.go
 - Hybrid and FTS5 search
 - **Perfect for:** Modern LLM-based applications
 
+### 13. **graphrag_embedder** - Embedder-Backed GraphRAG
+- Active ontology schema setup
+- Knowledge ingestion with typed entities and relations
+- Deterministic inference with provenance
+- Graph-expanded knowledge search
+- **Perfect for:** Embedder-backed GraphRAG applications
+
+### 14. **llm_tool_calling** - No-Embedder Tool Calling
+- High-level `knowledge_*` and `memory_*` tool usage
+- External-LLM-style retrieval planning
+- Lexical GraphRAG without an embedding model
+- In-process tool calling that matches the MCP surface
+- **Perfect for:** MCP clients and external LLM orchestration
+
 ## 💻 API Usage Patterns
 
 All examples use the latest CortexDB API:
@@ -163,12 +177,15 @@ err := graphStore.UpsertEdge(ctx, &graph.GraphEdge{...})
 ## 🎯 Key Features Demonstrated
 
 - **Knowledge Ingestion**: Automated chunking and GraphRAG artifact creation
+- **Ontology Validation**: Active schema enforcement for entity and relation writes
+- **Inference**: Deterministic inferred edges with provenance
 - **Agent Memory**: Scoped memory persistence (User/Session/Global)
 - **Vector Operations**: Add, search, update, delete embeddings
 - **Collections**: Multi-tenant support with isolated namespaces
 - **Similarity Metrics**: Cosine, dot product, Euclidean distance
 - **Graph Operations**: Nodes, edges, traversal, PageRank
 - **Hybrid Search**: Combine vector similarity with graph relationships
+- **Tool Calling**: MCP-aligned `knowledge_*`, `memory_*`, and GraphRAG tools
 - **Performance**: Benchmarking and optimization techniques
 
 ## 📊 Performance Tips

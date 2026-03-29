@@ -138,11 +138,38 @@ func (db *DB) GetMemory(ctx context.Context, req MemoryGetRequest) (*MemoryGetRe
 
 // SearchMemory searches a resolved memory bucket, using semantic session search when an embedder is available.
 func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*MemorySearchResponse, error) {
-	if strings.TrimSpace(req.Query) == "" {
+	unsupportedMode := RetrievalModeLexical
+	if db.HasEmbedder() {
+		unsupportedMode = RetrievalModeAuto
+	}
+	resolution := resolveRetrievalPlan(retrievalPlanInput{
+		Query:                    req.Query,
+		Plan:                     req.Plan,
+		Keywords:                 req.Keywords,
+		AlternateQueries:         req.AlternateQueries,
+		RetrievalMode:            req.RetrievalMode,
+		Filters:                  &RetrievalFilters{UserID: req.UserID, SessionID: req.SessionID, Scope: req.Scope, Namespace: req.Namespace},
+		SupportsGraph:            false,
+		UnsupportedEffectiveMode: unsupportedMode,
+		UnsupportedReason:        "memory search uses semantic or lexical retrieval, but not graph expansion",
+	})
+	if strings.TrimSpace(resolution.Plan.Query) == "" {
 		return nil, ErrEmptyText
 	}
 
-	_, bucketID, err := resolveMemoryBucket(req.Scope, req.UserID, req.SessionID, req.Namespace)
+	filters := resolution.Plan.Filters
+	scope := req.Scope
+	userID := req.UserID
+	sessionID := req.SessionID
+	namespace := req.Namespace
+	if filters != nil {
+		scope = firstNonEmpty(scope, filters.Scope)
+		userID = firstNonEmpty(userID, filters.UserID)
+		sessionID = firstNonEmpty(sessionID, filters.SessionID)
+		namespace = firstNonEmpty(namespace, filters.Namespace)
+	}
+
+	_, bucketID, err := resolveMemoryBucket(scope, userID, sessionID, namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -150,8 +177,8 @@ func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*Memor
 		req.TopK = 5
 	}
 
-	if db.HasEmbedder() && normalizeRetrievalMode(req.RetrievalMode) != RetrievalModeLexical {
-		queryVec, err := db.embedder.Embed(ctx, req.Query)
+	if db.HasEmbedder() && resolution.Decision.EffectiveMode != RetrievalModeLexical {
+		queryVec, err := db.embedder.Embed(ctx, resolution.Plan.Query)
 		if err == nil {
 			messages, err := db.store.SearchChatHistory(ctx, queryVec, bucketID, req.TopK)
 			if err == nil && len(messages) > 0 {
@@ -165,17 +192,27 @@ func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*Memor
 					hits = append(hits, MemorySearchHit{Memory: record, Score: score})
 				}
 				if len(hits) > 0 {
-					return &MemorySearchResponse{Query: req.Query, Results: hits}, nil
+					return &MemorySearchResponse{
+						Query:    resolution.Plan.Query,
+						Plan:     resolution.Plan,
+						Decision: resolution.Decision,
+						Results:  hits,
+					}, nil
 				}
 			}
 		}
 	}
 
-	hits, err := db.searchMemoryLexical(ctx, bucketID, req.Query, req.Keywords, req.AlternateQueries, req.TopK)
+	hits, err := db.searchMemoryLexical(ctx, bucketID, resolution.Plan.Query, resolution.Plan.Keywords, resolution.Plan.AlternateQueries, req.TopK)
 	if err != nil {
 		return nil, err
 	}
-	return &MemorySearchResponse{Query: req.Query, Results: hits}, nil
+	return &MemorySearchResponse{
+		Query:    resolution.Plan.Query,
+		Plan:     resolution.Plan,
+		Decision: resolution.Decision,
+		Results:  hits,
+	}, nil
 }
 
 // DeleteMemory removes a memory record by ID.

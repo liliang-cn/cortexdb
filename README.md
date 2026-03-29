@@ -171,6 +171,43 @@ result, _ := db.SearchGraphRAG(ctx, "Where does Alice work?", cortexdb.GraphRAGQ
 
 If you already have external LLM orchestration, the no-embedder tool surface exposes the same idea through `retrieval_mode` and `keywords` / `alternate_queries`.
 
+Schema validation and inference can also be layered onto this workflow:
+
+```go
+_, _ = db.SaveOntologySchema(ctx, cortexdb.OntologySaveRequest{
+	SchemaID: "company-graph",
+	Activate: true,
+	EntityTypes: []cortexdb.OntologyEntityType{
+		{Name: "entity"},
+		{Name: "person"},
+		{Name: "organization"},
+		{Name: "city"},
+	},
+	RelationTypes: []cortexdb.OntologyRelationType{
+		{Name: "works_at", AllowedFromTypes: []string{"person"}, AllowedToTypes: []string{"organization"}},
+		{Name: "located_in", AllowedFromTypes: []string{"organization"}, AllowedToTypes: []string{"city"}},
+		{Name: "works_in_city", AllowedFromTypes: []string{"person"}, AllowedToTypes: []string{"city"}},
+	},
+})
+
+_, _ = db.ApplyInferenceRules(ctx, cortexdb.ApplyInferenceRequest{
+	DocumentID: "alice-berlin-proof",
+	Rules: []cortexdb.InferenceRule{
+		{
+			RuleID:             "employment_city",
+			LeftRelationType:   "works_at",
+			RightRelationType:  "located_in",
+			ResultRelationType: "works_in_city",
+		},
+	},
+})
+```
+
+Use the new end-to-end examples for this flow:
+
+- `examples/graphrag_embedder`
+- `examples/llm_tool_calling`
+
 ### 4. MCP Tool Calling / No-Embedder Mode
 
 If you do not have an embedding model but you do have an LLM, CortexDB can still be used as an MCP tool server. In this mode:
@@ -235,6 +272,20 @@ Main MCP tools:
 - `get_chunks`
 - `build_context`
 - `search_graphrag_lexical`
+
+The higher-level ontology and inference tools are also available:
+
+- `ontology_save`
+- `ontology_get`
+- `ontology_list`
+- `ontology_delete`
+- `apply_inference`
+
+Recommended docs:
+
+- `docs/retrieval_planning.md`
+- `docs/evaluation.md`
+- `docs/release_notes_llm_first.md`
 
 ### 5. Advanced Metadata Filtering
 

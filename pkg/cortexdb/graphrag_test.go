@@ -60,6 +60,9 @@ func (fixtureExtractor) Extract(_ context.Context, text string) (*GraphExtractio
 	if strings.Contains(lower, "acme") {
 		extraction.Entities = append(extraction.Entities, GraphEntity{Name: "Acme"})
 	}
+	if strings.Contains(lower, "beta labs") {
+		extraction.Entities = append(extraction.Entities, GraphEntity{Name: "Beta Labs"})
+	}
 	if strings.Contains(lower, "graph") {
 		extraction.Entities = append(extraction.Entities, GraphEntity{Name: "GraphRAG"})
 	}
@@ -151,6 +154,12 @@ func TestGraphRAGInsertAndSearch(t *testing.T) {
 	}
 	if len(results.Entities) == 0 {
 		t.Fatal("expected graph entities in retrieval result")
+	}
+	if results.Plan.RetrievalMode != RetrievalModeAuto {
+		t.Fatalf("expected normalized plan mode, got %+v", results.Plan)
+	}
+	if !results.Decision.UseGraph {
+		t.Fatalf("expected graph decision metadata, got %+v", results.Decision)
 	}
 	if !containsString(results.Entities, "Alice") || !containsString(results.Entities, "Acme") {
 		t.Fatalf("expected Alice and Acme in entities, got %v", results.Entities)
@@ -255,6 +264,9 @@ func TestGraphRAGSearchCanDisableGraphExpansion(t *testing.T) {
 	}
 	if len(results.Entities) != 0 {
 		t.Fatalf("expected no graph entities when graph is disabled, got %v", results.Entities)
+	}
+	if results.Decision.EffectiveMode != RetrievalModeLexical {
+		t.Fatalf("expected lexical decision when graph is disabled, got %+v", results.Decision)
 	}
 	for _, chunk := range results.Chunks {
 		if len(chunk.Entities) != 0 {

@@ -76,6 +76,9 @@ func TestGraphRAGToolsTypedFlowWithoutEmbedder(t *testing.T) {
 	if len(searchResp.Chunks) == 0 {
 		t.Fatal("expected lexical search results")
 	}
+	if searchResp.Plan.Query != "Alice Acme research" {
+		t.Fatalf("unexpected search plan query: %+v", searchResp.Plan)
+	}
 
 	questionSearchResp, err := tools.SearchText(ctx, ToolSearchTextRequest{
 		Query: "Where does Alice work?",
@@ -89,16 +92,23 @@ func TestGraphRAGToolsTypedFlowWithoutEmbedder(t *testing.T) {
 	}
 
 	plannedSearchResp, err := tools.SearchText(ctx, ToolSearchTextRequest{
-		Query:            "Find the employer",
-		TopK:             3,
-		Keywords:         []string{"Alice", "Acme", "employer", "works"},
-		AlternateQueries: []string{"Alice employer", "Alice works at Acme"},
+		Query: "Find the employer",
+		TopK:  3,
+		Plan: &RetrievalPlan{
+			Keywords:         []string{"Alice", "Acme", "employer", "works"},
+			AlternateQueries: []string{"Alice employer", "Alice works at Acme"},
+			EntityNames:      []string{"Alice", "Acme"},
+			RetrievalMode:    RetrievalModeGraph,
+		},
 	})
 	if err != nil {
 		t.Fatalf("search text with planned keywords: %v", err)
 	}
 	if len(plannedSearchResp.Chunks) == 0 {
 		t.Fatal("expected lexical results from planner-provided keywords")
+	}
+	if !plannedSearchResp.Decision.UseGraph {
+		t.Fatalf("expected plan entity hints to enable graph enrichment, got %+v", plannedSearchResp.Decision)
 	}
 
 	lexicalOnlySearchResp, err := tools.SearchText(ctx, ToolSearchTextRequest{
@@ -194,6 +204,9 @@ func TestGraphRAGToolsTypedFlowWithoutEmbedder(t *testing.T) {
 	}
 	if graphragResp.Context == "" {
 		t.Fatal("expected graphrag lexical context")
+	}
+	if graphragResp.Decision.EffectiveMode == "" {
+		t.Fatalf("expected graphrag decision metadata, got %+v", graphragResp)
 	}
 
 	entityFallbackResp, err := tools.SearchGraphRAGLexical(ctx, ToolSearchGraphRAGLexicalRequest{

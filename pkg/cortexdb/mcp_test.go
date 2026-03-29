@@ -55,6 +55,8 @@ func TestMCPServerToolFlow(t *testing.T) {
 	var searchTool *mcp.Tool
 	var knowledgeSearchTool *mcp.Tool
 	var memorySearchTool *mcp.Tool
+	var ontologySaveTool *mcp.Tool
+	var inferenceTool *mcp.Tool
 	for _, tool := range toolList.Tools {
 		if tool.Name == "search_graphrag_lexical" {
 			searchTool = tool
@@ -64,6 +66,12 @@ func TestMCPServerToolFlow(t *testing.T) {
 		}
 		if tool.Name == "memory_search" {
 			memorySearchTool = tool
+		}
+		if tool.Name == "ontology_save" {
+			ontologySaveTool = tool
+		}
+		if tool.Name == "apply_inference" {
+			inferenceTool = tool
 		}
 	}
 	if searchTool == nil {
@@ -75,11 +83,42 @@ func TestMCPServerToolFlow(t *testing.T) {
 	if memorySearchTool == nil {
 		t.Fatal("expected memory_search tool")
 	}
+	if ontologySaveTool == nil {
+		t.Fatal("expected ontology_save tool")
+	}
+	if inferenceTool == nil {
+		t.Fatal("expected apply_inference tool")
+	}
 	if !strings.Contains(searchTool.Description, "keywords") {
 		t.Fatalf("expected keyword guidance in tool description, got %q", searchTool.Description)
 	}
 	if !strings.Contains(knowledgeSearchTool.Description, "keywords") {
 		t.Fatalf("expected keyword guidance in knowledge_search description, got %q", knowledgeSearchTool.Description)
+	}
+	if !strings.Contains(ontologySaveTool.Description, "schema") {
+		t.Fatalf("expected ontology schema guidance in ontology_save description, got %q", ontologySaveTool.Description)
+	}
+
+	ontologySaveResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "ontology_save",
+		Arguments: map[string]any{
+			"schema_id": "mcp-ontology",
+			"activate":  true,
+			"entity_types": []map[string]any{
+				{"name": "entity"},
+				{"name": "person"},
+				{"name": "organization"},
+			},
+			"relation_types": []map[string]any{
+				{"name": "works_at", "allowed_from_types": []string{"person"}, "allowed_to_types": []string{"organization"}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("call ontology_save: %v", err)
+	}
+	if ontologySaveResult.IsError {
+		t.Fatalf("ontology_save returned tool error: %v", ontologySaveResult.GetError())
 	}
 
 	ingestResult, err := session.CallTool(ctx, &mcp.CallToolParams{
@@ -125,9 +164,12 @@ func TestMCPServerToolFlow(t *testing.T) {
 			"max_context_chunks": 3,
 			"max_context_chars":  240,
 			"per_document_limit": 2,
-			"keywords":           []string{"Alice", "Acme", "employer", "works"},
-			"alternate_queries":  []string{"Alice works at Acme"},
-			"entity_names":       []string{"Alice", "Acme"},
+			"plan": map[string]any{
+				"keywords":          []string{"Alice", "Acme", "employer", "works"},
+				"alternate_queries": []string{"Alice works at Acme"},
+				"entity_names":      []string{"Alice", "Acme"},
+				"retrieval_mode":    RetrievalModeAuto,
+			},
 		},
 	})
 	if err != nil {
@@ -150,6 +192,9 @@ func TestMCPServerToolFlow(t *testing.T) {
 	}
 	if graphragResp.Context == "" {
 		t.Fatal("expected graphrag context from MCP search")
+	}
+	if graphragResp.Decision.EffectiveMode == "" || graphragResp.Plan.Query == "" {
+		t.Fatalf("expected graphrag planning metadata from MCP search, got %+v", graphragResp)
 	}
 
 	knowledgeSaveResult, err := session.CallTool(ctx, &mcp.CallToolParams{
@@ -203,6 +248,9 @@ func TestMCPServerToolFlow(t *testing.T) {
 	}
 	if len(knowledgeSearchResp.Results) == 0 {
 		t.Fatal("expected knowledge search results from MCP")
+	}
+	if knowledgeSearchResp.Decision.EffectiveMode == "" || knowledgeSearchResp.Plan.Query == "" {
+		t.Fatalf("expected knowledge planning metadata from MCP, got %+v", knowledgeSearchResp)
 	}
 
 	memorySaveResult, err := session.CallTool(ctx, &mcp.CallToolParams{

@@ -90,20 +90,25 @@ type KnowledgeDeleteResponse struct {
 
 // KnowledgeSearchRequest searches durable knowledge with vector GraphRAG when available or lexical GraphRAG otherwise.
 type KnowledgeSearchRequest struct {
-	Query            string   `json:"query"`
-	Collection       string   `json:"collection,omitempty"`
-	TopK             int      `json:"top_k,omitempty"`
-	MaxHops          int      `json:"max_hops,omitempty"`
-	MaxRelatedChunks int      `json:"max_related_chunks,omitempty"`
-	MaxContextChunks int      `json:"max_context_chunks,omitempty"`
-	MaxContextChars  int      `json:"max_context_chars,omitempty"`
-	PerDocumentLimit int      `json:"per_document_limit,omitempty"`
-	DiversityLambda  float64  `json:"diversity_lambda,omitempty"`
-	EntityNames      []string `json:"entity_names,omitempty"`
-	Keywords         []string `json:"keywords,omitempty"`
-	AlternateQueries []string `json:"alternate_queries,omitempty"`
-	RetrievalMode    string   `json:"retrieval_mode,omitempty"`
-	DisableGraph     bool     `json:"disable_graph,omitempty"`
+	Query               string         `json:"query"`
+	Collection          string         `json:"collection,omitempty"`
+	TopK                int            `json:"top_k,omitempty"`
+	MaxHops             int            `json:"max_hops,omitempty"`
+	MaxRelatedChunks    int            `json:"max_related_chunks,omitempty"`
+	MaxContextChunks    int            `json:"max_context_chunks,omitempty"`
+	MaxContextChars     int            `json:"max_context_chars,omitempty"`
+	PerDocumentLimit    int            `json:"per_document_limit,omitempty"`
+	DiversityLambda     float64        `json:"diversity_lambda,omitempty"`
+	EntityNames         []string       `json:"entity_names,omitempty"`
+	Keywords            []string       `json:"keywords,omitempty"`
+	AlternateQueries    []string       `json:"alternate_queries,omitempty"`
+	RetrievalMode       string         `json:"retrieval_mode,omitempty"`
+	DisableGraph        bool           `json:"disable_graph,omitempty"`
+	GraphLight          bool           `json:"graph_light,omitempty"`
+	MaxExpansionSeeds   int            `json:"max_expansion_seeds,omitempty"`
+	MaxTraversalNodes   int            `json:"max_traversal_nodes,omitempty"`
+	MaxEntitiesPerChunk int            `json:"max_entities_per_chunk,omitempty"`
+	Plan                *RetrievalPlan `json:"plan,omitempty"`
 }
 
 // KnowledgeSearchHit is a document-shaped search result aggregated from chunk retrieval.
@@ -122,6 +127,8 @@ type KnowledgeSearchHit struct {
 // KnowledgeSearchResponse contains grouped knowledge hits and the packed GraphRAG context.
 type KnowledgeSearchResponse struct {
 	Query    string                `json:"query"`
+	Plan     RetrievalPlan         `json:"plan"`
+	Decision RetrievalDecision     `json:"decision"`
 	Results  []KnowledgeSearchHit  `json:"results"`
 	Chunks   []GraphRAGChunkResult `json:"chunks,omitempty"`
 	Entities []string              `json:"entities,omitempty"`
@@ -195,15 +202,16 @@ type MemoryDeleteResponse struct {
 
 // MemorySearchRequest searches memories inside a resolved memory bucket.
 type MemorySearchRequest struct {
-	Query            string   `json:"query"`
-	UserID           string   `json:"user_id,omitempty"`
-	SessionID        string   `json:"session_id,omitempty"`
-	Scope            string   `json:"scope,omitempty"`
-	Namespace        string   `json:"namespace,omitempty"`
-	TopK             int      `json:"top_k,omitempty"`
-	Keywords         []string `json:"keywords,omitempty"`
-	AlternateQueries []string `json:"alternate_queries,omitempty"`
-	RetrievalMode    string   `json:"retrieval_mode,omitempty"`
+	Query            string         `json:"query"`
+	UserID           string         `json:"user_id,omitempty"`
+	SessionID        string         `json:"session_id,omitempty"`
+	Scope            string         `json:"scope,omitempty"`
+	Namespace        string         `json:"namespace,omitempty"`
+	TopK             int            `json:"top_k,omitempty"`
+	Keywords         []string       `json:"keywords,omitempty"`
+	AlternateQueries []string       `json:"alternate_queries,omitempty"`
+	RetrievalMode    string         `json:"retrieval_mode,omitempty"`
+	Plan             *RetrievalPlan `json:"plan,omitempty"`
 }
 
 // MemorySearchHit is one scored memory result.
@@ -214,6 +222,8 @@ type MemorySearchHit struct {
 
 // MemorySearchResponse contains retrieved memories.
 type MemorySearchResponse struct {
-	Query   string            `json:"query"`
-	Results []MemorySearchHit `json:"results"`
+	Query    string            `json:"query"`
+	Plan     RetrievalPlan     `json:"plan"`
+	Decision RetrievalDecision `json:"decision"`
+	Results  []MemorySearchHit `json:"results"`
 }

@@ -173,6 +173,43 @@ result, _ := db.SearchGraphRAG(ctx, "Alice 在哪里工作？", cortexdb.GraphRA
 
 如果你已经有外部 LLM orchestration，那么无 embedder 模式下也可以通过 `retrieval_mode`、`keywords` 和 `alternate_queries` 使用同样的思路。
 
+这条工作流也可以叠加 schema 校验和 inference：
+
+```go
+_, _ = db.SaveOntologySchema(ctx, cortexdb.OntologySaveRequest{
+	SchemaID: "company-graph",
+	Activate: true,
+	EntityTypes: []cortexdb.OntologyEntityType{
+		{Name: "entity"},
+		{Name: "person"},
+		{Name: "organization"},
+		{Name: "city"},
+	},
+	RelationTypes: []cortexdb.OntologyRelationType{
+		{Name: "works_at", AllowedFromTypes: []string{"person"}, AllowedToTypes: []string{"organization"}},
+		{Name: "located_in", AllowedFromTypes: []string{"organization"}, AllowedToTypes: []string{"city"}},
+		{Name: "works_in_city", AllowedFromTypes: []string{"person"}, AllowedToTypes: []string{"city"}},
+	},
+})
+
+_, _ = db.ApplyInferenceRules(ctx, cortexdb.ApplyInferenceRequest{
+	DocumentID: "alice-berlin-proof",
+	Rules: []cortexdb.InferenceRule{
+		{
+			RuleID:             "employment_city",
+			LeftRelationType:   "works_at",
+			RightRelationType:  "located_in",
+			ResultRelationType: "works_in_city",
+		},
+	},
+})
+```
+
+这条链路可以直接参考新的端到端示例：
+
+- `examples/graphrag_embedder`
+- `examples/llm_tool_calling`
+
 ### 4. MCP Tool Calling / 无 Embedding 模式
 
 如果你没有 embedding model，但有 LLM，CortexDB 依然可以作为 MCP tool server 使用。在这种模式下：
@@ -237,6 +274,20 @@ _, _ = knowledge, memory
 - `get_chunks`
 - `build_context`
 - `search_graphrag_lexical`
+
+高阶 ontology / inference tools 也已经暴露：
+
+- `ontology_save`
+- `ontology_get`
+- `ontology_list`
+- `ontology_delete`
+- `apply_inference`
+
+推荐进一步阅读：
+
+- `docs/retrieval_planning.md`
+- `docs/evaluation.md`
+- `docs/release_notes_llm_first.md`
 
 ### 5. 高级元数据过滤
 

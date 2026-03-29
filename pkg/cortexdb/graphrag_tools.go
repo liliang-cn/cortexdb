@@ -79,12 +79,16 @@ type ToolUpsertEntitiesResponse struct {
 
 // ToolRelationInput represents a relation extracted by an external LLM.
 type ToolRelationInput struct {
-	From     string            `json:"from"`
-	To       string            `json:"to"`
-	Type     string            `json:"type,omitempty"`
-	Weight   float64           `json:"weight,omitempty"`
-	ChunkIDs []string          `json:"chunk_ids,omitempty"`
-	Metadata map[string]string `json:"metadata,omitempty"`
+	From           string            `json:"from"`
+	To             string            `json:"to"`
+	Type           string            `json:"type,omitempty"`
+	Weight         float64           `json:"weight,omitempty"`
+	ChunkIDs       []string          `json:"chunk_ids,omitempty"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
+	Inferred       bool              `json:"inferred,omitempty"`
+	Provenance     string            `json:"provenance,omitempty"`
+	RuleID         string            `json:"rule_id,omitempty"`
+	SupportEdgeIDs []string          `json:"support_edge_ids,omitempty"`
 }
 
 // ToolUpsertRelationsRequest writes graph edges between entities.
@@ -100,19 +104,24 @@ type ToolUpsertRelationsResponse struct {
 
 // ToolSearchTextRequest performs lexical seed retrieval.
 type ToolSearchTextRequest struct {
-	Query            string   `json:"query"`
-	Collection       string   `json:"collection,omitempty"`
-	TopK             int      `json:"top_k,omitempty"`
-	Threshold        float64  `json:"threshold,omitempty"`
-	Keywords         []string `json:"keywords,omitempty"`
-	AlternateQueries []string `json:"alternate_queries,omitempty"`
-	RetrievalMode    string   `json:"retrieval_mode,omitempty"`
-	DisableGraph     bool     `json:"disable_graph,omitempty"`
+	Query               string         `json:"query"`
+	Collection          string         `json:"collection,omitempty"`
+	TopK                int            `json:"top_k,omitempty"`
+	Threshold           float64        `json:"threshold,omitempty"`
+	Keywords            []string       `json:"keywords,omitempty"`
+	AlternateQueries    []string       `json:"alternate_queries,omitempty"`
+	RetrievalMode       string         `json:"retrieval_mode,omitempty"`
+	DisableGraph        bool           `json:"disable_graph,omitempty"`
+	GraphLight          bool           `json:"graph_light,omitempty"`
+	MaxEntitiesPerChunk int            `json:"max_entities_per_chunk,omitempty"`
+	Plan                *RetrievalPlan `json:"plan,omitempty"`
 }
 
 // ToolSearchTextResponse returns chunk hits from lexical retrieval.
 type ToolSearchTextResponse struct {
-	Chunks []ToolChunk `json:"chunks"`
+	Plan     RetrievalPlan     `json:"plan"`
+	Decision RetrievalDecision `json:"decision"`
+	Chunks   []ToolChunk       `json:"chunks"`
 }
 
 // ToolSearchChunksByEntitiesRequest finds chunks connected to the given entities.
@@ -154,9 +163,11 @@ type ToolGetNodesResponse struct {
 
 // ToolGetChunksRequest fetches chunk records by chunk ID.
 type ToolGetChunksRequest struct {
-	ChunkIDs      []string `json:"chunk_ids"`
-	RetrievalMode string   `json:"retrieval_mode,omitempty"`
-	DisableGraph  bool     `json:"disable_graph,omitempty"`
+	ChunkIDs            []string `json:"chunk_ids"`
+	RetrievalMode       string   `json:"retrieval_mode,omitempty"`
+	DisableGraph        bool     `json:"disable_graph,omitempty"`
+	GraphLight          bool     `json:"graph_light,omitempty"`
+	MaxEntitiesPerChunk int      `json:"max_entities_per_chunk,omitempty"`
 }
 
 // ToolGetChunksResponse returns chunk records.
@@ -166,12 +177,14 @@ type ToolGetChunksResponse struct {
 
 // ToolBuildContextRequest packs chunk text into a prompt context budget.
 type ToolBuildContextRequest struct {
-	ChunkIDs         []string `json:"chunk_ids"`
-	MaxContextChunks int      `json:"max_context_chunks,omitempty"`
-	MaxContextChars  int      `json:"max_context_chars,omitempty"`
-	PerDocumentLimit int      `json:"per_document_limit,omitempty"`
-	RetrievalMode    string   `json:"retrieval_mode,omitempty"`
-	DisableGraph     bool     `json:"disable_graph,omitempty"`
+	ChunkIDs            []string `json:"chunk_ids"`
+	MaxContextChunks    int      `json:"max_context_chunks,omitempty"`
+	MaxContextChars     int      `json:"max_context_chars,omitempty"`
+	PerDocumentLimit    int      `json:"per_document_limit,omitempty"`
+	RetrievalMode       string   `json:"retrieval_mode,omitempty"`
+	DisableGraph        bool     `json:"disable_graph,omitempty"`
+	GraphLight          bool     `json:"graph_light,omitempty"`
+	MaxEntitiesPerChunk int      `json:"max_entities_per_chunk,omitempty"`
 }
 
 // ToolBuildContextResponse returns packed chunks and the assembled context.
@@ -182,20 +195,25 @@ type ToolBuildContextResponse struct {
 
 // ToolSearchGraphRAGLexicalRequest performs no-embedder GraphRAG retrieval.
 type ToolSearchGraphRAGLexicalRequest struct {
-	Query            string   `json:"query"`
-	Collection       string   `json:"collection,omitempty"`
-	TopK             int      `json:"top_k,omitempty"`
-	MaxHops          int      `json:"max_hops,omitempty"`
-	MaxRelatedChunks int      `json:"max_related_chunks,omitempty"`
-	MaxContextChunks int      `json:"max_context_chunks,omitempty"`
-	MaxContextChars  int      `json:"max_context_chars,omitempty"`
-	PerDocumentLimit int      `json:"per_document_limit,omitempty"`
-	DiversityLambda  float64  `json:"diversity_lambda,omitempty"`
-	EntityNames      []string `json:"entity_names,omitempty"`
-	Keywords         []string `json:"keywords,omitempty"`
-	AlternateQueries []string `json:"alternate_queries,omitempty"`
-	RetrievalMode    string   `json:"retrieval_mode,omitempty"`
-	DisableGraph     bool     `json:"disable_graph,omitempty"`
+	Query               string         `json:"query"`
+	Collection          string         `json:"collection,omitempty"`
+	TopK                int            `json:"top_k,omitempty"`
+	MaxHops             int            `json:"max_hops,omitempty"`
+	MaxRelatedChunks    int            `json:"max_related_chunks,omitempty"`
+	MaxContextChunks    int            `json:"max_context_chunks,omitempty"`
+	MaxContextChars     int            `json:"max_context_chars,omitempty"`
+	PerDocumentLimit    int            `json:"per_document_limit,omitempty"`
+	DiversityLambda     float64        `json:"diversity_lambda,omitempty"`
+	EntityNames         []string       `json:"entity_names,omitempty"`
+	Keywords            []string       `json:"keywords,omitempty"`
+	AlternateQueries    []string       `json:"alternate_queries,omitempty"`
+	RetrievalMode       string         `json:"retrieval_mode,omitempty"`
+	DisableGraph        bool           `json:"disable_graph,omitempty"`
+	GraphLight          bool           `json:"graph_light,omitempty"`
+	MaxExpansionSeeds   int            `json:"max_expansion_seeds,omitempty"`
+	MaxTraversalNodes   int            `json:"max_traversal_nodes,omitempty"`
+	MaxEntitiesPerChunk int            `json:"max_entities_per_chunk,omitempty"`
+	Plan                *RetrievalPlan `json:"plan,omitempty"`
 }
 
 // HasEmbedder reports whether the DB has an in-process embedder configured.
@@ -263,12 +281,16 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 						"items": toolObjectSchema(
 							[]string{"from", "to"},
 							map[string]any{
-								"from":      toolStringSchema("Source entity name or entity node ID."),
-								"to":        toolStringSchema("Target entity name or entity node ID."),
-								"type":      toolStringSchema("Optional relation type."),
-								"weight":    toolNumberSchema("Optional edge weight."),
-								"chunk_ids": toolStringArraySchema("Optional supporting chunk IDs."),
-								"metadata":  toolMapSchema("Optional metadata."),
+								"from":             toolStringSchema("Source entity name or entity node ID."),
+								"to":               toolStringSchema("Target entity name or entity node ID."),
+								"type":             toolStringSchema("Optional relation type."),
+								"weight":           toolNumberSchema("Optional edge weight."),
+								"chunk_ids":        toolStringArraySchema("Optional supporting chunk IDs."),
+								"metadata":         toolMapSchema("Optional metadata."),
+								"inferred":         toolBooleanSchema("Set true when this relation is inferred rather than explicit."),
+								"provenance":       toolStringSchema("Optional provenance source such as rule or llm."),
+								"rule_id":          toolStringSchema("Optional rule or inference identifier."),
+								"support_edge_ids": toolStringArraySchema("Optional supporting relation edge IDs for provenance."),
 							},
 						),
 					},
@@ -277,18 +299,21 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 		},
 		{
 			Name:        "search_text",
-			Description: "Run lexical BM25/FTS5 retrieval over stored chunks. Before calling, the LLM should expand the user goal into many keywords, aliases, synonyms, and multilingual variants, then pass them via keywords or alternate_queries.",
+			Description: "Run lexical BM25/FTS5 retrieval over stored chunks. Prefer sending a structured plan, and before calling, expand the user goal into many keywords, aliases, synonyms, and multilingual variants.",
 			InputSchema: toolObjectSchema(
 				[]string{"query"},
 				map[string]any{
-					"query":             toolStringSchema("User goal or natural-language question."),
-					"collection":        toolStringSchema("Optional collection name."),
-					"top_k":             toolIntegerSchema("Maximum number of chunks to return."),
-					"threshold":         toolNumberSchema("Optional minimum normalized score."),
-					"keywords":          toolStringArraySchema("LLM-generated keyword bank derived from the goal. Include aliases, synonyms, abbreviations, translations, and domain terms."),
-					"alternate_queries": toolStringArraySchema("Alternate phrasings generated by the LLM planner from the same goal."),
-					"retrieval_mode":    toolEnumSchema("Preferred retrieval strategy.", RetrievalModeAuto, RetrievalModeLexical, RetrievalModeGraph),
-					"disable_graph":     toolBooleanSchema("Legacy alias. Set true to avoid graph-based entity enrichment and force lexical-only retrieval."),
+					"query":                  toolStringSchema("User goal or natural-language question."),
+					"collection":             toolStringSchema("Optional collection name."),
+					"top_k":                  toolIntegerSchema("Maximum number of chunks to return."),
+					"threshold":              toolNumberSchema("Optional minimum normalized score."),
+					"keywords":               toolStringArraySchema("LLM-generated keyword bank derived from the goal. Include aliases, synonyms, abbreviations, translations, and domain terms."),
+					"alternate_queries":      toolStringArraySchema("Alternate phrasings generated by the LLM planner from the same goal."),
+					"retrieval_mode":         toolEnumSchema("Preferred retrieval strategy.", RetrievalModeAuto, RetrievalModeLexical, RetrievalModeGraph),
+					"disable_graph":          toolBooleanSchema("Legacy alias. Set true to avoid graph-based entity enrichment and force lexical-only retrieval."),
+					"graph_light":            toolBooleanSchema("Enable lighter graph enrichment defaults for lower latency."),
+					"max_entities_per_chunk": toolIntegerSchema("Optional cap on graph-derived entities attached to each chunk."),
+					"plan":                   toolRetrievalPlanSchema("Preferred structured retrieval plan produced by the external LLM before search."),
 				},
 			),
 		},
@@ -334,9 +359,11 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			InputSchema: toolObjectSchema(
 				[]string{"chunk_ids"},
 				map[string]any{
-					"chunk_ids":      toolStringArraySchema("Chunk IDs to load."),
-					"retrieval_mode": toolEnumSchema("Preferred retrieval strategy for entity enrichment.", RetrievalModeAuto, RetrievalModeLexical, RetrievalModeGraph),
-					"disable_graph":  toolBooleanSchema("Legacy alias. Set true to skip graph-derived entity lookups while loading chunks."),
+					"chunk_ids":              toolStringArraySchema("Chunk IDs to load."),
+					"retrieval_mode":         toolEnumSchema("Preferred retrieval strategy for entity enrichment.", RetrievalModeAuto, RetrievalModeLexical, RetrievalModeGraph),
+					"disable_graph":          toolBooleanSchema("Legacy alias. Set true to skip graph-derived entity lookups while loading chunks."),
+					"graph_light":            toolBooleanSchema("Enable lighter graph enrichment defaults while loading chunks."),
+					"max_entities_per_chunk": toolIntegerSchema("Optional cap on graph-derived entities attached to each chunk."),
 				},
 			),
 		},
@@ -346,44 +373,59 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			InputSchema: toolObjectSchema(
 				[]string{"chunk_ids"},
 				map[string]any{
-					"chunk_ids":          toolStringArraySchema("Ordered chunk IDs."),
-					"max_context_chunks": toolIntegerSchema("Maximum number of chunks to include."),
-					"max_context_chars":  toolIntegerSchema("Maximum total character budget."),
-					"per_document_limit": toolIntegerSchema("Maximum chunks per document."),
-					"retrieval_mode":     toolEnumSchema("Preferred retrieval strategy for entity enrichment.", RetrievalModeAuto, RetrievalModeLexical, RetrievalModeGraph),
-					"disable_graph":      toolBooleanSchema("Legacy alias. Set true to skip graph-derived entity lookups while packing context."),
+					"chunk_ids":              toolStringArraySchema("Ordered chunk IDs."),
+					"max_context_chunks":     toolIntegerSchema("Maximum number of chunks to include."),
+					"max_context_chars":      toolIntegerSchema("Maximum total character budget."),
+					"per_document_limit":     toolIntegerSchema("Maximum chunks per document."),
+					"retrieval_mode":         toolEnumSchema("Preferred retrieval strategy for entity enrichment.", RetrievalModeAuto, RetrievalModeLexical, RetrievalModeGraph),
+					"disable_graph":          toolBooleanSchema("Legacy alias. Set true to skip graph-derived entity lookups while packing context."),
+					"graph_light":            toolBooleanSchema("Enable lighter graph enrichment defaults while packing context."),
+					"max_entities_per_chunk": toolIntegerSchema("Optional cap on graph-derived entities attached to each chunk."),
 				},
 			),
 		},
 		{
 			Name:        "search_graphrag_lexical",
-			Description: "Perform lexical GraphRAG retrieval using FTS5 seeds, graph expansion, rerank, and context packing. The LLM should first expand the user goal into many keywords, aliases, synonyms, and multilingual variants, then pass them via keywords or alternate_queries.",
+			Description: "Perform lexical GraphRAG retrieval using FTS5 seeds, graph expansion, rerank, and context packing. Prefer sending a structured plan, and first expand the user goal into many keywords, aliases, synonyms, and multilingual variants.",
 			InputSchema: toolObjectSchema(
 				[]string{"query"},
 				map[string]any{
-					"query":              toolStringSchema("User goal or natural-language question."),
-					"collection":         toolStringSchema("Optional chunk collection name."),
-					"top_k":              toolIntegerSchema("Seed chunk count."),
-					"max_hops":           toolIntegerSchema("Graph expansion depth."),
-					"max_related_chunks": toolIntegerSchema("Maximum graph-expanded chunks."),
-					"max_context_chunks": toolIntegerSchema("Maximum chunks in final context."),
-					"max_context_chars":  toolIntegerSchema("Maximum context character budget."),
-					"per_document_limit": toolIntegerSchema("Maximum chunks per document."),
-					"diversity_lambda":   toolNumberSchema("Rerank diversity weight between 0 and 1."),
-					"entity_names":       toolStringArraySchema("Optional entities from structured LLM planning."),
-					"keywords":           toolStringArraySchema("LLM-generated keyword bank derived from the goal. Include aliases, synonyms, abbreviations, translations, and domain terms."),
-					"alternate_queries":  toolStringArraySchema("Alternate phrasings generated by the LLM planner from the same goal."),
-					"retrieval_mode":     toolEnumSchema("Preferred retrieval strategy. Use lexical for speed, graph for full expansion, or auto for heuristic selection.", RetrievalModeAuto, RetrievalModeLexical, RetrievalModeGraph),
-					"disable_graph":      toolBooleanSchema("Legacy alias. Set true to disable graph traversal and force lexical-only retrieval."),
+					"query":                  toolStringSchema("User goal or natural-language question."),
+					"collection":             toolStringSchema("Optional chunk collection name."),
+					"top_k":                  toolIntegerSchema("Seed chunk count."),
+					"max_hops":               toolIntegerSchema("Graph expansion depth."),
+					"max_related_chunks":     toolIntegerSchema("Maximum graph-expanded chunks."),
+					"max_context_chunks":     toolIntegerSchema("Maximum chunks in final context."),
+					"max_context_chars":      toolIntegerSchema("Maximum context character budget."),
+					"per_document_limit":     toolIntegerSchema("Maximum chunks per document."),
+					"diversity_lambda":       toolNumberSchema("Rerank diversity weight between 0 and 1."),
+					"entity_names":           toolStringArraySchema("Optional entities from structured LLM planning."),
+					"keywords":               toolStringArraySchema("LLM-generated keyword bank derived from the goal. Include aliases, synonyms, abbreviations, translations, and domain terms."),
+					"alternate_queries":      toolStringArraySchema("Alternate phrasings generated by the LLM planner from the same goal."),
+					"retrieval_mode":         toolEnumSchema("Preferred retrieval strategy. Use lexical for speed, graph for full expansion, or auto for heuristic selection.", RetrievalModeAuto, RetrievalModeLexical, RetrievalModeGraph),
+					"disable_graph":          toolBooleanSchema("Legacy alias. Set true to disable graph traversal and force lexical-only retrieval."),
+					"graph_light":            toolBooleanSchema("Enable lighter graph traversal defaults for lower latency."),
+					"max_expansion_seeds":    toolIntegerSchema("Optional cap on how many seed chunks will be expanded through the graph."),
+					"max_traversal_nodes":    toolIntegerSchema("Optional cap on how many graph nodes will be inspected during expansion."),
+					"max_entities_per_chunk": toolIntegerSchema("Optional cap on graph-derived entities attached to each chunk."),
+					"plan":                   toolRetrievalPlanSchema("Preferred structured retrieval plan produced by the external LLM before search."),
 				},
 			),
 		},
 	}
+	definitions = append(definitions, inferenceToolDefinitions()...)
+	definitions = append(definitions, ontologyToolDefinitions()...)
 	return append(definitions, knowledgeMemoryToolDefinitions()...)
 }
 
 // Call dispatches a tool request from JSON input to a typed implementation.
 func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawMessage) (any, error) {
+	if resp, handled, err := t.callInferenceTool(ctx, name, input); handled {
+		return resp, err
+	}
+	if resp, handled, err := t.callOntologyTool(ctx, name, input); handled {
+		return resp, err
+	}
 	switch name {
 	case "ingest_document":
 		var req ToolIngestDocumentRequest
@@ -650,6 +692,9 @@ func (t *GraphRAGToolbox) UpsertEntities(ctx context.Context, req ToolUpsertEnti
 	if err := t.db.graph.InitGraphSchema(ctx); err != nil {
 		return nil, fmt.Errorf("init graph schema: %w", err)
 	}
+	if err := t.db.validateEntityInputs(ctx, req.Entities); err != nil {
+		return nil, err
+	}
 
 	vectorDim, err := t.lexicalVectorDim(ctx, defaultGraphRAGCollection)
 	if err != nil {
@@ -725,6 +770,9 @@ func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRel
 	if err := t.db.graph.InitGraphSchema(ctx); err != nil {
 		return nil, fmt.Errorf("init graph schema: %w", err)
 	}
+	if err := t.db.validateRelationInputs(ctx, req.Relations); err != nil {
+		return nil, err
+	}
 
 	edges := make([]*graph.GraphEdge, 0, len(req.Relations))
 	edgeIDs := make([]string, 0, len(req.Relations))
@@ -744,6 +792,18 @@ func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRel
 		}
 		if len(rel.ChunkIDs) > 0 {
 			properties["chunk_ids"] = rel.ChunkIDs
+		}
+		if rel.Inferred {
+			properties["inferred"] = true
+		}
+		if rel.Provenance != "" {
+			properties["provenance"] = rel.Provenance
+		}
+		if rel.RuleID != "" {
+			properties["rule_id"] = rel.RuleID
+		}
+		if len(rel.SupportEdgeIDs) > 0 {
+			properties["support_edge_ids"] = rel.SupportEdgeIDs
 		}
 		for k, v := range rel.Metadata {
 			properties[k] = v
@@ -774,25 +834,44 @@ func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRel
 
 // SearchText runs lexical retrieval over chunk content.
 func (t *GraphRAGToolbox) SearchText(ctx context.Context, req ToolSearchTextRequest) (*ToolSearchTextResponse, error) {
-	results, err := t.searchTextCandidates(ctx, req)
+	resolution := resolveRetrievalPlan(retrievalPlanInput{
+		Query:               req.Query,
+		Plan:                req.Plan,
+		Keywords:            req.Keywords,
+		AlternateQueries:    req.AlternateQueries,
+		RetrievalMode:       req.RetrievalMode,
+		DisableGraph:        req.DisableGraph,
+		Filters:             &RetrievalFilters{Collection: req.Collection},
+		SupportsGraph:       true,
+		EmptyQueryUsesGraph: false,
+	})
+	if strings.TrimSpace(resolution.Plan.Query) == "" {
+		return nil, ErrEmptyText
+	}
+
+	results, err := t.searchTextCandidates(ctx, req, resolution)
 	if err != nil {
 		return nil, err
 	}
-	chunks, err := t.loadToolChunks(ctx, scoredEmbeddingsToMap(results), scoredEmbeddingsOrder(results), shouldLoadChunkEntities(req.RetrievalMode, req.DisableGraph, req.Query))
+	chunks, err := t.toolChunksFromSearchResults(ctx, results, resolution.Decision.UseGraph, maxEntitiesPerChunk(resolution.Plan.RetrievalMode, req.GraphLight, req.MaxEntitiesPerChunk))
 	if err != nil {
 		return nil, err
 	}
-	return &ToolSearchTextResponse{Chunks: chunks}, nil
+	return &ToolSearchTextResponse{
+		Plan:     resolution.Plan,
+		Decision: resolution.Decision,
+		Chunks:   chunks,
+	}, nil
 }
 
-func (t *GraphRAGToolbox) searchTextCandidates(ctx context.Context, req ToolSearchTextRequest) ([]core.ScoredEmbedding, error) {
+func (t *GraphRAGToolbox) searchTextCandidates(ctx context.Context, req ToolSearchTextRequest, resolution retrievalPlanResolution) ([]core.ScoredEmbedding, error) {
 	searchOpts := TextSearchOptions{
-		Collection: req.Collection,
+		Collection: applyRetrievalPlanCollection(req.Collection, resolution.Plan.Filters),
 		TopK:       req.TopK,
 		Threshold:  req.Threshold,
 	}
 
-	queries := lexicalSearchQueries(req.Query, req.Keywords, req.AlternateQueries)
+	queries := lexicalSearchQueries(resolution.Plan.Query, resolution.Plan.Keywords, resolution.Plan.AlternateQueries)
 	if len(queries) == 0 {
 		return nil, ErrEmptyText
 	}
@@ -846,7 +925,7 @@ func (t *GraphRAGToolbox) searchTextCandidates(ctx context.Context, req ToolSear
 	if len(ordered) > searchOpts.TopK {
 		ordered = ordered[:searchOpts.TopK]
 	}
-	return ordered, nil
+	return filterScoredEmbeddings(ordered, resolution.Plan.Filters), nil
 }
 
 // SearchChunksByEntities finds chunks that are linked to the requested entities.
@@ -882,7 +961,7 @@ func (t *GraphRAGToolbox) SearchChunksByEntities(ctx context.Context, req ToolSe
 	if len(ordered) > req.TopK {
 		ordered = ordered[:req.TopK]
 	}
-	chunks, err := t.loadToolChunks(ctx, scoreMap, ordered, true)
+	chunks, err := t.loadToolChunks(ctx, scoreMap, ordered, true, maxEntitiesPerChunk(RetrievalModeGraph, false, 0))
 	if err != nil {
 		return nil, err
 	}
@@ -938,7 +1017,7 @@ func (t *GraphRAGToolbox) GetNodes(ctx context.Context, req ToolGetNodesRequest)
 
 // GetChunks fetches chunk records by ID.
 func (t *GraphRAGToolbox) GetChunks(ctx context.Context, req ToolGetChunksRequest) (*ToolGetChunksResponse, error) {
-	chunks, err := t.loadToolChunks(ctx, nil, req.ChunkIDs, shouldLoadChunkEntities(req.RetrievalMode, req.DisableGraph, ""))
+	chunks, err := t.loadToolChunks(ctx, nil, req.ChunkIDs, shouldLoadChunkEntities(req.RetrievalMode, req.DisableGraph, ""), maxEntitiesPerChunk(req.RetrievalMode, req.GraphLight, req.MaxEntitiesPerChunk))
 	if err != nil {
 		return nil, err
 	}
@@ -947,7 +1026,7 @@ func (t *GraphRAGToolbox) GetChunks(ctx context.Context, req ToolGetChunksReques
 
 // BuildContext packs chunk text into a bounded context string.
 func (t *GraphRAGToolbox) BuildContext(ctx context.Context, req ToolBuildContextRequest) (*ToolBuildContextResponse, error) {
-	chunks, err := t.loadToolChunks(ctx, nil, req.ChunkIDs, shouldLoadChunkEntities(req.RetrievalMode, req.DisableGraph, ""))
+	chunks, err := t.loadToolChunks(ctx, nil, req.ChunkIDs, shouldLoadChunkEntities(req.RetrievalMode, req.DisableGraph, ""), maxEntitiesPerChunk(req.RetrievalMode, req.GraphLight, req.MaxEntitiesPerChunk))
 	if err != nil {
 		return nil, err
 	}
@@ -982,43 +1061,66 @@ func (t *GraphRAGToolbox) BuildContext(ctx context.Context, req ToolBuildContext
 
 // SearchGraphRAGLexical performs no-embedder GraphRAG retrieval for external LLM orchestration.
 func (t *GraphRAGToolbox) SearchGraphRAGLexical(ctx context.Context, req ToolSearchGraphRAGLexicalRequest) (*GraphRAGQueryResult, error) {
-	if strings.TrimSpace(req.Query) == "" {
+	resolution := resolveRetrievalPlan(retrievalPlanInput{
+		Query:               req.Query,
+		Plan:                req.Plan,
+		Keywords:            req.Keywords,
+		AlternateQueries:    req.AlternateQueries,
+		EntityNames:         req.EntityNames,
+		RetrievalMode:       req.RetrievalMode,
+		DisableGraph:        req.DisableGraph,
+		Filters:             &RetrievalFilters{Collection: req.Collection},
+		SupportsGraph:       true,
+		EmptyQueryUsesGraph: false,
+	})
+	if strings.TrimSpace(resolution.Plan.Query) == "" {
 		return nil, ErrEmptyText
 	}
 
 	opts := GraphRAGQueryOptions{
-		Collection:       req.Collection,
-		TopK:             req.TopK,
-		MaxHops:          req.MaxHops,
-		MaxRelatedChunks: req.MaxRelatedChunks,
-		MaxContextChunks: req.MaxContextChunks,
-		MaxContextChars:  req.MaxContextChars,
-		PerDocumentLimit: req.PerDocumentLimit,
-		DiversityLambda:  req.DiversityLambda,
-		Rerank:           true,
-		RetrievalMode:    req.RetrievalMode,
-		DisableGraph:     req.DisableGraph,
+		Collection:          applyRetrievalPlanCollection(req.Collection, resolution.Plan.Filters),
+		TopK:                req.TopK,
+		MaxHops:             req.MaxHops,
+		MaxRelatedChunks:    req.MaxRelatedChunks,
+		MaxContextChunks:    req.MaxContextChunks,
+		MaxContextChars:     req.MaxContextChars,
+		PerDocumentLimit:    req.PerDocumentLimit,
+		DiversityLambda:     req.DiversityLambda,
+		Rerank:              true,
+		RetrievalMode:       resolution.Plan.RetrievalMode,
+		DisableGraph:        req.DisableGraph,
+		GraphLight:          req.GraphLight,
+		MaxExpansionSeeds:   req.MaxExpansionSeeds,
+		MaxTraversalNodes:   req.MaxTraversalNodes,
+		MaxEntitiesPerChunk: req.MaxEntitiesPerChunk,
+		Plan:                &resolution.Plan,
 	}
 	applyGraphRAGQueryDefaults(&opts)
 
 	seedResp, err := t.SearchText(ctx, ToolSearchTextRequest{
-		Query:            req.Query,
-		Collection:       opts.Collection,
-		TopK:             opts.TopK,
-		Keywords:         req.Keywords,
-		AlternateQueries: req.AlternateQueries,
-		RetrievalMode:    req.RetrievalMode,
-		DisableGraph:     req.DisableGraph,
+		Query:               resolution.Plan.Query,
+		Collection:          opts.Collection,
+		TopK:                opts.TopK,
+		Threshold:           0,
+		RetrievalMode:       resolution.Plan.RetrievalMode,
+		DisableGraph:        req.DisableGraph,
+		GraphLight:          req.GraphLight,
+		MaxEntitiesPerChunk: req.MaxEntitiesPerChunk,
+		Plan:                &resolution.Plan,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	result := &GraphRAGQueryResult{Query: req.Query}
-	useGraph := shouldUseGraphRetrieval(req.RetrievalMode, req.DisableGraph, req.Query, req.EntityNames)
-	entityNames := req.EntityNames
+	result := &GraphRAGQueryResult{
+		Query:    resolution.Plan.Query,
+		Plan:     resolution.Plan,
+		Decision: resolution.Decision,
+	}
+	useGraph := resolution.Decision.UseGraph
+	entityNames := resolution.Plan.EntityNames
 	if useGraph && len(entityNames) == 0 {
-		entityNames = extractEntityNames(extractTitleEntities(req.Query))
+		entityNames = extractEntityNames(extractTitleEntities(resolution.Plan.Query))
 	}
 
 	chunkResults := make(map[string]*GraphRAGChunkResult)
@@ -1027,6 +1129,9 @@ func (t *GraphRAGToolbox) SearchGraphRAGLexical(ctx context.Context, req ToolSea
 	seedOrder := make([]string, 0, len(seedResp.Chunks))
 
 	addChunk := func(chunk ToolChunk, seed bool) {
+		if !allowDocumentID(resolution.Plan.Filters, chunk.DocumentID) {
+			return
+		}
 		existing, ok := chunkResults[chunk.ID]
 		if !ok {
 			existing = &GraphRAGChunkResult{
@@ -1084,47 +1189,32 @@ func (t *GraphRAGToolbox) SearchGraphRAGLexical(ctx context.Context, req ToolSea
 				allChunks = append(allChunks, *chunk)
 			}
 		}
-		allChunks = rerankGraphRAGChunks(req.Query, allChunks, opts)
+		allChunks = rerankGraphRAGChunks(resolution.Plan.Query, allChunks, opts)
 		allChunks = packGraphRAGContext(allChunks, opts)
 		result.Chunks = allChunks
 		result.Context = buildGraphRAGContext(allChunks)
 		return result, nil
 	}
 
-	for _, seedID := range seedOrder {
-		neighbors, err := t.db.graph.Neighbors(ctx, seedID, graph.TraversalOptions{
-			MaxDepth:  opts.MaxHops,
-			Direction: "both",
-			Limit:     opts.TopK * 12,
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, node := range neighbors {
-			switch node.NodeType {
-			case "entity":
-				entitySet[node.Content] = struct{}{}
-			case "chunk":
-				chunk := ToolChunk{
-					ID:      node.ID,
-					Content: node.Content,
-					Score:   0.5,
-				}
-				if documentID, ok := stringProperty(node.Properties, "document_id"); ok {
-					chunk.DocumentID = documentID
-				}
-				addChunk(chunk, false)
-			}
-		}
+	expandedEntities, err := t.db.expandGraphChunkNeighborhoods(ctx, chunkResults, seedOrder, opts, resolution.Plan.Filters)
+	if err != nil {
+		return nil, err
+	}
+	for entityName := range expandedEntities {
+		entitySet[entityName] = struct{}{}
 	}
 
+	chunkIDs := make([]string, 0, len(chunkResults))
+	for chunkID := range chunkResults {
+		chunkIDs = append(chunkIDs, chunkID)
+	}
+	entityNamesByChunk, err := t.db.chunkEntityNamesBatch(ctx, chunkIDs, opts.MaxEntitiesPerChunk)
+	if err != nil {
+		return nil, err
+	}
 	for chunkID, chunk := range chunkResults {
-		entities, err := t.getChunkEntityNames(ctx, chunkID)
-		if err != nil {
-			return nil, err
-		}
-		chunk.Entities = entities
-		for _, entityName := range entities {
+		chunk.Entities = entityNamesByChunk[chunkID]
+		for _, entityName := range chunk.Entities {
 			entitySet[entityName] = struct{}{}
 		}
 	}
@@ -1149,7 +1239,7 @@ func (t *GraphRAGToolbox) SearchGraphRAGLexical(ctx context.Context, req ToolSea
 	}
 
 	allChunks := append(seedChunks, relatedChunks...)
-	allChunks = rerankGraphRAGChunks(req.Query, allChunks, opts)
+	allChunks = rerankGraphRAGChunks(resolution.Plan.Query, allChunks, opts)
 	allChunks = packGraphRAGContext(allChunks, opts)
 
 	result.Chunks = allChunks
@@ -1207,19 +1297,53 @@ func lexicalVectorForText(text string, dim int) []float32 {
 	return vector
 }
 
-func (t *GraphRAGToolbox) loadToolChunks(ctx context.Context, scoreMap map[string]float64, orderedIDs []string, includeEntities bool) ([]ToolChunk, error) {
+func (t *GraphRAGToolbox) toolChunksFromSearchResults(ctx context.Context, results []core.ScoredEmbedding, includeEntities bool, maxEntitiesPerChunk int) ([]ToolChunk, error) {
+	if len(results) == 0 {
+		return nil, nil
+	}
+
+	entityNamesByChunk := make(map[string][]string)
+	if includeEntities {
+		var err error
+		entityNamesByChunk, err = t.db.chunkEntityNamesBatch(ctx, scoredEmbeddingsOrder(results), maxEntitiesPerChunk)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	chunks := make([]ToolChunk, 0, len(results))
+	for _, result := range results {
+		chunks = append(chunks, ToolChunk{
+			ID:         result.ID,
+			DocumentID: result.DocID,
+			Content:    result.Content,
+			Score:      result.Score,
+			Metadata:   result.Metadata,
+			Entities:   entityNamesByChunk[result.ID],
+		})
+	}
+	return chunks, nil
+}
+
+func (t *GraphRAGToolbox) loadToolChunks(ctx context.Context, scoreMap map[string]float64, orderedIDs []string, includeEntities bool, maxEntitiesPerChunk int) ([]ToolChunk, error) {
+	embeddings, err := t.db.embeddingsByIDs(ctx, orderedIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	entityNamesByChunk := make(map[string][]string)
+	if includeEntities {
+		entityNamesByChunk, err = t.db.chunkEntityNamesBatch(ctx, orderedIDs, maxEntitiesPerChunk)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	chunks := make([]ToolChunk, 0, len(orderedIDs))
 	for _, chunkID := range orderedIDs {
-		emb, err := t.db.store.GetByID(ctx, chunkID)
-		if err != nil {
+		emb, ok := embeddings[chunkID]
+		if !ok {
 			continue
-		}
-		var entities []string
-		if includeEntities {
-			entities, err = t.getChunkEntityNames(ctx, chunkID)
-			if err != nil {
-				return nil, err
-			}
 		}
 		score := 0.0
 		if scoreMap != nil {
@@ -1227,32 +1351,22 @@ func (t *GraphRAGToolbox) loadToolChunks(ctx context.Context, scoreMap map[strin
 		}
 		chunks = append(chunks, ToolChunk{
 			ID:         emb.ID,
-			DocumentID: emb.DocID,
+			DocumentID: emb.DocumentID,
 			Content:    emb.Content,
 			Score:      score,
 			Metadata:   emb.Metadata,
-			Entities:   entities,
+			Entities:   entityNamesByChunk[chunkID],
 		})
 	}
 	return chunks, nil
 }
 
 func (t *GraphRAGToolbox) getChunkEntityNames(ctx context.Context, chunkID string) ([]string, error) {
-	neighbors, err := t.db.graph.Neighbors(ctx, chunkID, graph.TraversalOptions{
-		MaxDepth:  1,
-		Direction: "both",
-		NodeTypes: []string{"entity"},
-		Limit:     32,
-	})
+	entityNamesByChunk, err := t.db.chunkEntityNamesBatch(ctx, []string{chunkID}, 32)
 	if err != nil {
 		return nil, err
 	}
-	names := make([]string, 0, len(neighbors))
-	for _, node := range neighbors {
-		names = append(names, node.Content)
-	}
-	sort.Strings(names)
-	return names, nil
+	return entityNamesByChunk[chunkID], nil
 }
 
 func resolveEntityNodeID(id string, name string) string {

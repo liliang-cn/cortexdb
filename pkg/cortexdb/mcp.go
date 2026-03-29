@@ -46,6 +46,8 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 	for _, definition := range toolbox.Definitions() {
 		definitions[definition.Name] = definition
 	}
+	addInferenceMCPTools(server, definitions, toolbox)
+	addOntologyMCPTools(server, definitions, toolbox)
 
 	addGraphRAGMCPTool(server, definitions["ingest_document"], func(ctx context.Context, req ToolIngestDocumentRequest) (ToolIngestDocumentResponse, error) {
 		resp, err := toolbox.IngestDocument(ctx, req)
@@ -270,4 +272,4 @@ func addGraphRAGMCPTool[In, Out any](server *mcp.Server, definition ToolDefiniti
 	})
 }
 
-const defaultMCPInstructions = "Use the CortexDB high-level knowledge_* and memory_* tools for durable storage, retrieval, and memory management; fall back to the lower-level GraphRAG tools only when you need finer control. When searching, first expand the user's goal into many keywords, aliases, synonyms, abbreviations, and multilingual variants, then pass them through the keywords and alternate_queries fields. Supply entity_names when known so graph expansion can recover results even if lexical seeds are sparse. Prefer retrieval_mode=lexical|graph|auto to control graph cost; disable_graph remains only as a legacy compatibility alias."
+const defaultMCPInstructions = "Use the CortexDB high-level knowledge_* and memory_* tools for durable storage, retrieval, and memory management; use ontology_* to define the active entity and relation schema when you want validated knowledge-graph writes; use apply_inference to materialize deterministic inferred edges with provenance; fall back to the lower-level GraphRAG tools only when you need finer control. For search, prefer sending a structured plan object that includes query, keywords, alternate_queries, entity_names, retrieval_mode, and filters. First expand the user's goal into many keywords, aliases, synonyms, abbreviations, and multilingual variants, then pass them through the plan or the legacy keywords and alternate_queries fields. Supply entity_names when known so graph expansion can recover results even if lexical seeds are sparse. Prefer retrieval_mode=lexical|graph|auto to control graph cost. When latency matters, set graph_light=true and optionally cap max_expansion_seeds, max_traversal_nodes, and max_entities_per_chunk. disable_graph remains only as a legacy compatibility alias."
