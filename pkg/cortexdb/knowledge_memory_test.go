@@ -81,6 +81,9 @@ func TestKnowledgeDBAPIWithoutEmbedder(t *testing.T) {
 	if searchResp.Context == "" {
 		t.Fatal("expected knowledge search context")
 	}
+	if searchResp.Decision.EffectiveMode == "" || searchResp.Plan.Query == "" {
+		t.Fatalf("expected knowledge search planning metadata, got %+v", searchResp)
+	}
 
 	newTitle := "Alice leads Acme"
 	newContent := "Alice leads Acme's knowledge graph team."
@@ -173,6 +176,12 @@ func TestMemoryDBAPIWithEmbedder(t *testing.T) {
 	}
 	if len(searchResp.Results) == 0 {
 		t.Fatal("expected memory search results")
+	}
+	if searchResp.Decision.EffectiveMode != RetrievalModeAuto {
+		t.Fatalf("expected auto memory decision, got %+v", searchResp.Decision)
+	}
+	if searchResp.Plan.Query == "" {
+		t.Fatalf("expected memory search plan metadata, got %+v", searchResp)
 	}
 
 	newContent := "Alice prefers short factual answers."

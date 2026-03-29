@@ -197,45 +197,64 @@ func (db *DB) GetKnowledge(ctx context.Context, req KnowledgeGetRequest) (*Knowl
 
 // SearchKnowledge searches durable knowledge and groups chunk results by knowledge document.
 func (db *DB) SearchKnowledge(ctx context.Context, req KnowledgeSearchRequest) (*KnowledgeSearchResponse, error) {
-	if strings.TrimSpace(req.Query) == "" {
+	resolution := resolveRetrievalPlan(retrievalPlanInput{
+		Query:               req.Query,
+		Plan:                req.Plan,
+		Keywords:            req.Keywords,
+		AlternateQueries:    req.AlternateQueries,
+		EntityNames:         req.EntityNames,
+		RetrievalMode:       req.RetrievalMode,
+		DisableGraph:        req.DisableGraph,
+		Filters:             &RetrievalFilters{Collection: req.Collection},
+		SupportsGraph:       true,
+		EmptyQueryUsesGraph: false,
+	})
+	if strings.TrimSpace(resolution.Plan.Query) == "" {
 		return nil, ErrEmptyText
 	}
 
 	opts := GraphRAGQueryOptions{
-		Collection:       req.Collection,
-		TopK:             req.TopK,
-		MaxHops:          req.MaxHops,
-		MaxRelatedChunks: req.MaxRelatedChunks,
-		MaxContextChunks: req.MaxContextChunks,
-		MaxContextChars:  req.MaxContextChars,
-		PerDocumentLimit: req.PerDocumentLimit,
-		DiversityLambda:  req.DiversityLambda,
-		Rerank:           true,
-		RetrievalMode:    req.RetrievalMode,
-		DisableGraph:     req.DisableGraph,
+		Collection:          applyRetrievalPlanCollection(req.Collection, resolution.Plan.Filters),
+		TopK:                req.TopK,
+		MaxHops:             req.MaxHops,
+		MaxRelatedChunks:    req.MaxRelatedChunks,
+		MaxContextChunks:    req.MaxContextChunks,
+		MaxContextChars:     req.MaxContextChars,
+		PerDocumentLimit:    req.PerDocumentLimit,
+		DiversityLambda:     req.DiversityLambda,
+		Rerank:              true,
+		RetrievalMode:       resolution.Plan.RetrievalMode,
+		DisableGraph:        req.DisableGraph,
+		GraphLight:          req.GraphLight,
+		MaxExpansionSeeds:   req.MaxExpansionSeeds,
+		MaxTraversalNodes:   req.MaxTraversalNodes,
+		MaxEntitiesPerChunk: req.MaxEntitiesPerChunk,
+		Plan:                &resolution.Plan,
 	}
 	applyGraphRAGQueryDefaults(&opts)
 
 	var result *GraphRAGQueryResult
 	var err error
-	if db.HasEmbedder() && normalizeRetrievalMode(req.RetrievalMode) != RetrievalModeLexical {
-		result, err = db.SearchGraphRAG(ctx, req.Query, opts)
+	if db.HasEmbedder() && resolution.Decision.EffectiveMode != RetrievalModeLexical {
+		result, err = db.SearchGraphRAG(ctx, resolution.Plan.Query, opts)
 	} else {
 		result, err = db.GraphRAGTools().SearchGraphRAGLexical(ctx, ToolSearchGraphRAGLexicalRequest{
-			Query:            req.Query,
-			Collection:       req.Collection,
-			TopK:             req.TopK,
-			MaxHops:          req.MaxHops,
-			MaxRelatedChunks: req.MaxRelatedChunks,
-			MaxContextChunks: req.MaxContextChunks,
-			MaxContextChars:  req.MaxContextChars,
-			PerDocumentLimit: req.PerDocumentLimit,
-			DiversityLambda:  req.DiversityLambda,
-			EntityNames:      req.EntityNames,
-			Keywords:         req.Keywords,
-			AlternateQueries: req.AlternateQueries,
-			RetrievalMode:    req.RetrievalMode,
-			DisableGraph:     req.DisableGraph,
+			Query:               resolution.Plan.Query,
+			Collection:          opts.Collection,
+			TopK:                req.TopK,
+			MaxHops:             req.MaxHops,
+			MaxRelatedChunks:    req.MaxRelatedChunks,
+			MaxContextChunks:    req.MaxContextChunks,
+			MaxContextChars:     req.MaxContextChars,
+			PerDocumentLimit:    req.PerDocumentLimit,
+			DiversityLambda:     req.DiversityLambda,
+			RetrievalMode:       resolution.Plan.RetrievalMode,
+			DisableGraph:        req.DisableGraph,
+			GraphLight:          req.GraphLight,
+			MaxExpansionSeeds:   req.MaxExpansionSeeds,
+			MaxTraversalNodes:   req.MaxTraversalNodes,
+			MaxEntitiesPerChunk: req.MaxEntitiesPerChunk,
+			Plan:                &resolution.Plan,
 		})
 	}
 	if err != nil {
@@ -248,7 +267,9 @@ func (db *DB) SearchKnowledge(ctx context.Context, req KnowledgeSearchRequest) (
 	}
 
 	return &KnowledgeSearchResponse{
-		Query:    req.Query,
+		Query:    result.Query,
+		Plan:     result.Plan,
+		Decision: result.Decision,
 		Results:  hits,
 		Chunks:   result.Chunks,
 		Entities: result.Entities,
@@ -385,13 +406,8 @@ func (db *DB) cleanupKnowledgeArtifacts(ctx context.Context, knowledgeID string)
 		return fmt.Errorf("get knowledge chunks: %w", err)
 	}
 
-	nodeIDs := make([]string, 0, len(chunks)+1)
-	nodeIDs = append(nodeIDs, graphDocumentNodeID(knowledgeID))
-	for _, chunk := range chunks {
-		nodeIDs = append(nodeIDs, chunk.ID)
-	}
-	if _, err := db.graph.DeleteNodesBatch(ctx, nodeIDs); err != nil {
-		return fmt.Errorf("delete graph nodes: %w", err)
+	if err := db.cleanupKnowledgeGraphArtifacts(ctx, knowledgeID, chunks); err != nil {
+		return err
 	}
 	if err := db.store.DeleteDocument(ctx, knowledgeID); err != nil {
 		return fmt.Errorf("delete knowledge document: %w", err)
@@ -439,14 +455,21 @@ func (db *DB) loadKnowledgeRecord(ctx context.Context, knowledgeID string) (*Kno
 
 	chunkIDs := make([]string, 0, len(chunks))
 	entitySet := make(map[string]struct{})
-	toolbox := db.GraphRAGTools()
-	for _, chunk := range chunks {
-		chunkIDs = append(chunkIDs, chunk.ID)
-		entities, err := toolbox.getChunkEntityNames(ctx, chunk.ID)
+	entityNamesByChunk := make(map[string][]string)
+	if len(chunks) > 0 {
+		var err error
+		ids := make([]string, 0, len(chunks))
+		for _, chunk := range chunks {
+			ids = append(ids, chunk.ID)
+		}
+		entityNamesByChunk, err = db.chunkEntityNamesBatch(ctx, ids, 32)
 		if err != nil {
 			return nil, err
 		}
-		for _, entity := range entities {
+	}
+	for _, chunk := range chunks {
+		chunkIDs = append(chunkIDs, chunk.ID)
+		for _, entity := range entityNamesByChunk[chunk.ID] {
 			entitySet[entity] = struct{}{}
 		}
 	}

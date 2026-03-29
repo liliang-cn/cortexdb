@@ -74,17 +74,22 @@ type GraphRAGIngestResult struct {
 
 // GraphRAGQueryOptions controls GraphRAG retrieval behavior.
 type GraphRAGQueryOptions struct {
-	Collection       string
-	TopK             int
-	MaxHops          int
-	MaxRelatedChunks int
-	MaxContextChunks int
-	MaxContextChars  int
-	PerDocumentLimit int
-	Rerank           bool
-	DiversityLambda  float64
-	DisableGraph     bool
-	RetrievalMode    string
+	Collection          string
+	TopK                int
+	MaxHops             int
+	MaxRelatedChunks    int
+	MaxContextChunks    int
+	MaxContextChars     int
+	PerDocumentLimit    int
+	Rerank              bool
+	DiversityLambda     float64
+	DisableGraph        bool
+	RetrievalMode       string
+	GraphLight          bool
+	MaxExpansionSeeds   int
+	MaxTraversalNodes   int
+	MaxEntitiesPerChunk int
+	Plan                *RetrievalPlan
 }
 
 // GraphRAGChunkResult is a retrieved chunk plus graph context.
@@ -101,6 +106,8 @@ type GraphRAGChunkResult struct {
 // GraphRAGQueryResult contains the assembled GraphRAG retrieval output.
 type GraphRAGQueryResult struct {
 	Query    string
+	Plan     RetrievalPlan
+	Decision RetrievalDecision
 	Chunks   []GraphRAGChunkResult
 	Entities []string
 	Context  string
@@ -278,6 +285,10 @@ func (db *DB) InsertGraphDocument(ctx context.Context, doc GraphRAGDocument, opt
 		}
 	}
 
+	if err := db.validateExtractedGraphData(ctx, entityTexts, relationshipKeys); err != nil {
+		return nil, fmt.Errorf("validate extracted graph data: %w", err)
+	}
+
 	if err := db.store.UpsertBatch(ctx, embeddings); err != nil {
 		return nil, fmt.Errorf("upsert graphrag embeddings: %w", err)
 	}
@@ -362,10 +373,23 @@ func (db *DB) SearchGraphRAG(ctx context.Context, query string, opts GraphRAGQue
 	if db.embedder == nil {
 		return nil, ErrEmbedderNotConfigured
 	}
+
+	resolution := resolveRetrievalPlan(retrievalPlanInput{
+		Query:               query,
+		Plan:                opts.Plan,
+		RetrievalMode:       opts.RetrievalMode,
+		DisableGraph:        opts.DisableGraph,
+		Filters:             &RetrievalFilters{Collection: opts.Collection},
+		SupportsGraph:       true,
+		EmptyQueryUsesGraph: false,
+	})
+	query = resolution.Plan.Query
 	if strings.TrimSpace(query) == "" {
 		return nil, ErrEmptyText
 	}
 
+	opts.Collection = applyRetrievalPlanCollection(opts.Collection, resolution.Plan.Filters)
+	opts.RetrievalMode = resolution.Plan.RetrievalMode
 	applyGraphRAGQueryDefaults(&opts)
 	queryVector, err := db.embedder.Embed(ctx, query)
 	if err != nil {
@@ -380,17 +404,23 @@ func (db *DB) SearchGraphRAG(ctx context.Context, query string, opts GraphRAGQue
 	if err != nil {
 		return nil, fmt.Errorf("search graphrag seeds: %w", err)
 	}
+	seeds = filterScoredEmbeddings(seeds, resolution.Plan.Filters)
 
-	result := &GraphRAGQueryResult{Query: query}
+	result := &GraphRAGQueryResult{
+		Query:    query,
+		Plan:     resolution.Plan,
+		Decision: resolution.Decision,
+	}
 	if len(seeds) == 0 {
 		return result, nil
 	}
 
-	useGraph := shouldUseGraphRetrieval(opts.RetrievalMode, opts.DisableGraph, query, nil)
+	useGraph := resolution.Decision.UseGraph
 
 	chunkResults := make(map[string]*GraphRAGChunkResult)
 	entitySet := make(map[string]struct{})
 	seedIDs := make(map[string]struct{})
+	seedOrder := make([]string, 0, len(seeds))
 
 	for _, seed := range seeds {
 		chunkResults[seed.ID] = &GraphRAGChunkResult{
@@ -400,44 +430,7 @@ func (db *DB) SearchGraphRAG(ctx context.Context, query string, opts GraphRAGQue
 			Score:      seed.Score,
 		}
 		seedIDs[seed.ID] = struct{}{}
-
-		if !useGraph {
-			continue
-		}
-
-		neighbors, err := db.graph.Neighbors(ctx, seed.ID, graph.TraversalOptions{
-			MaxDepth:  opts.MaxHops,
-			Direction: "both",
-			Limit:     opts.TopK * 12,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("expand graph neighborhood: %w", err)
-		}
-
-		for _, neighbor := range neighbors {
-			switch neighbor.NodeType {
-			case "entity":
-				entitySet[neighbor.Content] = struct{}{}
-			case "chunk":
-				if _, isSeed := seedIDs[neighbor.ID]; isSeed {
-					continue
-				}
-				related := chunkResults[neighbor.ID]
-				if related == nil {
-					related = &GraphRAGChunkResult{
-						ID:      neighbor.ID,
-						Content: neighbor.Content,
-						Score:   seed.Score * 0.5,
-					}
-					if documentID, ok := stringProperty(neighbor.Properties, "document_id"); ok {
-						related.DocumentID = documentID
-					}
-					chunkResults[neighbor.ID] = related
-				} else if seed.Score*0.5 > related.Score {
-					related.Score = seed.Score * 0.5
-				}
-			}
-		}
+		seedOrder = append(seedOrder, seed.ID)
 	}
 
 	if !useGraph {
@@ -462,22 +455,27 @@ func (db *DB) SearchGraphRAG(ctx context.Context, query string, opts GraphRAGQue
 		return result, nil
 	}
 
+	expandedEntities, err := db.expandGraphChunkNeighborhoods(ctx, chunkResults, seedOrder, opts, resolution.Plan.Filters)
+	if err != nil {
+		return nil, fmt.Errorf("expand graph neighborhood: %w", err)
+	}
+	for entityName := range expandedEntities {
+		entitySet[entityName] = struct{}{}
+	}
+
+	chunkIDs := make([]string, 0, len(chunkResults))
+	for chunkID := range chunkResults {
+		chunkIDs = append(chunkIDs, chunkID)
+	}
+	entityNamesByChunk, err := db.chunkEntityNamesBatch(ctx, chunkIDs, opts.MaxEntitiesPerChunk)
+	if err != nil {
+		return nil, fmt.Errorf("load chunk entities: %w", err)
+	}
 	for chunkID, chunk := range chunkResults {
-		neighbors, err := db.graph.Neighbors(ctx, chunkID, graph.TraversalOptions{
-			MaxDepth:  1,
-			Direction: "both",
-			NodeTypes: []string{"entity"},
-			Limit:     16,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("load chunk entities: %w", err)
+		chunk.Entities = entityNamesByChunk[chunkID]
+		for _, entityName := range chunk.Entities {
+			entitySet[entityName] = struct{}{}
 		}
-		chunk.Entities = make([]string, 0, len(neighbors))
-		for _, entityNode := range neighbors {
-			chunk.Entities = append(chunk.Entities, entityNode.Content)
-			entitySet[entityNode.Content] = struct{}{}
-		}
-		sort.Strings(chunk.Entities)
 	}
 
 	seedChunkList := make([]GraphRAGChunkResult, 0, len(seeds))
@@ -572,6 +570,7 @@ func applyGraphRAGQueryDefaults(opts *GraphRAGQueryOptions) {
 	if opts.DiversityLambda <= 0 || opts.DiversityLambda > 1 {
 		opts.DiversityLambda = 0.75
 	}
+	applyGraphRuntimeDefaults(opts)
 }
 
 func (db *DB) ensureGraphRAGCollection(ctx context.Context, name string) error {
@@ -850,55 +849,6 @@ func extractEntityNames(entities []GraphEntity) []string {
 		}
 	}
 	return result
-}
-
-func normalizeRetrievalMode(mode string) string {
-	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "", RetrievalModeAuto:
-		return RetrievalModeAuto
-	case RetrievalModeLexical:
-		return RetrievalModeLexical
-	case RetrievalModeGraph:
-		return RetrievalModeGraph
-	default:
-		return RetrievalModeAuto
-	}
-}
-
-func shouldUseGraphRetrieval(mode string, disableGraph bool, query string, entityNames []string) bool {
-	if disableGraph {
-		return false
-	}
-
-	switch normalizeRetrievalMode(mode) {
-	case RetrievalModeLexical:
-		return false
-	case RetrievalModeGraph:
-		return true
-	default:
-		if len(entityNames) > 0 {
-			return true
-		}
-		return len(extractEntityNames(extractTitleEntities(query))) > 0
-	}
-}
-
-func shouldLoadChunkEntities(mode string, disableGraph bool, query string) bool {
-	if disableGraph {
-		return false
-	}
-
-	switch normalizeRetrievalMode(mode) {
-	case RetrievalModeLexical:
-		return false
-	case RetrievalModeGraph:
-		return true
-	default:
-		if strings.TrimSpace(query) == "" {
-			return true
-		}
-		return len(extractEntityNames(extractTitleEntities(query))) > 0
-	}
 }
 
 func min(a, b int) int {
