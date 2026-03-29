@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"sort"
 	"strings"
@@ -179,9 +180,13 @@ func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*Memor
 
 	if db.HasEmbedder() && resolution.Decision.EffectiveMode != RetrievalModeLexical {
 		queryVec, err := db.embedder.Embed(ctx, resolution.Plan.Query)
-		if err == nil {
-			messages, err := db.store.SearchChatHistory(ctx, queryVec, bucketID, req.TopK)
-			if err == nil && len(messages) > 0 {
+		if err != nil {
+			log.Printf("cortexdb: memory semantic embed fallback to lexical: %v", err)
+		} else {
+			messages, searchErr := db.store.SearchChatHistory(ctx, queryVec, bucketID, req.TopK)
+			if searchErr != nil {
+				log.Printf("cortexdb: memory semantic search fallback to lexical: %v", searchErr)
+			} else if len(messages) > 0 {
 				hits := make([]MemorySearchHit, 0, len(messages))
 				for i, message := range messages {
 					record := memoryRecordFromMessage(bucketID, "", message)
@@ -400,6 +405,10 @@ func (db *DB) searchMemoryLexical(ctx context.Context, bucketID, query string, k
 			if existing, ok := merged[record.ID]; !ok || score > existing.score {
 				merged[record.ID] = scoredMemory{record: record, score: score}
 			}
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("iterate lexical memory rows: %w", err)
 		}
 		if err := rows.Close(); err != nil {
 			return nil, fmt.Errorf("close lexical memory rows: %w", err)

@@ -154,11 +154,3 @@ func (f *evaluationFixture) seedVector(t testing.TB, ctx context.Context) {
 		f.chunkIDs[doc.ID] = append([]string(nil), ingestResp.ChunkNodeIDs...)
 	}
 }
-
-func evaluationContextChunks(fixture *evaluationFixture) []string {
-	var chunkIDs []string
-	for _, ids := range fixture.chunkIDs {
-		chunkIDs = append(chunkIDs, ids...)
-	}
-	return chunkIDs
-}

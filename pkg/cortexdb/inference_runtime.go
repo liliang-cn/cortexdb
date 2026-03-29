@@ -94,6 +94,10 @@ func (db *DB) applyInferenceRules(ctx context.Context, req ApplyInferenceRequest
 					properties["document_id"] = documentID
 				}
 				for key, value := range rule.Metadata {
+					switch key {
+					case "inferred", "provenance", "rule_id", "support_edge_ids", "support_relation_types", "document_id":
+						continue
+					}
 					properties[key] = value
 				}
 

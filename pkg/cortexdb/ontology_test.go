@@ -214,3 +214,65 @@ func TestInsertGraphDocumentRespectsActiveOntologySchema(t *testing.T) {
 		t.Fatalf("expected ontology validation failure for untyped extractor, got %v", err)
 	}
 }
+
+func TestOntologySchemaRejectsUnknownRelationEntityTypes(t *testing.T) {
+	dbPath := fmt.Sprintf("test_ontology_unknown_relation_types_%d.db", time.Now().UnixNano())
+	defer func() { _ = os.Remove(dbPath) }()
+
+	db, err := Open(DefaultConfig(dbPath))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	ctx := context.Background()
+	_, err = db.SaveOntologySchema(ctx, OntologySaveRequest{
+		SchemaID: "broken-schema",
+		EntityTypes: []OntologyEntityType{
+			{Name: "person"},
+		},
+		RelationTypes: []OntologyRelationType{
+			{Name: "works_at", AllowedFromTypes: []string{"person"}, AllowedToTypes: []string{"organization"}},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "unknown target entity type organization") {
+		t.Fatalf("expected unknown target entity type validation error, got %v", err)
+	}
+}
+
+func TestOntologySchemaCanDeactivateExplicitly(t *testing.T) {
+	dbPath := fmt.Sprintf("test_ontology_deactivate_%d.db", time.Now().UnixNano())
+	defer func() { _ = os.Remove(dbPath) }()
+
+	db, err := Open(DefaultConfig(dbPath))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	ctx := context.Background()
+	if _, err := db.SaveOntologySchema(ctx, OntologySaveRequest{
+		SchemaID: "deactivate-me",
+		Activate: true,
+		EntityTypes: []OntologyEntityType{
+			{Name: "entity"},
+		},
+	}); err != nil {
+		t.Fatalf("save active schema: %v", err)
+	}
+
+	if _, err := db.SaveOntologySchema(ctx, OntologySaveRequest{
+		SchemaID:   "deactivate-me",
+		Deactivate: true,
+	}); err != nil {
+		t.Fatalf("deactivate schema: %v", err)
+	}
+
+	listResp, err := db.ListOntologySchemas(ctx, OntologyListRequest{ActiveOnly: true})
+	if err != nil {
+		t.Fatalf("list active schemas after deactivate: %v", err)
+	}
+	if len(listResp.Schemas) != 0 {
+		t.Fatalf("expected no active schema after deactivate, got %+v", listResp.Schemas)
+	}
+}

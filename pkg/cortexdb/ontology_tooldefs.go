@@ -13,6 +13,7 @@ func ontologyToolDefinitions() []ToolDefinition {
 					"description":    toolStringSchema("Optional schema description."),
 					"version":        toolIntegerSchema("Optional explicit schema version. Omit to auto-increment."),
 					"activate":       toolBooleanSchema("Set true to make this the active ontology schema."),
+					"deactivate":     toolBooleanSchema("Set true to deactivate this schema without deleting it."),
 					"metadata":       toolMapSchema("Optional schema metadata."),
 					"entity_types":   toolOntologyEntityTypesSchema(),
 					"relation_types": toolOntologyRelationTypesSchema(),

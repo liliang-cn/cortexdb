@@ -18,22 +18,24 @@ type ontologySchemaDefinition struct {
 }
 
 func (db *DB) ensureOntologySchemaTable(ctx context.Context) error {
-	schema := `
-	CREATE TABLE IF NOT EXISTS graph_ontology_schemas (
-		id TEXT PRIMARY KEY,
-		name TEXT NOT NULL,
-		version INTEGER NOT NULL DEFAULT 1,
-		description TEXT,
-		metadata TEXT,
-		definition TEXT NOT NULL,
-		is_active INTEGER NOT NULL DEFAULT 0,
-		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-	);
-	CREATE INDEX IF NOT EXISTS idx_graph_ontology_schemas_active ON graph_ontology_schemas(is_active);
-	`
-	_, err := db.store.GetDB().ExecContext(ctx, schema)
-	return err
+	db.ontologySchemaInit.Do(func() {
+		schema := `
+		CREATE TABLE IF NOT EXISTS graph_ontology_schemas (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			version INTEGER NOT NULL DEFAULT 1,
+			description TEXT,
+			metadata TEXT,
+			definition TEXT NOT NULL,
+			is_active INTEGER NOT NULL DEFAULT 0,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_graph_ontology_schemas_active ON graph_ontology_schemas(is_active);
+		`
+		_, db.ontologySchemaInitErr = db.store.GetDB().ExecContext(ctx, schema)
+	})
+	return db.ontologySchemaInitErr
 }
 
 func (db *DB) saveOntologySchemaRecord(ctx context.Context, req OntologySaveRequest) (*OntologySchema, error) {
@@ -78,9 +80,15 @@ func (db *DB) saveOntologySchemaRecord(ctx context.Context, req OntologySaveRequ
 		}
 	}
 
-	active := req.Activate
-	if existing != nil && !req.Activate {
+	active := false
+	if existing != nil {
 		active = existing.Active
+	}
+	if req.Activate {
+		active = true
+	}
+	if req.Deactivate {
+		active = false
 	}
 	if active {
 		if _, err := tx.ExecContext(ctx, `UPDATE graph_ontology_schemas SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE is_active = 1 AND id <> ?`, req.SchemaID); err != nil {

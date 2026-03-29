@@ -39,6 +39,7 @@ type OntologySaveRequest struct {
 	Description   string                 `json:"description,omitempty"`
 	Version       int                    `json:"version,omitempty"`
 	Activate      bool                   `json:"activate,omitempty"`
+	Deactivate    bool                   `json:"deactivate,omitempty"`
 	Metadata      map[string]string      `json:"metadata,omitempty"`
 	EntityTypes   []OntologyEntityType   `json:"entity_types,omitempty"`
 	RelationTypes []OntologyRelationType `json:"relation_types,omitempty"`

@@ -286,6 +286,20 @@ func TestGraphRAGSearchCanDisableGraphExpansion(t *testing.T) {
 	}
 }
 
+func TestGraphRAGQueryDefaultsCanDisableRerank(t *testing.T) {
+	opts := GraphRAGQueryOptions{}
+	applyGraphRAGQueryDefaults(&opts)
+	if !opts.Rerank {
+		t.Fatal("expected rerank to default to enabled")
+	}
+
+	opts = GraphRAGQueryOptions{DisableRerank: true}
+	applyGraphRAGQueryDefaults(&opts)
+	if opts.Rerank {
+		t.Fatal("expected disable_rerank to keep rerank disabled")
+	}
+}
+
 func TestGraphRAGContextPackingAndDiversity(t *testing.T) {
 	dbPath := fmt.Sprintf("test_graphrag_packing_%d.db", time.Now().UnixNano())
 	defer func() { _ = os.Remove(dbPath) }()
