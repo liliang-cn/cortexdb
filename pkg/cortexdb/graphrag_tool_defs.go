@@ -196,7 +196,8 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 	}
 	definitions = append(definitions, inferenceToolDefinitions()...)
 	definitions = append(definitions, ontologyToolDefinitions()...)
-	return append(definitions, knowledgeMemoryToolDefinitions()...)
+	definitions = append(definitions, knowledgeMemoryToolDefinitions()...)
+	return append(definitions, brainToolDefinitions()...)
 }
 
 // Call dispatches a tool request from JSON input to a typed implementation.
@@ -328,6 +329,60 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.DeleteMemory(ctx, req)
+	case "brain_remember":
+		var req BrainRememberRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.BrainRemember(ctx, req)
+	case "brain_recall":
+		var req BrainRecallRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.BrainRecall(ctx, req)
+	case "brain_build_context_pack":
+		var req BrainBuildContextPackRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.BrainBuildContextPack(ctx, req)
+	case "brain_promote_to_knowledge":
+		var req BrainPromoteToKnowledgeRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.BrainPromoteToKnowledge(ctx, req)
+	case "brain_expand_entity_context":
+		var req BrainExpandEntityContextRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.BrainExpandEntityContext(ctx, req)
+	case "brain_neighbors":
+		var req BrainNeighborsRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.BrainNeighbors(ctx, req)
+	case "brain_shortest_path":
+		var req BrainShortestPathRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.BrainShortestPath(ctx, req)
+	case "brain_reflect":
+		var req BrainReflectRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.BrainReflect(ctx, req)
+	case "brain_consolidate":
+		var req BrainConsolidateRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.BrainConsolidate(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}
