@@ -118,6 +118,26 @@ go build -o simple_example examples/simple_usage/main.go
 - In-process tool calling that matches the MCP surface
 - **Perfect for:** MCP clients and external LLM orchestration
 
+### 15. **rdf_knowledge_graph** - RDF Triples, Quads, and SPARQL
+- Namespace management
+- RDF triple ingestion
+- TriG export
+- SPARQL query execution
+- **Perfect for:** Embedded RDF knowledge graphs
+
+### 16. **rdfs_inference** - RDFS-Lite Materialization
+- Persisted inferred triples
+- `rdfs:subClassOf` / `rdfs:domain` / `rdfs:range`
+- Inference explanation traces
+- **Perfect for:** Single-file graph reasoning
+
+### 17. **sparql_updates** - SPARQL Update & Aggregate Workflow
+- `INSERT DATA`
+- `INSERT ... WHERE`
+- `DELETE ... INSERT ... WHERE`
+- Aggregates such as `SUM`, `AVG`, `MAX`, `GROUP_CONCAT`
+- **Perfect for:** Programmatic graph maintenance
+
 ## 💻 API Usage Patterns
 
 All examples use the latest CortexDB API:

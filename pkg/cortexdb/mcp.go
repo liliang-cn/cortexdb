@@ -199,6 +199,106 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *resp, nil
 	})
+	addGraphRAGMCPTool(server, definitions["knowledge_graph_namespace_upsert"], func(ctx context.Context, req KnowledgeGraphNamespaceUpsertRequest) (KnowledgeGraphNamespaceUpsertResponse, error) {
+		resp, err := toolbox.UpsertKnowledgeNamespace(ctx, req)
+		if err != nil {
+			return KnowledgeGraphNamespaceUpsertResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeGraphNamespaceUpsertResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["knowledge_graph_namespace_list"], func(ctx context.Context, _ struct{}) (KnowledgeGraphNamespaceListResponse, error) {
+		resp, err := toolbox.ListKnowledgeNamespaces(ctx)
+		if err != nil {
+			return KnowledgeGraphNamespaceListResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeGraphNamespaceListResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["knowledge_graph_upsert"], func(ctx context.Context, req KnowledgeGraphUpsertRequest) (KnowledgeGraphUpsertResponse, error) {
+		resp, err := toolbox.UpsertKnowledgeGraph(ctx, req)
+		if err != nil {
+			return KnowledgeGraphUpsertResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeGraphUpsertResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["knowledge_graph_find"], func(ctx context.Context, req KnowledgeGraphFindRequest) (KnowledgeGraphFindResponse, error) {
+		resp, err := toolbox.FindKnowledgeGraph(ctx, req)
+		if err != nil {
+			return KnowledgeGraphFindResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeGraphFindResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["knowledge_graph_delete"], func(ctx context.Context, req KnowledgeGraphDeleteRequest) (KnowledgeGraphDeleteResponse, error) {
+		resp, err := toolbox.DeleteKnowledgeGraph(ctx, req)
+		if err != nil {
+			return KnowledgeGraphDeleteResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeGraphDeleteResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["knowledge_graph_import"], func(ctx context.Context, req KnowledgeGraphImportRequest) (KnowledgeGraphImportResponse, error) {
+		resp, err := toolbox.ImportKnowledgeGraph(ctx, req)
+		if err != nil {
+			return KnowledgeGraphImportResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeGraphImportResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["knowledge_graph_export"], func(ctx context.Context, req KnowledgeGraphExportRequest) (KnowledgeGraphExportResponse, error) {
+		resp, err := toolbox.ExportKnowledgeGraph(ctx, req)
+		if err != nil {
+			return KnowledgeGraphExportResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeGraphExportResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["knowledge_graph_query"], func(ctx context.Context, req KnowledgeGraphQueryRequest) (KnowledgeGraphQueryResponse, error) {
+		resp, err := toolbox.QueryKnowledgeGraph(ctx, req)
+		if err != nil {
+			return KnowledgeGraphQueryResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeGraphQueryResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["knowledge_graph_infer_refresh"], func(ctx context.Context, req KnowledgeGraphInferenceRefreshRequest) (KnowledgeGraphInferenceRefreshResponse, error) {
+		resp, err := toolbox.RefreshKnowledgeGraphInference(ctx, req)
+		if err != nil {
+			return KnowledgeGraphInferenceRefreshResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeGraphInferenceRefreshResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["knowledge_graph_infer_explain"], func(ctx context.Context, req KnowledgeGraphInferenceExplainRequest) (KnowledgeGraphInferenceExplainResponse, error) {
+		resp, err := toolbox.ExplainKnowledgeGraphInference(ctx, req)
+		if err != nil {
+			return KnowledgeGraphInferenceExplainResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeGraphInferenceExplainResponse{}, nil
+		}
+		return *resp, nil
+	})
 	addGraphRAGMCPTool(server, definitions["memory_save"], func(ctx context.Context, req MemorySaveRequest) (MemorySaveResponse, error) {
 		resp, err := toolbox.SaveMemory(ctx, req)
 		if err != nil {

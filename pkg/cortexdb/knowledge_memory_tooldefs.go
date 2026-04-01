@@ -1,5 +1,7 @@
 package cortexdb
 
+import "github.com/liliang-cn/cortexdb/v2/pkg/graph"
+
 func knowledgeMemoryToolDefinitions() []ToolDefinition {
 	return []ToolDefinition{
 		{
@@ -87,6 +89,101 @@ func knowledgeMemoryToolDefinitions() []ToolDefinition {
 				[]string{"knowledge_id"},
 				map[string]any{
 					"knowledge_id": toolStringSchema("Stable knowledge/document ID."),
+				},
+			),
+		},
+		{
+			Name:        "knowledge_graph_namespace_upsert",
+			Description: "Register or update a namespace prefix used by the RDF knowledge graph.",
+			InputSchema: toolObjectSchema(
+				[]string{"prefix", "uri"},
+				map[string]any{
+					"prefix": toolStringSchema("Namespace prefix such as schema or ex."),
+					"uri":    toolStringSchema("Namespace base URI."),
+				},
+			),
+		},
+		{
+			Name:        "knowledge_graph_namespace_list",
+			Description: "List visible RDF namespaces, including built-ins and user-defined prefixes.",
+			InputSchema: toolObjectSchema(nil, map[string]any{}),
+		},
+		{
+			Name:        "knowledge_graph_upsert",
+			Description: "Insert or update RDF triples/quads in the embedded knowledge graph.",
+			InputSchema: toolObjectSchema(
+				[]string{"triples"},
+				map[string]any{
+					"triples": toolKnowledgeGraphTripleArraySchema(),
+				},
+			),
+		},
+		{
+			Name:        "knowledge_graph_find",
+			Description: "Find RDF triples/quads by subject, predicate, object, and/or graph pattern.",
+			InputSchema: toolObjectSchema(
+				nil,
+				map[string]any{
+					"pattern": toolKnowledgeGraphTriplePatternSchema(),
+				},
+			),
+		},
+		{
+			Name:        "knowledge_graph_delete",
+			Description: "Delete RDF triples/quads by IDs, explicit triples, or a pattern.",
+			InputSchema: toolObjectSchema(
+				nil,
+				map[string]any{
+					"triple_ids": toolStringArraySchema("Optional triple IDs to delete."),
+					"triples":    toolKnowledgeGraphTripleArraySchema(),
+					"pattern":    toolKnowledgeGraphTriplePatternSchema(),
+				},
+			),
+		},
+		{
+			Name:        "knowledge_graph_import",
+			Description: "Import RDF content into the embedded knowledge graph.",
+			InputSchema: toolObjectSchema(
+				[]string{"content"},
+				map[string]any{
+					"format":  toolEnumSchema("RDF import format.", KnowledgeGraphFormatNTriples, KnowledgeGraphFormatNQuads, KnowledgeGraphFormatTurtle, KnowledgeGraphFormatTriG),
+					"content": toolStringSchema("RDF payload to import."),
+				},
+			),
+		},
+		{
+			Name:        "knowledge_graph_export",
+			Description: "Export the embedded knowledge graph as RDF text.",
+			InputSchema: toolObjectSchema(
+				nil,
+				map[string]any{
+					"format": toolEnumSchema("RDF export format.", KnowledgeGraphFormatNTriples, KnowledgeGraphFormatNQuads, KnowledgeGraphFormatTurtle, KnowledgeGraphFormatTriG),
+				},
+			),
+		},
+		{
+			Name:        "knowledge_graph_query",
+			Description: "Execute a SPARQL SELECT/ASK/CONSTRUCT/DESCRIBE subset over the embedded knowledge graph.",
+			InputSchema: toolObjectSchema(
+				[]string{"query"},
+				map[string]any{
+					"query": toolStringSchema("SPARQL query text. Supports PREFIX, SELECT, ASK, CONSTRUCT, DESCRIBE, INSERT DATA, INSERT ... WHERE, DELETE DATA, DELETE WHERE, DELETE ... INSERT ... WHERE, WITH, USING, GRAPH, OPTIONAL, UNION, VALUES, BIND, FILTER, REGEX, LANG, DATATYPE, COALESCE, IF, arithmetic, GROUP BY, HAVING, COUNT, SUM, AVG, MIN, MAX, SAMPLE, GROUP_CONCAT, ORDER BY, LIMIT, and OFFSET."),
+				},
+			),
+		},
+		{
+			Name:        "knowledge_graph_infer_refresh",
+			Description: "Recompute persisted RDFS-lite inferred triples inside the embedded knowledge graph.",
+			InputSchema: toolObjectSchema(nil, map[string]any{}),
+		},
+		{
+			Name:        "knowledge_graph_infer_explain",
+			Description: "Explain why a triple exists by returning whether it is explicit or inferred, plus its immediate support chain.",
+			InputSchema: toolObjectSchema(
+				[]string{"triple_id"},
+				map[string]any{
+					"triple_id": toolStringSchema("Stable triple ID to explain."),
+					"depth":     toolIntegerSchema("Optional recursive explanation depth."),
 				},
 			),
 		},
@@ -201,4 +298,49 @@ func toolRelationArraySchema() map[string]any {
 			},
 		),
 	}
+}
+
+func toolKnowledgeGraphTermSchema() map[string]any {
+	return toolObjectSchema(
+		[]string{"kind", "value"},
+		map[string]any{
+			"kind":     toolEnumSchema("RDF term kind.", graph.RDFTermIRI, graph.RDFTermBlankNode, graph.RDFTermLiteral),
+			"value":    toolStringSchema("RDF term value."),
+			"datatype": toolStringSchema("Optional literal datatype IRI."),
+			"language": toolStringSchema("Optional literal language tag."),
+		},
+	)
+}
+
+func toolKnowledgeGraphTripleSchema() map[string]any {
+	return toolObjectSchema(
+		[]string{"subject", "predicate", "object"},
+		map[string]any{
+			"id":        toolStringSchema("Optional stable triple ID."),
+			"subject":   toolKnowledgeGraphTermSchema(),
+			"predicate": toolKnowledgeGraphTermSchema(),
+			"object":    toolKnowledgeGraphTermSchema(),
+			"graph":     toolKnowledgeGraphTermSchema(),
+		},
+	)
+}
+
+func toolKnowledgeGraphTripleArraySchema() map[string]any {
+	return map[string]any{
+		"type":  "array",
+		"items": toolKnowledgeGraphTripleSchema(),
+	}
+}
+
+func toolKnowledgeGraphTriplePatternSchema() map[string]any {
+	return toolObjectSchema(
+		nil,
+		map[string]any{
+			"subject":   toolKnowledgeGraphTermSchema(),
+			"predicate": toolKnowledgeGraphTermSchema(),
+			"object":    toolKnowledgeGraphTermSchema(),
+			"graph":     toolKnowledgeGraphTermSchema(),
+			"limit":     toolIntegerSchema("Optional result limit."),
+		},
+	)
 }

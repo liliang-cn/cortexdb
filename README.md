@@ -154,6 +154,51 @@ neighbors, _ := db.Graph().Neighbors(ctx, "emp_alice", graph.TraversalOptions{
 ```
 *See `examples/structured_data` for the full code.*
 
+There is also first-class RDF knowledge graph support when you want real triples/quads instead of ad-hoc property graphs:
+
+```go
+db.UpsertKnowledgeNamespace(ctx, cortexdb.KnowledgeGraphNamespaceUpsertRequest{
+	Prefix: "ex",
+	URI:    "https://example.com/",
+})
+
+db.UpsertKnowledgeGraph(ctx, cortexdb.KnowledgeGraphUpsertRequest{
+	Triples: []cortexdb.KnowledgeGraphTriple{
+		{
+			Subject:   graph.NewIRI("ex:alice"),
+			Predicate: graph.NewIRI("rdf:type"),
+			Object:    graph.NewIRI("schema:Person"),
+		},
+		{
+			Subject:   graph.NewIRI("ex:alice"),
+			Predicate: graph.NewIRI("schema:name"),
+			Object:    graph.NewLiteral("Alice"),
+		},
+	},
+})
+
+rdfDump, _ := db.ExportKnowledgeGraph(ctx, cortexdb.KnowledgeGraphExportRequest{
+	Format: cortexdb.KnowledgeGraphFormatNQuads,
+})
+
+sparql, _ := db.QueryKnowledgeGraph(ctx, cortexdb.KnowledgeGraphQueryRequest{
+	Query: `
+PREFIX ex: <https://example.com/>
+PREFIX schema: <https://schema.org/>
+
+SELECT ?name WHERE {
+	ex:alice schema:name ?name .
+}
+`,
+})
+
+inferred, _ := db.RefreshKnowledgeGraphInference(ctx, cortexdb.KnowledgeGraphInferenceRefreshRequest{})
+_ = inferred
+```
+
+Current SPARQL support is an embedded subset: `PREFIX`, `SELECT`, `ASK`, `CONSTRUCT`, `DESCRIBE`, `INSERT DATA`, `INSERT ... WHERE`, `DELETE DATA`, `DELETE WHERE`, `DELETE ... INSERT ... WHERE`, `WITH`, `USING`, `GRAPH`, `OPTIONAL`, `UNION`, `VALUES`, `BIND`, `FILTER`, `REGEX`, `LANG`, `DATATYPE`, `COALESCE`, `IF`, arithmetic expressions, `GROUP BY`, `HAVING`, `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, `SAMPLE`, `GROUP_CONCAT`, `ORDER BY`, `LIMIT`, and `OFFSET`.
+RDFS-lite inference is also built in, including `rdfs:subClassOf`, `rdfs:subPropertyOf`, `rdfs:domain`, and `rdfs:range`.
+
 Higher-level GraphRAG retrieval is also available when an embedder is configured:
 
 ```go

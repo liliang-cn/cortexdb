@@ -123,10 +123,55 @@ func (g *GraphStore) InitGraphSchema(ctx context.Context) error {
 	CREATE INDEX IF NOT EXISTS idx_edges_type ON graph_edges(edge_type);
 	CREATE INDEX IF NOT EXISTS idx_nodes_type ON graph_nodes(node_type);
 	CREATE INDEX IF NOT EXISTS idx_edges_composite ON graph_edges(from_node_id, edge_type);
+
+	-- RDF / Knowledge Graph namespace mappings
+	CREATE TABLE IF NOT EXISTS kg_namespaces (
+		prefix TEXT PRIMARY KEY,
+		uri TEXT NOT NULL UNIQUE,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+
+	-- RDF / Knowledge Graph triples and quads
+	CREATE TABLE IF NOT EXISTS kg_triples (
+		id TEXT PRIMARY KEY,
+		graph_kind TEXT,
+		graph_value TEXT,
+		subject_kind TEXT NOT NULL,
+		subject_value TEXT NOT NULL,
+		predicate_value TEXT NOT NULL,
+		object_kind TEXT NOT NULL,
+		object_value TEXT NOT NULL,
+		object_datatype TEXT,
+		object_language TEXT,
+		inferred INTEGER NOT NULL DEFAULT 0,
+		inference_rule TEXT,
+		support_ids TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_kg_triples_subject ON kg_triples(subject_kind, subject_value);
+	CREATE INDEX IF NOT EXISTS idx_kg_triples_predicate ON kg_triples(predicate_value);
+	CREATE INDEX IF NOT EXISTS idx_kg_triples_object ON kg_triples(object_kind, object_value);
+	CREATE INDEX IF NOT EXISTS idx_kg_triples_graph ON kg_triples(graph_kind, graph_value);
+	CREATE INDEX IF NOT EXISTS idx_kg_triples_inferred ON kg_triples(inferred);
 	`
 
-	_, err := g.db.ExecContext(ctx, schema)
-	return err
+	if _, err := g.db.ExecContext(ctx, schema); err != nil {
+		return err
+	}
+
+	// Lightweight migration path for older databases created before inference metadata existed.
+	for _, stmt := range []string{
+		`ALTER TABLE kg_triples ADD COLUMN inferred INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE kg_triples ADD COLUMN inference_rule TEXT`,
+		`ALTER TABLE kg_triples ADD COLUMN support_ids TEXT`,
+	} {
+		if _, err := g.db.ExecContext(ctx, stmt); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // UpsertNode inserts or updates a node in the graph
