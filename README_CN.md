@@ -156,6 +156,51 @@ neighbors, _ := db.Graph().Neighbors(ctx, "emp_alice", graph.TraversalOptions{
 ```
 *参考 `examples/structured_data` 获取完整代码。*
 
+如果你需要标准 RDF 三元组/四元组，而不是仅仅把数据当作属性图来用，现在也可以直接写知识图谱：
+
+```go
+db.UpsertKnowledgeNamespace(ctx, cortexdb.KnowledgeGraphNamespaceUpsertRequest{
+	Prefix: "ex",
+	URI:    "https://example.com/",
+})
+
+db.UpsertKnowledgeGraph(ctx, cortexdb.KnowledgeGraphUpsertRequest{
+	Triples: []cortexdb.KnowledgeGraphTriple{
+		{
+			Subject:   graph.NewIRI("ex:alice"),
+			Predicate: graph.NewIRI("rdf:type"),
+			Object:    graph.NewIRI("schema:Person"),
+		},
+		{
+			Subject:   graph.NewIRI("ex:alice"),
+			Predicate: graph.NewIRI("schema:name"),
+			Object:    graph.NewLiteral("Alice"),
+		},
+	},
+})
+
+rdfDump, _ := db.ExportKnowledgeGraph(ctx, cortexdb.KnowledgeGraphExportRequest{
+	Format: cortexdb.KnowledgeGraphFormatNQuads,
+})
+
+sparql, _ := db.QueryKnowledgeGraph(ctx, cortexdb.KnowledgeGraphQueryRequest{
+	Query: `
+PREFIX ex: <https://example.com/>
+PREFIX schema: <https://schema.org/>
+
+SELECT ?name WHERE {
+	ex:alice schema:name ?name .
+}
+`,
+})
+
+inferred, _ := db.RefreshKnowledgeGraphInference(ctx, cortexdb.KnowledgeGraphInferenceRefreshRequest{})
+_ = inferred
+```
+
+当前 SPARQL 支持的是内嵌子集：`PREFIX`、`SELECT`、`ASK`、`CONSTRUCT`、`DESCRIBE`、`INSERT DATA`、`INSERT ... WHERE`、`DELETE DATA`、`DELETE WHERE`、`DELETE ... INSERT ... WHERE`、`WITH`、`USING`、`GRAPH`、`OPTIONAL`、`UNION`、`VALUES`、`BIND`、`FILTER`、`REGEX`、`LANG`、`DATATYPE`、`COALESCE`、`IF`、算术表达式、`GROUP BY`、`HAVING`、`COUNT`、`SUM`、`AVG`、`MIN`、`MAX`、`SAMPLE`、`GROUP_CONCAT`、`ORDER BY`、`LIMIT`、`OFFSET`。
+另外也内建了 `RDFS-lite` 推理，支持 `rdfs:subClassOf`、`rdfs:subPropertyOf`、`rdfs:domain`、`rdfs:range`。
+
 在配置了 embedder 的情况下，也可以直接使用更高层的 GraphRAG 检索：
 
 ```go

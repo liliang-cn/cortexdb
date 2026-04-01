@@ -299,6 +299,62 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.DeleteKnowledge(ctx, req)
+	case "knowledge_graph_namespace_upsert":
+		var req KnowledgeGraphNamespaceUpsertRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.UpsertKnowledgeNamespace(ctx, req)
+	case "knowledge_graph_namespace_list":
+		return t.ListKnowledgeNamespaces(ctx)
+	case "knowledge_graph_upsert":
+		var req KnowledgeGraphUpsertRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.UpsertKnowledgeGraph(ctx, req)
+	case "knowledge_graph_find":
+		var req KnowledgeGraphFindRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.FindKnowledgeGraph(ctx, req)
+	case "knowledge_graph_delete":
+		var req KnowledgeGraphDeleteRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.DeleteKnowledgeGraph(ctx, req)
+	case "knowledge_graph_import":
+		var req KnowledgeGraphImportRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.ImportKnowledgeGraph(ctx, req)
+	case "knowledge_graph_export":
+		var req KnowledgeGraphExportRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.ExportKnowledgeGraph(ctx, req)
+	case "knowledge_graph_query":
+		var req KnowledgeGraphQueryRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.QueryKnowledgeGraph(ctx, req)
+	case "knowledge_graph_infer_refresh":
+		var req KnowledgeGraphInferenceRefreshRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.RefreshKnowledgeGraphInference(ctx, req)
+	case "knowledge_graph_infer_explain":
+		var req KnowledgeGraphInferenceExplainRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.ExplainKnowledgeGraphInference(ctx, req)
 	case "memory_save":
 		var req MemorySaveRequest
 		if err := json.Unmarshal(input, &req); err != nil {
