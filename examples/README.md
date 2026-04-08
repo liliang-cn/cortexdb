@@ -138,6 +138,25 @@ go build -o simple_example examples/simple_usage/main.go
 - Aggregates such as `SUM`, `AVG`, `MAX`, `GROUP_CONCAT`
 - **Perfect for:** Programmatic graph maintenance
 
+### 18. **memoryflow_basic** - Workflow Memory Facade
+- Transcript ingest into episodic memory exchanges
+- Deterministic taxonomy conventions
+- Recall on top of the existing brain facade
+- **Perfect for:** App-layer memory workflows
+
+### 19. **memoryflow_layers** - Layered Wake-Up Context
+- `L0` identity
+- `L1` compact recall
+- `L2` context pack
+- `L3` detailed recall
+- **Perfect for:** Agent startup context pipelines
+
+### 20. **memoryflow_conventions** - Project Taxonomy Conventions
+- Project-local taxonomy conventions
+- Deterministic `wing` / `room` resolution
+- Diary write/read with resolved taxonomy
+- **Perfect for:** Opinionated memory workflow setups
+
 ## 💻 API Usage Patterns
 
 All examples use the latest CortexDB API:
