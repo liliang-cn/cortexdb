@@ -98,6 +98,17 @@ type PromotionPolicy interface {
 	Select(ctx context.Context, transcript Transcript, state SessionState, candidates []PromotionCandidate) ([]PromotionCandidate, error)
 }
 
+// RecallFunc executes a recall request. Strategy implementations receive this
+// callback so they can wrap or enrich recall without replacing memoryflow.
+type RecallFunc func(ctx context.Context, req RecallRequest) (*RecallResponse, error)
+
+// RecallStrategy optionally wraps memoryflow recall. Implementations can enrich
+// plans, add entity signals, or rerank results while preserving memoryflow as
+// the default workflow.
+type RecallStrategy interface {
+	Recall(ctx context.Context, req RecallRequest, next RecallFunc) (*RecallResponse, error)
+}
+
 // IngestTranscriptRequest stores a transcript as episodic memory exchanges.
 type IngestTranscriptRequest struct {
 	Transcript Transcript     `json:"transcript"`
@@ -147,9 +158,9 @@ type RecallRequest struct {
 
 // RecallResponse contains the fused recall pack plus the resolved plan.
 type RecallResponse struct {
-	Plan     cortexdb.RetrievalPlan       `json:"plan"`
-	Decision cortexdb.RetrievalDecision   `json:"decision"`
-	Response cortexdb.BrainRecallResponse `json:"response"`
+	Plan     cortexdb.RetrievalPlan                 `json:"plan"`
+	Decision cortexdb.RetrievalDecision             `json:"decision"`
+	Response cortexdb.KnowledgeMemoryRecallResponse `json:"response"`
 }
 
 // WakeUpRequest assembles a compact startup context for an agent.

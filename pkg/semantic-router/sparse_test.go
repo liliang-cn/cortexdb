@@ -43,6 +43,20 @@ func TestTokenize(t *testing.T) {
 	}
 }
 
+func TestTermFrequencyEncoder(t *testing.T) {
+	encoder := NewTermFrequencyEncoder()
+	vec := encoder.EncodeSparse("remember remember memory")
+	if vec["remember"] != 2 {
+		t.Fatalf("expected term frequency for remember=2, got %+v", vec)
+	}
+	if vec["memory"] != 1 {
+		t.Fatalf("expected memory term, got %+v", vec)
+	}
+	if encoder.Dimensions() != 0 {
+		t.Fatalf("expected fit-free dimensions 0, got %d", encoder.Dimensions())
+	}
+}
+
 func TestBM25Encoder(t *testing.T) {
 	documents := []string{
 		"the quick brown fox",

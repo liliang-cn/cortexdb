@@ -9,12 +9,12 @@ import (
 	"time"
 )
 
-type stubBrainReflector struct {
+type stubKnowledgeMemoryReflector struct {
 	summary string
 }
 
-func (s stubBrainReflector) Reflect(_ context.Context, _ BrainReflectRequest, input BrainReflectInput) (*BrainReflection, error) {
-	return &BrainReflection{
+func (s stubKnowledgeMemoryReflector) Reflect(_ context.Context, _ KnowledgeMemoryReflectRequest, input KnowledgeMemoryReflectInput) (*KnowledgeMemoryReflection, error) {
+	return &KnowledgeMemoryReflection{
 		Summary:            s.summary,
 		Themes:             []string{"plans", "coordination"},
 		Entities:           input.Recall.Entities,
@@ -26,8 +26,8 @@ func (s stubBrainReflector) Reflect(_ context.Context, _ BrainReflectRequest, in
 	}, nil
 }
 
-func TestBrainRememberRecallAndContextPack(t *testing.T) {
-	dbPath := fmt.Sprintf("test_brain_recall_%d.db", time.Now().UnixNano())
+func TestKnowledgeMemoryRememberRecallAndContextPack(t *testing.T) {
+	dbPath := fmt.Sprintf("test_knowledge_memory_recall_%d.db", time.Now().UnixNano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -37,9 +37,9 @@ func TestBrainRememberRecallAndContextPack(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
-	brain := db.Brain()
+	KnowledgeMemory := db.KnowledgeMemory()
 
-	for _, req := range []BrainRememberRequest{
+	for _, req := range []KnowledgeMemoryRememberRequest{
 		{
 			MemoryID:  "memory-1",
 			SessionID: "session-1",
@@ -58,12 +58,12 @@ func TestBrainRememberRecallAndContextPack(t *testing.T) {
 			Importance: 0.7,
 		},
 	} {
-		if _, err := brain.Remember(ctx, req); err != nil {
+		if _, err := KnowledgeMemory.Remember(ctx, req); err != nil {
 			t.Fatalf("remember %s: %v", req.MemoryID, err)
 		}
 	}
 
-	recallResp, err := brain.Recall(ctx, BrainRecallRequest{
+	recallResp, err := KnowledgeMemory.Recall(ctx, KnowledgeMemoryRecallRequest{
 		Query:            "Wanda dinner tomorrow",
 		SessionID:        "session-1",
 		Scope:            MemoryScopeSession,
@@ -82,7 +82,7 @@ func TestBrainRememberRecallAndContextPack(t *testing.T) {
 		t.Fatalf("expected context pack memory IDs to match memories, got %+v", recallResp.ContextPack.MemoryIDs)
 	}
 
-	contextResp, err := brain.BuildContextPack(ctx, BrainBuildContextPackRequest{
+	contextResp, err := KnowledgeMemory.BuildContextPack(ctx, KnowledgeMemoryBuildContextPackRequest{
 		Query:            "project notes for dinner",
 		SessionID:        "session-1",
 		Scope:            MemoryScopeSession,
@@ -96,8 +96,8 @@ func TestBrainRememberRecallAndContextPack(t *testing.T) {
 	}
 }
 
-func TestBrainPromoteExpandAndTraverse(t *testing.T) {
-	dbPath := fmt.Sprintf("test_brain_graph_%d.db", time.Now().UnixNano())
+func TestKnowledgeMemoryPromoteExpandAndTraverse(t *testing.T) {
+	dbPath := fmt.Sprintf("test_knowledge_memory_graph_%d.db", time.Now().UnixNano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -107,9 +107,9 @@ func TestBrainPromoteExpandAndTraverse(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
-	brain := db.KnowledgeMemory()
+	KnowledgeMemory := db.KnowledgeMemory()
 
-	if _, err := brain.Remember(ctx, BrainRememberRequest{
+	if _, err := KnowledgeMemory.Remember(ctx, KnowledgeMemoryRememberRequest{
 		MemoryID:  "memory-graph",
 		SessionID: "session-graph",
 		Scope:     MemoryScopeSession,
@@ -118,7 +118,7 @@ func TestBrainPromoteExpandAndTraverse(t *testing.T) {
 		t.Fatalf("remember graph memory: %v", err)
 	}
 
-	promoteResp, err := brain.PromoteToKnowledge(ctx, BrainPromoteToKnowledgeRequest{
+	promoteResp, err := KnowledgeMemory.PromoteToKnowledge(ctx, KnowledgeMemoryPromoteToKnowledgeRequest{
 		MemoryIDs:   []string{"memory-graph"},
 		KnowledgeID: "knowledge-graph",
 		Title:       "Alice at Acme",
@@ -137,7 +137,7 @@ func TestBrainPromoteExpandAndTraverse(t *testing.T) {
 		t.Fatalf("unexpected promoted knowledge ID: %s", promoteResp.Knowledge.ID)
 	}
 
-	expandResp, err := brain.ExpandEntityContext(ctx, BrainExpandEntityContextRequest{
+	expandResp, err := KnowledgeMemory.ExpandEntityContext(ctx, KnowledgeMemoryExpandEntityContextRequest{
 		EntityNames: []string{"Alice"},
 		MaxHops:     2,
 		TopKChunks:  4,
@@ -152,7 +152,7 @@ func TestBrainPromoteExpandAndTraverse(t *testing.T) {
 		t.Fatal("expected graph context pack text")
 	}
 
-	neighborsResp, err := brain.Neighbors(ctx, BrainNeighborsRequest{
+	neighborsResp, err := KnowledgeMemory.Neighbors(ctx, KnowledgeMemoryNeighborsRequest{
 		EntityName: "Alice",
 		MaxDepth:   1,
 		Direction:  "both",
@@ -165,7 +165,7 @@ func TestBrainPromoteExpandAndTraverse(t *testing.T) {
 		t.Fatal("expected graph neighbors")
 	}
 
-	pathResp, err := brain.ShortestPath(ctx, BrainShortestPathRequest{
+	pathResp, err := KnowledgeMemory.ShortestPath(ctx, KnowledgeMemoryShortestPathRequest{
 		FromEntityName: "Alice",
 		ToEntityName:   "Acme",
 	})
@@ -177,20 +177,20 @@ func TestBrainPromoteExpandAndTraverse(t *testing.T) {
 	}
 }
 
-func TestBrainReflectAndConsolidate(t *testing.T) {
-	dbPath := fmt.Sprintf("test_brain_reflect_%d.db", time.Now().UnixNano())
+func TestKnowledgeMemoryReflectAndConsolidate(t *testing.T) {
+	dbPath := fmt.Sprintf("test_knowledge_memory_reflect_%d.db", time.Now().UnixNano())
 	defer func() { _ = os.Remove(dbPath) }()
 
-	db, err := Open(DefaultConfig(dbPath), WithBrainReflector(stubBrainReflector{summary: "Focus on the Acme launch and dinner logistics."}))
+	db, err := Open(DefaultConfig(dbPath), WithKnowledgeMemoryReflector(stubKnowledgeMemoryReflector{summary: "Focus on the Acme launch and dinner logistics."}))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
 	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
-	brain := db.Brain()
+	KnowledgeMemory := db.KnowledgeMemory()
 
-	for _, req := range []BrainRememberRequest{
+	for _, req := range []KnowledgeMemoryRememberRequest{
 		{
 			MemoryID:  "memory-reflect-1",
 			SessionID: "session-reflect",
@@ -204,13 +204,13 @@ func TestBrainReflectAndConsolidate(t *testing.T) {
 			Content:   "Dinner with Alice is at Wanda Plaza tomorrow.",
 		},
 	} {
-		if _, err := brain.Remember(ctx, req); err != nil {
+		if _, err := KnowledgeMemory.Remember(ctx, req); err != nil {
 			t.Fatalf("remember %s: %v", req.MemoryID, err)
 		}
 	}
 
-	reflectResp, err := brain.Reflect(ctx, BrainReflectRequest{
-		Recall: BrainRecallRequest{
+	reflectResp, err := KnowledgeMemory.Reflect(ctx, KnowledgeMemoryReflectRequest{
+		Recall: KnowledgeMemoryRecallRequest{
 			Query:            "What should I keep in mind for Acme tomorrow?",
 			SessionID:        "session-reflect",
 			Scope:            MemoryScopeSession,
@@ -224,9 +224,9 @@ func TestBrainReflectAndConsolidate(t *testing.T) {
 		t.Fatalf("unexpected reflection summary: %q", reflectResp.Reflection.Summary)
 	}
 
-	consolidateResp, err := brain.Consolidate(ctx, BrainConsolidateRequest{
-		Reflect: BrainReflectRequest{
-			Recall: BrainRecallRequest{
+	consolidateResp, err := KnowledgeMemory.Consolidate(ctx, KnowledgeMemoryConsolidateRequest{
+		Reflect: KnowledgeMemoryReflectRequest{
+			Recall: KnowledgeMemoryRecallRequest{
 				Query:            "Summarize the Acme dinner plan",
 				SessionID:        "session-reflect",
 				Scope:            MemoryScopeSession,
@@ -238,7 +238,7 @@ func TestBrainReflectAndConsolidate(t *testing.T) {
 		Scope:              MemoryScopeSession,
 		Importance:         0.95,
 		PromoteToKnowledge: true,
-		Promotion: &BrainPromoteToKnowledgeRequest{
+		Promotion: &KnowledgeMemoryPromoteToKnowledgeRequest{
 			KnowledgeID: "knowledge-summary",
 			Title:       "Acme Dinner Plan",
 		},
@@ -257,7 +257,7 @@ func TestBrainReflectAndConsolidate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get consolidated memory: %v", err)
 	}
-	if flagged, ok := getMemoryResp.Memory.Metadata["brain_summary"].(bool); !ok || !flagged {
-		t.Fatalf("expected consolidated memory to be marked as brain summary, got %+v", getMemoryResp.Memory.Metadata)
+	if flagged, ok := getMemoryResp.Memory.Metadata["knowledge_memory_summary"].(bool); !ok || !flagged {
+		t.Fatalf("expected consolidated memory to be marked as KnowledgeMemory summary, got %+v", getMemoryResp.Memory.Metadata)
 	}
 }

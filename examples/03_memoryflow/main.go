@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/hindsight"
 	"github.com/liliang-cn/cortexdb/v2/pkg/memoryflow"
 )
 
@@ -31,6 +32,21 @@ func main() {
 	defer func() { _ = db.Close() }()
 
 	flow, err := memoryflow.New(db, planner{}, nil, memoryflow.WithConventions(memoryflow.DefaultConventionSet("apollo")))
+	if err != nil {
+		log.Fatal(err)
+	}
+	hindsightFlow, err := memoryflow.New(
+		db,
+		planner{},
+		nil,
+		memoryflow.WithConventions(memoryflow.DefaultConventionSet("apollo")),
+		memoryflow.WithRecallStrategy(hindsight.NewStrategy(db, hindsight.StrategyOptions{
+			BankID:      "apollo-agent",
+			EntityNames: []string{"Apollo"},
+			Keywords:    []string{"deadline", "preference"},
+			UseKG:       true,
+		})),
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -102,4 +118,29 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("\nreconstructed turns=%d\n", len(reconstructed.Transcript.Turns))
+
+	strategyRecall, err := hindsightFlow.Recall(ctx, memoryflow.RecallRequest{
+		Query:            "remember Apollo deadline preference",
+		UserID:           "user-1",
+		SessionID:        "session-1",
+		Scope:            cortexdb.MemoryScopeSession,
+		DisableKnowledge: true,
+		State: memoryflow.SessionState{
+			Wing: "projects",
+			Room: "apollo",
+			Tags: []string{"planning"},
+			Taxonomy: memoryflow.Taxonomy{
+				Entities: []string{"Apollo"},
+			},
+		},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("hindsight strategy mode=%s namespace=%s entities=%v keywords=%v\n",
+		strategyRecall.Plan.RetrievalMode,
+		strategyRecall.Response.MemoryPlan.Filters.Namespace,
+		strategyRecall.Plan.EntityNames,
+		strategyRecall.Plan.Keywords,
+	)
 }

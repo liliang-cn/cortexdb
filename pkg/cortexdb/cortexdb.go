@@ -12,12 +12,12 @@ import (
 
 // DB represents a SQLite vector database instance
 type DB struct {
-	store                 *core.SQLiteStore
-	graph                 *graph.GraphStore
-	embedder              Embedder // Optional embedder for text operations
-	brainReflector        BrainReflector
-	ontologySchemaInit    sync.Once
-	ontologySchemaInitErr error
+	store                    *core.SQLiteStore
+	graph                    *graph.GraphStore
+	embedder                 Embedder // Optional embedder for text operations
+	KnowledgeMemoryReflector KnowledgeMemoryReflector
+	ontologySchemaInit       sync.Once
+	ontologySchemaInitErr    error
 }
 
 // Config represents database configuration
@@ -49,12 +49,12 @@ func WithEmbedder(e Embedder) Option {
 	}
 }
 
-// WithBrainReflector configures the DB with a pluggable reflection/consolidation engine.
-// This lets callers keep CortexDB as the persistent brain substrate while delegating
+// WithKnowledgeMemoryReflector configures the DB with a pluggable reflection/consolidation engine.
+// This lets callers keep CortexDB as the persistent KnowledgeMemory substrate while delegating
 // higher-order summarization and synthesis to an external reasoning component.
-func WithBrainReflector(r BrainReflector) Option {
+func WithKnowledgeMemoryReflector(r KnowledgeMemoryReflector) Option {
 	return func(db *DB) {
-		db.brainReflector = r
+		db.KnowledgeMemoryReflector = r
 	}
 }
 

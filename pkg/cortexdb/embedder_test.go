@@ -63,7 +63,7 @@ func TestEmbedderIntegration(t *testing.T) {
 
 	dim := 4
 	embedder := NewMockEmbedder(dim)
-	
+
 	db, err := Open(DefaultConfig(dbPath), WithEmbedder(embedder))
 	if err != nil {
 		t.Fatalf("Failed to open DB: %v", err)

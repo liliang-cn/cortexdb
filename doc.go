@@ -11,7 +11,7 @@
 // The main packages are:
 //
 //   - pkg/cortexdb: primary DB facade for vectors, text search, knowledge,
-//     memory, brain recall, knowledge graph APIs, GraphRAG tools, and MCP.
+//     memory, KnowledgeMemory recall, knowledge graph APIs, GraphRAG tools, and MCP.
 //   - pkg/memoryflow: agent memory workflow for transcript ingest, recall,
 //     wake-up layers, diary, transcript reconstruction, and promotion.
 //   - pkg/graphflow: corpus-to-graph workflow for extraction schema, build,
@@ -32,7 +32,7 @@
 //	)
 //
 //	func main() {
-//		db, _ := cortexdb.Open(cortexdb.DefaultConfig("brain.db"))
+//		db, _ := cortexdb.Open(cortexdb.DefaultConfig("KnowledgeMemory.db"))
 //		defer db.Close()
 //
 //		ctx := context.Background()
@@ -103,6 +103,21 @@
 //	flow, _ := memoryflow.New(db, planner, extractor)
 //	_, _ = flow.IngestTranscript(ctx, memoryflow.IngestTranscriptRequest{...})
 //	_, _ = flow.WakeUpLayers(ctx, memoryflow.WakeUpLayersRequest{...})
+//
+// Hindsight can be used as an optional recall strategy plugin without replacing
+// memoryflow:
+//
+//	flow, _ := memoryflow.New(
+//		db,
+//		planner,
+//		extractor,
+//		memoryflow.WithRecallStrategy(hindsight.NewStrategy(db, hindsight.StrategyOptions{
+//			BankID:      "apollo-agent",
+//			EntityNames: []string{"Apollo"},
+//			Keywords:    []string{"deadline"},
+//			UseKG:       true,
+//		})),
+//	)
 //
 // LLM-dependent parts are interfaces: QueryPlanner, SessionExtractor, and
 // PromotionPolicy.

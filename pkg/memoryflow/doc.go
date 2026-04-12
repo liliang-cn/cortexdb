@@ -1,5 +1,5 @@
 // Package memoryflow provides a higher-level workflow facade on top of CortexDB's
-// memory, knowledge, and brain primitives.
+// memory, knowledge, and KnowledgeMemory primitives.
 //
 // The package is intended for applications that want "memory system" behavior
 // rather than direct database primitives. It focuses on:

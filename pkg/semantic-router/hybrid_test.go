@@ -244,6 +244,36 @@ func TestSparseRouter(t *testing.T) {
 	}
 }
 
+func TestNewLexicalRouter(t *testing.T) {
+	router, err := NewLexicalRouter(WithSparseThreshold(0.1))
+	if err != nil {
+		t.Fatalf("NewLexicalRouter() error = %v", err)
+	}
+	if router == nil {
+		t.Fatal("router is nil")
+	}
+	if err := router.Add(&SparseRoute{
+		Name:       "memory_save",
+		Utterances: []string{"remember this", "save this to memory", "store user preference"},
+	}); err != nil {
+		t.Fatalf("add memory route: %v", err)
+	}
+	if err := router.Add(&SparseRoute{
+		Name:       "knowledge_graph_query",
+		Utterances: []string{"query the knowledge graph", "run sparql", "find rdf triples"},
+	}); err != nil {
+		t.Fatalf("add kg route: %v", err)
+	}
+
+	result, err := router.Route(context.Background(), "please remember this user preference")
+	if err != nil {
+		t.Fatalf("route: %v", err)
+	}
+	if !result.Matched || result.RouteName != "memory_save" {
+		t.Fatalf("expected memory_save route, got %+v", result)
+	}
+}
+
 func TestSparseRouterNilEncoder(t *testing.T) {
 	_, err := NewSparseRouter(nil)
 	if err == nil {

@@ -40,6 +40,7 @@ Agent memory workflow through `pkg/memoryflow`.
 - layered wake-up context
 - diary write/read
 - transcript reconstruction
+- optional Hindsight recall strategy plugin
 
 Use this for chat/session/agent memory.
 
@@ -70,6 +71,7 @@ Toolbox/MCP-aligned APIs through `db.GraphRAGTools()`.
 
 - lists the available tool definitions
 - calls tools in-process with JSON payloads
+- demonstrates optional lexical semantic-router tool selection
 - shows the same shapes that can be exposed over MCP
 
 Use this for agents and external LLM orchestration.

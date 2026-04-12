@@ -379,93 +379,93 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *resp, nil
 	})
-	addGraphRAGMCPTool(server, definitions["brain_remember"], func(ctx context.Context, req BrainRememberRequest) (BrainRememberResponse, error) {
-		resp, err := toolbox.BrainRemember(ctx, req)
+	addGraphRAGMCPTool(server, definitions["knowledge_memory_remember"], func(ctx context.Context, req KnowledgeMemoryRememberRequest) (KnowledgeMemoryRememberResponse, error) {
+		resp, err := toolbox.KnowledgeMemoryRemember(ctx, req)
 		if err != nil {
-			return BrainRememberResponse{}, err
+			return KnowledgeMemoryRememberResponse{}, err
 		}
 		if resp == nil {
-			return BrainRememberResponse{}, nil
+			return KnowledgeMemoryRememberResponse{}, nil
 		}
 		return *resp, nil
 	})
-	addGraphRAGMCPTool(server, definitions["brain_recall"], func(ctx context.Context, req BrainRecallRequest) (BrainRecallResponse, error) {
-		resp, err := toolbox.BrainRecall(ctx, req)
+	addGraphRAGMCPTool(server, definitions["knowledge_memory_recall"], func(ctx context.Context, req KnowledgeMemoryRecallRequest) (KnowledgeMemoryRecallResponse, error) {
+		resp, err := toolbox.KnowledgeMemoryRecall(ctx, req)
 		if err != nil {
-			return BrainRecallResponse{}, err
+			return KnowledgeMemoryRecallResponse{}, err
 		}
 		if resp == nil {
-			return BrainRecallResponse{}, nil
+			return KnowledgeMemoryRecallResponse{}, nil
 		}
 		return *resp, nil
 	})
-	addGraphRAGMCPTool(server, definitions["brain_build_context_pack"], func(ctx context.Context, req BrainBuildContextPackRequest) (BrainBuildContextPackResponse, error) {
-		resp, err := toolbox.BrainBuildContextPack(ctx, req)
+	addGraphRAGMCPTool(server, definitions["knowledge_memory_build_context_pack"], func(ctx context.Context, req KnowledgeMemoryBuildContextPackRequest) (KnowledgeMemoryBuildContextPackResponse, error) {
+		resp, err := toolbox.KnowledgeMemoryBuildContextPack(ctx, req)
 		if err != nil {
-			return BrainBuildContextPackResponse{}, err
+			return KnowledgeMemoryBuildContextPackResponse{}, err
 		}
 		if resp == nil {
-			return BrainBuildContextPackResponse{}, nil
+			return KnowledgeMemoryBuildContextPackResponse{}, nil
 		}
 		return *resp, nil
 	})
-	addGraphRAGMCPTool(server, definitions["brain_promote_to_knowledge"], func(ctx context.Context, req BrainPromoteToKnowledgeRequest) (BrainPromoteToKnowledgeResponse, error) {
-		resp, err := toolbox.BrainPromoteToKnowledge(ctx, req)
+	addGraphRAGMCPTool(server, definitions["knowledge_memory_promote_to_knowledge"], func(ctx context.Context, req KnowledgeMemoryPromoteToKnowledgeRequest) (KnowledgeMemoryPromoteToKnowledgeResponse, error) {
+		resp, err := toolbox.KnowledgeMemoryPromoteToKnowledge(ctx, req)
 		if err != nil {
-			return BrainPromoteToKnowledgeResponse{}, err
+			return KnowledgeMemoryPromoteToKnowledgeResponse{}, err
 		}
 		if resp == nil {
-			return BrainPromoteToKnowledgeResponse{}, nil
+			return KnowledgeMemoryPromoteToKnowledgeResponse{}, nil
 		}
 		return *resp, nil
 	})
-	addGraphRAGMCPTool(server, definitions["brain_expand_entity_context"], func(ctx context.Context, req BrainExpandEntityContextRequest) (BrainExpandEntityContextResponse, error) {
-		resp, err := toolbox.BrainExpandEntityContext(ctx, req)
+	addGraphRAGMCPTool(server, definitions["knowledge_memory_expand_entity_context"], func(ctx context.Context, req KnowledgeMemoryExpandEntityContextRequest) (KnowledgeMemoryExpandEntityContextResponse, error) {
+		resp, err := toolbox.KnowledgeMemoryExpandEntityContext(ctx, req)
 		if err != nil {
-			return BrainExpandEntityContextResponse{}, err
+			return KnowledgeMemoryExpandEntityContextResponse{}, err
 		}
 		if resp == nil {
-			return BrainExpandEntityContextResponse{}, nil
+			return KnowledgeMemoryExpandEntityContextResponse{}, nil
 		}
 		return *resp, nil
 	})
-	addGraphRAGMCPTool(server, definitions["brain_neighbors"], func(ctx context.Context, req BrainNeighborsRequest) (BrainNeighborsResponse, error) {
-		resp, err := toolbox.BrainNeighbors(ctx, req)
+	addGraphRAGMCPTool(server, definitions["knowledge_memory_neighbors"], func(ctx context.Context, req KnowledgeMemoryNeighborsRequest) (KnowledgeMemoryNeighborsResponse, error) {
+		resp, err := toolbox.KnowledgeMemoryNeighbors(ctx, req)
 		if err != nil {
-			return BrainNeighborsResponse{}, err
+			return KnowledgeMemoryNeighborsResponse{}, err
 		}
 		if resp == nil {
-			return BrainNeighborsResponse{}, nil
+			return KnowledgeMemoryNeighborsResponse{}, nil
 		}
 		return *resp, nil
 	})
-	addGraphRAGMCPTool(server, definitions["brain_shortest_path"], func(ctx context.Context, req BrainShortestPathRequest) (BrainShortestPathResponse, error) {
-		resp, err := toolbox.BrainShortestPath(ctx, req)
+	addGraphRAGMCPTool(server, definitions["knowledge_memory_shortest_path"], func(ctx context.Context, req KnowledgeMemoryShortestPathRequest) (KnowledgeMemoryShortestPathResponse, error) {
+		resp, err := toolbox.KnowledgeMemoryShortestPath(ctx, req)
 		if err != nil {
-			return BrainShortestPathResponse{}, err
+			return KnowledgeMemoryShortestPathResponse{}, err
 		}
 		if resp == nil {
-			return BrainShortestPathResponse{}, nil
+			return KnowledgeMemoryShortestPathResponse{}, nil
 		}
 		return *resp, nil
 	})
-	addGraphRAGMCPTool(server, definitions["brain_reflect"], func(ctx context.Context, req BrainReflectRequest) (BrainReflectResponse, error) {
-		resp, err := toolbox.BrainReflect(ctx, req)
+	addGraphRAGMCPTool(server, definitions["knowledge_memory_reflect"], func(ctx context.Context, req KnowledgeMemoryReflectRequest) (KnowledgeMemoryReflectResponse, error) {
+		resp, err := toolbox.KnowledgeMemoryReflect(ctx, req)
 		if err != nil {
-			return BrainReflectResponse{}, err
+			return KnowledgeMemoryReflectResponse{}, err
 		}
 		if resp == nil {
-			return BrainReflectResponse{}, nil
+			return KnowledgeMemoryReflectResponse{}, nil
 		}
 		return *resp, nil
 	})
-	addGraphRAGMCPTool(server, definitions["brain_consolidate"], func(ctx context.Context, req BrainConsolidateRequest) (BrainConsolidateResponse, error) {
-		resp, err := toolbox.BrainConsolidate(ctx, req)
+	addGraphRAGMCPTool(server, definitions["knowledge_memory_consolidate"], func(ctx context.Context, req KnowledgeMemoryConsolidateRequest) (KnowledgeMemoryConsolidateResponse, error) {
+		resp, err := toolbox.KnowledgeMemoryConsolidate(ctx, req)
 		if err != nil {
-			return BrainConsolidateResponse{}, err
+			return KnowledgeMemoryConsolidateResponse{}, err
 		}
 		if resp == nil {
-			return BrainConsolidateResponse{}, nil
+			return KnowledgeMemoryConsolidateResponse{}, nil
 		}
 		return *resp, nil
 	})
@@ -492,4 +492,4 @@ func addGraphRAGMCPTool[In, Out any](server *mcp.Server, definition ToolDefiniti
 	})
 }
 
-const defaultMCPInstructions = "Prefer the high-level brain_* tools when you want CortexDB to act as a unified brain across episodic memory, durable knowledge, graph expansion, reflection, and context packing. Use knowledge_* and memory_* when you need lower-level direct control over those individual stores. Use ontology_* to define the active entity and relation schema when you want validated knowledge-graph writes; use apply_inference to materialize deterministic inferred edges with provenance; fall back to the lower-level GraphRAG tools only when you need finer control. For search and recall, prefer sending a structured plan object that includes query, keywords, alternate_queries, entity_names, retrieval_mode, and filters. First expand the user's goal into many keywords, aliases, synonyms, abbreviations, and multilingual variants, then pass them through the plan or the legacy keywords and alternate_queries fields. Supply entity_names when known so graph expansion can recover results even if lexical seeds are sparse. Prefer retrieval_mode=lexical|graph|auto to control graph cost. When latency matters, set graph_light=true and optionally cap max_expansion_seeds, max_traversal_nodes, and max_entities_per_chunk. disable_graph remains only as a legacy compatibility alias."
+const defaultMCPInstructions = "Prefer the high-level knowledge_memory_* tools when you want CortexDB to act as a unified KnowledgeMemory across episodic memory, durable knowledge, graph expansion, reflection, and context packing. Use knowledge_* and memory_* when you need lower-level direct control over those individual stores. Use ontology_* to define the active entity and relation schema when you want validated knowledge-graph writes; use apply_inference to materialize deterministic inferred edges with provenance; fall back to the lower-level GraphRAG tools only when you need finer control. For search and recall, prefer sending a structured plan object that includes query, keywords, alternate_queries, entity_names, retrieval_mode, and filters. First expand the user's goal into many keywords, aliases, synonyms, abbreviations, and multilingual variants, then pass them through the plan or the legacy keywords and alternate_queries fields. Supply entity_names when known so graph expansion can recover results even if lexical seeds are sparse. Prefer retrieval_mode=lexical|graph|auto to control graph cost. When latency matters, set graph_light=true and optionally cap max_expansion_seeds, max_traversal_nodes, and max_entities_per_chunk. disable_graph remains only as a legacy compatibility alias."

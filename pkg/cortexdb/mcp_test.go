@@ -57,8 +57,8 @@ func TestMCPServerToolFlow(t *testing.T) {
 	var memorySearchTool *mcp.Tool
 	var ontologySaveTool *mcp.Tool
 	var inferenceTool *mcp.Tool
-	var brainRecallTool *mcp.Tool
-	var brainConsolidateTool *mcp.Tool
+	var KnowledgeMemoryRecallTool *mcp.Tool
+	var KnowledgeMemoryConsolidateTool *mcp.Tool
 	for _, tool := range toolList.Tools {
 		if tool.Name == "search_graphrag_lexical" {
 			searchTool = tool
@@ -75,11 +75,11 @@ func TestMCPServerToolFlow(t *testing.T) {
 		if tool.Name == "apply_inference" {
 			inferenceTool = tool
 		}
-		if tool.Name == "brain_recall" {
-			brainRecallTool = tool
+		if tool.Name == "knowledge_memory_recall" {
+			KnowledgeMemoryRecallTool = tool
 		}
-		if tool.Name == "brain_consolidate" {
-			brainConsolidateTool = tool
+		if tool.Name == "knowledge_memory_consolidate" {
+			KnowledgeMemoryConsolidateTool = tool
 		}
 	}
 	if searchTool == nil {
@@ -97,11 +97,11 @@ func TestMCPServerToolFlow(t *testing.T) {
 	if inferenceTool == nil {
 		t.Fatal("expected apply_inference tool")
 	}
-	if brainRecallTool == nil {
-		t.Fatal("expected brain_recall tool")
+	if KnowledgeMemoryRecallTool == nil {
+		t.Fatal("expected knowledge_memory_recall tool")
 	}
-	if brainConsolidateTool == nil {
-		t.Fatal("expected brain_consolidate tool")
+	if KnowledgeMemoryConsolidateTool == nil {
+		t.Fatal("expected knowledge_memory_consolidate tool")
 	}
 	if !strings.Contains(searchTool.Description, "keywords") {
 		t.Fatalf("expected keyword guidance in tool description, got %q", searchTool.Description)
@@ -112,8 +112,8 @@ func TestMCPServerToolFlow(t *testing.T) {
 	if !strings.Contains(ontologySaveTool.Description, "schema") {
 		t.Fatalf("expected ontology schema guidance in ontology_save description, got %q", ontologySaveTool.Description)
 	}
-	if !strings.Contains(brainRecallTool.Description, "episodic memory") {
-		t.Fatalf("expected brain guidance in brain_recall description, got %q", brainRecallTool.Description)
+	if !strings.Contains(KnowledgeMemoryRecallTool.Description, "episodic memory") {
+		t.Fatalf("expected KnowledgeMemory guidance in knowledge_memory_recall description, got %q", KnowledgeMemoryRecallTool.Description)
 	}
 
 	ontologySaveResult, err := session.CallTool(ctx, &mcp.CallToolParams{
@@ -320,28 +320,28 @@ func TestMCPServerToolFlow(t *testing.T) {
 		t.Fatal("expected memory search results from MCP")
 	}
 
-	brainRememberResult, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name: "brain_remember",
+	KnowledgeMemoryRememberResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "knowledge_memory_remember",
 		Arguments: map[string]any{
-			"memory_id":  "brain-memory-mcp",
-			"session_id": "brain-session-mcp",
+			"memory_id":  "KnowledgeMemory-memory-mcp",
+			"session_id": "KnowledgeMemory-session-mcp",
 			"scope":      MemoryScopeSession,
 			"content":    "Alice meets Acme at Wanda Plaza tomorrow.",
 			"importance": 0.9,
 		},
 	})
 	if err != nil {
-		t.Fatalf("call brain_remember: %v", err)
+		t.Fatalf("call knowledge_memory_remember: %v", err)
 	}
-	if brainRememberResult.IsError {
-		t.Fatalf("brain_remember returned tool error: %v", brainRememberResult.GetError())
+	if KnowledgeMemoryRememberResult.IsError {
+		t.Fatalf("knowledge_memory_remember returned tool error: %v", KnowledgeMemoryRememberResult.GetError())
 	}
 
-	brainRecallResult, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name: "brain_recall",
+	KnowledgeMemoryRecallResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "knowledge_memory_recall",
 		Arguments: map[string]any{
 			"query":             "What is happening with Alice tomorrow?",
-			"session_id":        "brain-session-mcp",
+			"session_id":        "KnowledgeMemory-session-mcp",
 			"scope":             MemoryScopeSession,
 			"disable_knowledge": true,
 			"top_k_memories":    3,
@@ -353,64 +353,64 @@ func TestMCPServerToolFlow(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("call brain_recall: %v", err)
+		t.Fatalf("call knowledge_memory_recall: %v", err)
 	}
-	if brainRecallResult.IsError {
-		t.Fatalf("brain_recall returned tool error: %v", brainRecallResult.GetError())
+	if KnowledgeMemoryRecallResult.IsError {
+		t.Fatalf("knowledge_memory_recall returned tool error: %v", KnowledgeMemoryRecallResult.GetError())
 	}
-	var brainRecallResp BrainRecallResponse
-	brainRecallPayload, err := json.Marshal(brainRecallResult.StructuredContent)
+	var KnowledgeMemoryRecallResp KnowledgeMemoryRecallResponse
+	KnowledgeMemoryRecallPayload, err := json.Marshal(KnowledgeMemoryRecallResult.StructuredContent)
 	if err != nil {
-		t.Fatalf("marshal brain recall structured content: %v", err)
+		t.Fatalf("marshal KnowledgeMemory recall structured content: %v", err)
 	}
-	if err := json.Unmarshal(brainRecallPayload, &brainRecallResp); err != nil {
-		t.Fatalf("unmarshal brain recall structured content: %v", err)
+	if err := json.Unmarshal(KnowledgeMemoryRecallPayload, &KnowledgeMemoryRecallResp); err != nil {
+		t.Fatalf("unmarshal KnowledgeMemory recall structured content: %v", err)
 	}
-	if len(brainRecallResp.Memories) == 0 || brainRecallResp.ContextPack.Text == "" {
-		t.Fatalf("expected brain recall results and context pack, got %+v", brainRecallResp)
+	if len(KnowledgeMemoryRecallResp.Memories) == 0 || KnowledgeMemoryRecallResp.ContextPack.Text == "" {
+		t.Fatalf("expected KnowledgeMemory recall results and context pack, got %+v", KnowledgeMemoryRecallResp)
 	}
 
-	brainPromoteResult, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name: "brain_promote_to_knowledge",
+	KnowledgeMemoryPromoteResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "knowledge_memory_promote_to_knowledge",
 		Arguments: map[string]any{
-			"memory_ids":   []string{"brain-memory-mcp"},
-			"knowledge_id": "brain-knowledge-mcp",
+			"memory_ids":   []string{"KnowledgeMemory-memory-mcp"},
+			"knowledge_id": "KnowledgeMemory-knowledge-mcp",
 			"title":        "Alice and Acme",
 			"entities": []map[string]any{
-				{"name": "Alice", "chunk_ids": []string{"chunk:brain-knowledge-mcp:000"}},
-				{"name": "Acme", "chunk_ids": []string{"chunk:brain-knowledge-mcp:000"}},
+				{"name": "Alice", "chunk_ids": []string{"chunk:KnowledgeMemory-knowledge-mcp:000"}},
+				{"name": "Acme", "chunk_ids": []string{"chunk:KnowledgeMemory-knowledge-mcp:000"}},
 			},
 			"relations": []map[string]any{
-				{"from": "Alice", "to": "Acme", "type": "meets", "chunk_ids": []string{"chunk:brain-knowledge-mcp:000"}},
+				{"from": "Alice", "to": "Acme", "type": "meets", "chunk_ids": []string{"chunk:KnowledgeMemory-knowledge-mcp:000"}},
 			},
 		},
 	})
 	if err != nil {
-		t.Fatalf("call brain_promote_to_knowledge: %v", err)
+		t.Fatalf("call knowledge_memory_promote_to_knowledge: %v", err)
 	}
-	if brainPromoteResult.IsError {
+	if KnowledgeMemoryPromoteResult.IsError {
 		var contentText string
-		if len(brainPromoteResult.Content) > 0 {
-			if text, ok := brainPromoteResult.Content[0].(*mcp.TextContent); ok {
+		if len(KnowledgeMemoryPromoteResult.Content) > 0 {
+			if text, ok := KnowledgeMemoryPromoteResult.Content[0].(*mcp.TextContent); ok {
 				contentText = text.Text
 			}
 		}
-		t.Fatalf("brain_promote_to_knowledge returned tool error: err=%v structured=%#v content_text=%q content=%#v", brainPromoteResult.GetError(), brainPromoteResult.StructuredContent, contentText, brainPromoteResult.Content)
+		t.Fatalf("knowledge_memory_promote_to_knowledge returned tool error: err=%v structured=%#v content_text=%q content=%#v", KnowledgeMemoryPromoteResult.GetError(), KnowledgeMemoryPromoteResult.StructuredContent, contentText, KnowledgeMemoryPromoteResult.Content)
 	}
-	var brainPromoteResp BrainPromoteToKnowledgeResponse
-	brainPromotePayload, err := json.Marshal(brainPromoteResult.StructuredContent)
+	var KnowledgeMemoryPromoteResp KnowledgeMemoryPromoteToKnowledgeResponse
+	KnowledgeMemoryPromotePayload, err := json.Marshal(KnowledgeMemoryPromoteResult.StructuredContent)
 	if err != nil {
-		t.Fatalf("marshal brain promote structured content: %v", err)
+		t.Fatalf("marshal KnowledgeMemory promote structured content: %v", err)
 	}
-	if err := json.Unmarshal(brainPromotePayload, &brainPromoteResp); err != nil {
-		t.Fatalf("unmarshal brain promote structured content: %v", err)
+	if err := json.Unmarshal(KnowledgeMemoryPromotePayload, &KnowledgeMemoryPromoteResp); err != nil {
+		t.Fatalf("unmarshal KnowledgeMemory promote structured content: %v", err)
 	}
-	if brainPromoteResp.Knowledge.ID != "brain-knowledge-mcp" {
-		t.Fatalf("unexpected brain promoted knowledge: %+v", brainPromoteResp)
+	if KnowledgeMemoryPromoteResp.Knowledge.ID != "KnowledgeMemory-knowledge-mcp" {
+		t.Fatalf("unexpected KnowledgeMemory promoted knowledge: %+v", KnowledgeMemoryPromoteResp)
 	}
 
-	brainExpandResult, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name: "brain_expand_entity_context",
+	KnowledgeMemoryExpandResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "knowledge_memory_expand_entity_context",
 		Arguments: map[string]any{
 			"entity_names": []string{"Alice"},
 			"max_hops":     2,
@@ -418,25 +418,25 @@ func TestMCPServerToolFlow(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("call brain_expand_entity_context: %v", err)
+		t.Fatalf("call knowledge_memory_expand_entity_context: %v", err)
 	}
-	if brainExpandResult.IsError {
-		t.Fatalf("brain_expand_entity_context returned tool error: %v", brainExpandResult.GetError())
+	if KnowledgeMemoryExpandResult.IsError {
+		t.Fatalf("knowledge_memory_expand_entity_context returned tool error: %v", KnowledgeMemoryExpandResult.GetError())
 	}
-	var brainExpandResp BrainExpandEntityContextResponse
-	brainExpandPayload, err := json.Marshal(brainExpandResult.StructuredContent)
+	var KnowledgeMemoryExpandResp KnowledgeMemoryExpandEntityContextResponse
+	KnowledgeMemoryExpandPayload, err := json.Marshal(KnowledgeMemoryExpandResult.StructuredContent)
 	if err != nil {
-		t.Fatalf("marshal brain expand structured content: %v", err)
+		t.Fatalf("marshal KnowledgeMemory expand structured content: %v", err)
 	}
-	if err := json.Unmarshal(brainExpandPayload, &brainExpandResp); err != nil {
-		t.Fatalf("unmarshal brain expand structured content: %v", err)
+	if err := json.Unmarshal(KnowledgeMemoryExpandPayload, &KnowledgeMemoryExpandResp); err != nil {
+		t.Fatalf("unmarshal KnowledgeMemory expand structured content: %v", err)
 	}
-	if len(brainExpandResp.Nodes) == 0 {
-		t.Fatalf("expected brain expand nodes, got %+v", brainExpandResp)
+	if len(KnowledgeMemoryExpandResp.Nodes) == 0 {
+		t.Fatalf("expected KnowledgeMemory expand nodes, got %+v", KnowledgeMemoryExpandResp)
 	}
 
-	brainNeighborsResult, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name: "brain_neighbors",
+	KnowledgeMemoryNeighborsResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "knowledge_memory_neighbors",
 		Arguments: map[string]any{
 			"entity_name": "Alice",
 			"max_depth":   1,
@@ -444,53 +444,53 @@ func TestMCPServerToolFlow(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("call brain_neighbors: %v", err)
+		t.Fatalf("call knowledge_memory_neighbors: %v", err)
 	}
-	if brainNeighborsResult.IsError {
-		t.Fatalf("brain_neighbors returned tool error: %v", brainNeighborsResult.GetError())
+	if KnowledgeMemoryNeighborsResult.IsError {
+		t.Fatalf("knowledge_memory_neighbors returned tool error: %v", KnowledgeMemoryNeighborsResult.GetError())
 	}
-	var brainNeighborsResp BrainNeighborsResponse
-	brainNeighborsPayload, err := json.Marshal(brainNeighborsResult.StructuredContent)
+	var KnowledgeMemoryNeighborsResp KnowledgeMemoryNeighborsResponse
+	KnowledgeMemoryNeighborsPayload, err := json.Marshal(KnowledgeMemoryNeighborsResult.StructuredContent)
 	if err != nil {
-		t.Fatalf("marshal brain neighbors structured content: %v", err)
+		t.Fatalf("marshal KnowledgeMemory neighbors structured content: %v", err)
 	}
-	if err := json.Unmarshal(brainNeighborsPayload, &brainNeighborsResp); err != nil {
-		t.Fatalf("unmarshal brain neighbors structured content: %v", err)
+	if err := json.Unmarshal(KnowledgeMemoryNeighborsPayload, &KnowledgeMemoryNeighborsResp); err != nil {
+		t.Fatalf("unmarshal KnowledgeMemory neighbors structured content: %v", err)
 	}
-	if len(brainNeighborsResp.Neighbors) == 0 {
-		t.Fatalf("expected brain neighbors, got %+v", brainNeighborsResp)
+	if len(KnowledgeMemoryNeighborsResp.Neighbors) == 0 {
+		t.Fatalf("expected KnowledgeMemory neighbors, got %+v", KnowledgeMemoryNeighborsResp)
 	}
 
-	brainPathResult, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name: "brain_shortest_path",
+	KnowledgeMemoryPathResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "knowledge_memory_shortest_path",
 		Arguments: map[string]any{
 			"from_entity_name": "Alice",
 			"to_entity_name":   "Acme",
 		},
 	})
 	if err != nil {
-		t.Fatalf("call brain_shortest_path: %v", err)
+		t.Fatalf("call knowledge_memory_shortest_path: %v", err)
 	}
-	if brainPathResult.IsError {
-		t.Fatalf("brain_shortest_path returned tool error: %v", brainPathResult.GetError())
+	if KnowledgeMemoryPathResult.IsError {
+		t.Fatalf("knowledge_memory_shortest_path returned tool error: %v", KnowledgeMemoryPathResult.GetError())
 	}
-	var brainPathResp BrainShortestPathResponse
-	brainPathPayload, err := json.Marshal(brainPathResult.StructuredContent)
+	var KnowledgeMemoryPathResp KnowledgeMemoryShortestPathResponse
+	KnowledgeMemoryPathPayload, err := json.Marshal(KnowledgeMemoryPathResult.StructuredContent)
 	if err != nil {
-		t.Fatalf("marshal brain path structured content: %v", err)
+		t.Fatalf("marshal KnowledgeMemory path structured content: %v", err)
 	}
-	if err := json.Unmarshal(brainPathPayload, &brainPathResp); err != nil {
-		t.Fatalf("unmarshal brain path structured content: %v", err)
+	if err := json.Unmarshal(KnowledgeMemoryPathPayload, &KnowledgeMemoryPathResp); err != nil {
+		t.Fatalf("unmarshal KnowledgeMemory path structured content: %v", err)
 	}
-	if brainPathResp.Path == nil || brainPathResp.Path.Distance != 1 {
-		t.Fatalf("expected direct brain shortest path, got %+v", brainPathResp)
+	if KnowledgeMemoryPathResp.Path == nil || KnowledgeMemoryPathResp.Path.Distance != 1 {
+		t.Fatalf("expected direct KnowledgeMemory shortest path, got %+v", KnowledgeMemoryPathResp)
 	}
 
-	brainContextResult, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name: "brain_build_context_pack",
+	KnowledgeMemoryContextResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "knowledge_memory_build_context_pack",
 		Arguments: map[string]any{
 			"query":             "Summarize Alice and Acme",
-			"session_id":        "brain-session-mcp",
+			"session_id":        "KnowledgeMemory-session-mcp",
 			"scope":             MemoryScopeSession,
 			"top_k_memories":    3,
 			"top_k_knowledge":   2,
@@ -499,29 +499,29 @@ func TestMCPServerToolFlow(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("call brain_build_context_pack: %v", err)
+		t.Fatalf("call knowledge_memory_build_context_pack: %v", err)
 	}
-	if brainContextResult.IsError {
-		t.Fatalf("brain_build_context_pack returned tool error: %v", brainContextResult.GetError())
+	if KnowledgeMemoryContextResult.IsError {
+		t.Fatalf("knowledge_memory_build_context_pack returned tool error: %v", KnowledgeMemoryContextResult.GetError())
 	}
-	var brainContextResp BrainBuildContextPackResponse
-	brainContextPayload, err := json.Marshal(brainContextResult.StructuredContent)
+	var KnowledgeMemoryContextResp KnowledgeMemoryBuildContextPackResponse
+	KnowledgeMemoryContextPayload, err := json.Marshal(KnowledgeMemoryContextResult.StructuredContent)
 	if err != nil {
-		t.Fatalf("marshal brain context structured content: %v", err)
+		t.Fatalf("marshal KnowledgeMemory context structured content: %v", err)
 	}
-	if err := json.Unmarshal(brainContextPayload, &brainContextResp); err != nil {
-		t.Fatalf("unmarshal brain context structured content: %v", err)
+	if err := json.Unmarshal(KnowledgeMemoryContextPayload, &KnowledgeMemoryContextResp); err != nil {
+		t.Fatalf("unmarshal KnowledgeMemory context structured content: %v", err)
 	}
-	if brainContextResp.ContextPack.Text == "" {
-		t.Fatalf("expected brain context pack text, got %+v", brainContextResp)
+	if KnowledgeMemoryContextResp.ContextPack.Text == "" {
+		t.Fatalf("expected KnowledgeMemory context pack text, got %+v", KnowledgeMemoryContextResp)
 	}
 
-	brainReflectResult, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name: "brain_reflect",
+	KnowledgeMemoryReflectResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "knowledge_memory_reflect",
 		Arguments: map[string]any{
 			"recall": map[string]any{
 				"query":           "What matters about Alice and Acme?",
-				"session_id":      "brain-session-mcp",
+				"session_id":      "KnowledgeMemory-session-mcp",
 				"scope":           MemoryScopeSession,
 				"top_k_memories":  3,
 				"top_k_knowledge": 2,
@@ -531,30 +531,30 @@ func TestMCPServerToolFlow(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("call brain_reflect: %v", err)
+		t.Fatalf("call knowledge_memory_reflect: %v", err)
 	}
-	if brainReflectResult.IsError {
-		t.Fatalf("brain_reflect returned tool error: %v", brainReflectResult.GetError())
+	if KnowledgeMemoryReflectResult.IsError {
+		t.Fatalf("knowledge_memory_reflect returned tool error: %v", KnowledgeMemoryReflectResult.GetError())
 	}
-	var brainReflectResp BrainReflectResponse
-	brainReflectPayload, err := json.Marshal(brainReflectResult.StructuredContent)
+	var KnowledgeMemoryReflectResp KnowledgeMemoryReflectResponse
+	KnowledgeMemoryReflectPayload, err := json.Marshal(KnowledgeMemoryReflectResult.StructuredContent)
 	if err != nil {
-		t.Fatalf("marshal brain reflect structured content: %v", err)
+		t.Fatalf("marshal KnowledgeMemory reflect structured content: %v", err)
 	}
-	if err := json.Unmarshal(brainReflectPayload, &brainReflectResp); err != nil {
-		t.Fatalf("unmarshal brain reflect structured content: %v", err)
+	if err := json.Unmarshal(KnowledgeMemoryReflectPayload, &KnowledgeMemoryReflectResp); err != nil {
+		t.Fatalf("unmarshal KnowledgeMemory reflect structured content: %v", err)
 	}
-	if strings.TrimSpace(brainReflectResp.Reflection.Summary) == "" {
-		t.Fatalf("expected non-empty brain reflection summary, got %+v", brainReflectResp)
+	if strings.TrimSpace(KnowledgeMemoryReflectResp.Reflection.Summary) == "" {
+		t.Fatalf("expected non-empty KnowledgeMemory reflection summary, got %+v", KnowledgeMemoryReflectResp)
 	}
 
-	brainConsolidateResult, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name: "brain_consolidate",
+	KnowledgeMemoryConsolidateResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "knowledge_memory_consolidate",
 		Arguments: map[string]any{
 			"reflect": map[string]any{
 				"recall": map[string]any{
 					"query":           "Summarize Alice and Acme",
-					"session_id":      "brain-session-mcp",
+					"session_id":      "KnowledgeMemory-session-mcp",
 					"scope":           MemoryScopeSession,
 					"top_k_memories":  3,
 					"top_k_knowledge": 2,
@@ -562,35 +562,35 @@ func TestMCPServerToolFlow(t *testing.T) {
 				},
 				"max_summary_chars": 180,
 			},
-			"memory_id":            "brain-summary-mcp",
-			"session_id":           "brain-session-mcp",
+			"memory_id":            "KnowledgeMemory-summary-mcp",
+			"session_id":           "KnowledgeMemory-session-mcp",
 			"scope":                MemoryScopeSession,
 			"promote_to_knowledge": true,
 			"promotion": map[string]any{
-				"knowledge_id": "brain-summary-knowledge-mcp",
-				"title":        "Brain Summary MCP",
+				"knowledge_id": "KnowledgeMemory-summary-knowledge-mcp",
+				"title":        "KnowledgeMemory Summary MCP",
 			},
 		},
 	})
 	if err != nil {
-		t.Fatalf("call brain_consolidate: %v", err)
+		t.Fatalf("call knowledge_memory_consolidate: %v", err)
 	}
-	if brainConsolidateResult.IsError {
-		t.Fatalf("brain_consolidate returned tool error: %v", brainConsolidateResult.GetError())
+	if KnowledgeMemoryConsolidateResult.IsError {
+		t.Fatalf("knowledge_memory_consolidate returned tool error: %v", KnowledgeMemoryConsolidateResult.GetError())
 	}
-	var brainConsolidateResp BrainConsolidateResponse
-	brainConsolidatePayload, err := json.Marshal(brainConsolidateResult.StructuredContent)
+	var KnowledgeMemoryConsolidateResp KnowledgeMemoryConsolidateResponse
+	KnowledgeMemoryConsolidatePayload, err := json.Marshal(KnowledgeMemoryConsolidateResult.StructuredContent)
 	if err != nil {
-		t.Fatalf("marshal brain consolidate structured content: %v", err)
+		t.Fatalf("marshal KnowledgeMemory consolidate structured content: %v", err)
 	}
-	if err := json.Unmarshal(brainConsolidatePayload, &brainConsolidateResp); err != nil {
-		t.Fatalf("unmarshal brain consolidate structured content: %v", err)
+	if err := json.Unmarshal(KnowledgeMemoryConsolidatePayload, &KnowledgeMemoryConsolidateResp); err != nil {
+		t.Fatalf("unmarshal KnowledgeMemory consolidate structured content: %v", err)
 	}
-	if strings.TrimSpace(brainConsolidateResp.Memory.Content) == "" {
-		t.Fatalf("expected saved summary memory from brain_consolidate, got %+v", brainConsolidateResp)
+	if strings.TrimSpace(KnowledgeMemoryConsolidateResp.Memory.Content) == "" {
+		t.Fatalf("expected saved summary memory from knowledge_memory_consolidate, got %+v", KnowledgeMemoryConsolidateResp)
 	}
-	if brainConsolidateResp.Knowledge == nil || brainConsolidateResp.Knowledge.ID != "brain-summary-knowledge-mcp" {
-		t.Fatalf("expected promoted summary knowledge from brain_consolidate, got %+v", brainConsolidateResp)
+	if KnowledgeMemoryConsolidateResp.Knowledge == nil || KnowledgeMemoryConsolidateResp.Knowledge.ID != "KnowledgeMemory-summary-knowledge-mcp" {
+		t.Fatalf("expected promoted summary knowledge from knowledge_memory_consolidate, got %+v", KnowledgeMemoryConsolidateResp)
 	}
 
 	if closeErr := session.Close(); closeErr != nil {

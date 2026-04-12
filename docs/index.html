@@ -4,9 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CortexDB - Embedded Vector + Graph DB in Pure Go</title>
+    <title>CortexDB - Local-First AI Memory and Knowledge Graph</title>
     <meta name="description"
-        content="CortexDB is an embedded vector + graph database in pure Go with HNSW/IVF/LSH indexing, quantization, Hindsight memory, and semantic routing.">
+        content="CortexDB is a pure-Go, single-file AI memory and knowledge graph library with vectors, lexical search, RAG, memoryflow, graphflow, RDF/SPARQL/RDFS/SHACL, and MCP tools.">
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -188,8 +188,7 @@
                 <h1 class="text-5xl md:text-7xl font-bold mb-6 leading-tight">
                     <span
                         class="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
-                        <span data-i18n data-en="Embedded Vector + Graph Database" data-zh="嵌入式向量 + 图数据库">Embedded
-                            Vector + Graph Database</span>
+                        <span data-i18n data-en="Local-First AI Memory" data-zh="本地优先 AI 记忆">Local-First AI Memory</span>
                     </span>
                     <br>
                     <span class="text-gray-900 dark:text-white" data-i18n data-en="in Pure Go" data-zh="纯 Go 实现">in Pure
@@ -198,10 +197,9 @@
 
                 <p class="text-xl md:text-2xl text-gray-600 dark:text-gray-300 mb-10 max-w-4xl mx-auto leading-relaxed font-light tracking-wide"
                     data-i18n
-                    data-en="CortexDB delivers embedded vector + graph storage with HNSW/IVF/LSH indexing, quantization, Hindsight memory, and semantic routing—pure Go, SQLite-backed, production-ready."
-                    data-zh="CortexDB 提供嵌入式向量 + 图存储，支持 HNSW/IVF/LSH 索引、量化、Hindsight 记忆与语义路由——纯 Go、SQLite 驱动、生产可用。">
-                    CortexDB delivers embedded vector + graph storage with HNSW/IVF/LSH indexing, quantization,
-                    Hindsight memory, and semantic routing—pure Go, SQLite-backed, production-ready.
+                    data-en="CortexDB combines vectors, FTS5 lexical search, RAG knowledge storage, MemoryFlow, GraphFlow, RDF/SPARQL/RDFS/SHACL, and MCP-aligned tools in one SQLite-backed Go library."
+                    data-zh="CortexDB 将向量检索、FTS5 词法搜索、RAG knowledge、MemoryFlow、GraphFlow、RDF/SPARQL/RDFS/SHACL 与 MCP 工具整合到一个 SQLite-backed Go 库中。">
+                    CortexDB combines vectors, FTS5 lexical search, RAG knowledge storage, MemoryFlow, GraphFlow, RDF/SPARQL/RDFS/SHACL, and MCP-aligned tools in one SQLite-backed Go library.
                 </p>
 
                 <div class="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
@@ -264,13 +262,13 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-16">
                 <h2 class="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"
-                    data-i18n data-en="Enterprise-Grade Features" data-zh="企业级特性">
-                    Enterprise-Grade Features
+                    data-i18n data-en="Architecture-Level Features" data-zh="架构级能力">
+                    Architecture-Level Features
                 </h2>
                 <p class="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto" data-i18n
-                    data-en="Built for production with cutting-edge algorithms and optimization techniques"
-                    data-zh="面向生产，采用先进算法与优化技术">
-                    Built for production with cutting-edge algorithms and optimization techniques
+                    data-en="Built around CortexDB, MemoryFlow, GraphFlow, embedded KG, and MCP tools"
+                    data-zh="围绕 CortexDB、MemoryFlow、GraphFlow、内嵌 KG 与 MCP 工具构建">
+                    Built around CortexDB, MemoryFlow, GraphFlow, embedded KG, and MCP tools
                 </p>
             </div>
 
@@ -285,13 +283,12 @@
                                 d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                         </svg>
                     </div>
-                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="HNSW Indexing" data-zh="HNSW 索引">HNSW Indexing
+                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="CortexDB Facade" data-zh="CortexDB 门面">CortexDB Facade
                     </h3>
                     <p class="text-gray-600 dark:text-gray-300" data-i18n
-                        data-en="Hierarchical Navigable Small World graphs for lightning-fast approximate nearest neighbor search with sub-linear complexity."
-                        data-zh="基于分层小世界图的近似最近邻检索，亚线性复杂度。">
-                        Hierarchical Navigable Small World graphs for lightning-fast approximate nearest neighbor search
-                        with sub-linear complexity.
+                        data-en="Primary DB facade for vectors, FTS5, knowledge, memory, KnowledgeMemory recall, knowledge graph APIs, toolbox, and MCP."
+                        data-zh="主 DB 门面，覆盖向量、FTS5、knowledge、memory、KnowledgeMemory recall、KG API、toolbox 与 MCP。">
+                        Primary DB facade for vectors, FTS5, knowledge, memory, KnowledgeMemory recall, knowledge graph APIs, toolbox, and MCP.
                     </p>
                 </div>
 
@@ -305,13 +302,11 @@
                             </path>
                         </svg>
                     </div>
-                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="Advanced Quantization" data-zh="高级量化">Advanced
-                        Quantization</h3>
+                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="MemoryFlow" data-zh="MemoryFlow">MemoryFlow</h3>
                     <p class="text-gray-600 dark:text-gray-300" data-i18n
-                        data-en="Product, scalar, and binary quantization for optimal memory usage and blazing-fast searches with configurable precision."
-                        data-zh="产品/标量/二值量化，兼顾内存与检索速度，可配置精度。">
-                        Product, scalar, and binary quantization for optimal memory usage and blazing-fast searches with
-                        configurable precision.
+                        data-en="Agent memory workflow for transcript ingest, recall, wake-up layers, diary, transcript reconstruction, and promotion."
+                        data-zh="Agent memory workflow，负责 transcript ingest、recall、wake-up layers、diary、transcript reconstruction 与 promotion。">
+                        Agent memory workflow for transcript ingest, recall, wake-up layers, diary, transcript reconstruction, and promotion.
                     </p>
                 </div>
 
@@ -325,13 +320,12 @@
                             </path>
                         </svg>
                     </div>
-                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="Multi-Index Strategies" data-zh="多索引策略">
-                        Multi-Index Strategies</h3>
+                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="GraphFlow" data-zh="GraphFlow">
+                        GraphFlow</h3>
                     <p class="text-gray-600 dark:text-gray-300" data-i18n
-                        data-en="Combine HNSW, IVF, and flat indices with intelligent voting, merging, and reranking for optimal performance."
-                        data-zh="组合 HNSW/IVF/Flat，融合投票、合并与重排优化性能。">
-                        Combine HNSW, IVF, and flat indices with intelligent voting, merging, and reranking for optimal
-                        performance.
+                        data-en="Corpus-to-graph workflow with extraction schema, build, analysis, report, JSON export, and HTML visualization."
+                        data-zh="Corpus-to-graph workflow，支持 extraction schema、build、analysis、report、JSON 与 HTML 可视化。">
+                        Corpus-to-graph workflow with extraction schema, build, analysis, report, JSON export, and HTML visualization.
                     </p>
                 </div>
 
@@ -345,13 +339,11 @@
                             </path>
                         </svg>
                     </div>
-                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="Advanced Search" data-zh="高级搜索">Advanced
-                        Search</h3>
+                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="Embedded RDF/KG" data-zh="内嵌 RDF/KG">Embedded RDF/KG</h3>
                     <p class="text-gray-600 dark:text-gray-300" data-i18n
-                        data-en="Negative sampling, diversity search (MMR, DPP), anomaly detection, and recommendation systems built-in."
-                        data-zh="内置负采样、多样性搜索（MMR/DPP）、异常检测与推荐能力。">
-                        Negative sampling, diversity search (MMR, DPP), anomaly detection, and recommendation systems
-                        built-in.
+                        data-en="RDF triples/quads, namespaces, import/export, SPARQL practical subset, RDFS-lite, and SHACL-lite."
+                        data-zh="RDF triples/quads、namespace、import/export、SPARQL 实用子集、RDFS-lite 与 SHACL-lite。">
+                        RDF triples/quads, namespaces, import/export, SPARQL practical subset, RDFS-lite, and SHACL-lite.
                     </p>
                 </div>
 
@@ -365,13 +357,12 @@
                             </path>
                         </svg>
                     </div>
-                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="Multi-Vector Entities" data-zh="多向量实体">
-                        Multi-Vector Entities</h3>
+                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="Toolbox and MCP" data-zh="Toolbox 与 MCP">
+                        Toolbox and MCP</h3>
                     <p class="text-gray-600 dark:text-gray-300" data-i18n
-                        data-en="Handle documents with multiple embeddings (title, content, summary) with field-specific weights and aggregation."
-                        data-zh="文档多向量字段（标题/正文/摘要）加权与聚合。">
-                        Handle documents with multiple embeddings (title, content, summary) with field-specific weights
-                        and aggregation.
+                        data-en="In-process tool calls through db.GraphRAGTools(), plus MCP server exposure for external agents."
+                        data-zh="通过 db.GraphRAGTools() 做进程内 tool calls，也可用 MCP server 暴露给外部 agent。">
+                        In-process tool calls through db.GraphRAGTools(), plus MCP server exposure for external agents.
                     </p>
                 </div>
 
@@ -385,13 +376,12 @@
                             </path>
                         </svg>
                     </div>
-                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="Faceted Search" data-zh="分面检索">Faceted Search
+                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="OpenAI-Compatible Extraction" data-zh="OpenAI 兼容抽取">OpenAI-Compatible Extraction
                     </h3>
                     <p class="text-gray-600 dark:text-gray-300" data-i18n
-                        data-en="Complex attribute-based filtering with range queries, aggregations, and SQL-based metadata search."
-                        data-zh="支持区间、聚合与 SQL 元数据搜索的复杂过滤。">
-                        Complex attribute-based filtering with range queries, aggregations, and SQL-based metadata
-                        search.
+                        data-en="GraphFlow example uses openai-go/v3 with JSON Schema structured output and caller-provided credentials from .env."
+                        data-zh="GraphFlow 示例使用 openai-go/v3 和 JSON Schema structured output，并从 .env 读取调用方凭据。">
+                        GraphFlow example uses openai-go/v3 with JSON Schema structured output and caller-provided credentials from .env.
                     </p>
                 </div>
 
@@ -404,12 +394,12 @@
                                 d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                         </svg>
                     </div>
-                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="Hindsight Memory" data-zh="Hindsight 记忆">
-                        Hindsight Memory</h3>
+                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="KnowledgeMemory and Memory APIs" data-zh="KnowledgeMemory 与 Memory API">
+                        KnowledgeMemory and Memory APIs</h3>
                     <p class="text-gray-600 dark:text-gray-300" data-i18n
-                        data-en="Biomimetic agent memory with TEMPR retrieval, long-term learning, and opinion formation."
-                        data-zh="仿生智能体记忆，支持 TEMPR 检索、长期学习与观点形成。">
-                        Biomimetic agent memory with TEMPR retrieval, long-term learning, and opinion formation.
+                        data-en="High-level SaveMemory, SearchMemory, KnowledgeMemory.Recall, reflection, and context pack APIs for agent workflows."
+                        data-zh="面向 agent workflow 的 SaveMemory、SearchMemory、KnowledgeMemory.Recall、reflection 与 context pack API。">
+                        High-level SaveMemory, SearchMemory, KnowledgeMemory.Recall, reflection, and context pack APIs for agent workflows.
                     </p>
                 </div>
 
@@ -423,12 +413,11 @@
                             </path>
                         </svg>
                     </div>
-                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="Semantic Router" data-zh="语义路由">Semantic
-                        Router</h3>
+                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="No-Embedder Mode" data-zh="无 Embedding 模式">No-Embedder Mode</h3>
                     <p class="text-gray-600 dark:text-gray-300" data-i18n
-                        data-en="Route intents with configurable similarity, thresholds, and pluggable embedders."
-                        data-zh="可配置相似度与阈值的意图路由，支持可插拔嵌入器。">
-                        Route intents with configurable similarity, thresholds, and pluggable embedders.
+                        data-en="Use lexical retrieval plus LLM-planned keywords, alternate queries, entity names, retrieval mode, or optional lexical semantic-router tool selection."
+                        data-zh="使用 lexical retrieval 加 LLM 规划的 keywords、alternate queries、entity names、retrieval mode，或可选 lexical semantic-router tool selection。">
+                        Use lexical retrieval plus LLM-planned keywords, alternate queries, entity names, retrieval mode, or optional lexical semantic-router tool selection.
                     </p>
                 </div>
             </div>
@@ -442,9 +431,9 @@
                 <h2 class="text-4xl font-bold mb-4" data-i18n data-en="Architecture Overview" data-zh="架构概览">
                     Architecture Overview</h2>
                 <p class="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto" data-i18n
-                    data-en="Modular Go packages for storage, indexing, routing, memory, and graph intelligence"
-                    data-zh="模块化 Go 包覆盖存储、索引、路由、记忆与图智能">
-                    Modular Go packages for storage, indexing, routing, memory, and graph intelligence
+                    data-en="Modular Go packages for cortexdb, memoryflow, graphflow, embedded KG, storage, and tools"
+                    data-zh="模块化 Go 包覆盖 cortexdb、memoryflow、graphflow、内嵌 KG、存储与工具">
+                    Modular Go packages for cortexdb, memoryflow, graphflow, embedded KG, storage, and tools
                 </p>
             </div>
 
@@ -455,94 +444,86 @@
                         <h3 class="text-xl font-bold mb-3 text-blue-900 dark:text-blue-100" data-i18n
                             data-en="CortexDB Facade" data-zh="CortexDB 门面">CortexDB Facade</h3>
                         <p class="text-blue-800 dark:text-blue-200" data-i18n
-                            data-en="High-level DB API (Open, Quick, Vector, Graph) for rapid app integration."
-                            data-zh="高层 DB API（Open/Quick/Vector/Graph），便于快速集成。">
-                            High-level DB API (Open, Quick, Vector, Graph) for
-                            rapid app integration.
+                            data-en="Primary DB API for vectors, lexical search, knowledge, memory, KnowledgeMemory, KG, tools, and MCP."
+                            data-zh="主 DB API，覆盖 vectors、lexical search、knowledge、memory、KnowledgeMemory、KG、tools 与 MCP。">
+                            Primary DB API for vectors, lexical search, knowledge, memory, KnowledgeMemory, KG, tools, and MCP.
                         </p>
                     </div>
 
                     <div
                         class="p-6 bg-gradient-to-r from-slate-50 to-gray-50 dark:from-slate-900/20 dark:to-gray-900/20 rounded-xl border border-slate-200 dark:border-slate-700">
                         <h3 class="text-xl font-bold mb-3 text-slate-900 dark:text-slate-100" data-i18n
-                            data-en="Core Package" data-zh="Core 包">Core Package</h3>
+                            data-en="MemoryFlow Package" data-zh="MemoryFlow 包">MemoryFlow Package</h3>
                         <p class="text-slate-800 dark:text-slate-200" data-i18n
-                            data-en="SQLite storage, RAG schemas, ACL, FTS5, advanced search & filtering."
-                            data-zh="SQLite 存储、RAG 架构、ACL、FTS5 与高级检索/过滤。">
-                            SQLite storage, RAG schemas, ACL, FTS5, advanced
-                            search & filtering.
+                            data-en="Transcript ingest, recall, wake-up layers, diary, transcript reconstruction, and promotion."
+                            data-zh="Transcript ingest、recall、wake-up layers、diary、transcript reconstruction 与 promotion。">
+                            Transcript ingest, recall, wake-up layers, diary, optional Hindsight strategy, and promotion.
                         </p>
                     </div>
 
                     <div
                         class="p-6 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-xl border border-purple-200 dark:border-purple-700">
                         <h3 class="text-xl font-bold mb-3 text-purple-900 dark:text-purple-100" data-i18n
-                            data-en="Index Package" data-zh="Index 包">Index Package</h3>
+                            data-en="GraphFlow Package" data-zh="GraphFlow 包">GraphFlow Package</h3>
                         <p class="text-purple-800 dark:text-purple-200" data-i18n
-                            data-en="HNSW, IVF, LSH, and multi-index strategies for flexible performance."
-                            data-zh="HNSW/IVF/LSH 与多索引策略，兼顾性能与灵活性。">
-                            HNSW, IVF, LSH, and multi-index strategies for
-                            flexible performance.
+                            data-en="Corpus-to-graph extraction schema, build, analysis, report, JSON export, and HTML visualization."
+                            data-zh="Corpus-to-graph extraction schema、build、analysis、report、JSON 与 HTML 可视化。">
+                            Corpus-to-graph extraction schema, build, analysis, report, JSON export, and HTML visualization.
                         </p>
                     </div>
 
                     <div
                         class="p-6 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl border border-green-200 dark:border-green-700">
                         <h3 class="text-xl font-bold mb-3 text-green-900 dark:text-green-100" data-i18n
-                            data-en="Quantization Package" data-zh="Quantization 包">Quantization Package</h3>
+                            data-en="Graph Package" data-zh="Graph 包">Graph Package</h3>
                         <p class="text-green-800 dark:text-green-200" data-i18n
-                            data-en="SQ8, product, scalar, and binary quantization to reduce memory."
-                            data-zh="SQ8/产品/标量/二值量化，降低内存占用。">
-                            SQ8, product, scalar, and binary quantization to
-                            reduce memory.
+                            data-en="Low-level property graph, RDF triples/quads, SPARQL, RDFS-lite inference, and SHACL-lite validation."
+                            data-zh="底层 property graph、RDF triples/quads、SPARQL、RDFS-lite inference 与 SHACL-lite validation。">
+                            Low-level property graph, RDF triples/quads, SPARQL, RDFS-lite inference, and SHACL-lite validation.
                         </p>
                     </div>
 
                     <div
                         class="p-6 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 rounded-xl border border-orange-200 dark:border-orange-700">
                         <h3 class="text-xl font-bold mb-3 text-orange-900 dark:text-orange-100" data-i18n
-                            data-en="Graph Package" data-zh="Graph 包">Graph Package</h3>
+                            data-en="Core Package" data-zh="Core 包">Core Package</h3>
                         <p class="text-orange-800 dark:text-orange-200" data-i18n
-                            data-en="Knowledge graph storage with traversal and hybrid graph + vector search."
-                            data-zh="知识图谱存储、图遍历与图+向量混合检索。">
-                            Knowledge graph storage with traversal and
-                            hybrid graph + vector search.
+                            data-en="SQLite storage, embeddings, collections, FTS5, vector indexes, chat, and session primitives."
+                            data-zh="SQLite storage、embeddings、collections、FTS5、vector indexes、chat 与 session primitives。">
+                            SQLite storage, embeddings, collections, FTS5, vector indexes, chat, and session primitives.
                         </p>
                     </div>
 
                     <div
                         class="p-6 bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 rounded-xl border border-amber-200 dark:border-amber-700">
                         <h3 class="text-xl font-bold mb-3 text-amber-900 dark:text-amber-100" data-i18n
-                            data-en="Geo Package" data-zh="Geo 包">Geo Package</h3>
+                            data-en="Tools and MCP" data-zh="Tools 与 MCP">Tools and MCP</h3>
                         <p class="text-amber-800 dark:text-amber-200" data-i18n
-                            data-en="Geospatial indexing and distance queries for location-aware search."
-                            data-zh="地理空间索引与距离查询，实现位置感知检索。">
-                            Geospatial indexing and distance queries for
-                            location-aware search.
+                            data-en="GraphRAG toolbox, knowledge graph tools, KnowledgeMemory tools, memory tools, and MCP server integration."
+                            data-zh="GraphRAG toolbox、knowledge graph tools、KnowledgeMemory tools、memory tools 与 MCP server 集成。">
+                            GraphRAG toolbox, knowledge graph tools, KnowledgeMemory tools, memory tools, and MCP server integration.
                         </p>
                     </div>
 
                     <div
                         class="p-6 bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 rounded-xl border border-cyan-200 dark:border-cyan-700">
                         <h3 class="text-xl font-bold mb-3 text-cyan-900 dark:text-cyan-100" data-i18n
-                            data-en="Hindsight Package" data-zh="Hindsight 包">Hindsight Package</h3>
+                            data-en="Knowledge Graph APIs" data-zh="Knowledge Graph API">Knowledge Graph APIs</h3>
                         <p class="text-cyan-800 dark:text-cyan-200" data-i18n
-                            data-en="Agent memory with TEMPR retrieval, reflection, and long-term learning."
-                            data-zh="智能体记忆系统，支持 TEMPR 检索、反思与长期学习。">
-                            Agent memory with TEMPR retrieval, reflection, and
-                            long-term learning.
+                            data-en="High-level RDF/SPARQL/RDFS/SHACL APIs: query, inference refresh, explain, and validation."
+                            data-zh="高层 RDF/SPARQL/RDFS/SHACL API：query、inference refresh、explain 与 validation。">
+                            High-level RDF/SPARQL/RDFS/SHACL APIs: query, inference refresh, explain, and validation.
                         </p>
                     </div>
 
                     <div
                         class="p-6 bg-gradient-to-r from-fuchsia-50 to-purple-50 dark:from-fuchsia-900/20 dark:to-purple-900/20 rounded-xl border border-fuchsia-200 dark:border-fuchsia-700">
                         <h3 class="text-xl font-bold mb-3 text-fuchsia-900 dark:text-fuchsia-100" data-i18n
-                            data-en="Semantic Router" data-zh="语义路由">Semantic Router</h3>
+                            data-en="No-Embedder Mode" data-zh="无 Embedding 模式">No-Embedder Mode</h3>
                         <p class="text-fuchsia-800 dark:text-fuchsia-200" data-i18n
-                            data-en="Intent routing built on embeddings with configurable similarity and thresholds."
-                            data-zh="基于向量的意图路由，支持可配置相似度与阈值。">
-                            Intent routing built on embeddings with
-                            configurable similarity and thresholds.
+                            data-en="Lexical retrieval with LLM-planned keywords, alternate queries, entity names, and retrieval mode."
+                            data-zh="Lexical retrieval 加 LLM 规划的 keywords、alternate queries、entity names 与 retrieval mode。">
+                            Lexical retrieval with LLM-planned keywords, alternate queries, entity names, and retrieval mode.
                         </p>
                     </div>
                 </div>
@@ -560,26 +541,28 @@
 
 import (
     "context"
-    "fmt"
-
-    "github.com/liliang-cn/cortexdb/v2/pkg/core"
     "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+    "github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
 func main() {
-    db, err := cortexdb.Open(cortexdb.DefaultConfig("rag.db"))
+    db, err := cortexdb.Open(cortexdb.DefaultConfig("KnowledgeMemory.db"))
     if err != nil {
         panic(err)
     }
     defer db.Close()
 
     ctx := context.Background()
-    db.Vector().CreateDocument(ctx, &core.Document{ID: "doc1", Title: "Go Guide"})
 
-    _, _ = db.Quick().Add(ctx, []float32{0.1, 0.2, 0.3}, "Go is awesome")
+    _, _ = db.UpsertKnowledgeGraph(ctx, cortexdb.KnowledgeGraphUpsertRequest{
+        Triples: []cortexdb.KnowledgeGraphTriple{
+            {Subject: graph.NewIRI("https://example.com/alice"), Predicate: graph.NewIRI(graph.RDFType), Object: graph.NewIRI("https://example.com/Person")},
+        },
+    })
 
-    results, _ := db.Quick().Search(ctx, []float32{0.1, 0.2, 0.25}, 1)
-    fmt.Println(results[0].Content)
+    _, _ = db.QueryKnowledgeGraph(ctx, cortexdb.KnowledgeGraphQueryRequest{
+        Query: `SELECT ?o WHERE { &lt;https://example.com/alice&gt; ?p ?o . }`,
+    })
 }</code></pre>
                 </div>
             </div>
@@ -603,14 +586,13 @@ func main() {
                     class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
                     <div class="h-2 bg-gradient-to-r from-blue-500 to-purple-500"></div>
                     <div class="p-6">
-                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Semantic Search" data-zh="语义检索">Semantic
-                            Search</h3>
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Core" data-zh="Core">Core</h3>
                         <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
-                            data-en="Build intelligent search with natural language understanding and context awareness."
-                            data-zh="基于自然语言理解与上下文的智能检索。">
-                            Build intelligent search with natural language understanding and context awareness.
+                            data-en="Raw vectors, collections, and the Quick API for smallest-surface integration."
+                            data-zh="Raw vectors、collections 与 Quick API，适合最小集成面。">
+                            Raw vectors, collections, and the Quick API for smallest-surface integration.
                         </p>
-                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/semantic_search"
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/01_core"
                             class="inline-flex items-center text-blue-600 dark:text-blue-400 hover:underline">
                             <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -626,14 +608,14 @@ func main() {
                     class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
                     <div class="h-2 bg-gradient-to-r from-green-500 to-teal-500"></div>
                     <div class="p-6">
-                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="RAG System" data-zh="RAG 系统">RAG System
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="RAG Knowledge" data-zh="RAG Knowledge">RAG Knowledge
                         </h3>
                         <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
-                            data-en="Retrieval-Augmented Generation with document chunking and contextual search."
-                            data-zh="文档分块与上下文检索的检索增强生成。">
-                            Retrieval-Augmented Generation with document chunking and contextual search.
+                            data-en="Durable knowledge storage and lexical GraphRAG retrieval without requiring an embedder."
+                            data-zh="Durable knowledge storage 与 lexical GraphRAG retrieval，无需强制 embedder。">
+                            Durable knowledge storage and lexical GraphRAG retrieval without requiring an embedder.
                         </p>
-                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/rag_system"
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/02_rag"
                             class="inline-flex items-center text-green-600 dark:text-green-400 hover:underline">
                             <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -649,14 +631,14 @@ func main() {
                     class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
                     <div class="h-2 bg-gradient-to-r from-purple-500 to-pink-500"></div>
                     <div class="p-6">
-                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Image Search" data-zh="图像检索">Image Search
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="MemoryFlow" data-zh="MemoryFlow">MemoryFlow
                         </h3>
                         <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
-                            data-en="Visual similarity search with CLIP embeddings and multi-modal capabilities."
-                            data-zh="基于 CLIP 向量的多模态视觉相似检索。">
-                            Visual similarity search with CLIP embeddings and multi-modal capabilities.
+                            data-en="Transcript ingest, wake-up layers, diary entries, recall, and transcript reconstruction."
+                            data-zh="Transcript ingest、wake-up layers、diary、recall 与 transcript reconstruction。">
+                            Transcript ingest, wake-up layers, diary entries, recall, and transcript reconstruction.
                         </p>
-                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/image_search"
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/03_memoryflow"
                             class="inline-flex items-center text-purple-600 dark:text-purple-400 hover:underline">
                             <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -675,11 +657,11 @@ func main() {
                         <h3 class="text-xl font-bold mb-3" data-i18n data-en="Knowledge Graph" data-zh="知识图谱">Knowledge
                             Graph</h3>
                         <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
-                            data-en="Entity relationships with graph traversal and semantic connections."
-                            data-zh="实体关系、图遍历与语义连接。">
-                            Entity relationships with graph traversal and semantic connections.
+                            data-en="RDF triples, SPARQL property paths and subqueries, incremental RDFS, and SHACL-lite."
+                            data-zh="RDF triples、SPARQL property paths 和 subqueries、incremental RDFS 与 SHACL-lite。">
+                            RDF triples, SPARQL property paths and subqueries, incremental RDFS, and SHACL-lite.
                         </p>
-                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/knowledge_graph"
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/04_knowledge_graph"
                             class="inline-flex items-center text-orange-600 dark:text-orange-400 hover:underline">
                             <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -695,14 +677,14 @@ func main() {
                     class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
                     <div class="h-2 bg-gradient-to-r from-indigo-500 to-blue-500"></div>
                     <div class="p-6">
-                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Document Clustering" data-zh="文档聚类">
-                            Document Clustering</h3>
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="GraphFlow" data-zh="GraphFlow">
+                            GraphFlow</h3>
                         <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
-                            data-en="Automatic document organization with unsupervised clustering algorithms."
-                            data-zh="使用无监督聚类实现自动文档组织。">
-                            Automatic document organization with unsupervised clustering algorithms.
+                            data-en="Corpus-to-graph extraction, build, analysis, report, JSON export, and HTML visualization."
+                            data-zh="Corpus-to-graph extraction、build、analysis、report、JSON 与 HTML 可视化。">
+                            Corpus-to-graph extraction, build, analysis, report, JSON export, and HTML visualization.
                         </p>
-                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/document_clustering"
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/05_graphflow"
                             class="inline-flex items-center text-indigo-600 dark:text-indigo-400 hover:underline">
                             <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -718,14 +700,13 @@ func main() {
                     class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
                     <div class="h-2 bg-gradient-to-r from-teal-500 to-green-500"></div>
                     <div class="p-6">
-                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Hybrid Search" data-zh="混合检索">Hybrid
-                            Search</h3>
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Tools and MCP" data-zh="Tools 与 MCP">Tools and MCP</h3>
                         <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
-                            data-en="Combine semantic and keyword search for optimal information retrieval."
-                            data-zh="结合语义与关键词检索以获得最佳效果。">
-                            Combine semantic and keyword search for optimal information retrieval.
+                            data-en="In-process toolbox calls and MCP-aligned payloads for external agents."
+                            data-zh="进程内 toolbox calls 与 MCP-aligned payloads，面向外部 agents。">
+                            In-process toolbox calls and MCP-aligned payloads for external agents.
                         </p>
-                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/hybrid_search"
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/06_tools_mcp"
                             class="inline-flex items-center text-teal-600 dark:text-teal-400 hover:underline">
                             <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -741,14 +722,13 @@ func main() {
                     class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
                     <div class="h-2 bg-gradient-to-r from-fuchsia-500 to-purple-500"></div>
                     <div class="p-6">
-                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Semantic Router" data-zh="语义路由">Semantic
-                            Router</h3>
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="No-Embedder Mode" data-zh="无 Embedding 模式">No-Embedder Mode</h3>
                         <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
-                            data-en="Intent routing with configurable similarity, thresholds, and pluggable embedders."
-                            data-zh="可配置相似度与阈值的意图路由，支持可插拔嵌入器。">
-                            Intent routing with configurable similarity, thresholds, and pluggable embedders.
+                            data-en="Use lexical retrieval plus LLM-planned keywords, alternate queries, entity names, retrieval mode, or optional lexical semantic-router tool selection."
+                            data-zh="使用 lexical retrieval 加 LLM 规划的 keywords、alternate queries、entity names、retrieval mode，或可选 lexical semantic-router tool selection。">
+                            Use lexical retrieval plus LLM-planned keywords, alternate queries, entity names, retrieval mode, or optional lexical semantic-router tool selection.
                         </p>
-                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/semantic-router"
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/02_rag"
                             class="inline-flex items-center text-fuchsia-600 dark:text-fuchsia-400 hover:underline">
                             <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -764,14 +744,14 @@ func main() {
                     class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
                     <div class="h-2 bg-gradient-to-r from-cyan-500 to-blue-500"></div>
                     <div class="p-6">
-                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Hindsight Memory" data-zh="Hindsight 记忆">
-                            Hindsight Memory</h3>
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="KnowledgeMemory and Memory APIs" data-zh="KnowledgeMemory 与 Memory API">
+                            KnowledgeMemory and Memory APIs</h3>
                         <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
-                            data-en="Agent memory with TEMPR retrieval, reflection, and long-term learning."
-                            data-zh="支持 TEMPR 检索、反思与长期学习的智能体记忆。">
-                            Agent memory with TEMPR retrieval, reflection, and long-term learning.
+                            data-en="High-level SaveMemory, SearchMemory, KnowledgeMemory.Recall, reflection, and context pack APIs for agent workflows."
+                            data-zh="面向 agent workflow 的 SaveMemory、SearchMemory、KnowledgeMemory.Recall、reflection 与 context pack API。">
+                            High-level SaveMemory, SearchMemory, KnowledgeMemory.Recall, reflection, and context pack APIs for agent workflows.
                         </p>
-                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/hindsight"
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/03_memoryflow"
                             class="inline-flex items-center text-cyan-600 dark:text-cyan-400 hover:underline">
                             <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -790,11 +770,11 @@ func main() {
     <section class="py-20">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-16">
-                <h2 class="text-4xl font-bold mb-4" data-i18n data-en="Performance Benchmarks" data-zh="性能基准">
-                    Performance Benchmarks</h2>
+                <h2 class="text-4xl font-bold mb-4" data-i18n data-en="Current Stack" data-zh="当前技术栈">
+                    Current Stack</h2>
                 <p class="text-xl text-gray-600 dark:text-gray-300" data-i18n
-                    data-en="Optimized for speed and memory efficiency" data-zh="为速度与内存效率优化">
-                    Optimized for speed and memory efficiency
+                    data-en="Single-file storage, practical reasoning, and workflow APIs" data-zh="单文件存储、实用推理与 workflow API">
+                    Single-file storage, practical reasoning, and workflow APIs
                 </p>
             </div>
 
@@ -802,27 +782,25 @@ func main() {
                 <div
                     class="text-center p-8 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-2xl">
                     <div class="text-4xl font-bold text-blue-600 dark:text-blue-400 mb-2" id="perf-search">0</div>
-                    <div class="text-lg font-semibold mb-2" data-i18n data-en="μs Search Time" data-zh="μs 搜索耗时">μs
-                        Search Time</div>
-                    <div class="text-sm text-gray-600 dark:text-gray-400" data-i18n data-en="HNSW index on 1M vectors"
-                        data-zh="100万向量上的 HNSW">HNSW index on 1M vectors</div>
+                    <div class="text-lg font-semibold mb-2" data-i18n data-en="μs Search Time" data-zh="μs 搜索耗时">Single File</div>
+                    <div class="text-sm text-gray-600 dark:text-gray-400" data-i18n data-en="SQLite-backed local storage"
+                        data-zh="SQLite-backed 本地存储">SQLite-backed local storage</div>
                 </div>
 
                 <div
                     class="text-center p-8 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-2xl">
                     <div class="text-4xl font-bold text-purple-600 dark:text-purple-400 mb-2" id="perf-memory">0</div>
-                    <div class="text-lg font-semibold mb-2" data-i18n data-en="% Memory Reduction" data-zh="% 内存降低">%
-                        Memory Reduction</div>
-                    <div class="text-sm text-gray-600 dark:text-gray-400" data-i18n data-en="With quantization enabled"
-                        data-zh="启用量化">With quantization enabled</div>
+                    <div class="text-lg font-semibold mb-2" data-i18n data-en="% Memory Reduction" data-zh="% 内存降低">Workflow APIs</div>
+                    <div class="text-sm text-gray-600 dark:text-gray-400" data-i18n data-en="MemoryFlow and GraphFlow workflows"
+                        data-zh="MemoryFlow 与 GraphFlow workflow">MemoryFlow and GraphFlow workflows</div>
                 </div>
 
                 <div
                     class="text-center p-8 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-2xl">
                     <div class="text-4xl font-bold text-green-600 dark:text-green-400 mb-2" id="perf-throughput">0</div>
-                    <div class="text-lg font-semibold mb-2" data-i18n data-en="K QPS" data-zh="千级 QPS">K QPS</div>
+                    <div class="text-lg font-semibold mb-2" data-i18n data-en="K QPS" data-zh="千级 QPS">KG Reasoning</div>
                     <div class="text-sm text-gray-600 dark:text-gray-400" data-i18n
-                        data-en="Concurrent search throughput" data-zh="并发检索吞吐">Concurrent search throughput</div>
+                        data-en="RDF, SPARQL, RDFS, SHACL" data-zh="RDF、SPARQL、RDFS、SHACL">RDF, SPARQL, RDFS, SHACL</div>
                 </div>
             </div>
         </div>
@@ -838,8 +816,8 @@ func main() {
                 </h2>
                 <p class="text-xl text-blue-100 mb-8">
                     <span data-i18n
-                        data-en="Join the developers building the next generation of AI applications with CortexDB"
-                        data-zh="加入使用 CortexDB 构建下一代 AI 应用的开发者">Join the developers building the next generation of AI
+                        data-en="Build local-first AI agents with memory, retrieval, graph reasoning, and MCP tools."
+                        data-zh="用 memory、retrieval、graph reasoning 和 MCP tools 构建 local-first AI agents。">Join the developers building the next generation of AI
                         applications with CortexDB</span>
                 </p>
 
@@ -877,9 +855,9 @@ func main() {
                         <span class="text-xl font-bold text-white">CortexDB</span>
                     </div>
                     <p class="text-gray-400 mb-4 max-w-md" data-i18n
-                        data-en="Embedded vector + graph database in pure Go with Hindsight memory and semantic routing."
-                        data-zh="纯 Go 嵌入式向量 + 图数据库，内置 Hindsight 记忆与语义路由。">
-                        Embedded vector + graph database in pure Go with Hindsight memory and semantic routing.
+                        data-en="Pure-Go single-file AI memory and knowledge graph library with MemoryFlow, GraphFlow, RDF/SPARQL/RDFS/SHACL, and MCP tools."
+                        data-zh="纯 Go 嵌入式向量 + 图数据库，内置 KnowledgeMemory 与 Memory API与无 Embedding 模式。">
+                        Pure-Go single-file AI memory and knowledge graph library with MemoryFlow, GraphFlow, RDF/SPARQL/RDFS/SHACL, and MCP tools.
                     </p>
                     <div class="flex space-x-4">
                         <a href="https://github.com/liliang-cn/cortexdb"
@@ -901,12 +879,8 @@ func main() {
                         <li><a href="https://github.com/liliang-cn/cortexdb/tree/main/examples"
                                 class="text-gray-400 hover:text-white transition-colors" data-i18n data-en="Examples"
                                 data-zh="示例">Examples</a></li>
-                        <li><a href="https://github.com/liliang-cn/cortexdb/blob/main/ROADMAP.md"
-                                class="text-gray-400 hover:text-white transition-colors" data-i18n data-en="Roadmap"
-                                data-zh="路线图">Roadmap</a></li>
-                        <li><a href="https://github.com/liliang-cn/cortexdb/blob/main/FEATURE_COMPARISON.md"
-                                class="text-gray-400 hover:text-white transition-colors" data-i18n data-en="Features"
-                                data-zh="特性">Features</a></li>
+
+
                     </ul>
                 </div>
 

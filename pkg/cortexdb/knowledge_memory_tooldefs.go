@@ -2,7 +2,7 @@ package cortexdb
 
 import "github.com/liliang-cn/cortexdb/v2/pkg/graph"
 
-func knowledgeMemoryToolDefinitions() []ToolDefinition {
+func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 	return []ToolDefinition{
 		{
 			Name:        "knowledge_save",

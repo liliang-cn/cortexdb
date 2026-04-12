@@ -10,6 +10,7 @@ import (
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
+	semanticrouter "github.com/liliang-cn/cortexdb/v2/pkg/semantic-router"
 )
 
 func main() {
@@ -36,6 +37,28 @@ func main() {
 			fmt.Printf("- %s\n", name)
 		}
 	}
+
+	router, err := semanticrouter.NewLexicalRouter(semanticrouter.WithSparseThreshold(0.1))
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := router.Add(&semanticrouter.SparseRoute{
+		Name:       "memory_save",
+		Utterances: []string{"remember this", "save to memory", "store user preference"},
+	}); err != nil {
+		log.Fatal(err)
+	}
+	if err := router.Add(&semanticrouter.SparseRoute{
+		Name:       "knowledge_graph_query",
+		Utterances: []string{"query the knowledge graph", "run sparql", "find rdf triples"},
+	}); err != nil {
+		log.Fatal(err)
+	}
+	route, err := router.Route(ctx, "please query the knowledge graph for Alice")
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("\nlexical semantic-router selected tool=%s matched=%v score=%.3f\n", route.RouteName, route.Matched, route.Score)
 
 	upsertPayload, _ := json.Marshal(cortexdb.KnowledgeGraphUpsertRequest{
 		Triples: []cortexdb.KnowledgeGraphTriple{

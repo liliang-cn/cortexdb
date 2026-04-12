@@ -10,43 +10,38 @@ import (
 )
 
 const (
-	defaultBrainTopKMemories    = 5
-	defaultBrainTopKKnowledge   = 4
-	defaultBrainMaxMemoryChars  = 1200
-	defaultBrainMaxFacts        = 6
-	defaultBrainMaxThemes       = 6
-	defaultBrainMaxSummaryChars = 320
+	defaultKnowledgeMemoryTopKMemories    = 5
+	defaultKnowledgeMemoryTopKKnowledge   = 4
+	defaultKnowledgeMemoryMaxMemoryChars  = 1200
+	defaultKnowledgeMemoryMaxFacts        = 6
+	defaultKnowledgeMemoryMaxThemes       = 6
+	defaultKnowledgeMemoryMaxSummaryChars = 320
 )
 
-// Brain exposes CortexDB as a higher-level memory, knowledge, and graph facade.
-type Brain struct {
+// KnowledgeMemory exposes CortexDB as a higher-level memory, knowledge, and graph facade.
+type KnowledgeMemory struct {
 	db *DB
 }
 
-// Brain returns the high-level brain facade over memory, knowledge, graph, and context packing APIs.
-func (db *DB) Brain() *Brain {
-	return &Brain{db: db}
-}
-
-// KnowledgeMemory is an alias for Brain for callers that prefer the knowledge-memory naming.
-func (db *DB) KnowledgeMemory() *Brain {
-	return db.Brain()
+// KnowledgeMemory returns the high-level memory/knowledge facade over memory, knowledge, graph, and context packing APIs.
+func (db *DB) KnowledgeMemory() *KnowledgeMemory {
+	return &KnowledgeMemory{db: db}
 }
 
 // Remember stores one episodic memory item.
-func (b *Brain) Remember(ctx context.Context, req BrainRememberRequest) (*BrainRememberResponse, error) {
+func (b *KnowledgeMemory) Remember(ctx context.Context, req KnowledgeMemoryRememberRequest) (*KnowledgeMemoryRememberResponse, error) {
 	return b.db.SaveMemory(ctx, req)
 }
 
 // Recall retrieves a fused memory and knowledge view plus a packed context.
-func (b *Brain) Recall(ctx context.Context, req BrainRecallRequest) (*BrainRecallResponse, error) {
-	req = normalizeBrainRecallRequest(req)
-	query := resolveBrainQuery(req.Query, req.Plan, req.EntityNames)
+func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallRequest) (*KnowledgeMemoryRecallResponse, error) {
+	req = normalizeKnowledgeMemoryRecallRequest(req)
+	query := resolveKnowledgeMemoryQuery(req.Query, req.Plan, req.EntityNames)
 	if strings.TrimSpace(query) == "" {
 		return nil, ErrEmptyText
 	}
 
-	resp := &BrainRecallResponse{Query: query}
+	resp := &KnowledgeMemoryRecallResponse{Query: query}
 
 	var memoryResp *MemorySearchResponse
 	if !req.DisableMemory {
@@ -103,8 +98,8 @@ func (b *Brain) Recall(ctx context.Context, req BrainRecallRequest) (*BrainRecal
 		resp.Chunks = knowledgeResp.Chunks
 	}
 
-	resp.Entities = brainCollectEntities(req.EntityNames, resp.Memories, resp.Knowledge, resp.Chunks)
-	resp.ContextPack = buildBrainContextPack(query, resp.Memories, knowledgeResp, resp.Entities, req.MaxMemoryItems, req.MaxMemoryChars)
+	resp.Entities = KnowledgeMemoryCollectEntities(req.EntityNames, resp.Memories, resp.Knowledge, resp.Chunks)
+	resp.ContextPack = buildKnowledgeMemoryContextPack(query, resp.Memories, knowledgeResp, resp.Entities, req.MaxMemoryItems, req.MaxMemoryChars)
 	if len(resp.Entities) == 0 {
 		resp.Entities = resp.ContextPack.Entities
 	}
@@ -112,12 +107,12 @@ func (b *Brain) Recall(ctx context.Context, req BrainRecallRequest) (*BrainRecal
 }
 
 // BuildContextPack returns the same fused retrieval response as Recall, centered on the assembled context pack.
-func (b *Brain) BuildContextPack(ctx context.Context, req BrainBuildContextPackRequest) (*BrainBuildContextPackResponse, error) {
+func (b *KnowledgeMemory) BuildContextPack(ctx context.Context, req KnowledgeMemoryBuildContextPackRequest) (*KnowledgeMemoryBuildContextPackResponse, error) {
 	return b.Recall(ctx, req)
 }
 
 // PromoteToKnowledge promotes one or more memory records into durable knowledge.
-func (b *Brain) PromoteToKnowledge(ctx context.Context, req BrainPromoteToKnowledgeRequest) (*BrainPromoteToKnowledgeResponse, error) {
+func (b *KnowledgeMemory) PromoteToKnowledge(ctx context.Context, req KnowledgeMemoryPromoteToKnowledgeRequest) (*KnowledgeMemoryPromoteToKnowledgeResponse, error) {
 	memoryIDs := orderedUniqueNonEmptyStrings(req.MemoryIDs)
 	if len(memoryIDs) == 0 {
 		return nil, fmt.Errorf("memory_ids are required")
@@ -145,8 +140,8 @@ func (b *Brain) PromoteToKnowledge(ctx context.Context, req BrainPromoteToKnowle
 	if metadata == nil {
 		metadata = map[string]string{}
 	}
-	metadata["brain_source_memory_ids"] = strings.Join(memoryIDs, ",")
-	metadata["brain_source_memory_scopes"] = strings.Join(uniqueSortedStrings(sourceScopes), ",")
+	metadata["knowledge_memory_source_memory_ids"] = strings.Join(memoryIDs, ",")
+	metadata["knowledge_memory_source_memory_scopes"] = strings.Join(uniqueSortedStrings(sourceScopes), ",")
 
 	knowledgeID := strings.TrimSpace(req.KnowledgeID)
 	if knowledgeID == "" {
@@ -174,7 +169,7 @@ func (b *Brain) PromoteToKnowledge(ctx context.Context, req BrainPromoteToKnowle
 		return nil, err
 	}
 
-	return &BrainPromoteToKnowledgeResponse{
+	return &KnowledgeMemoryPromoteToKnowledgeResponse{
 		Knowledge:       saveResp.Knowledge,
 		Memories:        memories,
 		DocumentNodeID:  saveResp.DocumentNodeID,
@@ -184,7 +179,7 @@ func (b *Brain) PromoteToKnowledge(ctx context.Context, req BrainPromoteToKnowle
 }
 
 // ExpandEntityContext expands graph context around entity nodes and builds a chunk context pack.
-func (b *Brain) ExpandEntityContext(ctx context.Context, req BrainExpandEntityContextRequest) (*BrainExpandEntityContextResponse, error) {
+func (b *KnowledgeMemory) ExpandEntityContext(ctx context.Context, req KnowledgeMemoryExpandEntityContextRequest) (*KnowledgeMemoryExpandEntityContextResponse, error) {
 	entityNodeIDs, entityNames, err := b.resolveEntityInputs(ctx, req.EntityIDs, req.EntityNames)
 	if err != nil {
 		return nil, err
@@ -253,7 +248,7 @@ func (b *Brain) ExpandEntityContext(ctx context.Context, req BrainExpandEntityCo
 		contextSection = contextResp.Context
 	}
 
-	contextPack := brainContextPackFromSections(strings.Join(entityNames, " "), []BrainContextSection{
+	contextPack := KnowledgeMemoryContextPackFromSections(strings.Join(entityNames, " "), []KnowledgeMemoryContextSection{
 		{
 			Kind:      "graph",
 			Title:     "Graph",
@@ -262,7 +257,7 @@ func (b *Brain) ExpandEntityContext(ctx context.Context, req BrainExpandEntityCo
 		},
 	}, nil, nil, chunkIDs, entityNames)
 
-	return &BrainExpandEntityContextResponse{
+	return &KnowledgeMemoryExpandEntityContextResponse{
 		EntityNodeIDs: entityNodeIDs,
 		Nodes:         expandResp.Nodes,
 		Edges:         expandResp.Edges,
@@ -272,7 +267,7 @@ func (b *Brain) ExpandEntityContext(ctx context.Context, req BrainExpandEntityCo
 }
 
 // Neighbors returns the graph neighbors around one node or entity.
-func (b *Brain) Neighbors(ctx context.Context, req BrainNeighborsRequest) (*BrainNeighborsResponse, error) {
+func (b *KnowledgeMemory) Neighbors(ctx context.Context, req KnowledgeMemoryNeighborsRequest) (*KnowledgeMemoryNeighborsResponse, error) {
 	nodeID := strings.TrimSpace(req.NodeID)
 	if nodeID == "" {
 		nodeID = resolveEntityNodeID("", req.EntityName)
@@ -292,14 +287,14 @@ func (b *Brain) Neighbors(ctx context.Context, req BrainNeighborsRequest) (*Brai
 		return nil, err
 	}
 
-	return &BrainNeighborsResponse{
+	return &KnowledgeMemoryNeighborsResponse{
 		ResolvedNodeID: nodeID,
 		Neighbors:      neighbors,
 	}, nil
 }
 
 // ShortestPath resolves and traverses the shortest path between two nodes or entities.
-func (b *Brain) ShortestPath(ctx context.Context, req BrainShortestPathRequest) (*BrainShortestPathResponse, error) {
+func (b *KnowledgeMemory) ShortestPath(ctx context.Context, req KnowledgeMemoryShortestPathRequest) (*KnowledgeMemoryShortestPathResponse, error) {
 	fromID := strings.TrimSpace(req.FromNodeID)
 	if fromID == "" {
 		fromID = resolveEntityNodeID("", req.FromEntityName)
@@ -317,7 +312,7 @@ func (b *Brain) ShortestPath(ctx context.Context, req BrainShortestPathRequest) 
 		return nil, err
 	}
 
-	return &BrainShortestPathResponse{
+	return &KnowledgeMemoryShortestPathResponse{
 		FromNodeID: fromID,
 		ToNodeID:   toID,
 		Path:       path,
@@ -325,25 +320,25 @@ func (b *Brain) ShortestPath(ctx context.Context, req BrainShortestPathRequest) 
 }
 
 // Reflect retrieves relevant context and synthesizes a structured reflection.
-func (b *Brain) Reflect(ctx context.Context, req BrainReflectRequest) (*BrainReflectResponse, error) {
+func (b *KnowledgeMemory) Reflect(ctx context.Context, req KnowledgeMemoryReflectRequest) (*KnowledgeMemoryReflectResponse, error) {
 	recallResp, err := b.Recall(ctx, req.Recall)
 	if err != nil {
 		return nil, err
 	}
 
-	input := BrainReflectInput{Recall: *recallResp}
-	reflector := b.db.brainReflector
-	var reflection *BrainReflection
+	input := KnowledgeMemoryReflectInput{Recall: *recallResp}
+	reflector := b.db.KnowledgeMemoryReflector
+	var reflection *KnowledgeMemoryReflection
 	if reflector != nil {
 		reflection, err = reflector.Reflect(ctx, req, input)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		reflection = deterministicBrainReflection(req, input)
+		reflection = deterministicKnowledgeMemoryReflection(req, input)
 	}
 	if reflection == nil {
-		return nil, fmt.Errorf("brain reflector returned nil reflection")
+		return nil, fmt.Errorf("KnowledgeMemory reflector returned nil reflection")
 	}
 
 	reflection.SourceMemoryIDs = uniqueSortedStrings(append(reflection.SourceMemoryIDs, recallResp.ContextPack.MemoryIDs...))
@@ -354,14 +349,14 @@ func (b *Brain) Reflect(ctx context.Context, req BrainReflectRequest) (*BrainRef
 		reflection.ContextPack = recallResp.ContextPack
 	}
 
-	return &BrainReflectResponse{
+	return &KnowledgeMemoryReflectResponse{
 		Reflection: *reflection,
 		Recall:     *recallResp,
 	}, nil
 }
 
 // Consolidate reflects over relevant context, stores a summary memory, and can optionally promote it to knowledge.
-func (b *Brain) Consolidate(ctx context.Context, req BrainConsolidateRequest) (*BrainConsolidateResponse, error) {
+func (b *KnowledgeMemory) Consolidate(ctx context.Context, req KnowledgeMemoryConsolidateRequest) (*KnowledgeMemoryConsolidateResponse, error) {
 	reflectResp, err := b.Reflect(ctx, req.Reflect)
 	if err != nil {
 		return nil, err
@@ -377,14 +372,14 @@ func (b *Brain) Consolidate(ctx context.Context, req BrainConsolidateRequest) (*
 	}
 
 	metadata := cloneAnyMap(req.Metadata)
-	metadata["brain_summary"] = true
-	metadata["brain_themes"] = append([]string(nil), reflectResp.Reflection.Themes...)
-	metadata["brain_entities"] = append([]string(nil), reflectResp.Reflection.Entities...)
-	metadata["brain_source_memory_ids"] = append([]string(nil), reflectResp.Reflection.SourceMemoryIDs...)
-	metadata["brain_source_knowledge_ids"] = append([]string(nil), reflectResp.Reflection.SourceKnowledgeIDs...)
-	metadata["brain_source_chunk_ids"] = append([]string(nil), reflectResp.Reflection.SourceChunkIDs...)
+	metadata["knowledge_memory_summary"] = true
+	metadata["knowledge_memory_themes"] = append([]string(nil), reflectResp.Reflection.Themes...)
+	metadata["knowledge_memory_entities"] = append([]string(nil), reflectResp.Reflection.Entities...)
+	metadata["knowledge_memory_source_memory_ids"] = append([]string(nil), reflectResp.Reflection.SourceMemoryIDs...)
+	metadata["knowledge_memory_source_knowledge_ids"] = append([]string(nil), reflectResp.Reflection.SourceKnowledgeIDs...)
+	metadata["knowledge_memory_source_chunk_ids"] = append([]string(nil), reflectResp.Reflection.SourceChunkIDs...)
 
-	saveResp, err := b.Remember(ctx, BrainRememberRequest{
+	saveResp, err := b.Remember(ctx, KnowledgeMemoryRememberRequest{
 		MemoryID:   memoryID,
 		UserID:     firstNonEmpty(req.UserID, req.Reflect.Recall.UserID),
 		SessionID:  firstNonEmpty(req.SessionID, req.Reflect.Recall.SessionID),
@@ -402,7 +397,7 @@ func (b *Brain) Consolidate(ctx context.Context, req BrainConsolidateRequest) (*
 
 	var knowledge *KnowledgeRecord
 	if req.PromoteToKnowledge || req.Promotion != nil {
-		promotionReq := BrainPromoteToKnowledgeRequest{}
+		promotionReq := KnowledgeMemoryPromoteToKnowledgeRequest{}
 		if req.Promotion != nil {
 			promotionReq = *req.Promotion
 		}
@@ -419,7 +414,7 @@ func (b *Brain) Consolidate(ctx context.Context, req BrainConsolidateRequest) (*
 		knowledge = &promoteResp.Knowledge
 	}
 
-	return &BrainConsolidateResponse{
+	return &KnowledgeMemoryConsolidateResponse{
 		Reflection: reflectResp.Reflection,
 		Recall:     reflectResp.Recall,
 		Memory:     saveResp.Memory,
@@ -427,23 +422,23 @@ func (b *Brain) Consolidate(ctx context.Context, req BrainConsolidateRequest) (*
 	}, nil
 }
 
-func normalizeBrainRecallRequest(req BrainRecallRequest) BrainRecallRequest {
+func normalizeKnowledgeMemoryRecallRequest(req KnowledgeMemoryRecallRequest) KnowledgeMemoryRecallRequest {
 	if req.TopKMemories <= 0 {
-		req.TopKMemories = defaultBrainTopKMemories
+		req.TopKMemories = defaultKnowledgeMemoryTopKMemories
 	}
 	if req.TopKKnowledge <= 0 {
-		req.TopKKnowledge = defaultBrainTopKKnowledge
+		req.TopKKnowledge = defaultKnowledgeMemoryTopKKnowledge
 	}
 	if req.MaxMemoryItems <= 0 {
 		req.MaxMemoryItems = req.TopKMemories
 	}
 	if req.MaxMemoryChars <= 0 {
-		req.MaxMemoryChars = defaultBrainMaxMemoryChars
+		req.MaxMemoryChars = defaultKnowledgeMemoryMaxMemoryChars
 	}
 	return req
 }
 
-func resolveBrainQuery(query string, plan *RetrievalPlan, entityNames []string) string {
+func resolveKnowledgeMemoryQuery(query string, plan *RetrievalPlan, entityNames []string) string {
 	query = strings.TrimSpace(query)
 	if query != "" {
 		return query
@@ -457,18 +452,18 @@ func resolveBrainQuery(query string, plan *RetrievalPlan, entityNames []string) 
 	return ""
 }
 
-func buildBrainContextPack(query string, memories []MemorySearchHit, knowledgeResp *KnowledgeSearchResponse, entities []string, maxMemoryItems, maxMemoryChars int) BrainContextPack {
-	sections := make([]BrainContextSection, 0, 3)
+func buildKnowledgeMemoryContextPack(query string, memories []MemorySearchHit, knowledgeResp *KnowledgeSearchResponse, entities []string, maxMemoryItems, maxMemoryChars int) KnowledgeMemoryContextPack {
+	sections := make([]KnowledgeMemoryContextSection, 0, 3)
 	memoryIDs := make([]string, 0, len(memories))
 	knowledgeIDs := make([]string, 0)
 	chunkIDs := make([]string, 0)
 
-	memoryText := buildBrainMemoryContext(memories, maxMemoryItems, maxMemoryChars)
+	memoryText := buildKnowledgeMemoryMemoryContext(memories, maxMemoryItems, maxMemoryChars)
 	for _, hit := range memories {
 		memoryIDs = append(memoryIDs, hit.Memory.ID)
 	}
 	if memoryText != "" {
-		sections = append(sections, BrainContextSection{
+		sections = append(sections, KnowledgeMemoryContextSection{
 			Kind:      "memories",
 			Title:     "Memories",
 			Text:      memoryText,
@@ -484,7 +479,7 @@ func buildBrainContextPack(query string, memories []MemorySearchHit, knowledgeRe
 			chunkIDs = append(chunkIDs, chunk.ID)
 		}
 		if strings.TrimSpace(knowledgeResp.Context) != "" {
-			sections = append(sections, BrainContextSection{
+			sections = append(sections, KnowledgeMemoryContextSection{
 				Kind:      "knowledge",
 				Title:     "Knowledge",
 				Text:      knowledgeResp.Context,
@@ -493,11 +488,11 @@ func buildBrainContextPack(query string, memories []MemorySearchHit, knowledgeRe
 		}
 	}
 
-	return brainContextPackFromSections(query, sections, memoryIDs, knowledgeIDs, chunkIDs, entities)
+	return KnowledgeMemoryContextPackFromSections(query, sections, memoryIDs, knowledgeIDs, chunkIDs, entities)
 }
 
-func brainContextPackFromSections(query string, sections []BrainContextSection, memoryIDs, knowledgeIDs, chunkIDs, entities []string) BrainContextPack {
-	filtered := make([]BrainContextSection, 0, len(sections))
+func KnowledgeMemoryContextPackFromSections(query string, sections []KnowledgeMemoryContextSection, memoryIDs, knowledgeIDs, chunkIDs, entities []string) KnowledgeMemoryContextPack {
+	filtered := make([]KnowledgeMemoryContextSection, 0, len(sections))
 	parts := make([]string, 0, len(sections))
 	for _, section := range sections {
 		if strings.TrimSpace(section.Text) == "" {
@@ -508,7 +503,7 @@ func brainContextPackFromSections(query string, sections []BrainContextSection, 
 		parts = append(parts, fmt.Sprintf("[%s]\n%s", strings.ToUpper(section.Kind), strings.TrimSpace(section.Text)))
 	}
 
-	return BrainContextPack{
+	return KnowledgeMemoryContextPack{
 		Query:        query,
 		Text:         strings.TrimSpace(strings.Join(parts, "\n\n")),
 		Sections:     filtered,
@@ -519,7 +514,7 @@ func brainContextPackFromSections(query string, sections []BrainContextSection, 
 	}
 }
 
-func buildBrainMemoryContext(memories []MemorySearchHit, maxItems, maxChars int) string {
+func buildKnowledgeMemoryMemoryContext(memories []MemorySearchHit, maxItems, maxChars int) string {
 	if len(memories) == 0 {
 		return ""
 	}
@@ -546,7 +541,7 @@ func buildBrainMemoryContext(memories []MemorySearchHit, maxItems, maxChars int)
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
-func (b *Brain) resolveEntityInputs(ctx context.Context, entityIDs, entityNames []string) ([]string, []string, error) {
+func (b *KnowledgeMemory) resolveEntityInputs(ctx context.Context, entityIDs, entityNames []string) ([]string, []string, error) {
 	nodeIDs := orderedUniqueNonEmptyStrings(entityIDs)
 	names := orderedUniqueNonEmptyStrings(entityNames)
 
@@ -577,7 +572,7 @@ func (b *Brain) resolveEntityInputs(ctx context.Context, entityIDs, entityNames 
 	return nodeIDs, orderedUniqueNonEmptyStrings(names), nil
 }
 
-func brainCollectEntities(seed []string, memories []MemorySearchHit, knowledge []KnowledgeSearchHit, chunks []GraphRAGChunkResult) []string {
+func KnowledgeMemoryCollectEntities(seed []string, memories []MemorySearchHit, knowledge []KnowledgeSearchHit, chunks []GraphRAGChunkResult) []string {
 	entities := append([]string(nil), seed...)
 	for _, hit := range memories {
 		entities = append(entities, extractEntityNames(extractTitleEntities(hit.Memory.Content))...)
@@ -593,18 +588,18 @@ func brainCollectEntities(seed []string, memories []MemorySearchHit, knowledge [
 	return uniqueSortedStrings(entities)
 }
 
-func deterministicBrainReflection(req BrainReflectRequest, input BrainReflectInput) *BrainReflection {
+func deterministicKnowledgeMemoryReflection(req KnowledgeMemoryReflectRequest, input KnowledgeMemoryReflectInput) *KnowledgeMemoryReflection {
 	maxFacts := req.MaxFacts
 	if maxFacts <= 0 {
-		maxFacts = defaultBrainMaxFacts
+		maxFacts = defaultKnowledgeMemoryMaxFacts
 	}
 	maxThemes := req.MaxThemes
 	if maxThemes <= 0 {
-		maxThemes = defaultBrainMaxThemes
+		maxThemes = defaultKnowledgeMemoryMaxThemes
 	}
 	maxSummaryChars := req.MaxSummaryChars
 	if maxSummaryChars <= 0 {
-		maxSummaryChars = defaultBrainMaxSummaryChars
+		maxSummaryChars = defaultKnowledgeMemoryMaxSummaryChars
 	}
 
 	facts := make([]string, 0, maxFacts)
@@ -635,9 +630,9 @@ func deterministicBrainReflection(req BrainReflectRequest, input BrainReflectInp
 
 	summary := strings.Join(facts, " ")
 	summary = clipString(strings.TrimSpace(summary), maxSummaryChars)
-	themes := brainThemes(req, input.Recall, maxThemes)
+	themes := KnowledgeMemoryThemes(req, input.Recall, maxThemes)
 
-	return &BrainReflection{
+	return &KnowledgeMemoryReflection{
 		Summary:            summary,
 		Themes:             themes,
 		Entities:           uniqueSortedStrings(input.Recall.Entities),
@@ -649,7 +644,7 @@ func deterministicBrainReflection(req BrainReflectRequest, input BrainReflectInp
 	}
 }
 
-func brainThemes(req BrainReflectRequest, recall BrainRecallResponse, maxThemes int) []string {
+func KnowledgeMemoryThemes(req KnowledgeMemoryReflectRequest, recall KnowledgeMemoryRecallResponse, maxThemes int) []string {
 	themes := append([]string(nil), recall.Entities...)
 	themes = append(themes, lexicalQueryKeywords(req.Recall.Query)...)
 	if req.Instructions != "" {

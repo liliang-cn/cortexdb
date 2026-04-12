@@ -11,14 +11,14 @@ import (
 // HybridRouter combines dense vector embeddings with sparse keyword matching.
 // It uses a weighted combination of both similarity scores for routing decisions.
 type HybridRouter struct {
-	dense       *Router
-	denseMu     sync.RWMutex
+	dense   *Router
+	denseMu sync.RWMutex
 
-	sparse      *SparseRouter
-	sparseMu    sync.RWMutex
+	sparse   *SparseRouter
+	sparseMu sync.RWMutex
 
-	alpha       float64 // Weight for dense similarity (0-1)
-	threshold   float64
+	alpha     float64 // Weight for dense similarity (0-1)
+	threshold float64
 
 	// Similarity function for dense vectors
 	similarityFunc core.SimilarityFunc
@@ -40,18 +40,18 @@ type HybridRouteResult struct {
 
 // SparseRouter handles routing using sparse encoders (BM25, TFIDF).
 type SparseRouter struct {
-	routes    []*SparseRoute
-	encoder   SparseEncoder
-	config    SparseConfig
-	mu        sync.RWMutex
+	routes  []*SparseRoute
+	encoder SparseEncoder
+	config  SparseConfig
+	mu      sync.RWMutex
 }
 
 // SparseRoute represents a route for sparse encoding.
 type SparseRoute struct {
-	Name         string
-	Utterances   []string
-	Handler      RouteHandler
-	Metadata     map[string]string
+	Name       string
+	Utterances []string
+	Handler    RouteHandler
+	Metadata   map[string]string
 
 	cachedVectors map[string]float64
 	cachedOnce    sync.Once
@@ -88,6 +88,12 @@ func NewSparseRouter(encoder SparseEncoder, opts ...SparseConfigOption) (*Sparse
 		encoder: encoder,
 		config:  config,
 	}, nil
+}
+
+// NewLexicalRouter creates a sparse lexical router using a fit-free term
+// frequency encoder. It does not require an embedding model or a training corpus.
+func NewLexicalRouter(opts ...SparseConfigOption) (*SparseRouter, error) {
+	return NewSparseRouter(NewTermFrequencyEncoder(), opts...)
 }
 
 // SparseConfigOption modifies sparse router configuration.
@@ -232,10 +238,10 @@ func NewHybridRouter(
 	}
 
 	return &HybridRouter{
-		dense:         denseRouter,
-		sparse:        sparseRouter,
-		alpha:         config.Alpha,
-		threshold:     config.Threshold,
+		dense:          denseRouter,
+		sparse:         sparseRouter,
+		alpha:          config.Alpha,
+		threshold:      config.Threshold,
 		similarityFunc: config.SimilarityFunc,
 	}, nil
 }
@@ -455,9 +461,9 @@ func (h *HybridRouter) Stats() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"alpha":           h.alpha,
-		"threshold":       h.threshold,
-		"dense_router":    denseStats,
-		"sparse_router":   sparseStats,
+		"alpha":         h.alpha,
+		"threshold":     h.threshold,
+		"dense_router":  denseStats,
+		"sparse_router": sparseStats,
 	}
 }

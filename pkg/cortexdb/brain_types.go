@@ -6,14 +6,14 @@ import (
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
-// BrainRememberRequest stores one episodic memory item.
-type BrainRememberRequest = MemorySaveRequest
+// KnowledgeMemoryRememberRequest stores one episodic memory item.
+type KnowledgeMemoryRememberRequest = MemorySaveRequest
 
-// BrainRememberResponse returns the stored memory item.
-type BrainRememberResponse = MemorySaveResponse
+// KnowledgeMemoryRememberResponse returns the stored memory item.
+type KnowledgeMemoryRememberResponse = MemorySaveResponse
 
-// BrainRecallRequest retrieves a fused view across episodic memory and durable knowledge.
-type BrainRecallRequest struct {
+// KnowledgeMemoryRecallRequest retrieves a fused view across episodic memory and durable knowledge.
+type KnowledgeMemoryRecallRequest struct {
 	Query               string         `json:"query"`
 	UserID              string         `json:"user_id,omitempty"`
 	SessionID           string         `json:"session_id,omitempty"`
@@ -43,47 +43,47 @@ type BrainRecallRequest struct {
 	Plan                *RetrievalPlan `json:"plan,omitempty"`
 }
 
-// BrainContextSection is one debug-friendly part of a built context pack.
-type BrainContextSection struct {
+// KnowledgeMemoryContextSection is one debug-friendly part of a built context pack.
+type KnowledgeMemoryContextSection struct {
 	Kind      string   `json:"kind"`
 	Title     string   `json:"title,omitempty"`
 	Text      string   `json:"text"`
 	SourceIDs []string `json:"source_ids,omitempty"`
 }
 
-// BrainContextPack is the assembled prompt/context payload plus source attribution.
-type BrainContextPack struct {
-	Query        string                `json:"query"`
-	Text         string                `json:"text"`
-	Sections     []BrainContextSection `json:"sections,omitempty"`
-	MemoryIDs    []string              `json:"memory_ids,omitempty"`
-	KnowledgeIDs []string              `json:"knowledge_ids,omitempty"`
-	ChunkIDs     []string              `json:"chunk_ids,omitempty"`
-	Entities     []string              `json:"entities,omitempty"`
+// KnowledgeMemoryContextPack is the assembled prompt/context payload plus source attribution.
+type KnowledgeMemoryContextPack struct {
+	Query        string                          `json:"query"`
+	Text         string                          `json:"text"`
+	Sections     []KnowledgeMemoryContextSection `json:"sections,omitempty"`
+	MemoryIDs    []string                        `json:"memory_ids,omitempty"`
+	KnowledgeIDs []string                        `json:"knowledge_ids,omitempty"`
+	ChunkIDs     []string                        `json:"chunk_ids,omitempty"`
+	Entities     []string                        `json:"entities,omitempty"`
 }
 
-// BrainRecallResponse returns fused memory, knowledge, graph chunks, and packed context.
-type BrainRecallResponse struct {
-	Query             string                `json:"query"`
-	MemoryPlan        RetrievalPlan         `json:"memory_plan"`
-	MemoryDecision    RetrievalDecision     `json:"memory_decision"`
-	KnowledgePlan     RetrievalPlan         `json:"knowledge_plan"`
-	KnowledgeDecision RetrievalDecision     `json:"knowledge_decision"`
-	Memories          []MemorySearchHit     `json:"memories,omitempty"`
-	Knowledge         []KnowledgeSearchHit  `json:"knowledge,omitempty"`
-	Chunks            []GraphRAGChunkResult `json:"chunks,omitempty"`
-	Entities          []string              `json:"entities,omitempty"`
-	ContextPack       BrainContextPack      `json:"context_pack"`
+// KnowledgeMemoryRecallResponse returns fused memory, knowledge, graph chunks, and packed context.
+type KnowledgeMemoryRecallResponse struct {
+	Query             string                     `json:"query"`
+	MemoryPlan        RetrievalPlan              `json:"memory_plan"`
+	MemoryDecision    RetrievalDecision          `json:"memory_decision"`
+	KnowledgePlan     RetrievalPlan              `json:"knowledge_plan"`
+	KnowledgeDecision RetrievalDecision          `json:"knowledge_decision"`
+	Memories          []MemorySearchHit          `json:"memories,omitempty"`
+	Knowledge         []KnowledgeSearchHit       `json:"knowledge,omitempty"`
+	Chunks            []GraphRAGChunkResult      `json:"chunks,omitempty"`
+	Entities          []string                   `json:"entities,omitempty"`
+	ContextPack       KnowledgeMemoryContextPack `json:"context_pack"`
 }
 
-// BrainBuildContextPackRequest retrieves and assembles a context pack from the brain.
-type BrainBuildContextPackRequest = BrainRecallRequest
+// KnowledgeMemoryBuildContextPackRequest retrieves and assembles a context pack from the KnowledgeMemory.
+type KnowledgeMemoryBuildContextPackRequest = KnowledgeMemoryRecallRequest
 
-// BrainBuildContextPackResponse returns the assembled context pack plus source diagnostics.
-type BrainBuildContextPackResponse = BrainRecallResponse
+// KnowledgeMemoryBuildContextPackResponse returns the assembled context pack plus source diagnostics.
+type KnowledgeMemoryBuildContextPackResponse = KnowledgeMemoryRecallResponse
 
-// BrainPromoteToKnowledgeRequest promotes one or more memories into durable knowledge.
-type BrainPromoteToKnowledgeRequest struct {
+// KnowledgeMemoryPromoteToKnowledgeRequest promotes one or more memories into durable knowledge.
+type KnowledgeMemoryPromoteToKnowledgeRequest struct {
 	MemoryIDs    []string            `json:"memory_ids,omitempty"`
 	KnowledgeID  string              `json:"knowledge_id,omitempty"`
 	Title        string              `json:"title,omitempty"`
@@ -98,8 +98,8 @@ type BrainPromoteToKnowledgeRequest struct {
 	Relations    []ToolRelationInput `json:"relations,omitempty"`
 }
 
-// BrainPromoteToKnowledgeResponse returns the saved knowledge plus source memories.
-type BrainPromoteToKnowledgeResponse struct {
+// KnowledgeMemoryPromoteToKnowledgeResponse returns the saved knowledge plus source memories.
+type KnowledgeMemoryPromoteToKnowledgeResponse struct {
 	Knowledge       KnowledgeRecord `json:"knowledge"`
 	Memories        []MemoryRecord  `json:"memories,omitempty"`
 	DocumentNodeID  string          `json:"document_node_id,omitempty"`
@@ -107,8 +107,8 @@ type BrainPromoteToKnowledgeResponse struct {
 	RelationEdgeIDs []string        `json:"relation_edge_ids,omitempty"`
 }
 
-// BrainExpandEntityContextRequest expands graph context around one or more entities.
-type BrainExpandEntityContextRequest struct {
+// KnowledgeMemoryExpandEntityContextRequest expands graph context around one or more entities.
+type KnowledgeMemoryExpandEntityContextRequest struct {
 	EntityIDs           []string `json:"entity_ids,omitempty"`
 	EntityNames         []string `json:"entity_names,omitempty"`
 	MaxHops             int      `json:"max_hops,omitempty"`
@@ -125,17 +125,17 @@ type BrainExpandEntityContextRequest struct {
 	MaxEntitiesPerChunk int      `json:"max_entities_per_chunk,omitempty"`
 }
 
-// BrainExpandEntityContextResponse returns the expanded subgraph and packed chunk context.
-type BrainExpandEntityContextResponse struct {
-	EntityNodeIDs []string              `json:"entity_node_ids,omitempty"`
-	Nodes         []*graph.GraphNode    `json:"nodes,omitempty"`
-	Edges         []*graph.GraphEdge    `json:"edges,omitempty"`
-	Chunks        []GraphRAGChunkResult `json:"chunks,omitempty"`
-	ContextPack   BrainContextPack      `json:"context_pack"`
+// KnowledgeMemoryExpandEntityContextResponse returns the expanded subgraph and packed chunk context.
+type KnowledgeMemoryExpandEntityContextResponse struct {
+	EntityNodeIDs []string                   `json:"entity_node_ids,omitempty"`
+	Nodes         []*graph.GraphNode         `json:"nodes,omitempty"`
+	Edges         []*graph.GraphEdge         `json:"edges,omitempty"`
+	Chunks        []GraphRAGChunkResult      `json:"chunks,omitempty"`
+	ContextPack   KnowledgeMemoryContextPack `json:"context_pack"`
 }
 
-// BrainNeighborsRequest expands neighbors around one node or entity.
-type BrainNeighborsRequest struct {
+// KnowledgeMemoryNeighborsRequest expands neighbors around one node or entity.
+type KnowledgeMemoryNeighborsRequest struct {
 	NodeID     string   `json:"node_id,omitempty"`
 	EntityName string   `json:"entity_name,omitempty"`
 	MaxDepth   int      `json:"max_depth,omitempty"`
@@ -145,84 +145,84 @@ type BrainNeighborsRequest struct {
 	Limit      int      `json:"limit,omitempty"`
 }
 
-// BrainNeighborsResponse returns a resolved node ID and its neighbors.
-type BrainNeighborsResponse struct {
+// KnowledgeMemoryNeighborsResponse returns a resolved node ID and its neighbors.
+type KnowledgeMemoryNeighborsResponse struct {
 	ResolvedNodeID string             `json:"resolved_node_id"`
 	Neighbors      []*graph.GraphNode `json:"neighbors,omitempty"`
 }
 
-// BrainShortestPathRequest resolves and traverses a shortest path between two nodes/entities.
-type BrainShortestPathRequest struct {
+// KnowledgeMemoryShortestPathRequest resolves and traverses a shortest path between two nodes/entities.
+type KnowledgeMemoryShortestPathRequest struct {
 	FromNodeID     string `json:"from_node_id,omitempty"`
 	ToNodeID       string `json:"to_node_id,omitempty"`
 	FromEntityName string `json:"from_entity_name,omitempty"`
 	ToEntityName   string `json:"to_entity_name,omitempty"`
 }
 
-// BrainShortestPathResponse contains the resolved IDs and path result.
-type BrainShortestPathResponse struct {
+// KnowledgeMemoryShortestPathResponse contains the resolved IDs and path result.
+type KnowledgeMemoryShortestPathResponse struct {
 	FromNodeID string            `json:"from_node_id"`
 	ToNodeID   string            `json:"to_node_id"`
 	Path       *graph.PathResult `json:"path,omitempty"`
 }
 
-// BrainReflectRequest collects sources and synthesizes a reflection.
-type BrainReflectRequest struct {
-	Recall          BrainRecallRequest `json:"recall"`
-	Instructions    string             `json:"instructions,omitempty"`
-	MaxSummaryChars int                `json:"max_summary_chars,omitempty"`
-	MaxFacts        int                `json:"max_facts,omitempty"`
-	MaxThemes       int                `json:"max_themes,omitempty"`
+// KnowledgeMemoryReflectRequest collects sources and synthesizes a reflection.
+type KnowledgeMemoryReflectRequest struct {
+	Recall          KnowledgeMemoryRecallRequest `json:"recall"`
+	Instructions    string                       `json:"instructions,omitempty"`
+	MaxSummaryChars int                          `json:"max_summary_chars,omitempty"`
+	MaxFacts        int                          `json:"max_facts,omitempty"`
+	MaxThemes       int                          `json:"max_themes,omitempty"`
 }
 
-// BrainReflection is a synthesized summary over retrieved memories and knowledge.
-type BrainReflection struct {
-	Summary            string           `json:"summary"`
-	Themes             []string         `json:"themes,omitempty"`
-	Entities           []string         `json:"entities,omitempty"`
-	Facts              []string         `json:"facts,omitempty"`
-	SourceMemoryIDs    []string         `json:"source_memory_ids,omitempty"`
-	SourceKnowledgeIDs []string         `json:"source_knowledge_ids,omitempty"`
-	SourceChunkIDs     []string         `json:"source_chunk_ids,omitempty"`
-	ContextPack        BrainContextPack `json:"context_pack"`
+// KnowledgeMemoryReflection is a synthesized summary over retrieved memories and knowledge.
+type KnowledgeMemoryReflection struct {
+	Summary            string                     `json:"summary"`
+	Themes             []string                   `json:"themes,omitempty"`
+	Entities           []string                   `json:"entities,omitempty"`
+	Facts              []string                   `json:"facts,omitempty"`
+	SourceMemoryIDs    []string                   `json:"source_memory_ids,omitempty"`
+	SourceKnowledgeIDs []string                   `json:"source_knowledge_ids,omitempty"`
+	SourceChunkIDs     []string                   `json:"source_chunk_ids,omitempty"`
+	ContextPack        KnowledgeMemoryContextPack `json:"context_pack"`
 }
 
-// BrainReflectInput is the structured input passed to a pluggable reflector.
-type BrainReflectInput struct {
-	Recall BrainRecallResponse `json:"recall"`
+// KnowledgeMemoryReflectInput is the structured input passed to a pluggable reflector.
+type KnowledgeMemoryReflectInput struct {
+	Recall KnowledgeMemoryRecallResponse `json:"recall"`
 }
 
-// BrainReflector synthesizes higher-order reflections on top of CortexDB retrieval results.
-type BrainReflector interface {
-	Reflect(ctx context.Context, req BrainReflectRequest, input BrainReflectInput) (*BrainReflection, error)
+// KnowledgeMemoryReflector synthesizes higher-order reflections on top of CortexDB retrieval results.
+type KnowledgeMemoryReflector interface {
+	Reflect(ctx context.Context, req KnowledgeMemoryReflectRequest, input KnowledgeMemoryReflectInput) (*KnowledgeMemoryReflection, error)
 }
 
-// BrainReflectResponse contains the reflection and its retrieval inputs.
-type BrainReflectResponse struct {
-	Reflection BrainReflection     `json:"reflection"`
-	Recall     BrainRecallResponse `json:"recall"`
+// KnowledgeMemoryReflectResponse contains the reflection and its retrieval inputs.
+type KnowledgeMemoryReflectResponse struct {
+	Reflection KnowledgeMemoryReflection     `json:"reflection"`
+	Recall     KnowledgeMemoryRecallResponse `json:"recall"`
 }
 
-// BrainConsolidateRequest reflects over sources, persists a summary memory, and can optionally promote it to knowledge.
-type BrainConsolidateRequest struct {
-	Reflect            BrainReflectRequest             `json:"reflect"`
-	MemoryID           string                          `json:"memory_id,omitempty"`
-	UserID             string                          `json:"user_id,omitempty"`
-	SessionID          string                          `json:"session_id,omitempty"`
-	Scope              string                          `json:"scope,omitempty"`
-	Namespace          string                          `json:"namespace,omitempty"`
-	Role               string                          `json:"role,omitempty"`
-	Metadata           map[string]any                  `json:"metadata,omitempty"`
-	Importance         float64                         `json:"importance,omitempty"`
-	TTLSeconds         int                             `json:"ttl_seconds,omitempty"`
-	PromoteToKnowledge bool                            `json:"promote_to_knowledge,omitempty"`
-	Promotion          *BrainPromoteToKnowledgeRequest `json:"promotion,omitempty"`
+// KnowledgeMemoryConsolidateRequest reflects over sources, persists a summary memory, and can optionally promote it to knowledge.
+type KnowledgeMemoryConsolidateRequest struct {
+	Reflect            KnowledgeMemoryReflectRequest             `json:"reflect"`
+	MemoryID           string                                    `json:"memory_id,omitempty"`
+	UserID             string                                    `json:"user_id,omitempty"`
+	SessionID          string                                    `json:"session_id,omitempty"`
+	Scope              string                                    `json:"scope,omitempty"`
+	Namespace          string                                    `json:"namespace,omitempty"`
+	Role               string                                    `json:"role,omitempty"`
+	Metadata           map[string]any                            `json:"metadata,omitempty"`
+	Importance         float64                                   `json:"importance,omitempty"`
+	TTLSeconds         int                                       `json:"ttl_seconds,omitempty"`
+	PromoteToKnowledge bool                                      `json:"promote_to_knowledge,omitempty"`
+	Promotion          *KnowledgeMemoryPromoteToKnowledgeRequest `json:"promotion,omitempty"`
 }
 
-// BrainConsolidateResponse contains the saved summary memory and optional promoted knowledge.
-type BrainConsolidateResponse struct {
-	Reflection BrainReflection     `json:"reflection"`
-	Recall     BrainRecallResponse `json:"recall"`
-	Memory     MemoryRecord        `json:"memory"`
-	Knowledge  *KnowledgeRecord    `json:"knowledge,omitempty"`
+// KnowledgeMemoryConsolidateResponse contains the saved summary memory and optional promoted knowledge.
+type KnowledgeMemoryConsolidateResponse struct {
+	Reflection KnowledgeMemoryReflection     `json:"reflection"`
+	Recall     KnowledgeMemoryRecallResponse `json:"recall"`
+	Memory     MemoryRecord                  `json:"memory"`
+	Knowledge  *KnowledgeRecord              `json:"knowledge,omitempty"`
 }

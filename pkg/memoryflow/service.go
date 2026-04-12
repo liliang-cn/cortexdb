@@ -25,6 +25,7 @@ type Service struct {
 	planner     QueryPlanner
 	extractor   SessionExtractor
 	policy      PromotionPolicy
+	recall      RecallStrategy
 	conventions ConventionSet
 }
 
@@ -49,6 +50,14 @@ func WithPlanner(planner QueryPlanner) Option {
 func WithExtractor(extractor SessionExtractor) Option {
 	return func(s *Service) {
 		s.extractor = extractor
+	}
+}
+
+// WithRecallStrategy injects a recall strategy wrapper. Use this for optional
+// cognitive strategy plugins such as hindsight without replacing memoryflow.
+func WithRecallStrategy(strategy RecallStrategy) Option {
+	return func(s *Service) {
+		s.recall = strategy
 	}
 }
 
@@ -142,13 +151,20 @@ func (s *Service) IngestTranscript(ctx context.Context, req IngestTranscriptRequ
 	return &IngestTranscriptResponse{MemoryIDs: memoryIDs, Count: len(memoryIDs)}, nil
 }
 
-// Recall resolves a retrieval plan and delegates to the CortexDB brain facade.
+// Recall resolves a retrieval plan and delegates to the CortexDB KnowledgeMemory facade.
 func (s *Service) Recall(ctx context.Context, req RecallRequest) (*RecallResponse, error) {
+	if s.recall != nil {
+		return s.recall.Recall(ctx, req, s.recallDefault)
+	}
+	return s.recallDefault(ctx, req)
+}
+
+func (s *Service) recallDefault(ctx context.Context, req RecallRequest) (*RecallResponse, error) {
 	plan, err := s.resolvePlan(ctx, req.Query, req.State, req.Plan)
 	if err != nil {
 		return nil, err
 	}
-	response, err := s.db.Brain().Recall(ctx, cortexdb.BrainRecallRequest{
+	response, err := s.db.KnowledgeMemory().Recall(ctx, cortexdb.KnowledgeMemoryRecallRequest{
 		Query:            req.Query,
 		UserID:           firstNonEmpty(req.UserID, req.State.UserID),
 		SessionID:        firstNonEmpty(req.SessionID, req.State.SessionID),
@@ -503,7 +519,7 @@ func buildTranscriptEpisodes(transcript Transcript) []transcriptEpisodeDraft {
 	return drafts
 }
 
-func buildLayerL1(identity string, recall cortexdb.BrainRecallResponse) string {
+func buildLayerL1(identity string, recall cortexdb.KnowledgeMemoryRecallResponse) string {
 	var builder strings.Builder
 	if identity = strings.TrimSpace(identity); identity != "" {
 		builder.WriteString(identity)
@@ -534,7 +550,7 @@ func buildLayerL1(identity string, recall cortexdb.BrainRecallResponse) string {
 	return strings.TrimSpace(builder.String())
 }
 
-func buildLayerL2(identity string, recall cortexdb.BrainRecallResponse) string {
+func buildLayerL2(identity string, recall cortexdb.KnowledgeMemoryRecallResponse) string {
 	var builder strings.Builder
 	if identity = strings.TrimSpace(identity); identity != "" {
 		builder.WriteString(identity)
@@ -544,7 +560,7 @@ func buildLayerL2(identity string, recall cortexdb.BrainRecallResponse) string {
 	return strings.TrimSpace(builder.String())
 }
 
-func buildLayerL3(identity string, recall cortexdb.BrainRecallResponse) string {
+func buildLayerL3(identity string, recall cortexdb.KnowledgeMemoryRecallResponse) string {
 	var builder strings.Builder
 	if identity = strings.TrimSpace(identity); identity != "" {
 		builder.WriteString(identity)
@@ -776,11 +792,11 @@ func episodeFromMemoryRecord(record cortexdb.MemoryRecord) (Episode, error) {
 	episode := Episode{
 		Memory: record,
 		Taxonomy: Taxonomy{
-			Kind:   stringFromMetadata(record.Metadata, "kind"),
-			Wing:   stringFromMetadata(record.Metadata, "wing"),
-			Room:   stringFromMetadata(record.Metadata, "room"),
-			Source: stringFromMetadata(record.Metadata, "source"),
-			Tags:   splitMetadataList(stringFromMetadata(record.Metadata, "tags")),
+			Kind:     stringFromMetadata(record.Metadata, "kind"),
+			Wing:     stringFromMetadata(record.Metadata, "wing"),
+			Room:     stringFromMetadata(record.Metadata, "room"),
+			Source:   stringFromMetadata(record.Metadata, "source"),
+			Tags:     splitMetadataList(stringFromMetadata(record.Metadata, "tags")),
 			Entities: splitMetadataList(stringFromMetadata(record.Metadata, "entities")),
 		},
 	}

@@ -14,15 +14,15 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	path := "test.db"
 	config := DefaultConfig(path)
-	
+
 	if config.Path != path {
 		t.Errorf("Expected path %s, got %s", path, config.Path)
 	}
-	
+
 	if config.Dimensions != 0 {
 		t.Errorf("Expected dimensions 0 (auto-detect), got %d", config.Dimensions)
 	}
-	
+
 	if config.SimilarityFn == nil {
 		t.Error("Expected non-nil similarity function")
 	}
@@ -54,7 +54,7 @@ func TestOpenInvalidPath(t *testing.T) {
 		Path:       "/invalid/path/that/does/not/exist/test.db",
 		Dimensions: 128,
 	}
-	
+
 	_, err := Open(config)
 	if err == nil {
 		t.Error("Expected error when opening with invalid path")
@@ -118,12 +118,12 @@ func TestQuickAdd(t *testing.T) {
 	t.Run("AddVector", func(t *testing.T) {
 		vector := []float32{1.0, 2.0, 3.0}
 		content := "Test content"
-		
+
 		id, err := quick.Add(ctx, vector, content)
 		if err != nil {
 			t.Errorf("Failed to add vector: %v", err)
 		}
-		
+
 		if id == "" {
 			t.Error("Expected non-empty ID")
 		}
@@ -133,18 +133,18 @@ func TestQuickAdd(t *testing.T) {
 		vector := []float32{4.0, 5.0, 6.0}
 		content := "Collection content"
 		collection := "test_collection"
-		
+
 		// Create collection first
 		_, err := db.store.CreateCollection(ctx, collection, 3)
 		if err != nil {
 			t.Fatalf("Failed to create collection: %v", err)
 		}
-		
+
 		id, err := quick.AddToCollection(ctx, collection, vector, content)
 		if err != nil {
 			t.Errorf("Failed to add vector to collection: %v", err)
 		}
-		
+
 		if id == "" {
 			t.Error("Expected non-empty ID")
 		}
@@ -154,15 +154,15 @@ func TestQuickAdd(t *testing.T) {
 		// Test smart padding feature
 		// We need to enable SmartAdapt explicitly now that StrictMode is default
 		db.store.SetAutoDimAdapt(core.SmartAdapt)
-		
+
 		vector := []float32{1.0, 2.0} // Will be padded to 3 dimensions
 		content := "Padded vector"
-		
+
 		_, err := quick.Add(ctx, vector, content)
 		if err != nil {
 			t.Errorf("Smart padding should handle dimension mismatch, got error: %v", err)
 		}
-		
+
 		// Test with empty vector - will be padded with zeros
 		emptyVector := []float32{}
 		_, err = quick.Add(ctx, emptyVector, "Empty vector padded with zeros")
@@ -196,7 +196,7 @@ func TestQuickSearch(t *testing.T) {
 		{0.0, 1.0, 0.0},
 		{0.0, 0.0, 1.0},
 	}
-	
+
 	for i, vector := range vectors {
 		_, err := quick.Add(ctx, vector, fmt.Sprintf("Content %d", i))
 		if err != nil {
@@ -210,15 +210,15 @@ func TestQuickSearch(t *testing.T) {
 		if err != nil {
 			t.Errorf("Failed to search: %v", err)
 		}
-		
+
 		if len(results) == 0 {
 			t.Error("Expected search results")
 		}
-		
+
 		if len(results) > 2 {
 			t.Errorf("Expected at most 2 results, got %d", len(results))
 		}
-		
+
 		// Results should be ordered by similarity (highest first)
 		if len(results) >= 2 {
 			if results[0].Score < results[1].Score {
@@ -234,23 +234,23 @@ func TestQuickSearch(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create collection: %v", err)
 		}
-		
+
 		collectionVector := []float32{2.0, 2.0, 2.0}
 		_, err = quick.AddToCollection(ctx, collection, collectionVector, "Collection content")
 		if err != nil {
 			t.Fatalf("Failed to add to collection: %v", err)
 		}
-		
+
 		query := []float32{2.0, 2.0, 2.0}
 		results, err := quick.SearchInCollection(ctx, collection, query, 5)
 		if err != nil {
 			t.Errorf("Failed to search in collection: %v", err)
 		}
-		
+
 		if len(results) != 1 {
 			t.Errorf("Expected 1 result in collection, got %d", len(results))
 		}
-		
+
 		if results[0].Collection != collection {
 			t.Errorf("Expected result from collection %s, got %s", collection, results[0].Collection)
 		}
@@ -263,7 +263,7 @@ func TestQuickSearch(t *testing.T) {
 		if err != nil {
 			t.Errorf("Search in non-existent collection should not error: %v", err)
 		}
-		
+
 		if len(results) != 0 {
 			t.Errorf("Expected 0 results from non-existent collection, got %d", len(results))
 		}
@@ -273,15 +273,15 @@ func TestQuickSearch(t *testing.T) {
 func TestGenerateID(t *testing.T) {
 	id1 := generateID()
 	id2 := generateID()
-	
+
 	if id1 == id2 {
 		t.Error("Generated IDs should be unique")
 	}
-	
+
 	if id1 == "" || id2 == "" {
 		t.Error("Generated IDs should not be empty")
 	}
-	
+
 	// Should be a valid UUID string
 	if len(id1) < 32 {
 		t.Errorf("Expected UUID length, got %d", len(id1))
@@ -349,7 +349,7 @@ func TestConfigVariations(t *testing.T) {
 			Dimensions:   128,
 			SimilarityFn: core.CosineSimilarity,
 		}
-		
+
 		db, err := Open(config)
 		if err != nil {
 			t.Fatalf("Failed to open database with custom dimensions: %v", err)
@@ -363,7 +363,7 @@ func TestConfigVariations(t *testing.T) {
 			Dimensions:   64,
 			SimilarityFn: core.DotProduct,
 		}
-		
+
 		db, err := Open(config)
 		if err != nil {
 			t.Fatalf("Failed to open database with dot product similarity: %v", err)
@@ -378,7 +378,7 @@ func TestConfigVariations(t *testing.T) {
 			Dimensions:   32,
 			SimilarityFn: core.EuclideanDist,
 		}
-		
+
 		db, err := Open(config)
 		if err != nil {
 			t.Fatalf("Failed to open database with Euclidean distance: %v", err)
@@ -443,7 +443,7 @@ func TestIntegrationWorkflow(t *testing.T) {
 
 	// Step 3: Test graph functionality
 	graphStore := db.Graph()
-	
+
 	// Initialize graph schema
 	if err := graphStore.InitGraphSchema(ctx); err != nil {
 		t.Fatalf("Failed to init graph schema: %v", err)
@@ -457,7 +457,7 @@ func TestIntegrationWorkflow(t *testing.T) {
 			Content:  doc.content,
 			NodeType: "document",
 		}
-		
+
 		if err := graphStore.UpsertNode(ctx, node); err != nil {
 			t.Fatalf("Failed to add graph node: %v", err)
 		}
@@ -468,7 +468,7 @@ func TestIntegrationWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get graph node: %v", err)
 	}
-	
+
 	if node.Content != documents[0].content {
 		t.Errorf("Expected node content %s, got %s", documents[0].content, node.Content)
 	}

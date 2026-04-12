@@ -13,7 +13,7 @@ It is designed for local-first AI agents that need durable memory without runnin
 
 ```text
 pkg/cortexdb
-  Core public DB facade: vectors, text search, knowledge, memory, brain, KG, tools, MCP.
+  Core public DB facade: vectors, text search, knowledge, memory, KnowledgeMemory, KG, tools, MCP.
 
 pkg/memoryflow
   Agent memory workflow: transcript ingest, recall, wake-up context, diary, promotion.
@@ -50,7 +50,7 @@ import (
 )
 
 func main() {
-	db, err := cortexdb.Open(cortexdb.DefaultConfig("brain.db"))
+	db, err := cortexdb.Open(cortexdb.DefaultConfig("KnowledgeMemory.db"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -108,6 +108,21 @@ _ = resp.Context
 
 Without an embedder, CortexDB uses lexical retrieval and planner-provided keywords. With an embedder, the same high-level APIs can use semantic or hybrid retrieval.
 
+RAG benchmark coverage is available in `pkg/cortexdb`:
+
+```bash
+go test ./pkg/cortexdb -run '^$' -bench 'BenchmarkRAG' -benchmem
+```
+
+Reference run on Apple M2 Pro, `-benchtime=3x`:
+
+| Benchmark | Fixture | Time/op | Approx Throughput | Alloc/op |
+|---|---:|---:|---:|---:|
+| SaveKnowledge | 1 document, 3 entities, 2 relations | ~3.26 ms | ~306 ops/s | ~75 KB |
+| SearchKnowledge lexical | 500 docs, keyword plan, graph off | ~4.43 ms | ~226 QPS | ~234 KB |
+| SearchKnowledge graph-light | 500 docs, entity plan, bounded graph expansion | ~8.40 ms | ~119 QPS | ~1.7 MB |
+| BuildContext | chunk pack with graph-light enrichment | ~0.41 ms | ~2,463 ops/s | ~94 KB |
+
 ## MemoryFlow
 
 `pkg/memoryflow` is the agent memory workflow layer. It stores raw transcript exchanges, recalls relevant context, assembles wake-up layers, appends diary entries, reconstructs transcripts, and optionally promotes durable facts to knowledge.
@@ -151,6 +166,24 @@ type QueryPlanner interface {
 type SessionExtractor interface {
 	Extract(ctx context.Context, transcript memoryflow.Transcript, state memoryflow.SessionState) ([]memoryflow.PromotionCandidate, error)
 }
+```
+
+MemoryFlow can also be wrapped with optional recall strategies. `pkg/hindsight`
+now provides a compatibility strategy plugin that enriches recall with
+bank/entity/keyword cues while leaving MemoryFlow as the default workflow:
+
+```go
+flow, _ := memoryflow.New(
+	db,
+	planner,
+	extractor,
+	memoryflow.WithRecallStrategy(hindsight.NewStrategy(db, hindsight.StrategyOptions{
+		BankID:      "apollo-agent",
+		EntityNames: []string{"Apollo"},
+		Keywords:    []string{"deadline"},
+		UseKG:       true,
+	})),
+)
 ```
 
 ## Knowledge Graph
@@ -222,6 +255,27 @@ report, _ := db.ValidateKnowledgeGraphSHACL(ctx, cortexdb.KnowledgeGraphSHACLVal
 _ = report
 ```
 
+Knowledge graph benchmark coverage is available in `pkg/graph`:
+
+```bash
+go test ./pkg/graph -run '^$' -bench 'BenchmarkKnowledgeGraph' -benchmem
+```
+
+Reference run on Apple M2 Pro, `-benchtime=3x`:
+
+| Benchmark | Fixture | Time/op | Approx Throughput | Alloc/op |
+|---|---:|---:|---:|---:|
+| RDF upsert | unique person/name triple | ~0.97 ms | ~1,028 ops/s | ~37 KB |
+| RDF find by predicate | 1,000 name triples, limit 20 | ~0.45 ms | ~2,242 QPS | ~49 KB |
+| SPARQL select | direct lookup over 1,000 people | ~0.56 ms | ~1,802 QPS | ~26 KB |
+| SPARQL property path | `ex:knows+` over 500-node chain | ~2.21 ms | ~453 QPS | ~2.5 MB |
+| SPARQL subquery | grouped friend counts over 500 people | ~74.45 ms | ~13 QPS | ~185 MB |
+| RDFS full refresh | 25 class/type closure fixture | ~805.94 ms | ~1.2 ops/s | ~40 MB |
+| RDFS incremental refresh | changed subclass triple fixture | ~859.85 ms | ~1.2 ops/s | ~46 MB |
+| SHACL-lite validation | 500 people age constraints | ~139.24 ms | ~7.2 ops/s | ~6.6 MB |
+
+These numbers are a local reference point, not a portability guarantee. The RDFS and SPARQL subquery benchmarks are intentionally stress-heavy and useful for tracking optimizer work.
+
 ## GraphFlow
 
 `pkg/graphflow` is the corpus-to-graph workflow layer:
@@ -279,13 +333,29 @@ Tool groups include:
 - GraphRAG: `ingest_document`, `search_text`, `expand_graph`, `build_context`
 - Knowledge/memory: `knowledge_save`, `knowledge_search`, `memory_save`, `memory_search`
 - Knowledge graph: `knowledge_graph_upsert`, `knowledge_graph_query`, `knowledge_graph_shacl_validate`, `knowledge_graph_infer_refresh`
-- Brain: `brain_recall`, `brain_build_context_pack`, `brain_reflect`, `brain_consolidate`
+- KnowledgeMemory: `knowledge_memory_recall`, `knowledge_memory_build_context_pack`, `knowledge_memory_reflect`, `knowledge_memory_consolidate`
 - Ontology/inference: `ontology_save`, `apply_inference`
 
 `memoryflow` and `graphflow` also expose their own toolbox/MCP surfaces:
 
 - memoryflow: `memoryflow_ingest_transcript`, `memoryflow_recall`, `memoryflow_wake_up_layers`, `memoryflow_prepare_reply`
 - graphflow: `graphflow_build`, `graphflow_analyze`, `graphflow_report`, `graphflow_export`, `graphflow_run`
+
+## Optional Semantic Router
+
+`pkg/semantic-router` remains available as an optional utility for routing user input to handlers or CortexDB tools before retrieval. It is not required by the main CortexDB, MemoryFlow, or GraphFlow paths.
+
+For no-embedder setups, use the lexical router:
+
+```go
+router, _ := semanticrouter.NewLexicalRouter(semanticrouter.WithSparseThreshold(0.1))
+_ = router.Add(&semanticrouter.SparseRoute{
+	Name:       "memory_save",
+	Utterances: []string{"remember this", "save to memory"},
+})
+route, _ := router.Route(ctx, "please remember this preference")
+_ = route.RouteName
+```
 
 ## Examples
 

@@ -27,6 +27,44 @@ type SparseEncoder interface {
 	Dimensions() int
 }
 
+// TermFrequencyEncoder is a lightweight lexical encoder that does not require
+// fitting. It is useful for no-embedder routing over short route utterances.
+type TermFrequencyEncoder struct{}
+
+// NewTermFrequencyEncoder creates a no-fit lexical sparse encoder.
+func NewTermFrequencyEncoder() *TermFrequencyEncoder {
+	return &TermFrequencyEncoder{}
+}
+
+// EncodeSparse converts text into term-frequency weights.
+func (e *TermFrequencyEncoder) EncodeSparse(text string) map[string]float64 {
+	terms := tokenize(text)
+	out := make(map[string]float64, len(terms))
+	for _, term := range terms {
+		out[term]++
+	}
+	return out
+}
+
+// EncodeSparseBatch converts multiple texts into term-frequency sparse vectors.
+func (e *TermFrequencyEncoder) EncodeSparseBatch(texts []string) []map[string]float64 {
+	out := make([]map[string]float64, len(texts))
+	for i, text := range texts {
+		out[i] = e.EncodeSparse(text)
+	}
+	return out
+}
+
+// Vocabulary returns nil because this encoder is fit-free.
+func (e *TermFrequencyEncoder) Vocabulary() []string {
+	return nil
+}
+
+// Dimensions returns zero because this encoder is fit-free.
+func (e *TermFrequencyEncoder) Dimensions() int {
+	return 0
+}
+
 // SparseSimilarity computes similarity between two sparse vectors.
 // Uses cosine similarity for sparse representations.
 func SparseSimilarity(a, b map[string]float64) float64 {
@@ -86,8 +124,8 @@ func tokenize(text string) []string {
 // BM25 improves upon TF-IDF by incorporating document length normalization.
 type BM25Encoder struct {
 	// IDF (Inverse Document Frequency) values for each term
-	idf     map[string]float64
-	idfMu   sync.RWMutex
+	idf   map[string]float64
+	idfMu sync.RWMutex
 
 	// Document frequency for each term
 	docFreq map[string]int
@@ -250,8 +288,8 @@ func (e *BM25Encoder) Dimensions() int {
 // TFIDFEncoder implements TF-IDF (Term Frequency-Inverse Document Frequency) sparse encoding.
 type TFIDFEncoder struct {
 	// IDF (Inverse Document Frequency) values
-	idf     map[string]float64
-	idfMu   sync.RWMutex
+	idf   map[string]float64
+	idfMu sync.RWMutex
 
 	// Document frequency for each term
 	docFreq map[string]int

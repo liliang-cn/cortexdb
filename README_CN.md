@@ -13,7 +13,7 @@ CortexDB 是一个纯 Go、单文件的 AI memory 和 knowledge graph 库。它�
 
 ```text
 pkg/cortexdb
-  主 DB facade：vectors、text search、knowledge、memory、brain、KG、tools、MCP。
+  主 DB facade：vectors、text search、knowledge、memory、KnowledgeMemory、KG、tools、MCP。
 
 pkg/memoryflow
   Agent memory workflow：transcript ingest、recall、wake-up context、diary、promotion。
@@ -50,7 +50,7 @@ import (
 )
 
 func main() {
-	db, err := cortexdb.Open(cortexdb.DefaultConfig("brain.db"))
+	db, err := cortexdb.Open(cortexdb.DefaultConfig("KnowledgeMemory.db"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -108,6 +108,21 @@ _ = resp.Context
 
 没有 embedder 时，CortexDB 会走 lexical retrieval，并使用 planner 提供的 keywords。配置 embedder 后，同一套高层 API 可以走 semantic 或 hybrid retrieval。
 
+RAG benchmark 位于 `pkg/cortexdb`：
+
+```bash
+go test ./pkg/cortexdb -run '^$' -bench 'BenchmarkRAG' -benchmem
+```
+
+Apple M2 Pro 本地参考结果，`-benchtime=3x`：
+
+| Benchmark | 数据集 | Time/op | 近似吞吐 | Alloc/op |
+|---|---:|---:|---:|---:|
+| SaveKnowledge | 1 个 document，3 个 entities，2 个 relations | ~3.26 ms | ~306 ops/s | ~75 KB |
+| SearchKnowledge lexical | 500 docs，keyword plan，graph off | ~4.43 ms | ~226 QPS | ~234 KB |
+| SearchKnowledge graph-light | 500 docs，entity plan，有界 graph expansion | ~8.40 ms | ~119 QPS | ~1.7 MB |
+| BuildContext | 带 graph-light enrichment 的 chunk pack | ~0.41 ms | ~2,463 ops/s | ~94 KB |
+
 ## MemoryFlow
 
 `pkg/memoryflow` 是 agent memory workflow 层。它负责把原始 transcript 存成 exchange-shaped episodic memory，做 recall，组装 wake-up layers，写 diary，恢复 transcript，并可在 session 结束时把长期事实 promote 到 knowledge。
@@ -151,6 +166,22 @@ type QueryPlanner interface {
 type SessionExtractor interface {
 	Extract(ctx context.Context, transcript memoryflow.Transcript, state memoryflow.SessionState) ([]memoryflow.PromotionCandidate, error)
 }
+```
+
+MemoryFlow 也可以挂可选 recall strategy。`pkg/hindsight` 现在提供了一个兼容策略插件：它用 bank/entity/keyword 信号增强 recall，但不替代 MemoryFlow 默认工作流：
+
+```go
+flow, _ := memoryflow.New(
+	db,
+	planner,
+	extractor,
+	memoryflow.WithRecallStrategy(hindsight.NewStrategy(db, hindsight.StrategyOptions{
+		BankID:      "apollo-agent",
+		EntityNames: []string{"Apollo"},
+		Keywords:    []string{"deadline"},
+		UseKG:       true,
+	})),
+)
 ```
 
 ## Knowledge Graph
@@ -222,6 +253,27 @@ report, _ := db.ValidateKnowledgeGraphSHACL(ctx, cortexdb.KnowledgeGraphSHACLVal
 _ = report
 ```
 
+Knowledge graph benchmark 位于 `pkg/graph`：
+
+```bash
+go test ./pkg/graph -run '^$' -bench 'BenchmarkKnowledgeGraph' -benchmem
+```
+
+Apple M2 Pro 本地参考结果，`-benchtime=3x`：
+
+| Benchmark | 数据集 | Time/op | 近似吞吐 | Alloc/op |
+|---|---:|---:|---:|---:|
+| RDF upsert | 唯一 person/name triple | ~0.97 ms | ~1,028 ops/s | ~37 KB |
+| RDF find by predicate | 1,000 条 name triples，limit 20 | ~0.45 ms | ~2,242 QPS | ~49 KB |
+| SPARQL select | 1,000 个 people 上的直接 lookup | ~0.56 ms | ~1,802 QPS | ~26 KB |
+| SPARQL property path | 500-node chain 上的 `ex:knows+` | ~2.21 ms | ~453 QPS | ~2.5 MB |
+| SPARQL subquery | 500 个 people 上的 grouped friend counts | ~74.45 ms | ~13 QPS | ~185 MB |
+| RDFS full refresh | 25 个 class/type closure fixture | ~805.94 ms | ~1.2 ops/s | ~40 MB |
+| RDFS incremental refresh | changed subclass triple fixture | ~859.85 ms | ~1.2 ops/s | ~46 MB |
+| SHACL-lite validation | 500 个 people age constraints | ~139.24 ms | ~7.2 ops/s | ~6.6 MB |
+
+这些数字只是本地参考，不是跨机器保证。RDFS 和 SPARQL subquery benchmark 故意偏重，主要用于后续跟踪优化效果。
+
 ## GraphFlow
 
 `pkg/graphflow` 是 corpus-to-graph workflow 层：
@@ -279,13 +331,29 @@ _ = server
 - GraphRAG：`ingest_document`、`search_text`、`expand_graph`、`build_context`
 - Knowledge/memory：`knowledge_save`、`knowledge_search`、`memory_save`、`memory_search`
 - Knowledge graph：`knowledge_graph_upsert`、`knowledge_graph_query`、`knowledge_graph_shacl_validate`、`knowledge_graph_infer_refresh`
-- Brain：`brain_recall`、`brain_build_context_pack`、`brain_reflect`、`brain_consolidate`
+- KnowledgeMemory：`knowledge_memory_recall`、`knowledge_memory_build_context_pack`、`knowledge_memory_reflect`、`knowledge_memory_consolidate`
 - Ontology/inference：`ontology_save`、`apply_inference`
 
 `memoryflow` 和 `graphflow` 也有独立 toolbox/MCP surface：
 
 - memoryflow：`memoryflow_ingest_transcript`、`memoryflow_recall`、`memoryflow_wake_up_layers`、`memoryflow_prepare_reply`
 - graphflow：`graphflow_build`、`graphflow_analyze`、`graphflow_report`、`graphflow_export`、`graphflow_run`
+
+## Optional Semantic Router
+
+`pkg/semantic-router` 仍然作为可选工具包保留，可在 retrieval 前把用户输入路由到 handler 或 CortexDB tool。它不是 CortexDB、MemoryFlow、GraphFlow 主路径的必需依赖。
+
+无 embedder 场景可以直接使用 lexical router：
+
+```go
+router, _ := semanticrouter.NewLexicalRouter(semanticrouter.WithSparseThreshold(0.1))
+_ = router.Add(&semanticrouter.SparseRoute{
+	Name:       "memory_save",
+	Utterances: []string{"remember this", "save to memory"},
+})
+route, _ := router.Route(ctx, "please remember this preference")
+_ = route.RouteName
+```
 
 ## Examples
 

@@ -1,10 +1,10 @@
 package cortexdb
 
-func brainToolDefinitions() []ToolDefinition {
-	return []ToolDefinition{
+func KnowledgeMemoryFacadeToolDefinitions() []ToolDefinition {
+	definitions := []ToolDefinition{
 		{
-			Name:        "brain_remember",
-			Description: "Store one episodic memory item in the CortexDB brain. Prefer this over memory_save when you want to build a higher-level memory/knowledge workflow.",
+			Name:        "knowledge_memory_remember",
+			Description: "Store one episodic memory item in the CortexDB KnowledgeMemory facade. Prefer this over memory_save when you want to build a higher-level memory/knowledge workflow.",
 			InputSchema: toolObjectSchema(
 				[]string{"memory_id", "content"},
 				map[string]any{
@@ -22,8 +22,8 @@ func brainToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
-			Name:        "brain_recall",
-			Description: "Recall from the CortexDB brain by fusing episodic memory, durable knowledge, graph expansion, and a packed context window.",
+			Name:        "knowledge_memory_recall",
+			Description: "Recall from the CortexDB KnowledgeMemory facade by fusing episodic memory, durable knowledge, graph expansion, and a packed context window.",
 			InputSchema: toolObjectSchema(
 				[]string{"query"},
 				map[string]any{
@@ -58,8 +58,8 @@ func brainToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
-			Name:        "brain_build_context_pack",
-			Description: "Assemble a brain context pack from memory, knowledge, and graph retrieval results. This returns the same fused retrieval diagnostics as brain_recall, centered on prompt-ready context.",
+			Name:        "knowledge_memory_build_context_pack",
+			Description: "Assemble a KnowledgeMemory context pack from memory, knowledge, and graph retrieval results. This returns the same fused retrieval diagnostics as knowledge_memory_recall, centered on prompt-ready context.",
 			InputSchema: toolObjectSchema(
 				[]string{"query"},
 				map[string]any{
@@ -94,7 +94,7 @@ func brainToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
-			Name:        "brain_promote_to_knowledge",
+			Name:        "knowledge_memory_promote_to_knowledge",
 			Description: "Promote one or more memory items into durable knowledge, preserving source memory provenance.",
 			InputSchema: toolObjectSchema(
 				[]string{"memory_ids"},
@@ -115,7 +115,7 @@ func brainToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
-			Name:        "brain_expand_entity_context",
+			Name:        "knowledge_memory_expand_entity_context",
 			Description: "Expand graph context around entities and assemble a context pack with related chunks.",
 			InputSchema: toolObjectSchema(
 				[]string{},
@@ -138,7 +138,7 @@ func brainToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
-			Name:        "brain_neighbors",
+			Name:        "knowledge_memory_neighbors",
 			Description: "Resolve one entity or node and return its graph neighbors.",
 			InputSchema: toolObjectSchema(
 				[]string{},
@@ -154,7 +154,7 @@ func brainToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
-			Name:        "brain_shortest_path",
+			Name:        "knowledge_memory_shortest_path",
 			Description: "Resolve two entities or nodes and return the graph shortest path between them.",
 			InputSchema: toolObjectSchema(
 				[]string{},
@@ -167,8 +167,8 @@ func brainToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
-			Name:        "brain_reflect",
-			Description: "Recall from the brain and synthesize a structured reflection. If a BrainReflector is configured, it is used; otherwise CortexDB falls back to deterministic consolidation.",
+			Name:        "knowledge_memory_reflect",
+			Description: "Recall from the KnowledgeMemory and synthesize a structured reflection. If a KnowledgeMemoryReflector is configured, it is used; otherwise CortexDB falls back to deterministic consolidation.",
 			InputSchema: toolObjectSchema(
 				[]string{"recall"},
 				map[string]any{
@@ -212,8 +212,8 @@ func brainToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
-			Name:        "brain_consolidate",
-			Description: "Reflect over recalled brain context, persist a summary memory, and optionally promote that summary into durable knowledge.",
+			Name:        "knowledge_memory_consolidate",
+			Description: "Reflect over recalled KnowledgeMemory context, persist a summary memory, and optionally promote that summary into durable knowledge.",
 			InputSchema: toolObjectSchema(
 				[]string{"reflect"},
 				map[string]any{
@@ -289,4 +289,5 @@ func brainToolDefinitions() []ToolDefinition {
 			),
 		},
 	}
+	return definitions
 }
