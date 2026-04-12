@@ -116,6 +116,109 @@ func TestRefreshRDFSInferencesAndExplain(t *testing.T) {
 	if len(trace) < 2 {
 		t.Fatalf("expected recursive support trace, got %+v", trace)
 	}
+
+	summary, err := graphStore.InferenceSummary(ctx)
+	if err != nil {
+		t.Fatalf("inference summary: %v", err)
+	}
+	if summary.InferredCount == 0 || len(summary.Rules) == 0 {
+		t.Fatalf("expected inference summary counts, got %+v", summary)
+	}
+
+	matchExplanations, err := graphStore.ExplainTriplesByPattern(ctx, TriplePattern{
+		Subject:   ptrRDFTerm(NewIRI("https://example.com/alice")),
+		Predicate: ptrRDFTerm(NewIRI(rdfTypeIRI)),
+		Object:    ptrRDFTerm(NewIRI("https://example.com/Person")),
+		Inferred:  &inferredOnly,
+	}, 1)
+	if err != nil {
+		t.Fatalf("explain triples by pattern: %v", err)
+	}
+	if len(matchExplanations) != 1 {
+		t.Fatalf("expected one matched explanation, got %+v", matchExplanations)
+	}
+}
+
+func TestRefreshRDFSInferencesIncremental(t *testing.T) {
+	dbPath := fmt.Sprintf("test_rdfs_incremental_%d.db", time.Now().UnixNano())
+	defer func() { _ = os.Remove(dbPath) }()
+
+	store, err := core.New(dbPath, 16)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	ctx := context.Background()
+	if err := store.Init(ctx); err != nil {
+		t.Fatalf("init store: %v", err)
+	}
+
+	graphStore := NewGraphStore(store)
+	explicit := []*RDFTriple{
+		{Subject: NewIRI("https://example.com/Manager"), Predicate: NewIRI(rdfsSubClassOfIRI), Object: NewIRI("https://example.com/Employee")},
+		{Subject: NewIRI("https://example.com/alice"), Predicate: NewIRI(rdfTypeIRI), Object: NewIRI("https://example.com/Manager")},
+	}
+	if _, err := graphStore.UpsertTriplesBatch(ctx, explicit); err != nil {
+		t.Fatalf("upsert explicit triples: %v", err)
+	}
+	if _, err := graphStore.RefreshRDFSInferences(ctx); err != nil {
+		t.Fatalf("initial refresh: %v", err)
+	}
+
+	added := RDFTriple{
+		Subject:   NewIRI("https://example.com/Employee"),
+		Predicate: NewIRI(rdfsSubClassOfIRI),
+		Object:    NewIRI("https://example.com/Person"),
+	}
+	if err := graphStore.UpsertTriple(ctx, &added); err != nil {
+		t.Fatalf("upsert incremental seed triple: %v", err)
+	}
+	refreshResp, err := graphStore.RefreshRDFSInferencesIncremental(ctx, []RDFTriple{added})
+	if err != nil {
+		t.Fatalf("incremental refresh after add: %v", err)
+	}
+	if !refreshResp.Incremental || refreshResp.AffectedExplicitCount == 0 {
+		t.Fatalf("expected incremental refresh metadata, got %+v", refreshResp)
+	}
+
+	inferredOnly := true
+	personType, err := graphStore.FindTriples(ctx, TriplePattern{
+		Subject:   ptrRDFTerm(NewIRI("https://example.com/alice")),
+		Predicate: ptrRDFTerm(NewIRI(rdfTypeIRI)),
+		Object:    ptrRDFTerm(NewIRI("https://example.com/Person")),
+		Inferred:  &inferredOnly,
+	})
+	if err != nil {
+		t.Fatalf("find alice person after incremental add: %v", err)
+	}
+	if len(personType) != 1 {
+		t.Fatalf("expected one alice person inference, got %+v", personType)
+	}
+
+	if err := graphStore.DeleteTriple(ctx, added); err != nil {
+		t.Fatalf("delete incremental seed triple: %v", err)
+	}
+	refreshResp, err = graphStore.RefreshRDFSInferencesIncremental(ctx, []RDFTriple{added})
+	if err != nil {
+		t.Fatalf("incremental refresh after delete: %v", err)
+	}
+	if refreshResp.RemovedInferredCount == 0 {
+		t.Fatalf("expected incremental refresh to remove dependent inferred triples, got %+v", refreshResp)
+	}
+
+	personType, err = graphStore.FindTriples(ctx, TriplePattern{
+		Subject:   ptrRDFTerm(NewIRI("https://example.com/alice")),
+		Predicate: ptrRDFTerm(NewIRI(rdfTypeIRI)),
+		Object:    ptrRDFTerm(NewIRI("https://example.com/Person")),
+		Inferred:  &inferredOnly,
+	})
+	if err != nil {
+		t.Fatalf("find alice person after incremental delete: %v", err)
+	}
+	if len(personType) != 0 {
+		t.Fatalf("expected alice person inference to be removed, got %+v", personType)
+	}
 }
 
 func ptrRDFTerm(term RDFTerm) *RDFTerm {

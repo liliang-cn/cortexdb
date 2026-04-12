@@ -343,18 +343,36 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.QueryKnowledgeGraph(ctx, req)
+	case "knowledge_graph_shacl_validate":
+		var req KnowledgeGraphSHACLValidateRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.ValidateKnowledgeGraphSHACL(ctx, req)
 	case "knowledge_graph_infer_refresh":
 		var req KnowledgeGraphInferenceRefreshRequest
 		if err := json.Unmarshal(input, &req); err != nil {
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.RefreshKnowledgeGraphInference(ctx, req)
+	case "knowledge_graph_infer_summary":
+		var req KnowledgeGraphInferenceSummaryRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.SummarizeKnowledgeGraphInference(ctx, req)
 	case "knowledge_graph_infer_explain":
 		var req KnowledgeGraphInferenceExplainRequest
 		if err := json.Unmarshal(input, &req); err != nil {
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.ExplainKnowledgeGraphInference(ctx, req)
+	case "knowledge_graph_infer_explain_match":
+		var req KnowledgeGraphInferenceExplainMatchRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.ExplainKnowledgeGraphInferenceMatch(ctx, req)
 	case "memory_save":
 		var req MemorySaveRequest
 		if err := json.Unmarshal(input, &req); err != nil {

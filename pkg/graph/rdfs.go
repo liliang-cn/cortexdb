@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 )
 
 const (
@@ -30,8 +31,18 @@ const (
 
 // RDFSInferenceRefreshResult summarizes a refresh of inferred triples.
 type RDFSInferenceRefreshResult struct {
-	ExplicitCount int `json:"explicit_count"`
-	InferredCount int `json:"inferred_count"`
+	ExplicitCount         int  `json:"explicit_count"`
+	InferredCount         int  `json:"inferred_count"`
+	Incremental           bool `json:"incremental,omitempty"`
+	AffectedExplicitCount int  `json:"affected_explicit_count,omitempty"`
+	RemovedInferredCount  int  `json:"removed_inferred_count,omitempty"`
+}
+
+// RDFSInferenceSummary provides persisted inference counts and rule breakdowns.
+type RDFSInferenceSummary struct {
+	ExplicitCount int            `json:"explicit_count"`
+	InferredCount int            `json:"inferred_count"`
+	Rules         map[string]int `json:"rules,omitempty"`
 }
 
 // RDFSInferenceExplanation returns provenance information for one triple.
@@ -49,6 +60,12 @@ type RDFSInferenceTraceEntry struct {
 	Depth          int                      `json:"depth"`
 	Explanation    RDFSInferenceExplanation `json:"explanation"`
 	Truncated      bool                     `json:"truncated,omitempty"`
+}
+
+// RDFSInferenceMatchExplanation combines explanation and optional trace for one matched triple.
+type RDFSInferenceMatchExplanation struct {
+	Explanation RDFSInferenceExplanation  `json:"explanation"`
+	Trace       []RDFSInferenceTraceEntry `json:"trace,omitempty"`
 }
 
 type rdfsInferenceRecord struct {
@@ -72,7 +89,182 @@ func (g *GraphStore) RefreshRDFSInferences(ctx context.Context) (*RDFSInferenceR
 	if err != nil {
 		return nil, err
 	}
+	records := computeRDFSInferenceRecords(explicitTriples)
+	inferredCount, err := g.persistInferredRecords(ctx, records)
+	if err != nil {
+		return nil, err
+	}
 
+	return &RDFSInferenceRefreshResult{
+		ExplicitCount:         len(explicitTriples),
+		InferredCount:         inferredCount,
+		AffectedExplicitCount: len(explicitTriples),
+	}, nil
+}
+
+// RefreshRDFSInferencesIncremental recomputes inferred triples only for the neighborhood
+// affected by the supplied changed explicit triples.
+func (g *GraphStore) RefreshRDFSInferencesIncremental(ctx context.Context, changedTriples []RDFTriple) (*RDFSInferenceRefreshResult, error) {
+	if err := g.InitGraphSchema(ctx); err != nil {
+		return nil, err
+	}
+	if len(changedTriples) == 0 {
+		return g.RefreshRDFSInferences(ctx)
+	}
+
+	explicitOnly := false
+	explicitTriples, err := g.FindTriples(ctx, TriplePattern{Inferred: &explicitOnly})
+	if err != nil {
+		return nil, err
+	}
+	inferredOnly := true
+	inferredTriples, err := g.FindTriples(ctx, TriplePattern{Inferred: &inferredOnly})
+	if err != nil {
+		return nil, err
+	}
+
+	normalizedSeeds, err := g.normalizeInferenceSeedTriples(ctx, changedTriples)
+	if err != nil {
+		return nil, err
+	}
+	affectedExplicit := expandRDFSExplicitNeighborhood(explicitTriples, normalizedSeeds)
+	impactedInferredIDs := collectImpactedInferredTripleIDs(inferredTriples, normalizedSeeds, affectedExplicit)
+
+	removed, err := g.deleteInferredTriplesByID(ctx, impactedInferredIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	records := computeRDFSInferenceRecords(affectedExplicit)
+	inferredCount, err := g.persistInferredRecords(ctx, records)
+	if err != nil {
+		return nil, err
+	}
+
+	return &RDFSInferenceRefreshResult{
+		ExplicitCount:         len(explicitTriples),
+		InferredCount:         inferredCount,
+		Incremental:           true,
+		AffectedExplicitCount: len(affectedExplicit),
+		RemovedInferredCount:  removed,
+	}, nil
+}
+
+// ExplainTriple returns whether a triple is explicit or inferred and its immediate provenance.
+func (g *GraphStore) ExplainTriple(ctx context.Context, tripleID string) (*RDFSInferenceExplanation, error) {
+	triple, err := g.GetTriple(ctx, tripleID)
+	if err != nil {
+		return nil, err
+	}
+	return &RDFSInferenceExplanation{
+		Triple:           *triple,
+		Explicit:         !triple.Inferred,
+		Rule:             triple.Rule,
+		SupportTripleIDs: append([]string(nil), triple.SupportIDs...),
+	}, nil
+}
+
+// InferenceSummary returns explicit/inferred counts and an inference-rule breakdown.
+func (g *GraphStore) InferenceSummary(ctx context.Context) (*RDFSInferenceSummary, error) {
+	explicitOnly := false
+	explicitTriples, err := g.FindTriples(ctx, TriplePattern{Inferred: &explicitOnly})
+	if err != nil {
+		return nil, err
+	}
+	inferredOnly := true
+	inferredTriples, err := g.FindTriples(ctx, TriplePattern{Inferred: &inferredOnly})
+	if err != nil {
+		return nil, err
+	}
+	rules := make(map[string]int)
+	for _, triple := range inferredTriples {
+		if strings.TrimSpace(triple.Rule) == "" {
+			continue
+		}
+		rules[triple.Rule]++
+	}
+	return &RDFSInferenceSummary{
+		ExplicitCount: len(explicitTriples),
+		InferredCount: len(inferredTriples),
+		Rules:         rules,
+	}, nil
+}
+
+// ExplainTriplesByPattern expands explanations for all triples matched by the given pattern.
+func (g *GraphStore) ExplainTriplesByPattern(ctx context.Context, pattern TriplePattern, depth int) ([]RDFSInferenceMatchExplanation, error) {
+	triples, err := g.FindTriples(ctx, pattern)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RDFSInferenceMatchExplanation, 0, len(triples))
+	for _, triple := range triples {
+		explanation, err := g.ExplainTriple(ctx, triple.ID)
+		if err != nil {
+			return nil, err
+		}
+		item := RDFSInferenceMatchExplanation{Explanation: *explanation}
+		if depth > 0 {
+			trace, err := g.ExplainTripleTrace(ctx, triple.ID, depth)
+			if err != nil {
+				return nil, err
+			}
+			item.Trace = trace
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+// ExplainTripleTrace recursively expands provenance for a triple into a flattened trace list.
+func (g *GraphStore) ExplainTripleTrace(ctx context.Context, tripleID string, depth int) ([]RDFSInferenceTraceEntry, error) {
+	if depth < 0 {
+		depth = 0
+	}
+	seen := make(map[string]bool)
+	entries := make([]RDFSInferenceTraceEntry, 0)
+	if err := g.explainTripleTrace(ctx, tripleID, "", 0, depth, seen, &entries); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+func (g *GraphStore) explainTripleTrace(ctx context.Context, tripleID, parentTripleID string, currentDepth, remainingDepth int, seen map[string]bool, entries *[]RDFSInferenceTraceEntry) error {
+	explanation, err := g.ExplainTriple(ctx, tripleID)
+	if err != nil {
+		return err
+	}
+	entry := RDFSInferenceTraceEntry{
+		TripleID:       tripleID,
+		ParentTripleID: parentTripleID,
+		Depth:          currentDepth,
+		Explanation:    *explanation,
+	}
+	*entries = append(*entries, entry)
+	if explanation.Explicit {
+		return nil
+	}
+	if remainingDepth == 0 {
+		if len(explanation.SupportTripleIDs) > 0 {
+			(*entries)[len(*entries)-1].Truncated = true
+		}
+		return nil
+	}
+	if seen[tripleID] {
+		(*entries)[len(*entries)-1].Truncated = true
+		return nil
+	}
+	seen[tripleID] = true
+	defer delete(seen, tripleID)
+
+	for _, supportID := range explanation.SupportTripleIDs {
+		if err := g.explainTripleTrace(ctx, supportID, tripleID, currentDepth+1, remainingDepth-1, seen, entries); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func computeRDFSInferenceRecords(explicitTriples []RDFTriple) map[string]rdfsInferenceRecord {
 	records := make(map[string]rdfsInferenceRecord, len(explicitTriples))
 	for _, triple := range explicitTriples {
 		record := rdfsInferenceRecord{
@@ -256,6 +448,10 @@ func (g *GraphStore) RefreshRDFSInferences(ctx context.Context) (*RDFSInferenceR
 		}
 	}
 
+	return records
+}
+
+func (g *GraphStore) persistInferredRecords(ctx context.Context, records map[string]rdfsInferenceRecord) (int, error) {
 	inferredCount := 0
 	for _, record := range records {
 		if record.Explicit {
@@ -266,78 +462,214 @@ func (g *GraphStore) RefreshRDFSInferences(ctx context.Context) (*RDFSInferenceR
 		inferredTriple.Rule = record.Rule
 		inferredTriple.SupportIDs = append([]string(nil), record.SupportIDs...)
 		if err := g.UpsertTriple(ctx, &inferredTriple); err != nil {
-			return nil, err
+			return 0, err
 		}
 		inferredCount++
 	}
-
-	return &RDFSInferenceRefreshResult{
-		ExplicitCount: len(explicitTriples),
-		InferredCount: inferredCount,
-	}, nil
+	return inferredCount, nil
 }
 
-// ExplainTriple returns whether a triple is explicit or inferred and its immediate provenance.
-func (g *GraphStore) ExplainTriple(ctx context.Context, tripleID string) (*RDFSInferenceExplanation, error) {
-	triple, err := g.GetTriple(ctx, tripleID)
-	if err != nil {
-		return nil, err
-	}
-	return &RDFSInferenceExplanation{
-		Triple:           *triple,
-		Explicit:         !triple.Inferred,
-		Rule:             triple.Rule,
-		SupportTripleIDs: append([]string(nil), triple.SupportIDs...),
-	}, nil
-}
-
-// ExplainTripleTrace recursively expands provenance for a triple into a flattened trace list.
-func (g *GraphStore) ExplainTripleTrace(ctx context.Context, tripleID string, depth int) ([]RDFSInferenceTraceEntry, error) {
-	if depth < 0 {
-		depth = 0
-	}
-	seen := make(map[string]bool)
-	entries := make([]RDFSInferenceTraceEntry, 0)
-	if err := g.explainTripleTrace(ctx, tripleID, "", 0, depth, seen, &entries); err != nil {
-		return nil, err
-	}
-	return entries, nil
-}
-
-func (g *GraphStore) explainTripleTrace(ctx context.Context, tripleID, parentTripleID string, currentDepth, remainingDepth int, seen map[string]bool, entries *[]RDFSInferenceTraceEntry) error {
-	explanation, err := g.ExplainTriple(ctx, tripleID)
-	if err != nil {
-		return err
-	}
-	entry := RDFSInferenceTraceEntry{
-		TripleID:       tripleID,
-		ParentTripleID: parentTripleID,
-		Depth:          currentDepth,
-		Explanation:    *explanation,
-	}
-	*entries = append(*entries, entry)
-	if explanation.Explicit {
-		return nil
-	}
-	if remainingDepth == 0 {
-		if len(explanation.SupportTripleIDs) > 0 {
-			(*entries)[len(*entries)-1].Truncated = true
+func (g *GraphStore) normalizeInferenceSeedTriples(ctx context.Context, triples []RDFTriple) ([]RDFTriple, error) {
+	out := make([]RDFTriple, 0, len(triples))
+	for _, triple := range triples {
+		normalized, err := g.normalizeTriple(ctx, tripleWithoutInference(triple))
+		if err != nil {
+			return nil, err
 		}
-		return nil
+		if normalized.ID == "" {
+			normalized.ID = tripleDigest(normalized)
+		}
+		out = append(out, normalized)
 	}
-	if seen[tripleID] {
-		(*entries)[len(*entries)-1].Truncated = true
-		return nil
-	}
-	seen[tripleID] = true
-	defer delete(seen, tripleID)
+	return out, nil
+}
 
-	for _, supportID := range explanation.SupportTripleIDs {
-		if err := g.explainTripleTrace(ctx, supportID, tripleID, currentDepth+1, remainingDepth-1, seen, entries); err != nil {
-			return err
+func expandRDFSExplicitNeighborhood(explicitTriples, seeds []RDFTriple) []RDFTriple {
+	if len(seeds) == 0 || len(explicitTriples) == 0 {
+		return nil
+	}
+	impactedTerms := make(map[string]struct{})
+	for _, triple := range seeds {
+		addInferenceNeighborhoodSeedTerms(impactedTerms, triple)
+	}
+
+	selected := make(map[string]RDFTriple)
+	changed := true
+	for changed {
+		changed = false
+		for _, triple := range explicitTriples {
+			key := tripleKey(triple)
+			if _, ok := selected[key]; ok {
+				continue
+			}
+			if !tripleTouchesInferenceNeighborhood(triple, impactedTerms) {
+				continue
+			}
+			selected[key] = triple
+			if addInferenceNeighborhoodTerms(impactedTerms, triple) {
+				changed = true
+			}
 		}
 	}
-	return nil
+
+	out := make([]RDFTriple, 0, len(selected))
+	for _, triple := range selected {
+		out = append(out, triple)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return tripleKey(out[i]) < tripleKey(out[j])
+	})
+	return out
+}
+
+func collectImpactedInferredTripleIDs(inferredTriples, seeds, affectedExplicit []RDFTriple) []string {
+	if len(inferredTriples) == 0 || (len(seeds) == 0 && len(affectedExplicit) == 0) {
+		return nil
+	}
+	reverse := make(map[string][]string)
+	for _, triple := range inferredTriples {
+		for _, supportID := range triple.SupportIDs {
+			reverse[supportID] = append(reverse[supportID], triple.ID)
+		}
+	}
+
+	seen := make(map[string]struct{})
+	queue := make([]string, 0, len(seeds))
+	for _, triple := range seeds {
+		if triple.ID == "" {
+			continue
+		}
+		queue = append(queue, triple.ID)
+	}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		for _, dependentID := range reverse[current] {
+			if _, ok := seen[dependentID]; ok {
+				continue
+			}
+			seen[dependentID] = struct{}{}
+			queue = append(queue, dependentID)
+		}
+	}
+
+	impactedTerms := make(map[string]struct{})
+	for _, triple := range seeds {
+		addInferenceNeighborhoodSeedTerms(impactedTerms, triple)
+	}
+	for _, triple := range affectedExplicit {
+		addInferenceNeighborhoodTerms(impactedTerms, triple)
+	}
+	for _, triple := range inferredTriples {
+		if !tripleTouchesInferenceNeighborhood(triple, impactedTerms) {
+			continue
+		}
+		seen[triple.ID] = struct{}{}
+	}
+
+	out := make([]string, 0, len(seen))
+	for id := range seen {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func addInferenceNeighborhoodSeedTerms(target map[string]struct{}, triple RDFTriple) {
+	addInferenceTerm(target, triple.Subject)
+	addInferenceTerm(target, triple.Object)
+	if triple.Graph != nil {
+		addInferenceTerm(target, *triple.Graph)
+	}
+	if !isStructuralInferencePredicate(triple.Predicate.Value) {
+		addInferenceTerm(target, triple.Predicate)
+	}
+}
+
+func addInferenceNeighborhoodTerms(target map[string]struct{}, triple RDFTriple) bool {
+	before := len(target)
+	addInferenceTerm(target, triple.Subject)
+	addInferenceTerm(target, triple.Object)
+	if triple.Graph != nil {
+		addInferenceTerm(target, *triple.Graph)
+	}
+	if !isStructuralInferencePredicate(triple.Predicate.Value) {
+		addInferenceTerm(target, triple.Predicate)
+	}
+	return len(target) != before
+}
+
+func addInferenceTerm(target map[string]struct{}, term RDFTerm) {
+	target[inferenceTermKey(term)] = struct{}{}
+}
+
+func tripleTouchesInferenceNeighborhood(triple RDFTriple, impactedTerms map[string]struct{}) bool {
+	if _, ok := impactedTerms[inferenceTermKey(triple.Subject)]; ok {
+		return true
+	}
+	if _, ok := impactedTerms[inferenceTermKey(triple.Object)]; ok {
+		return true
+	}
+	if triple.Graph != nil {
+		if _, ok := impactedTerms[inferenceTermKey(*triple.Graph)]; ok {
+			return true
+		}
+	}
+	if !isStructuralInferencePredicate(triple.Predicate.Value) {
+		if _, ok := impactedTerms[inferenceTermKey(triple.Predicate)]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func inferenceTermKey(term RDFTerm) string {
+	return term.Kind + "|" + term.Value + "|" + term.Datatype + "|" + term.Language
+}
+
+func isStructuralInferencePredicate(value string) bool {
+	switch value {
+	case rdfTypeIRI, rdfsSubClassOfIRI, rdfsSubPropertyOfIRI, rdfsDomainIRI, rdfsRangeIRI:
+		return true
+	default:
+		return false
+	}
+}
+
+func (g *GraphStore) deleteInferredTriplesByID(ctx context.Context, ids []string) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	tx, err := g.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin delete inferred transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	deleted := 0
+	for _, id := range ids {
+		result, err := tx.ExecContext(ctx, `DELETE FROM graph_edges WHERE id = ?`, id)
+		if err != nil {
+			return deleted, fmt.Errorf("delete inferred graph edge: %w", err)
+		}
+		if _, err := result.RowsAffected(); err != nil {
+			return deleted, fmt.Errorf("count inferred graph edge delete: %w", err)
+		}
+		result, err = tx.ExecContext(ctx, `DELETE FROM kg_triples WHERE id = ? AND inferred = 1`, id)
+		if err != nil {
+			return deleted, fmt.Errorf("delete inferred triple: %w", err)
+		}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return deleted, fmt.Errorf("count inferred triple delete: %w", err)
+		}
+		deleted += int(rows)
+	}
+	if err := tx.Commit(); err != nil {
+		return deleted, fmt.Errorf("commit delete inferred transaction: %w", err)
+	}
+	return deleted, nil
 }
 
 func addInferredRecord(records map[string]rdfsInferenceRecord, triple RDFTriple, rule string, supportIDs []string) bool {

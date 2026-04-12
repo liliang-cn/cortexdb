@@ -157,6 +157,26 @@ go build -o simple_example examples/simple_usage/main.go
 - Diary write/read with resolved taxonomy
 - **Perfect for:** Opinionated memory workflow setups
 
+### 21. **graphflow_basic** - Deterministic Graph Pipeline
+- Unified extraction schema
+- Deterministic build into the graph store
+- Deterministic analysis + markdown report
+- JSON/markdown export bundle
+- **Perfect for:** Graph pipeline integration on top of CortexDB
+
+### 22. **knowledge_graph_advanced** - Advanced RDF/SPARQL/SHACL Workflow
+- Incremental RDFS inference refresh
+- SPARQL property paths and subqueries
+- SHACL-lite validation
+- **Perfect for:** Embedded single-file knowledge graph reasoning
+
+### 23. **graphflow_visualization** - GraphFlow HTML Visualization
+- GraphFlow build/analyze/export workflow
+- Interactive HTML graph visualization
+- Embeds graph data in the HTML and loads visualization libraries from CDN
+- Optional LLM-backed extraction through caller-provided adapters
+- **Perfect for:** Inspecting graphflow extraction output visually
+
 ## 💻 API Usage Patterns
 
 All examples use the latest CortexDB API:

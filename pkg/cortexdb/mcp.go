@@ -279,6 +279,16 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *resp, nil
 	})
+	addGraphRAGMCPTool(server, definitions["knowledge_graph_shacl_validate"], func(ctx context.Context, req KnowledgeGraphSHACLValidateRequest) (KnowledgeGraphSHACLValidateResponse, error) {
+		resp, err := toolbox.ValidateKnowledgeGraphSHACL(ctx, req)
+		if err != nil {
+			return KnowledgeGraphSHACLValidateResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeGraphSHACLValidateResponse{}, nil
+		}
+		return *resp, nil
+	})
 	addGraphRAGMCPTool(server, definitions["knowledge_graph_infer_refresh"], func(ctx context.Context, req KnowledgeGraphInferenceRefreshRequest) (KnowledgeGraphInferenceRefreshResponse, error) {
 		resp, err := toolbox.RefreshKnowledgeGraphInference(ctx, req)
 		if err != nil {
@@ -289,6 +299,16 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *resp, nil
 	})
+	addGraphRAGMCPTool(server, definitions["knowledge_graph_infer_summary"], func(ctx context.Context, req KnowledgeGraphInferenceSummaryRequest) (KnowledgeGraphInferenceSummaryResponse, error) {
+		resp, err := toolbox.SummarizeKnowledgeGraphInference(ctx, req)
+		if err != nil {
+			return KnowledgeGraphInferenceSummaryResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeGraphInferenceSummaryResponse{}, nil
+		}
+		return *resp, nil
+	})
 	addGraphRAGMCPTool(server, definitions["knowledge_graph_infer_explain"], func(ctx context.Context, req KnowledgeGraphInferenceExplainRequest) (KnowledgeGraphInferenceExplainResponse, error) {
 		resp, err := toolbox.ExplainKnowledgeGraphInference(ctx, req)
 		if err != nil {
@@ -296,6 +316,16 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		if resp == nil {
 			return KnowledgeGraphInferenceExplainResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addGraphRAGMCPTool(server, definitions["knowledge_graph_infer_explain_match"], func(ctx context.Context, req KnowledgeGraphInferenceExplainMatchRequest) (KnowledgeGraphInferenceExplainMatchResponse, error) {
+		resp, err := toolbox.ExplainKnowledgeGraphInferenceMatch(ctx, req)
+		if err != nil {
+			return KnowledgeGraphInferenceExplainMatchResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeGraphInferenceExplainMatchResponse{}, nil
 		}
 		return *resp, nil
 	})

@@ -30,6 +30,12 @@ go.work
 **/*.db-shm
 **/*.db-wal
 
+# Example-generated artifacts
+examples/graphflow_visualization/.env
+examples/graphflow_visualization/graphflow_output/
+examples/graphflow_visualization/graphflow_visualization
+knowledge_graph_advanced
+
 # OS generated files
 .DS_Store
 .DS_Store?

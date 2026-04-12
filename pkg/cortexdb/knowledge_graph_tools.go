@@ -42,12 +42,27 @@ func (t *GraphRAGToolbox) QueryKnowledgeGraph(ctx context.Context, req Knowledge
 	return t.db.QueryKnowledgeGraph(ctx, req)
 }
 
+// ValidateKnowledgeGraphSHACL validates graph data with supplied SHACL-lite shape triples via the toolbox surface.
+func (t *GraphRAGToolbox) ValidateKnowledgeGraphSHACL(ctx context.Context, req KnowledgeGraphSHACLValidateRequest) (*KnowledgeGraphSHACLValidateResponse, error) {
+	return t.db.ValidateKnowledgeGraphSHACL(ctx, req)
+}
+
 // RefreshKnowledgeGraphInference recomputes inferred triples via the toolbox surface.
 func (t *GraphRAGToolbox) RefreshKnowledgeGraphInference(ctx context.Context, req KnowledgeGraphInferenceRefreshRequest) (*KnowledgeGraphInferenceRefreshResponse, error) {
 	return t.db.RefreshKnowledgeGraphInference(ctx, req)
 }
 
+// SummarizeKnowledgeGraphInference returns persisted inference counts and rule breakdowns via the toolbox surface.
+func (t *GraphRAGToolbox) SummarizeKnowledgeGraphInference(ctx context.Context, req KnowledgeGraphInferenceSummaryRequest) (*KnowledgeGraphInferenceSummaryResponse, error) {
+	return t.db.SummarizeKnowledgeGraphInference(ctx, req)
+}
+
 // ExplainKnowledgeGraphInference fetches provenance for a triple via the toolbox surface.
 func (t *GraphRAGToolbox) ExplainKnowledgeGraphInference(ctx context.Context, req KnowledgeGraphInferenceExplainRequest) (*KnowledgeGraphInferenceExplainResponse, error) {
 	return t.db.ExplainKnowledgeGraphInference(ctx, req)
+}
+
+// ExplainKnowledgeGraphInferenceMatch fetches explanations for triples matched by a pattern.
+func (t *GraphRAGToolbox) ExplainKnowledgeGraphInferenceMatch(ctx context.Context, req KnowledgeGraphInferenceExplainMatchRequest) (*KnowledgeGraphInferenceExplainMatchResponse, error) {
+	return t.db.ExplainKnowledgeGraphInferenceMatch(ctx, req)
 }

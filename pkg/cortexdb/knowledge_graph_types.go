@@ -26,6 +26,15 @@ type KnowledgeGraphInferenceExplanation = graph.RDFSInferenceExplanation
 // KnowledgeGraphInferenceTraceEntry aliases the low-level flattened inference trace entry type.
 type KnowledgeGraphInferenceTraceEntry = graph.RDFSInferenceTraceEntry
 
+// KnowledgeGraphInferenceSummary aliases the low-level inference summary type.
+type KnowledgeGraphInferenceSummary = graph.RDFSInferenceSummary
+
+// KnowledgeGraphInferenceMatchExplanation aliases the low-level match explanation type.
+type KnowledgeGraphInferenceMatchExplanation = graph.RDFSInferenceMatchExplanation
+
+// KnowledgeGraphSHACLReport aliases the low-level SHACL validation report type.
+type KnowledgeGraphSHACLReport = graph.SHACLReport
+
 const (
 	// KnowledgeGraphFormatNTriples exports triples in N-Triples format.
 	KnowledgeGraphFormatNTriples = string(graph.RDFFormatNTriples)
@@ -35,6 +44,12 @@ const (
 	KnowledgeGraphFormatTurtle = string(graph.RDFFormatTurtle)
 	// KnowledgeGraphFormatTriG exports quads in TriG format.
 	KnowledgeGraphFormatTriG = string(graph.RDFFormatTriG)
+
+	// KnowledgeGraphInferenceRefreshModeFull forces a full inferred-triple rebuild.
+	KnowledgeGraphInferenceRefreshModeFull = "full"
+	// KnowledgeGraphInferenceRefreshModeIncremental recomputes only the neighborhood
+	// affected by the supplied triples, IDs, or pattern.
+	KnowledgeGraphInferenceRefreshModeIncremental = "incremental"
 )
 
 // KnowledgeGraphNamespaceUpsertRequest stores one namespace mapping.
@@ -119,12 +134,35 @@ type KnowledgeGraphQueryResponse struct {
 	Result KnowledgeGraphQueryResult `json:"result"`
 }
 
+// KnowledgeGraphSHACLValidateRequest validates graph data with supplied SHACL-lite shape triples.
+type KnowledgeGraphSHACLValidateRequest struct {
+	Shapes []KnowledgeGraphTriple `json:"shapes"`
+}
+
+// KnowledgeGraphSHACLValidateResponse returns the SHACL-lite validation report.
+type KnowledgeGraphSHACLValidateResponse struct {
+	Report KnowledgeGraphSHACLReport `json:"report"`
+}
+
 // KnowledgeGraphInferenceRefreshRequest recomputes inferred triples.
-type KnowledgeGraphInferenceRefreshRequest struct{}
+type KnowledgeGraphInferenceRefreshRequest struct {
+	Mode      string                       `json:"mode,omitempty"`
+	TripleIDs []string                     `json:"triple_ids,omitempty"`
+	Triples   []KnowledgeGraphTriple       `json:"triples,omitempty"`
+	Pattern   *KnowledgeGraphTriplePattern `json:"pattern,omitempty"`
+}
 
 // KnowledgeGraphInferenceRefreshResponse summarizes an inference refresh run.
 type KnowledgeGraphInferenceRefreshResponse struct {
 	Result KnowledgeGraphInferenceRefreshResult `json:"result"`
+}
+
+// KnowledgeGraphInferenceSummaryRequest fetches inference summary counts.
+type KnowledgeGraphInferenceSummaryRequest struct{}
+
+// KnowledgeGraphInferenceSummaryResponse returns persisted inference counts and rule breakdowns.
+type KnowledgeGraphInferenceSummaryResponse struct {
+	Result KnowledgeGraphInferenceSummary `json:"result"`
 }
 
 // KnowledgeGraphInferenceExplainRequest fetches provenance for a triple.
@@ -137,4 +175,15 @@ type KnowledgeGraphInferenceExplainRequest struct {
 type KnowledgeGraphInferenceExplainResponse struct {
 	Explanation KnowledgeGraphInferenceExplanation  `json:"explanation"`
 	Trace       []KnowledgeGraphInferenceTraceEntry `json:"trace,omitempty"`
+}
+
+// KnowledgeGraphInferenceExplainMatchRequest explains all triples matched by a pattern.
+type KnowledgeGraphInferenceExplainMatchRequest struct {
+	Pattern KnowledgeGraphTriplePattern `json:"pattern"`
+	Depth   int                         `json:"depth,omitempty"`
+}
+
+// KnowledgeGraphInferenceExplainMatchResponse returns matched explanations.
+type KnowledgeGraphInferenceExplainMatchResponse struct {
+	Matches []KnowledgeGraphInferenceMatchExplanation `json:"matches"`
 }

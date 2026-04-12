@@ -151,9 +151,59 @@ func (db *DB) QueryKnowledgeGraph(ctx context.Context, req KnowledgeGraphQueryRe
 	return &KnowledgeGraphQueryResponse{Result: *result}, nil
 }
 
+// ValidateKnowledgeGraphSHACL validates graph data with supplied SHACL-lite shape triples.
+func (db *DB) ValidateKnowledgeGraphSHACL(ctx context.Context, req KnowledgeGraphSHACLValidateRequest) (*KnowledgeGraphSHACLValidateResponse, error) {
+	if len(req.Shapes) == 0 {
+		return nil, fmt.Errorf("shapes are required")
+	}
+	report, err := db.graph.ValidateSHACL(ctx, req.Shapes)
+	if err != nil {
+		return nil, err
+	}
+	if report == nil {
+		return &KnowledgeGraphSHACLValidateResponse{}, nil
+	}
+	return &KnowledgeGraphSHACLValidateResponse{Report: *report}, nil
+}
+
 // RefreshKnowledgeGraphInference recomputes persisted RDFS-lite inferred triples.
-func (db *DB) RefreshKnowledgeGraphInference(ctx context.Context, _ KnowledgeGraphInferenceRefreshRequest) (*KnowledgeGraphInferenceRefreshResponse, error) {
-	result, err := db.graph.RefreshRDFSInferences(ctx)
+func (db *DB) RefreshKnowledgeGraphInference(ctx context.Context, req KnowledgeGraphInferenceRefreshRequest) (*KnowledgeGraphInferenceRefreshResponse, error) {
+	mode := strings.ToLower(strings.TrimSpace(req.Mode))
+	if mode == "" {
+		mode = KnowledgeGraphInferenceRefreshModeFull
+		if len(req.TripleIDs) > 0 || len(req.Triples) > 0 || req.Pattern != nil {
+			mode = KnowledgeGraphInferenceRefreshModeIncremental
+		}
+	}
+
+	var (
+		result *graph.RDFSInferenceRefreshResult
+		err    error
+	)
+	if mode == KnowledgeGraphInferenceRefreshModeIncremental {
+		seeds := make([]graph.RDFTriple, 0, len(req.TripleIDs)+len(req.Triples))
+		for _, id := range req.TripleIDs {
+			triple, getErr := db.graph.GetTriple(ctx, id)
+			if getErr != nil {
+				return nil, getErr
+			}
+			seeds = append(seeds, *triple)
+		}
+		seeds = append(seeds, req.Triples...)
+		if req.Pattern != nil {
+			matches, findErr := db.graph.FindTriples(ctx, graph.TriplePattern(*req.Pattern))
+			if findErr != nil {
+				return nil, findErr
+			}
+			seeds = append(seeds, matches...)
+		}
+		if len(seeds) == 0 {
+			return nil, fmt.Errorf("incremental inference refresh requires triples, triple_ids, or a pattern")
+		}
+		result, err = db.graph.RefreshRDFSInferencesIncremental(ctx, seeds)
+	} else {
+		result, err = db.graph.RefreshRDFSInferences(ctx)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -161,6 +211,18 @@ func (db *DB) RefreshKnowledgeGraphInference(ctx context.Context, _ KnowledgeGra
 		return &KnowledgeGraphInferenceRefreshResponse{}, nil
 	}
 	return &KnowledgeGraphInferenceRefreshResponse{Result: *result}, nil
+}
+
+// SummarizeKnowledgeGraphInference returns persisted inference counts and rule breakdowns.
+func (db *DB) SummarizeKnowledgeGraphInference(ctx context.Context, _ KnowledgeGraphInferenceSummaryRequest) (*KnowledgeGraphInferenceSummaryResponse, error) {
+	result, err := db.graph.InferenceSummary(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return &KnowledgeGraphInferenceSummaryResponse{}, nil
+	}
+	return &KnowledgeGraphInferenceSummaryResponse{Result: *result}, nil
 }
 
 // ExplainKnowledgeGraphInference returns provenance for one explicit or inferred triple.
@@ -184,6 +246,15 @@ func (db *DB) ExplainKnowledgeGraphInference(ctx context.Context, req KnowledgeG
 		response.Trace = trace
 	}
 	return response, nil
+}
+
+// ExplainKnowledgeGraphInferenceMatch expands explanations for all triples matched by a pattern.
+func (db *DB) ExplainKnowledgeGraphInferenceMatch(ctx context.Context, req KnowledgeGraphInferenceExplainMatchRequest) (*KnowledgeGraphInferenceExplainMatchResponse, error) {
+	matches, err := db.graph.ExplainTriplesByPattern(ctx, graph.TriplePattern(req.Pattern), req.Depth)
+	if err != nil {
+		return nil, err
+	}
+	return &KnowledgeGraphInferenceExplainMatchResponse{Matches: matches}, nil
 }
 
 func parseKnowledgeGraphFormat(value string) (graph.RDFFormat, error) {

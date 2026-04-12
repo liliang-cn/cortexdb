@@ -221,6 +221,116 @@ func TestKnowledgeGraphInferenceAPI(t *testing.T) {
 	if len(explainResp.Trace) < 2 {
 		t.Fatalf("expected recursive inference trace, got %+v", explainResp)
 	}
+
+	summaryResp, err := db.SummarizeKnowledgeGraphInference(ctx, KnowledgeGraphInferenceSummaryRequest{})
+	if err != nil {
+		t.Fatalf("summarize inference: %v", err)
+	}
+	if summaryResp.Result.InferredCount == 0 || len(summaryResp.Result.Rules) == 0 {
+		t.Fatalf("expected inference summary, got %+v", summaryResp)
+	}
+
+	matchResp, err := db.ExplainKnowledgeGraphInferenceMatch(ctx, KnowledgeGraphInferenceExplainMatchRequest{
+		Pattern: KnowledgeGraphTriplePattern{
+			Subject:   ptrKnowledgeTerm(graph.NewIRI("https://example.com/alice")),
+			Predicate: ptrKnowledgeTerm(graph.NewIRI("http://www.w3.org/1999/02/22-rdf-syntax-ns#type")),
+			Object:    ptrKnowledgeTerm(graph.NewIRI("https://example.com/Person")),
+			Inferred:  ptrBool(true),
+		},
+		Depth: 1,
+	})
+	if err != nil {
+		t.Fatalf("explain inference match: %v", err)
+	}
+	if len(matchResp.Matches) != 1 {
+		t.Fatalf("expected one inference match explanation, got %+v", matchResp)
+	}
+}
+
+func TestKnowledgeGraphInferenceIncrementalAPI(t *testing.T) {
+	dbPath := fmt.Sprintf("test_knowledge_graph_inference_incremental_%d.db", time.Now().UnixNano())
+	defer func() { _ = os.Remove(dbPath) }()
+
+	db, err := Open(DefaultConfig(dbPath))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	ctx := context.Background()
+	_, err = db.UpsertKnowledgeGraph(ctx, KnowledgeGraphUpsertRequest{
+		Triples: []KnowledgeGraphTriple{
+			{Subject: graph.NewIRI("https://example.com/Manager"), Predicate: graph.NewIRI("http://www.w3.org/2000/01/rdf-schema#subClassOf"), Object: graph.NewIRI("https://example.com/Employee")},
+			{Subject: graph.NewIRI("https://example.com/alice"), Predicate: graph.NewIRI("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"), Object: graph.NewIRI("https://example.com/Manager")},
+		},
+	})
+	if err != nil {
+		t.Fatalf("seed graph for incremental inference: %v", err)
+	}
+	if _, err := db.RefreshKnowledgeGraphInference(ctx, KnowledgeGraphInferenceRefreshRequest{}); err != nil {
+		t.Fatalf("initial full refresh: %v", err)
+	}
+
+	seed := KnowledgeGraphTriple{
+		Subject:   graph.NewIRI("https://example.com/Employee"),
+		Predicate: graph.NewIRI("http://www.w3.org/2000/01/rdf-schema#subClassOf"),
+		Object:    graph.NewIRI("https://example.com/Person"),
+	}
+	if _, err := db.UpsertKnowledgeGraph(ctx, KnowledgeGraphUpsertRequest{Triples: []KnowledgeGraphTriple{seed}}); err != nil {
+		t.Fatalf("upsert incremental seed triple: %v", err)
+	}
+
+	refreshResp, err := db.RefreshKnowledgeGraphInference(ctx, KnowledgeGraphInferenceRefreshRequest{
+		Mode:    KnowledgeGraphInferenceRefreshModeIncremental,
+		Triples: []KnowledgeGraphTriple{seed},
+	})
+	if err != nil {
+		t.Fatalf("incremental refresh: %v", err)
+	}
+	if !refreshResp.Result.Incremental || refreshResp.Result.AffectedExplicitCount == 0 {
+		t.Fatalf("expected incremental refresh metadata, got %+v", refreshResp)
+	}
+}
+
+func TestKnowledgeGraphSHACLValidateAPI(t *testing.T) {
+	dbPath := fmt.Sprintf("test_knowledge_graph_shacl_%d.db", time.Now().UnixNano())
+	defer func() { _ = os.Remove(dbPath) }()
+
+	db, err := Open(DefaultConfig(dbPath))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	ctx := context.Background()
+	_, err = db.UpsertKnowledgeGraph(ctx, KnowledgeGraphUpsertRequest{
+		Triples: []KnowledgeGraphTriple{
+			{Subject: graph.NewIRI("https://example.com/alice"), Predicate: graph.NewIRI(graph.RDFType), Object: graph.NewIRI("https://example.com/Person")},
+			{Subject: graph.NewIRI("https://example.com/alice"), Predicate: graph.NewIRI("https://example.com/age"), Object: graph.NewTypedLiteral("-1", graph.XSDNamespace+"integer")},
+		},
+	})
+	if err != nil {
+		t.Fatalf("seed graph for shacl: %v", err)
+	}
+
+	resp, err := db.ValidateKnowledgeGraphSHACL(ctx, KnowledgeGraphSHACLValidateRequest{
+		Shapes: []KnowledgeGraphTriple{
+			{Subject: graph.NewIRI("https://example.com/PersonShape"), Predicate: graph.NewIRI(graph.RDFType), Object: graph.NewIRI(graph.SHACLNodeShape)},
+			{Subject: graph.NewIRI("https://example.com/PersonShape"), Predicate: graph.NewIRI(graph.SHACLTargetClass), Object: graph.NewIRI("https://example.com/Person")},
+			{Subject: graph.NewIRI("https://example.com/PersonShape"), Predicate: graph.NewIRI(graph.SHACLProperty), Object: graph.NewIRI("https://example.com/AgeShape")},
+			{Subject: graph.NewIRI("https://example.com/AgeShape"), Predicate: graph.NewIRI(graph.SHACLPath), Object: graph.NewIRI("https://example.com/age")},
+			{Subject: graph.NewIRI("https://example.com/AgeShape"), Predicate: graph.NewIRI(graph.SHACLMinInclusive), Object: graph.NewLiteral("0")},
+		},
+	})
+	if err != nil {
+		t.Fatalf("validate shacl: %v", err)
+	}
+	if resp.Report.Conforms {
+		t.Fatalf("expected SHACL violation, got %+v", resp.Report)
+	}
+	if len(resp.Report.Results) != 1 {
+		t.Fatalf("expected one SHACL result, got %+v", resp.Report.Results)
+	}
 }
 
 func ptrKnowledgeTerm(term KnowledgeGraphTerm) *KnowledgeGraphTerm {

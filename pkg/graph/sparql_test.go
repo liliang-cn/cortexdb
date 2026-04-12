@@ -343,6 +343,52 @@ DESCRIBE ex:alice
 	}
 }
 
+func TestExecuteSPARQLMinus(t *testing.T) {
+	dbPath := fmt.Sprintf("test_sparql_minus_%d.db", time.Now().UnixNano())
+	defer func() { _ = os.Remove(dbPath) }()
+
+	store, err := core.New(dbPath, 16)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	ctx := context.Background()
+	if err := store.Init(ctx); err != nil {
+		t.Fatalf("init store: %v", err)
+	}
+
+	graphStore := NewGraphStore(store)
+	triples := []*RDFTriple{
+		{Subject: NewIRI("https://example.com/alice"), Predicate: NewIRI("https://schema.org/name"), Object: NewLiteral("Alice")},
+		{Subject: NewIRI("https://example.com/alice"), Predicate: NewIRI("https://schema.org/email"), Object: NewLiteral("alice@example.com")},
+		{Subject: NewIRI("https://example.com/bob"), Predicate: NewIRI("https://schema.org/name"), Object: NewLiteral("Bob")},
+	}
+	if _, err := graphStore.UpsertTriplesBatch(ctx, triples); err != nil {
+		t.Fatalf("upsert triples: %v", err)
+	}
+
+	result, err := graphStore.ExecuteSPARQL(ctx, `
+PREFIX schema: <https://schema.org/>
+
+SELECT ?person WHERE {
+	?person schema:name ?name .
+	MINUS {
+		?person schema:email ?email .
+	}
+}
+`)
+	if err != nil {
+		t.Fatalf("execute minus query: %v", err)
+	}
+	if result.Count != 1 {
+		t.Fatalf("expected one row after MINUS, got %+v", result)
+	}
+	if got := result.Bindings[0]["person"].Value; got != "https://example.com/bob" {
+		t.Fatalf("unexpected remaining person: %s", got)
+	}
+}
+
 func TestExecuteSPARQLUpdates(t *testing.T) {
 	dbPath := fmt.Sprintf("test_sparql_updates_%d.db", time.Now().UnixNano())
 	defer func() { _ = os.Remove(dbPath) }()
@@ -663,6 +709,169 @@ SELECT (?a + ?b AS ?sum) (IF((?a + ?b > 12) && !(?a < 10), "big", COALESCE(?miss
 	}
 	if exprResult.Bindings[0]["label"].Value != "big" {
 		t.Fatalf("unexpected IF/COALESCE result: %+v", exprResult.Bindings[0])
+	}
+}
+
+func TestExecuteSPARQLExistsAndNotExists(t *testing.T) {
+	dbPath := fmt.Sprintf("test_sparql_exists_%d.db", time.Now().UnixNano())
+	defer func() { _ = os.Remove(dbPath) }()
+
+	store, err := core.New(dbPath, 16)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	ctx := context.Background()
+	if err := store.Init(ctx); err != nil {
+		t.Fatalf("init store: %v", err)
+	}
+
+	graphStore := NewGraphStore(store)
+	triples := []*RDFTriple{
+		{Subject: NewIRI("https://example.com/alice"), Predicate: NewIRI("https://schema.org/name"), Object: NewLiteral("Alice")},
+		{Subject: NewIRI("https://example.com/alice"), Predicate: NewIRI("https://schema.org/email"), Object: NewLiteral("alice@example.com")},
+		{Subject: NewIRI("https://example.com/bob"), Predicate: NewIRI("https://schema.org/name"), Object: NewLiteral("Bob")},
+	}
+	if _, err := graphStore.UpsertTriplesBatch(ctx, triples); err != nil {
+		t.Fatalf("upsert triples: %v", err)
+	}
+
+	existsResult, err := graphStore.ExecuteSPARQL(ctx, `
+PREFIX schema: <https://schema.org/>
+
+SELECT ?person WHERE {
+	?person schema:name ?name .
+	FILTER EXISTS {
+		?person schema:email ?email .
+	}
+}
+`)
+	if err != nil {
+		t.Fatalf("exists query: %v", err)
+	}
+	if existsResult.Count != 1 {
+		t.Fatalf("expected one EXISTS match, got %+v", existsResult)
+	}
+	if got := existsResult.Bindings[0]["person"].Value; got != "https://example.com/alice" {
+		t.Fatalf("expected alice EXISTS match, got %s", got)
+	}
+
+	notExistsResult, err := graphStore.ExecuteSPARQL(ctx, `
+PREFIX schema: <https://schema.org/>
+
+SELECT ?person WHERE {
+	?person schema:name ?name .
+	FILTER NOT EXISTS {
+		?person schema:email ?email .
+	}
+}
+`)
+	if err != nil {
+		t.Fatalf("not exists query: %v", err)
+	}
+	if notExistsResult.Count != 1 {
+		t.Fatalf("expected one NOT EXISTS match, got %+v", notExistsResult)
+	}
+	if got := notExistsResult.Bindings[0]["person"].Value; got != "https://example.com/bob" {
+		t.Fatalf("expected bob NOT EXISTS match, got %s", got)
+	}
+}
+
+func TestExecuteSPARQLPropertyPaths(t *testing.T) {
+	dbPath := fmt.Sprintf("test_sparql_paths_%d.db", time.Now().UnixNano())
+	defer func() { _ = os.Remove(dbPath) }()
+
+	store, err := core.New(dbPath, 16)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	ctx := context.Background()
+	if err := store.Init(ctx); err != nil {
+		t.Fatalf("init store: %v", err)
+	}
+
+	graphStore := NewGraphStore(store)
+	triples := []*RDFTriple{
+		{Subject: NewIRI("https://example.com/alice"), Predicate: NewIRI("https://example.com/knows"), Object: NewIRI("https://example.com/bob")},
+		{Subject: NewIRI("https://example.com/bob"), Predicate: NewIRI("https://example.com/knows"), Object: NewIRI("https://example.com/carol")},
+		{Subject: NewIRI("https://example.com/alice"), Predicate: NewIRI("https://example.com/parent"), Object: NewIRI("https://example.com/dana")},
+		{Subject: NewIRI("https://example.com/alice"), Predicate: NewIRI("https://schema.org/name"), Object: NewLiteral("Alice")},
+		{Subject: NewIRI("https://example.com/alice"), Predicate: NewIRI("https://example.com/nickname"), Object: NewLiteral("Al")},
+	}
+	if _, err := graphStore.UpsertTriplesBatch(ctx, triples); err != nil {
+		t.Fatalf("upsert triples: %v", err)
+	}
+
+	plusResult, err := graphStore.ExecuteSPARQL(ctx, `
+PREFIX ex: <https://example.com/>
+
+SELECT ?person WHERE {
+	ex:alice ex:knows+ ?person .
+}
+ORDER BY ?person
+`)
+	if err != nil {
+		t.Fatalf("plus path query: %v", err)
+	}
+	if plusResult.Count != 2 {
+		t.Fatalf("expected two + path matches, got %+v", plusResult)
+	}
+	if plusResult.Bindings[0]["person"].Value != "https://example.com/bob" || plusResult.Bindings[1]["person"].Value != "https://example.com/carol" {
+		t.Fatalf("unexpected + path results: %+v", plusResult.Bindings)
+	}
+
+	starResult, err := graphStore.ExecuteSPARQL(ctx, `
+PREFIX ex: <https://example.com/>
+
+SELECT ?person WHERE {
+	ex:alice ex:knows* ?person .
+}
+ORDER BY ?person
+`)
+	if err != nil {
+		t.Fatalf("star path query: %v", err)
+	}
+	if starResult.Count != 3 {
+		t.Fatalf("expected three * path matches, got %+v", starResult)
+	}
+	if starResult.Bindings[0]["person"].Value != "https://example.com/alice" {
+		t.Fatalf("expected zero-length * path match for alice, got %+v", starResult.Bindings)
+	}
+
+	inverseResult, err := graphStore.ExecuteSPARQL(ctx, `
+PREFIX ex: <https://example.com/>
+
+SELECT ?child WHERE {
+	?child ^ex:parent ex:alice .
+}
+`)
+	if err != nil {
+		t.Fatalf("inverse path query: %v", err)
+	}
+	if inverseResult.Count != 1 || inverseResult.Bindings[0]["child"].Value != "https://example.com/dana" {
+		t.Fatalf("unexpected inverse path results: %+v", inverseResult.Bindings)
+	}
+
+	altResult, err := graphStore.ExecuteSPARQL(ctx, `
+PREFIX ex: <https://example.com/>
+PREFIX schema: <https://schema.org/>
+
+SELECT ?label WHERE {
+	ex:alice ex:nickname|schema:name ?label .
+}
+ORDER BY ?label
+`)
+	if err != nil {
+		t.Fatalf("alternative path query: %v", err)
+	}
+	if altResult.Count != 2 {
+		t.Fatalf("expected two alternative path matches, got %+v", altResult)
+	}
+	if altResult.Bindings[0]["label"].Value != "Al" || altResult.Bindings[1]["label"].Value != "Alice" {
+		t.Fatalf("unexpected alternative path results: %+v", altResult.Bindings)
 	}
 }
 

@@ -167,13 +167,36 @@ func knowledgeMemoryToolDefinitions() []ToolDefinition {
 			InputSchema: toolObjectSchema(
 				[]string{"query"},
 				map[string]any{
-					"query": toolStringSchema("SPARQL query text. Supports PREFIX, SELECT, ASK, CONSTRUCT, DESCRIBE, INSERT DATA, INSERT ... WHERE, DELETE DATA, DELETE WHERE, DELETE ... INSERT ... WHERE, WITH, USING, GRAPH, OPTIONAL, UNION, VALUES, BIND, FILTER, REGEX, LANG, DATATYPE, COALESCE, IF, arithmetic, GROUP BY, HAVING, COUNT, SUM, AVG, MIN, MAX, SAMPLE, GROUP_CONCAT, ORDER BY, LIMIT, and OFFSET."),
+					"query": toolStringSchema("SPARQL query text. Supports PREFIX, SELECT, ASK, CONSTRUCT, DESCRIBE, INSERT DATA, INSERT ... WHERE, DELETE DATA, DELETE WHERE, DELETE ... INSERT ... WHERE, WITH, USING, GRAPH, OPTIONAL, UNION, MINUS, VALUES, BIND, FILTER, EXISTS, NOT EXISTS, REGEX, LANG, DATATYPE, COALESCE, IF, arithmetic, GROUP BY, HAVING, COUNT, SUM, AVG, MIN, MAX, SAMPLE, GROUP_CONCAT, ORDER BY, LIMIT, and OFFSET."),
+				},
+			),
+		},
+		{
+			Name:        "knowledge_graph_shacl_validate",
+			Description: "Validate the embedded knowledge graph with supplied SHACL-lite shape triples.",
+			InputSchema: toolObjectSchema(
+				[]string{"shapes"},
+				map[string]any{
+					"shapes": toolKnowledgeGraphTripleArraySchema(),
 				},
 			),
 		},
 		{
 			Name:        "knowledge_graph_infer_refresh",
-			Description: "Recompute persisted RDFS-lite inferred triples inside the embedded knowledge graph.",
+			Description: "Recompute persisted RDFS-lite inferred triples. Defaults to a full rebuild; can also run incrementally for affected triples, IDs, or a pattern.",
+			InputSchema: toolObjectSchema(
+				nil,
+				map[string]any{
+					"mode":       toolEnumSchema("Inference refresh mode.", KnowledgeGraphInferenceRefreshModeFull, KnowledgeGraphInferenceRefreshModeIncremental),
+					"triple_ids": toolStringArraySchema("Optional changed triple IDs for incremental refresh."),
+					"triples":    toolKnowledgeGraphTripleArraySchema(),
+					"pattern":    toolKnowledgeGraphTriplePatternSchema(),
+				},
+			),
+		},
+		{
+			Name:        "knowledge_graph_infer_summary",
+			Description: "Return explicit/inferred triple counts and a breakdown by inference rule.",
 			InputSchema: toolObjectSchema(nil, map[string]any{}),
 		},
 		{
@@ -184,6 +207,17 @@ func knowledgeMemoryToolDefinitions() []ToolDefinition {
 				map[string]any{
 					"triple_id": toolStringSchema("Stable triple ID to explain."),
 					"depth":     toolIntegerSchema("Optional recursive explanation depth."),
+				},
+			),
+		},
+		{
+			Name:        "knowledge_graph_infer_explain_match",
+			Description: "Explain every triple matched by a pattern, optionally including recursive support traces.",
+			InputSchema: toolObjectSchema(
+				nil,
+				map[string]any{
+					"pattern": toolKnowledgeGraphTriplePatternSchema(),
+					"depth":   toolIntegerSchema("Optional recursive explanation depth."),
 				},
 			),
 		},
