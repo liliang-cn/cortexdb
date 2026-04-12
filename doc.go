@@ -1,143 +1,147 @@
-// Package cortexdb provides a lightweight, embeddable vector database for Go AI projects.
+// Package cortexdb is the public documentation entrypoint for CortexDB.
 //
-// cortexdb is a 100% pure Go library designed to be the storage kernel for RAG (Retrieval-Augmented Generation)
-// systems. Built on SQLite using modernc.org/sqlite (NO CGO REQUIRED!), it provides vector storage,
-// full-text search (FTS5), knowledge graphs, and chat memory management in a single database file.
+// CortexDB is a pure-Go, single-file AI memory and knowledge graph library.
+// It uses SQLite as the storage kernel and exposes vector search, lexical
+// search, RAG knowledge storage, scoped agent memory, RDF/SPARQL/RDFS/SHACL
+// knowledge graph features, corpus-to-graph workflows, and MCP-aligned tool
+// APIs.
 //
-// # Key Features
+// # Architecture
 //
-//   - 🚀 RAG-Ready - Built-in support for Documents, Chat Sessions, and Messages.
-//   - 🔍 Hybrid Search - Combine Vector Search (HNSW/IVF) with Keyword Search (FTS5) using RRF fusion.
-//   - 🧠 Memory Efficient - Built-in SQ8 quantization reduces RAM usage by 75%.
-//   - 🛡️ Secure - Row-Level Security via ACL fields and SQL-level push-down filtering.
-//   - 🔧 100% Pure Go - Easy cross-compilation and zero-dependency deployment.
-//   - 🕸️ GraphRAG - Advanced graph operations for complex relationship-based retrieval.
-//   - 🔌 MCP Stdio Server - Expose CortexDB tools to external LLMs through the official Model Context Protocol Go SDK.
-//   - 🧠 High-level Knowledge & Memory APIs - Simplified SaveKnowledge and SaveMemory operations for building agentic workflows.
-//   - 🧭 Semantic Router - Intent routing with configurable similarity and thresholds.
-//   - 🧠 Hindsight - Biomimetic agent memory with TEMPR retrieval.
+// The main packages are:
+//
+//   - pkg/cortexdb: primary DB facade for vectors, text search, knowledge,
+//     memory, brain recall, knowledge graph APIs, GraphRAG tools, and MCP.
+//   - pkg/memoryflow: agent memory workflow for transcript ingest, recall,
+//     wake-up layers, diary, transcript reconstruction, and promotion.
+//   - pkg/graphflow: corpus-to-graph workflow for extraction schema, build,
+//     analysis, report, JSON/Markdown/HTML export, and optional LLM extraction.
+//   - pkg/graph: low-level graph engine for property graph operations,
+//     RDF triples/quads, SPARQL, RDFS-lite inference, and SHACL-lite validation.
+//   - pkg/core: low-level SQLite storage, embeddings, FTS5, indexes, and
+//     chat/session primitives.
+//
+// Use pkg/cortexdb first unless you need a workflow layer or low-level graph
+// control.
 //
 // # Quick Start
 //
 //	import (
-//	    "context"
-//	    "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+//		"context"
+//		"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 //	)
 //
 //	func main() {
-//	    // 1. Open database with default configuration
-//	    config := cortexdb.DefaultConfig("vectors.db")
-//	    db, _ := cortexdb.Open(config)
-//	    defer db.Close()
+//		db, _ := cortexdb.Open(cortexdb.DefaultConfig("brain.db"))
+//		defer db.Close()
 //
-//	    // 2. Use the Quick interface for simple operations
-//	    ctx := context.Background()
-//	    quick := db.Quick()
+//		ctx := context.Background()
+//		quick := db.Quick()
 //
-//	    // Add vector
-//	    quick.Add(ctx, []float32{0.1, 0.2, 0.3}, "Go is awesome")
-//
-//	    // Search
-//	    results, _ := quick.Search(ctx, []float32{0.1, 0.2, 0.28}, 5)
+//		_, _ = quick.Add(ctx, []float32{0.1, 0.2, 0.9}, "SQLite is a single-file database.")
+//		_, _ = quick.Search(ctx, []float32{0.1, 0.2, 0.8}, 3)
 //	}
-//
-// # RAG and Hybrid Search
-//
-// cortexdb provides high-level APIs for building RAG applications:
-//
-//	import "github.com/liliang-cn/cortexdb/v2/pkg/core"
-//
-//	// Perform hybrid search (Vector + Full-Text Search)
-//	results, err := db.Vector().HybridSearch(ctx, queryVec, "search term", core.HybridSearchOptions{
-//	    TopK: 5,
-//	})
 //
 // # Knowledge and Memory
 //
-// Build agentic systems with higher-level persistence:
+// Durable knowledge and scoped memory are available directly on DB:
 //
-//	// Save a document and its knowledge artifacts (chunks, entities)
-//	db.SaveKnowledge(ctx, cortexdb.KnowledgeSaveRequest{
-//	    KnowledgeID: "doc_1",
-//	    Title:       "CortexDB Overview",
-//	    Content:     "CortexDB is a lightweight vector database...",
+//	_, _ = db.SaveKnowledge(ctx, cortexdb.KnowledgeSaveRequest{
+//		KnowledgeID: "apollo-plan",
+//		Title:       "Apollo launch plan",
+//		Content:     "Alice owns Apollo. Apollo ships on Friday.",
+//		Keywords:    nil,
 //	})
 //
-//	// Store a memory record with scope and importance
-//	db.SaveMemory(ctx, cortexdb.MemorySaveRequest{
-//	    MemoryID:  "mem_1",
-//	    Content:   "Alice prefers window seats.",
-//	    Importance: 4.5,
+//	_, _ = db.SearchKnowledge(ctx, cortexdb.KnowledgeSearchRequest{
+//		Query:         "Who owns Apollo?",
+//		Keywords:      []string{"Apollo", "Alice", "owns"},
+//		RetrievalMode: cortexdb.RetrievalModeLexical,
+//		TopK:          3,
 //	})
 //
-// # Chat Memory
-//
-// Built-in conversation history management:
-//
-//	// Add a message to a session
-//	db.Vector().AddMessage(ctx, &core.Message{
-//	    SessionID: "session_123",
-//	    Role:      "user",
-//	    Content:   "How do I use cortexdb?",
+//	_, _ = db.SaveMemory(ctx, cortexdb.MemorySaveRequest{
+//		MemoryID:  "style",
+//		UserID:    "user-1",
+//		Scope:     cortexdb.MemoryScopeUser,
+//		Namespace: "assistant",
+//		Content:   "User prefers concise status updates.",
 //	})
 //
-// # Advanced Configuration
+// # Knowledge Graph
 //
-// Configure indexing and quantization for production:
+// The high-level knowledge graph API supports RDF triples/quads, import/export,
+// SPARQL, RDFS-lite inference, and SHACL-lite validation:
 //
-//	config := cortexdb.DefaultConfig("data.db")
-//	config.IndexType = core.IndexTypeHNSW // or core.IndexTypeIVF
-//	config.SimilarityFn = core.CosineSimilarity
-//	config.Dimensions = 1536
-//
-//	db, err := cortexdb.Open(config)
-//
-// For deeper control (quantization, logger, text similarity), use core.Config with core.NewWithConfig.
-//
-// # Observability
-//
-// cortexdb supports structured logging via core.Config.Logger when using core.NewWithConfig.
-//
-// # MCP Tool Calling
-//
-// Run as an MCP stdio server to expose tools to LLM clients:
-//
-//	if err := db.RunMCPStdio(ctx, cortexdb.MCPServerOptions{}); err != nil {
-//	    log.Fatal(err)
-//	}
-//
-// # Semantic Router
-//
-// Route user intent before expensive LLM calls:
-//
-//	import (
-//	    "context"
-//	    "github.com/liliang-cn/cortexdb/v2/pkg/core"
-//	    semanticrouter "github.com/liliang-cn/cortexdb/v2/pkg/semantic-router"
-//	)
-//
-//	router, _ := semanticrouter.NewRouter(
-//	    semanticrouter.NewMockEmbedder(1536),
-//	    semanticrouter.WithThreshold(0.82),
-//	    semanticrouter.WithSimilarityFunc(core.CosineSimilarity),
-//	)
-//
-//	_ = router.Add(&semanticrouter.Route{
-//	    Name: "refund",
-//	    Utterances: []string{"我要退款", "申请退款"},
+//	_, _ = db.UpsertKnowledgeGraph(ctx, cortexdb.KnowledgeGraphUpsertRequest{
+//		Triples: []cortexdb.KnowledgeGraphTriple{
+//			{
+//				Subject:   graph.NewIRI("https://example.com/alice"),
+//				Predicate: graph.NewIRI(graph.RDFType),
+//				Object:    graph.NewIRI("https://example.com/Person"),
+//			},
+//		},
 //	})
 //
-//	result, _ := router.Route(context.Background(), "我要退款")
-//	_ = result
+//	_, _ = db.QueryKnowledgeGraph(ctx, cortexdb.KnowledgeGraphQueryRequest{
+//		Query: `SELECT ?o WHERE { <https://example.com/alice> ?p ?o . }`,
+//	})
 //
-// # Hindsight Memory
+//	_, _ = db.RefreshKnowledgeGraphInference(ctx, cortexdb.KnowledgeGraphInferenceRefreshRequest{
+//		Mode: cortexdb.KnowledgeGraphInferenceRefreshModeIncremental,
+//	})
 //
-// Long-term agent memory with TEMPR retrieval:
+// SPARQL support is a practical embedded subset. It includes SELECT, ASK,
+// CONSTRUCT, DESCRIBE, update forms, OPTIONAL, UNION, MINUS, VALUES, BIND,
+// FILTER, EXISTS, NOT EXISTS, aggregates, subqueries, and constrained property
+// paths such as ^pred, p|q, p+, and p*.
 //
-//	import "github.com/liliang-cn/cortexdb/v2/pkg/hindsight"
+// # MemoryFlow
 //
-//	sys, _ := hindsight.New(&hindsight.Config{DBPath: "agent_memory.db"})
-//	_ = sys
+// Use pkg/memoryflow for chat/session memory workflows:
 //
-// For more detailed examples, see the examples/ directory.
+//	flow, _ := memoryflow.New(db, planner, extractor)
+//	_, _ = flow.IngestTranscript(ctx, memoryflow.IngestTranscriptRequest{...})
+//	_, _ = flow.WakeUpLayers(ctx, memoryflow.WakeUpLayersRequest{...})
+//
+// LLM-dependent parts are interfaces: QueryPlanner, SessionExtractor, and
+// PromotionPolicy.
+//
+// # GraphFlow
+//
+// Use pkg/graphflow for corpus-to-graph workflows:
+//
+//	// ExtractionResult can come from deterministic code or an LLM.
+//	_, _ = graphflow.Build(ctx, db, []graphflow.ExtractionResult{extraction}, graphflow.BuildOptions{})
+//	report, _ := graphflow.Analyze(ctx, db, graphflow.AnalyzeRequest{TopN: 10})
+//	_, _ = graphflow.Export(ctx, db, graphflow.ExportRequest{OutputDir: "graphflow-out", Analysis: report})
+//
+// LLM extraction depends only on graphflow.JSONGenerator. The example
+// examples/05_graphflow demonstrates github.com/openai/openai-go/v3 with JSON
+// Schema structured output.
+//
+// # Tools and MCP
+//
+// In-process tool calling:
+//
+//	tools := db.GraphRAGTools()
+//	defs := tools.Definitions()
+//	resp, err := tools.Call(ctx, "knowledge_graph_query", payload)
+//	_, _, _ = defs, resp, err
+//
+// MCP:
+//
+//	server := db.NewMCPServer(cortexdb.MCPServerOptions{})
+//	_ = server
+//
+// # Examples
+//
+// The examples directory is organized by architecture:
+//
+//	go run ./examples/01_core
+//	go run ./examples/02_rag
+//	go run ./examples/03_memoryflow
+//	go run ./examples/04_knowledge_graph
+//	go run ./examples/05_graphflow
+//	go run ./examples/06_tools_mcp
 package cortexdb

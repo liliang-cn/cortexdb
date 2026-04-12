@@ -23,6 +23,10 @@ go.work
 *.swp
 *.swo
 
+# Local environment secrets
+.env
+**/.env
+
 # Database files
 *.db
 *.sqlite

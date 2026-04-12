@@ -1,278 +1,279 @@
 ---
 name: cortexdb
-description: Use CortexDB for vector search, hybrid search, knowledge graphs, and RAG. Use when working with embeddings, similarity search, semantic search, AI knowledge bases, or when the user mentions vectors, embeddings, RAG, knowledge graph, or CortexDB.
+description: Use CortexDB for local-first AI memory, vector search, RAG, knowledge graphs, SPARQL/RDFS/SHACL, corpus-to-graph workflows, and MCP/tool calling. Use when working with CortexDB, embeddings, memory, RAG, GraphRAG, knowledge graph, RDF, SPARQL, SHACL, memoryflow, graphflow, or MCP tools.
 ---
 
-# CortexDB
+# CortexDB Skill
 
-CortexDB is a lightweight SQLite-based vector database for Go AI projects. It supports vector similarity search, hybrid search (vector + keyword), full-text search (FTS5/BM25), knowledge graphs, and memory APIs.
+CortexDB is a pure-Go, single-file AI memory and knowledge graph library built on SQLite.
 
-## Core Concepts
+## Current Architecture
 
-### Vector Search
-Store and search embeddings (vector representations of data). CortexDB supports multiple index types (HNSW, IVF, Flat) and similarity functions (cosine, dot product, euclidean).
+Use the right layer:
 
-### Hybrid Search
-Combines vector search with FTS5 keyword search using Reciprocal Rank Fusion (RRF).
+```text
+pkg/cortexdb
+  Main public DB facade: vectors, text search, knowledge, memory, brain, KG, tools, MCP.
 
-### Lexical Fallback (v2.13.0+)
-When no embedder is configured, `SearchText` and `HybridSearchText` automatically fall back to FTS5/BM25 full-text search.
+pkg/memoryflow
+  Agent memory workflow: transcript ingest, recall, wake-up layers, diary, promotion.
 
-### LLM-Assisted Retrieval (v2.13.0+)
-Query expansion using LLM-generated keywords and alternate query phrasings for improved FTS5 recall.
+pkg/graphflow
+  Corpus-to-graph workflow: extraction schema, build, analyze, report, export, HTML.
 
-### External Vector Support (v2.13.0+)
-APIs for ingesting pre-computed vectors from external pipelines without requiring an embedder.
+pkg/graph
+  Low-level graph engine: property graph, RDF triples/quads, SPARQL, RDFS, SHACL.
 
-## Installation
-
-```go
-import "github.com/liliang-cn/cortexdb/v2"
+pkg/core
+  SQLite storage, embeddings, FTS5, vector indexes, chat/session primitives.
 ```
 
-## Quick Start
+Default recommendation:
+
+- Use `pkg/cortexdb` for application code.
+- Use `pkg/memoryflow` for chat/session/agent memory workflows.
+- Use `pkg/graphflow` for document/corpus-to-graph extraction and report/export workflows.
+- Use `pkg/graph` only for low-level RDF/SPARQL/RDFS/SHACL or property graph control.
+
+## Install
 
 ```go
 import "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+```
 
-// Open database
-db, err := cortexdb.Open(cortexdb.DefaultConfig("/path/to/db"))
+## Core DB Usage
+
+```go
+db, err := cortexdb.Open(cortexdb.DefaultConfig("brain.db"))
 if err != nil {
-    log.Fatal(err)
+    return err
 }
 defer db.Close()
 
-// Quick operations
-q := db.Quick()
-
-// Add vector with auto ID
-id, err := q.Add(ctx, []float32{0.1, 0.2, 0.3}, "document content")
-
-// Search
-results, err := q.Search(ctx, []float32{0.1, 0.2, 0.3}, 10)
-
-// Text search (requires embedder)
-results, err = q.SearchText(ctx, "query text", 10)
-
-// Text-only search (no embedder, uses FTS5)
-results, err = q.SearchTextOnly(ctx, "query", 10)
+quick := db.Quick()
+_, _ = quick.Add(ctx, []float32{0.1, 0.2, 0.9}, "SQLite is a single-file database.")
+hits, _ := quick.Search(ctx, []float32{0.1, 0.2, 0.8}, 3)
+_ = hits
 ```
 
-## Key APIs
-
-### DB.Open / DB.Quick
+## Knowledge and Memory
 
 ```go
-// Open with defaults
-db, _ := cortexdb.Open(cortexdb.DefaultConfig("db.sqlite"))
-
-// Open with custom config
-db, _ := cortexdb.Open(cortexdb.Config{
-    Path:         "db.sqlite",
-    Dimensions:   384,           // Vector dimension
-    IndexType:    core.IndexTypeHNSW,
-    SimilarityFn: core.CosineSimilarity,
+_, _ = db.SaveKnowledge(ctx, cortexdb.KnowledgeSaveRequest{
+    KnowledgeID: "apollo-plan",
+    Title:       "Apollo launch plan",
+    Content:     "Alice owns Apollo. Apollo ships on Friday.",
+    ChunkSize:   24,
+    Entities: []cortexdb.ToolEntityInput{
+        {Name: "Alice", Type: "person", ChunkIDs: []string{"chunk:apollo-plan:000"}},
+        {Name: "Apollo", Type: "project", ChunkIDs: []string{"chunk:apollo-plan:000"}},
+    },
+    Relations: []cortexdb.ToolRelationInput{
+        {From: "Alice", To: "Apollo", Type: "owns"},
+    },
 })
 
-// Quick interface for simple operations
-q := db.Quick()
-```
-
-### With Embedder
-
-```go
-// Create embedder (example with OpenAI-compatible API)
-embedder := ollama.NewEmbedder("http://localhost:11434/api/embed", "nomic-embed-text")
-
-// Open with embedder
-db, _ := cortexdb.Open(
-    cortexdb.DefaultConfig("db.sqlite"),
-    cortexdb.WithEmbedder(embedder),
-)
-
-// Now text operations work
-id, _ := db.InsertText(ctx, "doc1", "Hello world", nil)
-results, _ := db.SearchText(ctx, "greeting", 10)
-```
-
-### Vector Operations
-
-```go
-// Single insert
-err := db.Vector().Upsert(ctx, &core.Embedding{
-    ID:      "doc1",
-    Vector:  []float32{0.1, 0.2, 0.3},
-    Content: "document text",
-    Metadata: map[string]string{"key": "value"},
+resp, _ := db.SearchKnowledge(ctx, cortexdb.KnowledgeSearchRequest{
+    Query:         "Who owns Apollo?",
+    Keywords:      []string{"Apollo", "Alice", "owns"},
+    RetrievalMode: cortexdb.RetrievalModeLexical,
+    TopK:          3,
 })
+_ = resp.Context
 
-// Batch insert
-embeddings := []*core.Embedding{
-    {ID: "a", Vector: []float32{0.1, 0.2}, Content: "doc A"},
-    {ID: "b", Vector: []float32{0.3, 0.4}, Content: "doc B"},
-}
-db.Vector().UpsertBatch(ctx, embeddings)
-
-// Search
-results, _ := db.Vector().Search(ctx, queryVector, core.SearchOptions{TopK: 10})
-
-// Delete
-db.Vector().Delete(ctx, "doc1")
-```
-
-### Text Operations (v2.13.0+)
-
-```go
-// Text with pre-computed vector (no embedder needed)
-db.InsertTextWithVector(ctx, "id1", "content", []float32{0.1, 0.2}, nil)
-
-// Batch with pre-computed vectors
-texts := map[string]string{"id1": "text1", "id2": "text2"}
-vectors := [][]float32{{0.1, 0.2}, {0.3, 0.4}}
-db.InsertTextBatchWithVectors(ctx, texts, vectors, nil)
-
-// Quick interface
-id, _ := q.AddWithVector(ctx, []float32{0.1, 0.2}, "content", nil)
-ids, _ := q.AddBatchWithVectors(ctx, vectors, contents, nil)
-```
-
-### LLM-Assisted Retrieval (v2.13.0+)
-
-```go
-// Generate keywords and alternate queries via LLM, then use in search
-opts := cortexdb.TextSearchOptions{
-    TopK:            10,
-    Keywords:        []string{"expanded", "terms"},        // LLM-generated
-    AlternateQueries: []string{"alternative phrasing"},   // LLM-generated
-}
-results, _ := db.SearchTextOnly(ctx, "original query", opts)
-```
-
-### Hybrid Search
-
-```go
-// Combines vector + keyword search
-results, _ := db.HybridSearchText(ctx, "query", 10)
-
-// With embedder = vector + FTS5 fusion
-// Without embedder = pure FTS5/BM25
-```
-
-### Collections
-
-```go
-// Create collection
-db.Vector().CreateCollection(ctx, "documents", nil)
-
-// List collections
-collections, _ := db.Vector().ListCollections(ctx)
-
-// Search in collection
-results, _ := db.Vector().Search(ctx, vec, core.SearchOptions{
-    Collection: "documents",
-    TopK:       10,
+_, _ = db.SaveMemory(ctx, cortexdb.MemorySaveRequest{
+    MemoryID:  "style",
+    UserID:    "user-1",
+    Scope:     cortexdb.MemoryScopeUser,
+    Namespace: "assistant",
+    Content:   "User prefers concise status updates.",
 })
 ```
 
-### Knowledge API
+No-embedder mode is supported. Use lexical retrieval plus LLM-planned `Keywords`, `AlternateQueries`, `EntityNames`, and `RetrievalMode`.
+
+## Knowledge Graph APIs
+
+High-level APIs live in `pkg/cortexdb`:
+
+- `UpsertKnowledgeGraph`
+- `FindKnowledgeGraph`
+- `DeleteKnowledgeGraph`
+- `ImportKnowledgeGraph`
+- `ExportKnowledgeGraph`
+- `QueryKnowledgeGraph`
+- `ValidateKnowledgeGraphSHACL`
+- `RefreshKnowledgeGraphInference`
+- `SummarizeKnowledgeGraphInference`
+- `ExplainKnowledgeGraphInference`
+- `ExplainKnowledgeGraphInferenceMatch`
 
 ```go
-// Store knowledge
-db.SaveKnowledge(ctx, knowledge_api.KnowledgeSaveRequest{
-    Content: "Paris is the capital of France",
-    Namespace: "geography",
-    Metadata: map[string]string{"category": "facts"},
+_, _ = db.UpsertKnowledgeGraph(ctx, cortexdb.KnowledgeGraphUpsertRequest{
+    Triples: []cortexdb.KnowledgeGraphTriple{
+        {
+            Subject:   graph.NewIRI("https://example.com/alice"),
+            Predicate: graph.NewIRI(graph.RDFType),
+            Object:    graph.NewIRI("https://example.com/Person"),
+        },
+    },
 })
 
-// Retrieve
-response, _ := db.RecallKnowledge(ctx, knowledge_api.KnowledgeSearchRequest{
-    Query:     "capital cities",
-    Namespace: "geography",
+result, _ := db.QueryKnowledgeGraph(ctx, cortexdb.KnowledgeGraphQueryRequest{
+    Query: `SELECT ?o WHERE { <https://example.com/alice> ?p ?o . }`,
 })
+_ = result
 ```
 
-### Memory API
+SPARQL is a practical embedded subset. It includes SELECT, ASK, CONSTRUCT, DESCRIBE, update forms, GRAPH, OPTIONAL, UNION, MINUS, VALUES, BIND, FILTER, EXISTS, NOT EXISTS, aggregates, subqueries, and constrained property paths: `^pred`, `p|q`, `p+`, `p*`.
+
+RDFS-lite:
 
 ```go
-// Save memory
-db.SaveMemory(ctx, memory_api.MemorySaveRequest{
-    Content:   "User prefers dark mode",
-    SessionID: "user-123",
-    Role:      "user",
+refresh, _ := db.RefreshKnowledgeGraphInference(ctx, cortexdb.KnowledgeGraphInferenceRefreshRequest{
+    Mode: cortexdb.KnowledgeGraphInferenceRefreshModeIncremental,
+    Triples: []cortexdb.KnowledgeGraphTriple{
+        {
+            Subject:   graph.NewIRI("https://example.com/Employee"),
+            Predicate: graph.NewIRI("http://www.w3.org/2000/01/rdf-schema#subClassOf"),
+            Object:    graph.NewIRI("https://example.com/Person"),
+        },
+    },
 })
-
-// Search memories
-results, _ := db.SearchMemory(ctx, memory_api.MemorySearchRequest{
-    Query:     "theme preferences",
-    SessionID: "user-123",
-})
+_ = refresh
 ```
 
-### GraphRAG Tools (MCP Server)
+SHACL-lite:
 
 ```go
-// Ingest document for GraphRAG
-tools := cortexdb.NewGraphRAGToolbox(db)
-tools.IngestDocument(ctx, graphrag_tools.IngestDocumentRequest{
-    Content:   "Article content...",
-    Filename:  "article.txt",
-    ChunkSize: 512,
+report, _ := db.ValidateKnowledgeGraphSHACL(ctx, cortexdb.KnowledgeGraphSHACLValidateRequest{
+    Shapes: []cortexdb.KnowledgeGraphTriple{
+        {Subject: graph.NewIRI("https://example.com/PersonShape"), Predicate: graph.NewIRI(graph.RDFType), Object: graph.NewIRI(graph.SHACLNodeShape)},
+        {Subject: graph.NewIRI("https://example.com/PersonShape"), Predicate: graph.NewIRI(graph.SHACLTargetClass), Object: graph.NewIRI("https://example.com/Person")},
+    },
 })
-
-// Search with graph expansion
-results, _ := tools.SearchDocuments(ctx, graphrag_tools.SearchRequest{
-    Query:    "topic",
-    TopK:     10,
-    UseGraph: true,
-})
+_ = report
 ```
 
-## Error Handling
+## MemoryFlow
+
+Use `pkg/memoryflow` for agent memory workflows:
 
 ```go
-import "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+flow, _ := memoryflow.New(db, planner, extractor)
 
-_, err := db.InsertText(ctx, "id", "text", nil)
-if err != nil {
-    if errors.Is(err, cortexdb.ErrEmbedderNotConfigured) {
-        // No embedder configured - use vector methods or InsertTextWithVector
-    }
-    if errors.Is(err, core.ErrNotFound) {
-        // Document not found
-    }
+_, _ = flow.IngestTranscript(ctx, memoryflow.IngestTranscriptRequest{
+    Transcript: memoryflow.Transcript{
+        SessionID: "session-1",
+        UserID:    "user-1",
+        Source:    "chat",
+        Turns: []memoryflow.TranscriptTurn{
+            {Role: "user", Content: "Apollo ships on Friday."},
+            {Role: "assistant", Content: "Captured."},
+        },
+    },
+    Scope:     cortexdb.MemoryScopeSession,
+    Namespace: "assistant",
+})
+
+layers, _ := flow.WakeUpLayers(ctx, memoryflow.WakeUpLayersRequest{
+    Identity: "You are the Apollo project assistant.",
+    Recall: memoryflow.RecallRequest{
+        Query:     "startup context",
+        SessionID: "session-1",
+        Scope:     cortexdb.MemoryScopeSession,
+        Namespace: "assistant",
+    },
+})
+_ = layers
+```
+
+LLM-dependent interfaces:
+
+- `QueryPlanner`
+- `SessionExtractor`
+- `PromotionPolicy`
+
+## GraphFlow
+
+Use `pkg/graphflow` for corpus-to-graph workflows:
+
+```go
+extraction := graphflow.ExtractionResult{ /* nodes + edges */ }
+_, _ = graphflow.Build(ctx, db, []graphflow.ExtractionResult{extraction}, graphflow.BuildOptions{})
+analysis, _ := graphflow.Analyze(ctx, db, graphflow.AnalyzeRequest{TopN: 10})
+report, _ := graphflow.RenderReport(ctx, analysis)
+_, _ = graphflow.Export(ctx, db, graphflow.ExportRequest{OutputDir: "graphflow-out", Analysis: analysis, Report: report})
+_, _ = graphflow.ExportHTML(ctx, db, graphflow.ExportRequest{OutputDir: "graphflow-out", Analysis: analysis})
+```
+
+LLM extraction uses only this interface:
+
+```go
+type JSONGenerator interface {
+    GenerateJSON(ctx context.Context, systemPrompt string, userPrompt string) ([]byte, error)
 }
 ```
 
-## Configuration Options
+The example `examples/05_graphflow` uses `github.com/openai/openai-go/v3` with JSON Schema structured output:
 
-```go
-cortexdb.Config{
-    Path:         "db.sqlite",      // Database path
-    Dimensions:   0,                 // 0 = auto-detect
-    IndexType:    core.IndexTypeHNSW, // HNSW, IVF, Flat
-    SimilarityFn: core.CosineSimilarity, // Cosine, DotProduct, Euclidean
-    AutoDimAdapt: core.SmartAdapt,  // Smart, Truncate, Pad, Strict
-    HNSW:         core.DefaultHNSWConfig(),
-    IVF:          core.DefaultIVFConfig(),
-}
+```env
+OPENAI_API_KEY=...
+OPENAI_BASE_URL=http://43.167.167.6:8080/v1
+OPENAI_MODEL=gpt-5.4
 ```
 
-## When to Use What
+## Tools and MCP
 
-| Task | API |
-|------|-----|
-| Simple vector CRUD | `Quick.Add()`, `Quick.Search()` |
-| With text + embedder | `InsertText()`, `SearchText()` |
-| Text-only FTS5 | `SearchTextOnly()` |
-| Vector + keyword hybrid | `HybridSearchText()` |
-| Pre-computed vectors | `InsertTextWithVector()`, `AddWithVector()` |
-| Knowledge base | `SaveKnowledge()`, `RecallKnowledge()` |
-| Chat memory | `SaveMemory()`, `SearchMemory()` |
-| GraphRAG | `GraphRAGToolbox` |
-| MCP server | `cortexdb.NewMCPServer()` |
+In-process tool calls:
 
-## Dependencies
+```go
+tools := db.GraphRAGTools()
+defs := tools.Definitions()
+resp, err := tools.Call(ctx, "knowledge_graph_query", payload)
+_, _, _ = defs, resp, err
+```
 
-- Go 1.24+
-- SQLite (via modernc.org/sqlite)
-- No external database required - fully embedded
+MCP server:
+
+```go
+server := db.NewMCPServer(cortexdb.MCPServerOptions{})
+_ = server
+```
+
+Important tools:
+
+- GraphRAG: `ingest_document`, `search_text`, `expand_graph`, `build_context`
+- Knowledge/memory: `knowledge_save`, `knowledge_search`, `memory_save`, `memory_search`
+- Knowledge graph: `knowledge_graph_upsert`, `knowledge_graph_query`, `knowledge_graph_shacl_validate`, `knowledge_graph_infer_refresh`
+- Brain: `brain_recall`, `brain_build_context_pack`, `brain_reflect`, `brain_consolidate`
+- Ontology/inference: `ontology_save`, `apply_inference`
+
+Separate workflow toolboxes:
+
+- memoryflow: `memoryflow_ingest_transcript`, `memoryflow_recall`, `memoryflow_wake_up_layers`, `memoryflow_prepare_reply`
+- graphflow: `graphflow_build`, `graphflow_analyze`, `graphflow_report`, `graphflow_export`, `graphflow_run`
+
+## Examples
+
+The examples are architecture-oriented:
+
+```bash
+go run ./examples/01_core
+go run ./examples/02_rag
+go run ./examples/03_memoryflow
+go run ./examples/04_knowledge_graph
+go run ./examples/05_graphflow
+go run ./examples/06_tools_mcp
+```
+
+Use `examples/05_graphflow` to verify OpenAI-compatible LLM graph extraction with structured output.
+
+## Checks
+
+When changing CortexDB, run:
+
+```bash
+GOWORK=off go build ./...
+GOWORK=off go test ./...
+```

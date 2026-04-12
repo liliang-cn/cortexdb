@@ -1,36 +1,42 @@
 # CortexDB
 
 [![CI/CD](https://github.com/liliang-cn/cortexdb/actions/workflows/ci.yml/badge.svg)](https://github.com/liliang-cn/cortexdb/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/liliang-cn/cortexdb/v2/branch/main/graph/badge.svg)](https://codecov.io/gh/liliang-cn/cortexdb/v2)
 [![Go Report Card](https://goreportcard.com/badge/github.com/liliang-cn/cortexdb/v2)](https://goreportcard.com/report/github.com/liliang-cn/cortexdb/v2)
 [![Go Reference](https://pkg.go.dev/badge/github.com/liliang-cn/cortexdb/v2.svg)](https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**为 AI 智能体打造的可嵌入式认知记忆与图数据库。**
+CortexDB 是一个纯 Go、单文件的 AI memory 和 knowledge graph 库。它以 SQLite 为存储内核，提供向量检索、FTS5 lexical search、RAG knowledge 存储、agent memory workflow、RDF/SPARQL/RDFS/SHACL 知识图谱、corpus-to-graph workflow，以及 MCP/tool calling 接口。
 
-CortexDB 是一个 **100% 纯 Go 库**，旨在将单个 SQLite 文件转化为强大的 AI 存储引擎。它融合了 **混合向量搜索**、**GraphRAG**、**MCP Tool Calling** 和 **仿生智能体记忆系统 (Hindsight)**，无需复杂的外部基础设施，即可赋予 AI 应用一个结构化、持久化且智能的“大脑”。
+目标很明确：给 local-first AI agent 一个可嵌入的长期记忆和知识图谱后端，不要求额外部署向量数据库、图数据库或 MCP 服务栈。
 
-## ✨ 为什么选择 CortexDB？
+## 架构
 
-- 🧠 **智能体记忆 (Hindsight)** – 完整的 `retain → recall → reflect` 生命周期，内置多通道 TEMPR 检索。
-- 🕸️ **双模式 GraphRAG** – 有 embedding model 时走 embedder-backed GraphRAG；没有 embedding model 但有 LLM 时，走 lexical/tool-calling GraphRAG。
-- 🔍 **混合搜索** – 结合 向量相似度 (HNSW) 和 精确关键词匹配 (FTS5) 使用 RRF 融合。
-- 🔌 **MCP Stdio Server** – 通过官方 Model Context Protocol Go SDK 把 CortexDB 工具暴露给外部 LLM。
-- 🏗️ **结构化数据友好** – 轻松将 SQL/CSV 数据映射为自然语言 + 元数据，支持高级 `PreFilter` 过滤。
-- 🪶 **超轻量级** – 单个 SQLite 文件，零外部依赖，纯 Go 语言实现。
-- 🛡️ **安全隔离** – 通过 **ACL** 字段实现行级安全 (RLS)，轻松支持多租户。
+```text
+pkg/cortexdb
+  主 DB facade：vectors、text search、knowledge、memory、brain、KG、tools、MCP。
 
-## 🚀 快速开始
+pkg/memoryflow
+  Agent memory workflow：transcript ingest、recall、wake-up context、diary、promotion。
+
+pkg/graphflow
+  Corpus-to-graph workflow：extraction schema、build、analyze、report、export、HTML。
+
+pkg/graph
+  底层图引擎：property graph、RDF triples/quads、SPARQL、RDFS、SHACL。
+
+pkg/core
+  SQLite storage、embeddings、FTS5、vector indexes、chat/session primitives。
+```
+
+默认优先使用 `pkg/cortexdb`。做 agent memory UX 时用 `pkg/memoryflow`，做图谱抽取/报告/导出时用 `pkg/graphflow`，只有需要底层 RDF 或 property graph 控制时再直接用 `pkg/graph`。
+
+## 安装
 
 ```bash
 go get github.com/liliang-cn/cortexdb/v2
 ```
 
-运行内置的 MCP stdio 服务：
-
-```bash
-go run ./cmd/cortexdb-mcp-stdio
-```
+## 快速开始
 
 ```go
 package main
@@ -44,7 +50,6 @@ import (
 )
 
 func main() {
-	// 初始化 CortexDB (自动创建向量、文档、记忆和图数据表)
 	db, err := cortexdb.Open(cortexdb.DefaultConfig("brain.db"))
 	if err != nil {
 		log.Fatal(err)
@@ -52,330 +57,251 @@ func main() {
 	defer db.Close()
 
 	ctx := context.Background()
+	quick := db.Quick()
 
-	// 1. 存储一个事实/记忆
-	db.Quick().Add(ctx, []float32{0.1, 0.2, 0.9}, "Go 是一门静态类型的编译型语言。")
+	_, _ = quick.Add(ctx, []float32{0.1, 0.2, 0.9}, "SQLite 是单文件数据库。")
+	results, _ := quick.Search(ctx, []float32{0.1, 0.2, 0.8}, 1)
 
-	// 2. 召回相关的概念
-	results, _ := db.Quick().Search(ctx, []float32{0.1, 0.2, 0.8}, 1)
 	if len(results) > 0 {
-		fmt.Printf("找到记忆: %s\n", results[0].Content)
+		fmt.Println(results[0].Content)
 	}
 }
 ```
 
-## 🏗 核心能力
+## 怎么选 API
 
-### 1. 智能体记忆系统 (Hindsight)
-
-CortexDB 内置 `hindsight`，一个专为 Agent 打造的仿生记忆模块。它不仅仅是存储日志，而是将记忆分类（客观事实、信念、洞察）并动态召回。
-
-```go
-import "github.com/liliang-cn/cortexdb/v2/pkg/hindsight"
-
-sys, _ := hindsight.New(&hindsight.Config{
-	DBPath: "agent_memory.db",
-})
-defer sys.Close()
-
-// 创建一个具有性格特征的 Agent 大脑
-bank := hindsight.NewBank("travel-agent-1", "Travel Assistant")
-bank.Empathy = 4    // 1-5 级，同理心
-bank.Skepticism = 2 // 1-5 级，怀疑度
-sys.CreateBank(ctx, bank)
-
-// RETAIN：存入关于用户的结构化观察
-sys.Retain(ctx, &hindsight.Memory{
-	BankID:   "travel-agent-1",
-	Type:     hindsight.WorldMemory,
-	Content:  "Alice 偏好靠窗的座位，并且吃素。",
-	Vector:   embedding,
-	Entities: []string{"user:alice", "preference:flight", "preference:food"},
-})
-
-// RECALL：基于 TEMPR 模型的多通道检索
-results, _ := sys.Recall(ctx, &hindsight.RecallRequest{
-	BankID:      "travel-agent-1",
-	QueryVector: queryEmbedding,
-	Strategy:    hindsight.DefaultStrategy(), // 启用所有通道并进行 RRF 融合
-})
+```text
+需要 vectors / collections / FTS5?      -> pkg/cortexdb / pkg/core
+需要 RAG knowledge 存储和检索?          -> pkg/cortexdb SaveKnowledge/SearchKnowledge
+需要 chat/session memory workflow?      -> pkg/memoryflow
+需要 RDF/SPARQL/RDFS/SHACL?             -> pkg/cortexdb knowledge graph APIs
+需要 corpus-to-graph/report/export?     -> pkg/graphflow
+需要 agent tools 或 MCP server?         -> db.GraphRAGTools() / db.NewMCPServer()
+需要底层 graph 控制?                    -> pkg/graph
 ```
 
-### 2. 高级文本与结构化数据 API
-
-告别手动处理 `[]float32` 数组的痛苦。只需注入您的 Embedding 模型，剩下的交给 CortexDB。
+## Knowledge 和 Memory 高层 API
 
 ```go
-// 1. 注入您的嵌入模型 (OpenAI, Ollama 等)
-db, _ := cortexdb.Open(config, cortexdb.WithEmbedder(myOpenAIEmbedder))
-
-// 2. 直接插入原始文本
-db.InsertText(ctx, "doc_1", "新款 iPhone 15 Pro 采用了钛金属机身。", map[string]string{
-	"category": "electronics",
-	"price":    "999",
+_, _ = db.SaveKnowledge(ctx, cortexdb.KnowledgeSaveRequest{
+	KnowledgeID: "apollo-plan",
+	Title:       "Apollo launch plan",
+	Content:     "Alice owns Apollo. Apollo ships on Friday.",
+	ChunkSize:   24,
+	Entities: []cortexdb.ToolEntityInput{
+		{Name: "Alice", Type: "person", ChunkIDs: []string{"chunk:apollo-plan:000"}},
+		{Name: "Apollo", Type: "project", ChunkIDs: []string{"chunk:apollo-plan:000"}},
+	},
+	Relations: []cortexdb.ToolRelationInput{
+		{From: "Alice", To: "Apollo", Type: "owns"},
+	},
 })
 
-// 3. 纯文本语义搜索
-results, _ := db.SearchText(ctx, "最新的苹果手机", 5)
-
-// 4. 混合搜索 (语义向量 + 精确关键词)
-hybridRes, _ := db.HybridSearchText(ctx, "钛金属机身", 5)
-
-// 5. 纯 FTS5 搜索 (无需依赖向量引擎，速度极快！)
-ftsRes, _ := db.SearchTextOnly(ctx, "iPhone", cortexdb.TextSearchOptions{TopK: 5})
+resp, _ := db.SearchKnowledge(ctx, cortexdb.KnowledgeSearchRequest{
+	Query:         "Who owns Apollo?",
+	Keywords:      []string{"Apollo", "Alice", "owns"},
+	RetrievalMode: cortexdb.RetrievalModeLexical,
+	TopK:          3,
+})
+_ = resp.Context
 ```
-*参考 `examples/text_api` 获取完整代码。*
 
-### 3. GraphRAG (知识图谱)
+没有 embedder 时，CortexDB 会走 lexical retrieval，并使用 planner 提供的 keywords。配置 embedder 后，同一套高层 API 可以走 semantic 或 hybrid retrieval。
 
-将关系型数据（如 SQL 表）直接转化为知识图谱，实现多跳推理 (Multi-hop reasoning)。
+## MemoryFlow
+
+`pkg/memoryflow` 是 agent memory workflow 层。它负责把原始 transcript 存成 exchange-shaped episodic memory，做 recall，组装 wake-up layers，写 diary，恢复 transcript，并可在 session 结束时把长期事实 promote 到 knowledge。
 
 ```go
-// 1. 插入图节点
-db.Graph().UpsertNode(ctx, &graph.GraphNode{
-	ID: "dept_eng", NodeType: "department", Content: "工程研发部门", Vector: vec1,
-})
-db.Graph().UpsertNode(ctx, &graph.GraphNode{
-	ID: "emp_alice", NodeType: "employee", Content: "Alice (高级 Go 工程师)", Vector: vec2,
+flow, _ := memoryflow.New(db, planner, extractor)
+
+_, _ = flow.IngestTranscript(ctx, memoryflow.IngestTranscriptRequest{
+	Transcript: memoryflow.Transcript{
+		SessionID: "session-1",
+		UserID:    "user-1",
+		Source:    "chat",
+		Turns: []memoryflow.TranscriptTurn{
+			{Role: "user", Content: "Apollo ships on Friday."},
+			{Role: "assistant", Content: "Captured."},
+		},
+	},
+	Scope:     cortexdb.MemoryScopeSession,
+	Namespace: "assistant",
 })
 
-// 2. 建立关系 (边)
-db.Graph().UpsertEdge(ctx, &graph.GraphEdge{
-	FromNodeID: "emp_alice",
-	ToNodeID:   "dept_eng",
-	EdgeType:   "BELONGS_TO",
-	Weight:     1.0,
+layers, _ := flow.WakeUpLayers(ctx, memoryflow.WakeUpLayersRequest{
+	Identity: "You are the Apollo project assistant.",
+	Recall: memoryflow.RecallRequest{
+		Query:     "startup context",
+		SessionID: "session-1",
+		Scope:     cortexdb.MemoryScopeSession,
+		Namespace: "assistant",
+	},
 })
-
-// 3. 在 RAG 中自动遍历图谱
-neighbors, _ := db.Graph().Neighbors(ctx, "emp_alice", graph.TraversalOptions{
-	EdgeTypes: []string{"BELONGS_TO"},
-	MaxDepth:  1,
-})
-// 轻松找到 Alice 属于工程研发部门，无需编写复杂的 SQL JOIN！
+_ = layers
 ```
-*参考 `examples/structured_data` 获取完整代码。*
 
-如果你需要标准 RDF 三元组/四元组，而不是仅仅把数据当作属性图来用，现在也可以直接写知识图谱：
+需要 LLM 的部分都是 interface：
 
 ```go
-db.UpsertKnowledgeNamespace(ctx, cortexdb.KnowledgeGraphNamespaceUpsertRequest{
-	Prefix: "ex",
-	URI:    "https://example.com/",
-})
+type QueryPlanner interface {
+	Plan(ctx context.Context, query string, state memoryflow.SessionState) (*cortexdb.RetrievalPlan, error)
+}
 
-db.UpsertKnowledgeGraph(ctx, cortexdb.KnowledgeGraphUpsertRequest{
+type SessionExtractor interface {
+	Extract(ctx context.Context, transcript memoryflow.Transcript, state memoryflow.SessionState) ([]memoryflow.PromotionCandidate, error)
+}
+```
+
+## Knowledge Graph
+
+CortexDB 在同一个 SQLite 文件里提供 RDF/KG 能力：
+
+- RDF terms、triples、quads
+- namespace 管理
+- N-Triples / N-Quads / Turtle / TriG import/export
+- 实用 SPARQL 子集
+- 带 provenance 的 RDFS-lite materialized inference
+- 增量 RDFS inference refresh
+- SHACL-lite validation
+
+```go
+_, _ = db.UpsertKnowledgeGraph(ctx, cortexdb.KnowledgeGraphUpsertRequest{
 	Triples: []cortexdb.KnowledgeGraphTriple{
 		{
-			Subject:   graph.NewIRI("ex:alice"),
-			Predicate: graph.NewIRI("rdf:type"),
-			Object:    graph.NewIRI("schema:Person"),
+			Subject:   graph.NewIRI("https://example.com/alice"),
+			Predicate: graph.NewIRI(graph.RDFType),
+			Object:    graph.NewIRI("https://example.com/Person"),
 		},
 		{
-			Subject:   graph.NewIRI("ex:alice"),
-			Predicate: graph.NewIRI("schema:name"),
+			Subject:   graph.NewIRI("https://example.com/alice"),
+			Predicate: graph.NewIRI("https://schema.org/name"),
 			Object:    graph.NewLiteral("Alice"),
 		},
 	},
 })
 
-rdfDump, _ := db.ExportKnowledgeGraph(ctx, cortexdb.KnowledgeGraphExportRequest{
-	Format: cortexdb.KnowledgeGraphFormatNQuads,
-})
-
-sparql, _ := db.QueryKnowledgeGraph(ctx, cortexdb.KnowledgeGraphQueryRequest{
+result, _ := db.QueryKnowledgeGraph(ctx, cortexdb.KnowledgeGraphQueryRequest{
 	Query: `
-PREFIX ex: <https://example.com/>
 PREFIX schema: <https://schema.org/>
-
 SELECT ?name WHERE {
-	ex:alice schema:name ?name .
+	<https://example.com/alice> schema:name ?name .
 }
 `,
 })
-
-inferred, _ := db.RefreshKnowledgeGraphInference(ctx, cortexdb.KnowledgeGraphInferenceRefreshRequest{})
-_ = inferred
+_ = result
 ```
 
-当前 SPARQL 支持的是内嵌子集：`PREFIX`、`SELECT`、`ASK`、`CONSTRUCT`、`DESCRIBE`、`INSERT DATA`、`INSERT ... WHERE`、`DELETE DATA`、`DELETE WHERE`、`DELETE ... INSERT ... WHERE`、`WITH`、`USING`、`GRAPH`、`OPTIONAL`、`UNION`、`VALUES`、`BIND`、`FILTER`、`REGEX`、`LANG`、`DATATYPE`、`COALESCE`、`IF`、算术表达式、`GROUP BY`、`HAVING`、`COUNT`、`SUM`、`AVG`、`MIN`、`MAX`、`SAMPLE`、`GROUP_CONCAT`、`ORDER BY`、`LIMIT`、`OFFSET`。
-另外也内建了 `RDFS-lite` 推理，支持 `rdfs:subClassOf`、`rdfs:subPropertyOf`、`rdfs:domain`、`rdfs:range`。
+SPARQL 支持的是 practical embedded subset，包括：`SELECT`、`ASK`、`CONSTRUCT`、`DESCRIBE`、`INSERT DATA`、`INSERT ... WHERE`、`DELETE DATA`、`DELETE WHERE`、`DELETE ... INSERT ... WHERE`、`WITH`、`USING`、`GRAPH`、`OPTIONAL`、`UNION`、`MINUS`、`VALUES`、`BIND`、`FILTER`、`EXISTS`、`NOT EXISTS`、`REGEX`、`LANG`、`DATATYPE`、`COALESCE`、`IF`、算术表达式、`GROUP BY`、`HAVING`、`COUNT`、`SUM`、`AVG`、`MIN`、`MAX`、`SAMPLE`、`GROUP_CONCAT`、`ORDER BY`、`LIMIT`、`OFFSET`、subqueries，以及受限 property paths：`^pred`、`p|q`、`p+`、`p*`。
 
-在配置了 embedder 的情况下，也可以直接使用更高层的 GraphRAG 检索：
-
-```go
-result, _ := db.SearchGraphRAG(ctx, "Alice 在哪里工作？", cortexdb.GraphRAGQueryOptions{
-	TopK:          4,
-	RetrievalMode: cortexdb.RetrievalModeAuto, // auto | lexical | graph
-})
-```
-
-`RetrievalMode` 的作用是让你在效果和图开销之间做显式选择：
-
-- `lexical`：只做 seed retrieval，不做图扩展，速度更稳。
-- `graph`：始终执行图扩展和实体补充。
-- `auto`：用轻量级实体信号判断是否值得走图。
-
-如果你已经有外部 LLM orchestration，那么无 embedder 模式下也可以通过 `retrieval_mode`、`keywords` 和 `alternate_queries` 使用同样的思路。
-
-这条工作流也可以叠加 schema 校验和 inference：
+RDFS-lite：
 
 ```go
-_, _ = db.SaveOntologySchema(ctx, cortexdb.OntologySaveRequest{
-	SchemaID: "company-graph",
-	Activate: true,
-	EntityTypes: []cortexdb.OntologyEntityType{
-		{Name: "entity"},
-		{Name: "person"},
-		{Name: "organization"},
-		{Name: "city"},
-	},
-	RelationTypes: []cortexdb.OntologyRelationType{
-		{Name: "works_at", AllowedFromTypes: []string{"person"}, AllowedToTypes: []string{"organization"}},
-		{Name: "located_in", AllowedFromTypes: []string{"organization"}, AllowedToTypes: []string{"city"}},
-		{Name: "works_in_city", AllowedFromTypes: []string{"person"}, AllowedToTypes: []string{"city"}},
-	},
-})
-
-_, _ = db.ApplyInferenceRules(ctx, cortexdb.ApplyInferenceRequest{
-	DocumentID: "alice-berlin-proof",
-	Rules: []cortexdb.InferenceRule{
+refresh, _ := db.RefreshKnowledgeGraphInference(ctx, cortexdb.KnowledgeGraphInferenceRefreshRequest{
+	Mode: cortexdb.KnowledgeGraphInferenceRefreshModeIncremental,
+	Triples: []cortexdb.KnowledgeGraphTriple{
 		{
-			RuleID:             "employment_city",
-			LeftRelationType:   "works_at",
-			RightRelationType:  "located_in",
-			ResultRelationType: "works_in_city",
+			Subject:   graph.NewIRI("https://example.com/Employee"),
+			Predicate: graph.NewIRI("http://www.w3.org/2000/01/rdf-schema#subClassOf"),
+			Object:    graph.NewIRI("https://example.com/Person"),
 		},
 	},
 })
+_ = refresh
 ```
 
-这条链路可以直接参考新的端到端示例：
+SHACL-lite：
 
-- `examples/graphrag_embedder`
-- `examples/llm_tool_calling`
+```go
+report, _ := db.ValidateKnowledgeGraphSHACL(ctx, cortexdb.KnowledgeGraphSHACLValidateRequest{
+	Shapes: []cortexdb.KnowledgeGraphTriple{
+		{Subject: graph.NewIRI("https://example.com/PersonShape"), Predicate: graph.NewIRI(graph.RDFType), Object: graph.NewIRI(graph.SHACLNodeShape)},
+		{Subject: graph.NewIRI("https://example.com/PersonShape"), Predicate: graph.NewIRI(graph.SHACLTargetClass), Object: graph.NewIRI("https://example.com/Person")},
+	},
+})
+_ = report
+```
 
-### 4. MCP Tool Calling / 无 Embedding 模式
+## GraphFlow
 
-如果你没有 embedding model，但有 LLM，CortexDB 依然可以作为 MCP tool server 使用。在这种模式下：
+`pkg/graphflow` 是 corpus-to-graph workflow 层：
 
-- LLM 先把用户目标扩展成大量 `keywords`、别名、同义词、缩写和多语言词
-- CortexDB 使用 `FTS5/BM25` 做 seed retrieval
-- 是否执行图扩展由 `retrieval_mode=lexical|graph|auto` 控制
+- 统一 extraction schema：`ExtractionResult`、`ExtractionNode`、`ExtractionEdge`
+- deterministic `HeuristicExtractor`
+- 通过 `JSONGenerator` 接 LLM-backed extraction
+- `Build`、`Analyze`、`RenderReport`
+- `Export` 到 JSON/Markdown，以及 `ExportHTML`
 
-运行 stdio MCP 服务：
+库里只保留模型接口：
+
+```go
+type JSONGenerator interface {
+	GenerateJSON(ctx context.Context, systemPrompt string, userPrompt string) ([]byte, error)
+}
+```
+
+示例 `examples/05_graphflow` 展示了 `openai-go/v3` 和 JSON Schema structured output。用 `.env` 配置：
+
+```env
+OPENAI_API_KEY=...
+OPENAI_BASE_URL=http://43.167.167.6:8080/v1
+OPENAI_MODEL=gpt-5.4
+```
+
+运行：
 
 ```bash
-go run ./cmd/cortexdb-mcp-stdio
+go run ./examples/05_graphflow
 ```
 
-也可以直接嵌入到你自己的 Go 进程中：
+## Tools 和 MCP
+
+进程内 tool calling：
 
 ```go
-if err := db.RunMCPStdio(context.Background(), cortexdb.MCPServerOptions{}); err != nil {
-	log.Fatal(err)
-}
+tools := db.GraphRAGTools()
+defs := tools.Definitions()
+resp, err := tools.Call(ctx, "knowledge_graph_query", payload)
+_ = defs
+_ = resp
+_ = err
 ```
 
-高阶 Go API：
+MCP server：
 
 ```go
-knowledge, _ := db.SaveKnowledge(ctx, cortexdb.KnowledgeSaveRequest{
-	KnowledgeID: "doc-1",
-	Title:       "Alice at Acme",
-	Content:     "Alice works at Acme on GraphRAG.",
-})
-
-memory, _ := db.SaveMemory(ctx, cortexdb.MemorySaveRequest{
-	MemoryID:  "mem-1",
-	UserID:    "user-1",
-	Scope:     cortexdb.MemoryScopeUser,
-	Namespace: "assistant",
-	Content:   "Alice prefers concise answers.",
-})
-
-_, _ = knowledge, memory
+server := db.NewMCPServer(cortexdb.MCPServerOptions{})
+_ = server
 ```
 
-主要 MCP tools：
+主要 tool 分组：
 
-- `knowledge_save`
-- `knowledge_update`
-- `knowledge_get`
-- `knowledge_search`
-- `knowledge_delete`
-- `memory_save`
-- `memory_update`
-- `memory_get`
-- `memory_search`
-- `memory_delete`
-- `ingest_document`
-- `upsert_entities`
-- `upsert_relations`
-- `search_text`
-- `search_chunks_by_entities`
-- `expand_graph`
-- `get_nodes`
-- `get_chunks`
-- `build_context`
-- `search_graphrag_lexical`
+- GraphRAG：`ingest_document`、`search_text`、`expand_graph`、`build_context`
+- Knowledge/memory：`knowledge_save`、`knowledge_search`、`memory_save`、`memory_search`
+- Knowledge graph：`knowledge_graph_upsert`、`knowledge_graph_query`、`knowledge_graph_shacl_validate`、`knowledge_graph_infer_refresh`
+- Brain：`brain_recall`、`brain_build_context_pack`、`brain_reflect`、`brain_consolidate`
+- Ontology/inference：`ontology_save`、`apply_inference`
 
-高阶 ontology / inference tools 也已经暴露：
+`memoryflow` 和 `graphflow` 也有独立 toolbox/MCP surface：
 
-- `ontology_save`
-- `ontology_get`
-- `ontology_list`
-- `ontology_delete`
-- `apply_inference`
+- memoryflow：`memoryflow_ingest_transcript`、`memoryflow_recall`、`memoryflow_wake_up_layers`、`memoryflow_prepare_reply`
+- graphflow：`graphflow_build`、`graphflow_analyze`、`graphflow_report`、`graphflow_export`、`graphflow_run`
 
-推荐进一步阅读：
+## Examples
 
-- `docs/retrieval_planning.md`
-- `docs/evaluation.md`
-- `docs/release_notes_llm_first.md`
+现在 examples 按架构收敛为 6 个：
 
-### 5. 高级元数据过滤
-
-在执行向量搜索前，使用类似 SQL 的表达式构建器过滤庞大的数据集。
-
-```go
-// 查找价格低于 2000 且目前有库存的笔记本电脑
-filter := core.NewMetadataFilter().
-	And(core.NewMetadataFilter().Equal("category", "laptop")).
-	And(core.NewMetadataFilter().LessThan("price", 2000.0)).
-	And(core.NewMetadataFilter().GreaterThan("stock", 0)).
-	Build()
-
-opts := core.AdvancedSearchOptions{
-	SearchOptions: core.SearchOptions{TopK: 5},
-	PreFilter:     filter, // 过滤发生在向量计算之前！
-}
-results, _ := db.Vector().SearchWithAdvancedFilter(ctx, queryVec, opts)
+```bash
+go run ./examples/01_core
+go run ./examples/02_rag
+go run ./examples/03_memoryflow
+go run ./examples/04_knowledge_graph
+go run ./examples/05_graphflow
+go run ./examples/06_tools_mcp
 ```
 
-## 📚 数据库架构
+选择指南见 [examples/README.md](examples/README.md)。
 
-CortexDB 在单个 `.db` 文件中自动管理以下表结构：
+## 状态说明
 
-| 表             | 描述                                     |
-| :------------- | :--------------------------------------- |
-| `embeddings`   | 核心向量、内容、JSON 元数据、ACL。       |
-| `documents`    | 向量的父级记录 (标题、URL、版本)。       |
-| `sessions`     | 聊天会话/线程。                          |
-| `messages`     | 聊天日志 (角色、内容、向量、时间戳)。    |
-| `messages_fts` | 消息 BM25 关键词搜索的 **FTS5** 虚拟表。 |
-| `collections`  | 逻辑命名空间，用于多租户隔离。           |
-| `chunks_fts`   | 向量内容混合搜索的 **FTS5** 虚拟表。     |
-| `graph_nodes`  | 知识图谱节点（包含关联的向量）。         |
-| `graph_edges`  | 图节点之间的有向关系与权重。             |
-
-## 📊 性能 (128维, Apple M2 Pro)
-
-| 索引类型 | 插入速度      | 搜索 QPS   | 内存占用 (100万向量) |
-| :------- | :------------ | :--------- | :------------------- |
-| **HNSW** | ~580 ops/s    | ~720 QPS   | ~1.2 GB (SQ8)        |
-| **IVF**  | ~14,500 ops/s | ~1,230 QPS | ~1.0 GB (SQ8)        |
-
-## ⚖️ 许可证
-
-MIT License. 请参阅 [LICENSE](LICENSE) 文件。
+CortexDB 是一个 embedded AI memory/KG library，不是 Fuseki、GraphDB、Stardog 这类完整图数据库产品的 drop-in replacement。目标是给 agent 提供 practical local-first storage and reasoning：单文件、Go API、tool/MCP surface，以及足够实用的 RDF/SPARQL/RDFS/SHACL 能力。

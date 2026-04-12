@@ -1,285 +1,86 @@
 # CortexDB Examples
 
-This directory contains comprehensive examples demonstrating the full capabilities of the CortexDB SQLite vector database library.
-
-## 🚀 Quick Start
-
-All examples are self-contained and runnable. To run any example:
+The examples are organized by the current public architecture. There are six runnable folders:
 
 ```bash
-# Run directly
-go run examples/simple_usage/main.go
-
-# Or build and run
-go build -o simple_example examples/simple_usage/main.go
-./simple_example
+go run ./examples/01_core
+go run ./examples/02_rag
+go run ./examples/03_memoryflow
+go run ./examples/04_knowledge_graph
+go run ./examples/05_graphflow
+go run ./examples/06_tools_mcp
 ```
 
-## 📚 Examples Overview
+## 01_core
 
-### 1. **simple_usage** - Getting Started
-- Basic vector operations (add, search, delete)
-- Collections management
-- Similarity search fundamentals
-- **Perfect for:** First-time users
+Core embedded vector storage through `pkg/cortexdb`.
 
-### 2. **semantic_search** - Text Search with Embeddings
-- Document indexing with metadata
-- Semantic similarity search
-- Collection-based filtering
-- Similarity threshold filtering
-- Performance metrics
-- **Perfect for:** Search applications, document retrieval
+- Opens a single-file DB
+- Uses `Quick()` for vector add/search
+- Uses collections for namespacing
 
-### 3. **document_clustering** - K-means Clustering
-- K-means clustering implementation
-- Intra-cluster similarity analysis
-- Outlier detection
-- Cross-cluster analysis
-- Cluster models for classification
-- **Perfect for:** Data analysis, content organization
+Use this when you want the smallest CortexDB integration surface.
 
-### 4. **hybrid_search** - Vector + Graph Search
-- Knowledge graph construction
-- Citation network analysis with PageRank
-- Research path finding
-- Combined vector and graph search
-- Performance comparison
-- **Perfect for:** Research papers, knowledge bases
+## 02_rag
 
-### 5. **multi_collection** - Multi-tenant Data Management
-- Multiple collections with different dimensions
-- E-commerce products, users, reviews
-- Cross-collection search
-- Personalized recommendations
-- Collaborative filtering
-- **Perfect for:** E-commerce, multi-tenant applications
+High-level durable knowledge APIs through `pkg/cortexdb`.
 
-### 6. **image_search** - Multi-modal Search
-- CLIP-like image embeddings
-- Text-to-image search
-- Image-to-image similarity
-- Tag-based filtering
-- Duplicate detection
-- **Perfect for:** Image galleries, visual search
+- `SaveKnowledge`
+- no-embedder lexical `SearchKnowledge`
+- entity/relation metadata for graph-aware retrieval
 
-### 7. **knowledge_graph** - Graph-based Knowledge Management
-- Entity nodes with embeddings
-- Relationship edges
-- Graph traversal algorithms
-- Community detection
-- PageRank for importance
-- **Perfect for:** Knowledge graphs, recommendation systems
+Use this for RAG and app knowledge storage.
 
-### 8. **rag_system** - Retrieval-Augmented Generation
-- Document graph construction
-- Hybrid retrieval strategies
-- Context-aware search
-- Graph-enhanced retrieval
-- **Perfect for:** RAG applications, Q&A systems
+## 03_memoryflow
 
-### 9. **benchmark** - Performance Testing
-- Insert performance testing
-- Search performance benchmarking
-- Batch operations
-- Large-scale testing
-- **Perfect for:** Performance optimization, capacity planning
+Agent memory workflow through `pkg/memoryflow`.
 
-### 10. **chat_memory** - AI Chat Memory
-- Session management
-- Message storage
-- Context retrieval
-- Semantic memory search
-- **Perfect for:** Chatbots, AI Agents
+- transcript ingest
+- recall
+- layered wake-up context
+- diary write/read
+- transcript reconstruction
 
-### 11. **benchmark_ivf** - Index Comparison
-- Compare HNSW vs IVF performance
-- Index training demo
-- **Perfect for:** Performance tuning
+Use this for chat/session/agent memory.
 
-### 12. **text_api** - High-Level Text & Knowledge APIs
-- Automatic text embedding
-- `SaveKnowledge` for GraphRAG ingestion
-- `SaveMemory` for agentic persistence
-- Hybrid and FTS5 search
-- **Perfect for:** Modern LLM-based applications
+## 04_knowledge_graph
 
-### 13. **graphrag_embedder** - Embedder-Backed GraphRAG
-- Active ontology schema setup
-- Knowledge ingestion with typed entities and relations
-- Deterministic inference with provenance
-- Graph-expanded knowledge search
-- **Perfect for:** Embedder-backed GraphRAG applications
+Embedded RDF/KG workflow through `pkg/cortexdb` and `pkg/graph`.
 
-### 14. **llm_tool_calling** - No-Embedder Tool Calling
-- High-level `knowledge_*` and `memory_*` tool usage
-- External-LLM-style retrieval planning
-- Lexical GraphRAG without an embedding model
-- In-process tool calling that matches the MCP surface
-- **Perfect for:** MCP clients and external LLM orchestration
-
-### 15. **rdf_knowledge_graph** - RDF Triples, Quads, and SPARQL
-- Namespace management
-- RDF triple ingestion
-- TriG export
-- SPARQL query execution
-- **Perfect for:** Embedded RDF knowledge graphs
-
-### 16. **rdfs_inference** - RDFS-Lite Materialization
-- Persisted inferred triples
-- `rdfs:subClassOf` / `rdfs:domain` / `rdfs:range`
-- Inference explanation traces
-- **Perfect for:** Single-file graph reasoning
-
-### 17. **sparql_updates** - SPARQL Update & Aggregate Workflow
-- `INSERT DATA`
-- `INSERT ... WHERE`
-- `DELETE ... INSERT ... WHERE`
-- Aggregates such as `SUM`, `AVG`, `MAX`, `GROUP_CONCAT`
-- **Perfect for:** Programmatic graph maintenance
-
-### 18. **memoryflow_basic** - Workflow Memory Facade
-- Transcript ingest into episodic memory exchanges
-- Deterministic taxonomy conventions
-- Recall on top of the existing brain facade
-- **Perfect for:** App-layer memory workflows
-
-### 19. **memoryflow_layers** - Layered Wake-Up Context
-- `L0` identity
-- `L1` compact recall
-- `L2` context pack
-- `L3` detailed recall
-- **Perfect for:** Agent startup context pipelines
-
-### 20. **memoryflow_conventions** - Project Taxonomy Conventions
-- Project-local taxonomy conventions
-- Deterministic `wing` / `room` resolution
-- Diary write/read with resolved taxonomy
-- **Perfect for:** Opinionated memory workflow setups
-
-### 21. **graphflow_basic** - Deterministic Graph Pipeline
-- Unified extraction schema
-- Deterministic build into the graph store
-- Deterministic analysis + markdown report
-- JSON/markdown export bundle
-- **Perfect for:** Graph pipeline integration on top of CortexDB
-
-### 22. **knowledge_graph_advanced** - Advanced RDF/SPARQL/SHACL Workflow
-- Incremental RDFS inference refresh
+- RDF triples
 - SPARQL property paths and subqueries
+- incremental RDFS inference
 - SHACL-lite validation
-- **Perfect for:** Embedded single-file knowledge graph reasoning
 
-### 23. **graphflow_visualization** - GraphFlow HTML Visualization
-- GraphFlow build/analyze/export workflow
-- Interactive HTML graph visualization
-- Embeds graph data in the HTML and loads visualization libraries from CDN
-- Optional LLM-backed extraction through caller-provided adapters
-- **Perfect for:** Inspecting graphflow extraction output visually
+Use this when you need raw knowledge graph semantics.
 
-## 💻 API Usage Patterns
+## 05_graphflow
 
-All examples use the latest CortexDB API:
+Corpus-to-graph workflow through `pkg/graphflow`.
 
-```go
-import (
-    "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
-    "github.com/liliang-cn/cortexdb/v2/pkg/core"
-    "github.com/liliang-cn/cortexdb/v2/pkg/graph"
-)
+- canonical extraction schema
+- deterministic build/analyze/report
+- `graph.json`, `GRAPH_REPORT.md`, and HTML export
 
-// Initialize database
-config := cortexdb.DefaultConfig("mydb.db")
-config.Dimensions = 384 // or 0 for auto-detect
+Use this when you need to turn documents or model extraction output into an inspectable graph.
 
-db, err := cortexdb.Open(config)
-defer db.Close()
+## 06_tools_mcp
 
-// 1. High-Level Knowledge & Memory APIs
-// Ingest a full document for GraphRAG
-db.SaveKnowledge(ctx, cortexdb.KnowledgeSaveRequest{
-    KnowledgeID: "doc_1",
-    Title:       "CortexDB Overview",
-    Content:     "CortexDB is an embedded cognitive memory...",
-})
+Toolbox/MCP-aligned APIs through `db.GraphRAGTools()`.
 
-// Store an agent memory
-db.SaveMemory(ctx, cortexdb.MemorySaveRequest{
-    MemoryID:  "mem_1",
-    UserID:    "user_123",
-    Content:   "Alice likes Go programming.",
-})
+- lists the available tool definitions
+- calls tools in-process with JSON payloads
+- shows the same shapes that can be exposed over MCP
 
-// 2. Quick API for simple vector operations
-quick := db.Quick()
-id, err := quick.Add(ctx, vector, content)
-results, err := quick.Search(ctx, queryVector, topK)
+Use this for agents and external LLM orchestration.
 
-// 3. Vector store for advanced operations
-vectorStore := db.Vector()
-// Creating collections
-vectorStore.CreateCollection(ctx, "products", 256)
+## Rule of Thumb
 
-// Advanced search with SQL-like filtering
-results, err := vectorStore.Search(ctx, query, core.SearchOptions{
-    Collection: "products",
-    TopK:       10,
-    Threshold:  0.7,
-})
-
-// 4. Graph store for graph operations
-graphStore := db.Graph()
-err := graphStore.UpsertNode(ctx, &graph.GraphNode{...})
-err := graphStore.UpsertEdge(ctx, &graph.GraphEdge{...})
+```text
+Need raw vectors / collections?       -> 01_core
+Need RAG knowledge storage/search?    -> 02_rag
+Need chat/session memory?             -> 03_memoryflow
+Need RDF/SPARQL/RDFS/SHACL?           -> 04_knowledge_graph
+Need corpus-to-graph/report/export?   -> 05_graphflow
+Need agent tool/MCP integration?      -> 06_tools_mcp
 ```
-
-## 🎯 Key Features Demonstrated
-
-- **Knowledge Ingestion**: Automated chunking and GraphRAG artifact creation
-- **Ontology Validation**: Active schema enforcement for entity and relation writes
-- **Inference**: Deterministic inferred edges with provenance
-- **Agent Memory**: Scoped memory persistence (User/Session/Global)
-- **Vector Operations**: Add, search, update, delete embeddings
-- **Collections**: Multi-tenant support with isolated namespaces
-- **Similarity Metrics**: Cosine, dot product, Euclidean distance
-- **Graph Operations**: Nodes, edges, traversal, PageRank
-- **Hybrid Search**: Combine vector similarity with graph relationships
-- **Tool Calling**: MCP-aligned `knowledge_*`, `memory_*`, and GraphRAG tools
-- **Performance**: Benchmarking and optimization techniques
-
-## 📊 Performance Tips
-
-1. **Batch Operations**: Use batch inserts for better performance
-2. **Collection Isolation**: Use collections to separate different data types
-3. **Dimension Consistency**: Keep vector dimensions consistent within collections
-4. **Index Optimization**: HNSW/IVF indexes are automatically managed
-5. **Connection Pooling**: Reuse database connections
-
-## 🔧 Requirements
-
-- Go 1.24.0 or higher
-- Pure Go implementation (no CGO required!)
-- SQLite driver included (pure Go)
-- No external dependencies
-
-## 📝 Notes
-
-- All examples create temporary databases that are cleaned up after execution
-- Examples use simulated embeddings for demonstration (in production, use real embedding models)
-- Each example is self-contained and can be run independently
-- Database files are created in the current directory and removed after execution
-
-## 🤝 Contributing
-
-Feel free to add more examples! Make sure to:
-1. Use the latest CortexDB API
-2. Include comprehensive comments
-3. Provide realistic use cases
-4. Clean up resources after execution
-5. Test your example thoroughly
-
-## 📖 Further Reading
-
-- [CortexDB Documentation](../README.md)
-- [API Reference](../doc.go)
-- [Feature Comparison](../FEATURE_COMPARISON.md)
