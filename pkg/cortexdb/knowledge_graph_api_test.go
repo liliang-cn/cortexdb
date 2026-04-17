@@ -333,6 +333,60 @@ func TestKnowledgeGraphSHACLValidateAPI(t *testing.T) {
 	}
 }
 
+func TestKnowledgeGraphSHACLAdvancedValidateAPI(t *testing.T) {
+	dbPath := fmt.Sprintf("test_knowledge_graph_shacl_advanced_%d.db", time.Now().UnixNano())
+	defer func() { _ = os.Remove(dbPath) }()
+
+	db, err := Open(DefaultConfig(dbPath))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	ctx := context.Background()
+	_, err = db.UpsertKnowledgeGraph(ctx, KnowledgeGraphUpsertRequest{
+		Triples: []KnowledgeGraphTriple{
+			{Subject: graph.NewIRI("https://example.com/boss1"), Predicate: graph.NewIRI(graph.RDFType), Object: graph.NewIRI("https://example.com/Employee")},
+			{Subject: graph.NewIRI("https://example.com/alice"), Predicate: graph.NewIRI(graph.RDFType), Object: graph.NewIRI("https://example.com/Person")},
+			{Subject: graph.NewIRI("https://example.com/alice"), Predicate: graph.NewIRI("https://example.com/manager"), Object: graph.NewIRI("https://example.com/outsider")},
+			{Subject: graph.NewIRI("https://example.com/alice"), Predicate: graph.NewIRI("https://example.com/homepage"), Object: graph.NewLiteral("https://example.com/alice")},
+			{Subject: graph.NewIRI("https://example.com/alice"), Predicate: graph.NewIRI("https://example.com/status"), Object: graph.NewLiteral("blocked")},
+		},
+	})
+	if err != nil {
+		t.Fatalf("seed graph for advanced shacl: %v", err)
+	}
+
+	resp, err := db.ValidateKnowledgeGraphSHACL(ctx, KnowledgeGraphSHACLValidateRequest{
+		Shapes: []KnowledgeGraphTriple{
+			{Subject: graph.NewIRI("https://example.com/PersonShape"), Predicate: graph.NewIRI(graph.RDFType), Object: graph.NewIRI(graph.SHACLNodeShape)},
+			{Subject: graph.NewIRI("https://example.com/PersonShape"), Predicate: graph.NewIRI(graph.SHACLTargetClass), Object: graph.NewIRI("https://example.com/Person")},
+			{Subject: graph.NewIRI("https://example.com/PersonShape"), Predicate: graph.NewIRI(graph.SHACLProperty), Object: graph.NewIRI("https://example.com/ManagerShape")},
+			{Subject: graph.NewIRI("https://example.com/PersonShape"), Predicate: graph.NewIRI(graph.SHACLProperty), Object: graph.NewIRI("https://example.com/HomepageShape")},
+			{Subject: graph.NewIRI("https://example.com/PersonShape"), Predicate: graph.NewIRI(graph.SHACLProperty), Object: graph.NewIRI("https://example.com/StatusShape")},
+
+			{Subject: graph.NewIRI("https://example.com/ManagerShape"), Predicate: graph.NewIRI(graph.SHACLPath), Object: graph.NewIRI("https://example.com/manager")},
+			{Subject: graph.NewIRI("https://example.com/ManagerShape"), Predicate: graph.NewIRI(graph.SHACLClass), Object: graph.NewIRI("https://example.com/Employee")},
+
+			{Subject: graph.NewIRI("https://example.com/HomepageShape"), Predicate: graph.NewIRI(graph.SHACLPath), Object: graph.NewIRI("https://example.com/homepage")},
+			{Subject: graph.NewIRI("https://example.com/HomepageShape"), Predicate: graph.NewIRI(graph.SHACLNodeKind), Object: graph.NewIRI(graph.SHACLIRI)},
+
+			{Subject: graph.NewIRI("https://example.com/StatusShape"), Predicate: graph.NewIRI(graph.SHACLPath), Object: graph.NewIRI("https://example.com/status")},
+			{Subject: graph.NewIRI("https://example.com/StatusShape"), Predicate: graph.NewIRI(graph.SHACLIn), Object: graph.NewLiteral("active")},
+			{Subject: graph.NewIRI("https://example.com/StatusShape"), Predicate: graph.NewIRI(graph.SHACLIn), Object: graph.NewLiteral("pending")},
+		},
+	})
+	if err != nil {
+		t.Fatalf("validate advanced shacl: %v", err)
+	}
+	if resp.Report.Conforms {
+		t.Fatalf("expected advanced SHACL violations, got %+v", resp.Report)
+	}
+	if len(resp.Report.Results) != 3 {
+		t.Fatalf("expected three advanced SHACL violations, got %+v", resp.Report.Results)
+	}
+}
+
 func ptrKnowledgeTerm(term KnowledgeGraphTerm) *KnowledgeGraphTerm {
 	return &term
 }

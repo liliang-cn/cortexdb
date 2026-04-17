@@ -237,30 +237,12 @@ func (g *GraphStore) ExpandIRI(ctx context.Context, value string) (string, error
 	if value == "" {
 		return "", nil
 	}
-	if looksLikeAbsoluteIRI(value) {
-		return value, nil
-	}
-
-	colon := strings.IndexByte(value, ':')
-	if colon <= 0 {
-		return value, nil
-	}
-	prefix := value[:colon]
-	local := value[colon+1:]
-	if strings.Contains(prefix, "/") {
-		return value, nil
-	}
 
 	namespaces, err := g.ListNamespaces(ctx)
 	if err != nil {
 		return "", err
 	}
-	for _, ns := range namespaces {
-		if ns.Prefix == prefix {
-			return ns.URI + local, nil
-		}
-	}
-	return value, nil
+	return expandIRIWithNamespaces(value, namespaces), nil
 }
 
 // CompactIRI compacts an IRI using the longest matching namespace prefix when available.
@@ -273,15 +255,7 @@ func (g *GraphStore) CompactIRI(ctx context.Context, value string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	best := value
-	bestLen := 0
-	for _, ns := range namespaces {
-		if strings.HasPrefix(value, ns.URI) && len(ns.URI) > bestLen {
-			best = ns.Prefix + ":" + strings.TrimPrefix(value, ns.URI)
-			bestLen = len(ns.URI)
-		}
-	}
-	return best, nil
+	return compactIRIWithNamespaces(value, namespaces), nil
 }
 
 // UpsertTriple writes one RDF triple/quad and mirrors it into the property graph tables.
@@ -293,7 +267,12 @@ func (g *GraphStore) UpsertTriple(ctx context.Context, triple *RDFTriple) error 
 		return err
 	}
 
-	normalized, err := g.normalizeTriple(ctx, *triple)
+	namespaces, err := g.ListNamespaces(ctx)
+	if err != nil {
+		return err
+	}
+
+	normalized, err := g.normalizeTripleWithNamespaces(*triple, namespaces)
 	if err != nil {
 		return err
 	}
@@ -308,72 +287,8 @@ func (g *GraphStore) UpsertTriple(ctx context.Context, triple *RDFTriple) error 
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := g.upsertRDFTermNodeTx(ctx, tx, normalized.Subject); err != nil {
-		return err
-	}
-	if normalized.Object.Kind == RDFTermIRI || normalized.Object.Kind == RDFTermBlankNode || normalized.Object.Kind == RDFTermLiteral {
-		if err := g.upsertRDFTermNodeTx(ctx, tx, normalized.Object); err != nil {
-			return err
-		}
-	}
-
-	var graphKind any
-	var graphValue any
-	if normalized.Graph != nil {
-		graphKind = normalized.Graph.Kind
-		graphValue = normalized.Graph.Value
-	}
-	var supportIDsJSON any
-	if len(normalized.SupportIDs) > 0 {
-		payload, err := json.Marshal(normalized.SupportIDs)
-		if err != nil {
-			return fmt.Errorf("encode triple support ids: %w", err)
-		}
-		supportIDsJSON = string(payload)
-	}
-
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO kg_triples (
-			id, graph_kind, graph_value,
-			subject_kind, subject_value,
-			predicate_value,
-			object_kind, object_value, object_datatype, object_language,
-			inferred, inference_rule, support_ids
-		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			graph_kind = excluded.graph_kind,
-			graph_value = excluded.graph_value,
-			subject_kind = excluded.subject_kind,
-			subject_value = excluded.subject_value,
-			predicate_value = excluded.predicate_value,
-			object_kind = excluded.object_kind,
-			object_value = excluded.object_value,
-			object_datatype = excluded.object_datatype,
-			object_language = excluded.object_language,
-			inferred = excluded.inferred,
-			inference_rule = excluded.inference_rule,
-			support_ids = excluded.support_ids
-	`,
-		normalized.ID,
-		graphKind,
-		graphValue,
-		normalized.Subject.Kind,
-		normalized.Subject.Value,
-		normalized.Predicate.Value,
-		normalized.Object.Kind,
-		normalized.Object.Value,
-		nullIfEmpty(normalized.Object.Datatype),
-		nullIfEmpty(normalized.Object.Language),
-		boolToInt(normalized.Inferred),
-		nullIfEmpty(normalized.Rule),
-		supportIDsJSON,
-	)
-	if err != nil {
-		return fmt.Errorf("upsert kg triple: %w", err)
-	}
-
-	if err := g.upsertRDFEdgeTx(ctx, tx, normalized); err != nil {
+	edgeType := compactIRIWithNamespaces(normalized.Predicate.Value, namespaces)
+	if err := g.upsertPreparedTripleTx(ctx, tx, normalized, namespaces, edgeType); err != nil {
 		return err
 	}
 
@@ -388,14 +303,58 @@ func (g *GraphStore) UpsertTriplesBatch(ctx context.Context, triples []*RDFTripl
 	if len(triples) == 0 {
 		return &BatchResult{}, nil
 	}
+
+	if err := g.InitGraphSchema(ctx); err != nil {
+		return nil, err
+	}
+
+	namespaces, err := g.ListNamespaces(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	result := &BatchResult{Errors: make([]error, 0)}
+
+	tx, err := g.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin triples batch transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	edgeTypeCache := make(map[string]string)
 	for _, triple := range triples {
-		if err := g.UpsertTriple(ctx, triple); err != nil {
+		if triple == nil {
+			result.Errors = append(result.Errors, fmt.Errorf("triple is required"))
+			result.FailedCount++
+			continue
+		}
+
+		normalized, err := g.normalizeTripleWithNamespaces(*triple, namespaces)
+		if err != nil {
+			result.Errors = append(result.Errors, err)
+			result.FailedCount++
+			continue
+		}
+		if normalized.ID == "" {
+			normalized.ID = tripleDigest(normalized)
+		}
+		triple.ID = normalized.ID
+
+		edgeType, ok := edgeTypeCache[normalized.Predicate.Value]
+		if !ok {
+			edgeType = compactIRIWithNamespaces(normalized.Predicate.Value, namespaces)
+			edgeTypeCache[normalized.Predicate.Value] = edgeType
+		}
+		if err := g.upsertPreparedTripleTx(ctx, tx, normalized, namespaces, edgeType); err != nil {
 			result.Errors = append(result.Errors, err)
 			result.FailedCount++
 			continue
 		}
 		result.SuccessCount++
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit triples batch transaction: %w", err)
 	}
 	return result, nil
 }
@@ -872,21 +831,29 @@ const (
 )
 
 func (g *GraphStore) normalizeTriple(ctx context.Context, triple RDFTriple) (RDFTriple, error) {
-	subject, err := g.normalizeTerm(ctx, triple.Subject, rdfPositionSubject)
+	namespaces, err := g.ListNamespaces(ctx)
 	if err != nil {
 		return RDFTriple{}, err
 	}
-	predicate, err := g.normalizeTerm(ctx, triple.Predicate, rdfPositionPredicate)
+	return g.normalizeTripleWithNamespaces(triple, namespaces)
+}
+
+func (g *GraphStore) normalizeTripleWithNamespaces(triple RDFTriple, namespaces []Namespace) (RDFTriple, error) {
+	subject, err := normalizeTermWithNamespaces(triple.Subject, rdfPositionSubject, namespaces)
 	if err != nil {
 		return RDFTriple{}, err
 	}
-	object, err := g.normalizeTerm(ctx, triple.Object, rdfPositionObject)
+	predicate, err := normalizeTermWithNamespaces(triple.Predicate, rdfPositionPredicate, namespaces)
+	if err != nil {
+		return RDFTriple{}, err
+	}
+	object, err := normalizeTermWithNamespaces(triple.Object, rdfPositionObject, namespaces)
 	if err != nil {
 		return RDFTriple{}, err
 	}
 	var graphTerm *RDFTerm
 	if triple.Graph != nil {
-		normalizedGraph, err := g.normalizeTerm(ctx, *triple.Graph, rdfPositionGraph)
+		normalizedGraph, err := normalizeTermWithNamespaces(*triple.Graph, rdfPositionGraph, namespaces)
 		if err != nil {
 			return RDFTriple{}, err
 		}
@@ -905,6 +872,14 @@ func (g *GraphStore) normalizeTriple(ctx context.Context, triple RDFTriple) (RDF
 }
 
 func (g *GraphStore) normalizeTerm(ctx context.Context, term RDFTerm, position rdfPosition) (RDFTerm, error) {
+	namespaces, err := g.ListNamespaces(ctx)
+	if err != nil {
+		return RDFTerm{}, err
+	}
+	return normalizeTermWithNamespaces(term, position, namespaces)
+}
+
+func normalizeTermWithNamespaces(term RDFTerm, position rdfPosition, namespaces []Namespace) (RDFTerm, error) {
 	term.Kind = strings.TrimSpace(term.Kind)
 	term.Value = strings.TrimSpace(term.Value)
 	term.Datatype = strings.TrimSpace(strings.Trim(term.Datatype, "<>"))
@@ -939,21 +914,13 @@ func (g *GraphStore) normalizeTerm(ctx context.Context, term RDFTerm, position r
 		return RDFTerm{}, fmt.Errorf("rdf term value is required")
 	}
 	if term.Kind == RDFTermIRI {
-		expanded, err := g.ExpandIRI(ctx, term.Value)
-		if err != nil {
-			return RDFTerm{}, err
-		}
-		term.Value = expanded
+		term.Value = expandIRIWithNamespaces(term.Value, namespaces)
 	}
 	if term.Kind == RDFTermBlankNode {
 		term.Value = strings.TrimPrefix(term.Value, "_:")
 	}
 	if term.Kind == RDFTermLiteral && term.Datatype != "" {
-		expanded, err := g.ExpandIRI(ctx, term.Datatype)
-		if err != nil {
-			return RDFTerm{}, err
-		}
-		term.Datatype = expanded
+		term.Datatype = expandIRIWithNamespaces(term.Datatype, namespaces)
 	}
 	return term, nil
 }
@@ -993,10 +960,15 @@ func (g *GraphStore) compactTerm(ctx context.Context, term RDFTerm) (string, err
 }
 
 func (g *GraphStore) upsertRDFTermNodeTx(ctx context.Context, tx *sql.Tx, term RDFTerm) error {
+	label := g.rdfTermLabel(ctx, term)
+	return g.upsertRDFTermNodeWithLabelTx(ctx, tx, term, label)
+}
+
+func (g *GraphStore) upsertRDFTermNodeWithLabelTx(ctx context.Context, tx *sql.Tx, term RDFTerm, label string) error {
 	node := &GraphNode{
 		ID:       rdfNodeID(term),
 		Vector:   rdfVector(g.rdfVectorDim(), rdfVectorParts(term)...),
-		Content:  g.rdfTermLabel(ctx, term),
+		Content:  label,
 		NodeType: rdfNodeType(term),
 		Properties: map[string]any{
 			"rdf":       true,
@@ -1067,7 +1039,42 @@ func (g *GraphStore) upsertRDFEdgeTx(ctx context.Context, tx *sql.Tx, triple RDF
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `
+	return g.upsertRDFEdgeWithTypeJSONTx(ctx, tx, triple, edgeType, string(propertiesJSON))
+}
+
+func (g *GraphStore) upsertRDFEdgeWithTypeTx(ctx context.Context, tx *sql.Tx, triple RDFTriple, edgeType string) error {
+	properties := map[string]any{
+		"rdf":         true,
+		"triple_id":   triple.ID,
+		"predicate":   triple.Predicate.Value,
+		"object_kind": triple.Object.Kind,
+		"inferred":    triple.Inferred,
+	}
+	if triple.Object.Datatype != "" {
+		properties["datatype"] = triple.Object.Datatype
+	}
+	if triple.Object.Language != "" {
+		properties["language"] = triple.Object.Language
+	}
+	if triple.Graph != nil {
+		properties["graph_kind"] = triple.Graph.Kind
+		properties["graph_value"] = triple.Graph.Value
+	}
+	if triple.Rule != "" {
+		properties["inference_rule"] = triple.Rule
+	}
+	if len(triple.SupportIDs) > 0 {
+		properties["support_ids"] = triple.SupportIDs
+	}
+	propertiesJSON, err := json.Marshal(properties)
+	if err != nil {
+		return fmt.Errorf("encode rdf edge properties: %w", err)
+	}
+	return g.upsertRDFEdgeWithTypeJSONTx(ctx, tx, triple, edgeType, string(propertiesJSON))
+}
+
+func (g *GraphStore) upsertRDFEdgeWithTypeJSONTx(ctx context.Context, tx *sql.Tx, triple RDFTriple, edgeType, propertiesJSON string) error {
+	_, err := tx.ExecContext(ctx, `
 		INSERT INTO graph_edges (id, from_node_id, to_node_id, edge_type, weight, properties, vector)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
@@ -1077,7 +1084,7 @@ func (g *GraphStore) upsertRDFEdgeTx(ctx context.Context, tx *sql.Tx, triple RDF
 			weight = excluded.weight,
 			properties = excluded.properties,
 			vector = excluded.vector
-	`, triple.ID, rdfNodeID(triple.Subject), rdfNodeID(triple.Object), edgeType, 1.0, string(propertiesJSON), nil)
+	`, triple.ID, rdfNodeID(triple.Subject), rdfNodeID(triple.Object), edgeType, 1.0, propertiesJSON, nil)
 	if err != nil {
 		return fmt.Errorf("upsert rdf edge: %w", err)
 	}
@@ -1114,9 +1121,22 @@ func (g *GraphStore) rdfVectorDim() int {
 }
 
 func (g *GraphStore) rdfTermLabel(ctx context.Context, term RDFTerm) string {
+	namespaces, err := g.ListNamespaces(ctx)
+	if err != nil {
+		switch term.Kind {
+		case RDFTermBlankNode:
+			return "_:" + term.Value
+		default:
+			return term.Value
+		}
+	}
+	return rdfTermLabelWithNamespaces(term, namespaces)
+}
+
+func rdfTermLabelWithNamespaces(term RDFTerm, namespaces []Namespace) string {
 	switch term.Kind {
 	case RDFTermIRI:
-		if compacted, err := g.CompactIRI(ctx, term.Value); err == nil && compacted != "" {
+		if compacted := compactIRIWithNamespaces(term.Value, namespaces); compacted != "" {
 			return compacted
 		}
 		return term.Value
@@ -1127,6 +1147,80 @@ func (g *GraphStore) rdfTermLabel(ctx context.Context, term RDFTerm) string {
 	default:
 		return term.Value
 	}
+}
+
+func (g *GraphStore) upsertPreparedTripleTx(ctx context.Context, tx *sql.Tx, triple RDFTriple, namespaces []Namespace, edgeType string) error {
+	subjectLabel := rdfTermLabelWithNamespaces(triple.Subject, namespaces)
+	if err := g.upsertRDFTermNodeWithLabelTx(ctx, tx, triple.Subject, subjectLabel); err != nil {
+		return err
+	}
+	if triple.Object.Kind == RDFTermIRI || triple.Object.Kind == RDFTermBlankNode || triple.Object.Kind == RDFTermLiteral {
+		objectLabel := rdfTermLabelWithNamespaces(triple.Object, namespaces)
+		if err := g.upsertRDFTermNodeWithLabelTx(ctx, tx, triple.Object, objectLabel); err != nil {
+			return err
+		}
+	}
+
+	var graphKind any
+	var graphValue any
+	if triple.Graph != nil {
+		graphKind = triple.Graph.Kind
+		graphValue = triple.Graph.Value
+	}
+	var supportIDsJSON any
+	if len(triple.SupportIDs) > 0 {
+		payload, err := json.Marshal(triple.SupportIDs)
+		if err != nil {
+			return fmt.Errorf("encode triple support ids: %w", err)
+		}
+		supportIDsJSON = string(payload)
+	}
+
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO kg_triples (
+			id, graph_kind, graph_value,
+			subject_kind, subject_value,
+			predicate_value,
+			object_kind, object_value, object_datatype, object_language,
+			inferred, inference_rule, support_ids
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			graph_kind = excluded.graph_kind,
+			graph_value = excluded.graph_value,
+			subject_kind = excluded.subject_kind,
+			subject_value = excluded.subject_value,
+			predicate_value = excluded.predicate_value,
+			object_kind = excluded.object_kind,
+			object_value = excluded.object_value,
+			object_datatype = excluded.object_datatype,
+			object_language = excluded.object_language,
+			inferred = excluded.inferred,
+			inference_rule = excluded.inference_rule,
+			support_ids = excluded.support_ids
+	`,
+		triple.ID,
+		graphKind,
+		graphValue,
+		triple.Subject.Kind,
+		triple.Subject.Value,
+		triple.Predicate.Value,
+		triple.Object.Kind,
+		triple.Object.Value,
+		nullIfEmpty(triple.Object.Datatype),
+		nullIfEmpty(triple.Object.Language),
+		boolToInt(triple.Inferred),
+		nullIfEmpty(triple.Rule),
+		supportIDsJSON,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert kg triple: %w", err)
+	}
+
+	if err := g.upsertRDFEdgeWithTypeTx(ctx, tx, triple, edgeType); err != nil {
+		return err
+	}
+	return nil
 }
 
 func rdfNodeType(term RDFTerm) string {
@@ -1222,6 +1316,46 @@ func looksLikeAbsoluteIRI(value string) bool {
 		}
 	}
 	return false
+}
+
+func expandIRIWithNamespaces(value string, namespaces []Namespace) string {
+	value = strings.TrimSpace(strings.Trim(value, "<>"))
+	if value == "" || looksLikeAbsoluteIRI(value) {
+		return value
+	}
+
+	colon := strings.IndexByte(value, ':')
+	if colon <= 0 {
+		return value
+	}
+	prefix := value[:colon]
+	local := value[colon+1:]
+	if strings.Contains(prefix, "/") {
+		return value
+	}
+
+	for _, ns := range namespaces {
+		if ns.Prefix == prefix {
+			return ns.URI + local
+		}
+	}
+	return value
+}
+
+func compactIRIWithNamespaces(value string, namespaces []Namespace) string {
+	value = strings.TrimSpace(strings.Trim(value, "<>"))
+	if value == "" {
+		return ""
+	}
+	best := value
+	bestLen := 0
+	for _, ns := range namespaces {
+		if strings.HasPrefix(value, ns.URI) && len(ns.URI) > bestLen {
+			best = ns.Prefix + ":" + strings.TrimPrefix(value, ns.URI)
+			bestLen = len(ns.URI)
+		}
+	}
+	return best
 }
 
 func escapeIRI(value string) string {

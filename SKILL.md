@@ -35,6 +35,57 @@ Default recommendation:
 - Use `pkg/graphflow` for document/corpus-to-graph extraction and report/export workflows.
 - Use `pkg/graph` only for low-level RDF/SPARQL/RDFS/SHACL or property graph control.
 
+## API Selection Cheat Sheet
+
+Choose by the job to be done:
+
+| Scenario | Start with | What it really does |
+| --- | --- | --- |
+| Store vectors, FTS5, or run simple TopK retrieval | `pkg/cortexdb` `Quick()`; drop to `pkg/core` only if needed | Thinnest layer for pure retrieval without knowledge or memory semantics. |
+| Document RAG or knowledge-base QA | `SaveKnowledge` + `SearchKnowledge` | Ingest chunks, builds retrieval artifacts, can attach entities and relations, then runs semantic or lexical GraphRAG retrieval. |
+| User preferences, session memory, or long-term memory | `SaveMemory` + `SearchMemory` | Resolves a memory bucket from `scope` / `user` / `session` / `namespace`, stores memory, then uses semantic retrieval or lexical fallback. |
+| Retrieve both memory and knowledge and assemble prompt context | `db.KnowledgeMemory().Recall()` or `BuildContextPack()` | Runs memory recall and knowledge recall, then fuses entities, chunks, and context into one packed response. |
+| Full chat-assistant memory workflow | `pkg/memoryflow` | Turns transcripts into episodic memories, supports recall, wake-up layers, and end-of-session promotion. |
+| RDF, SPARQL, RDFS, or SHACL work | Knowledge graph APIs in `pkg/cortexdb` | Standard graph surface for upsert, find, query, import, export, validation, inference, and explanation. |
+| Build a graph from documents, code, or other corpora and analyze it | `pkg/graphflow` | Runs the fixed pipeline `detect -> extract -> build -> analyze -> report -> export`. |
+| Expose CortexDB to an agent or MCP client | `db.GraphRAGTools()` or `db.NewMCPServer()` | Wraps the high-level APIs as tool definitions or an MCP server rather than introducing a second implementation path. |
+
+## How To Choose
+
+- If the input is a document and the goal is QA or retrieval, use `SaveKnowledge` / `SearchKnowledge`.
+- If the input is dialogue, user preference, or session state, use `SaveMemory` / `SearchMemory`.
+- If you do not want to hand-assemble prompt context, use `KnowledgeMemory`.
+- If you need startup context or multi-layer wake-up memory for an assistant, use `memoryflow`.
+- If you need standard RDF semantics, SPARQL, inference, or SHACL validation, use the knowledge graph APIs.
+- If you need to transform a corpus into a graph and then analyze or export it, use `graphflow`.
+- If you only need to expose the same capabilities to another agent, use tools or MCP instead of rebuilding the logic.
+
+## Short Mental Model
+
+- Engine layer: `pkg/core` + `pkg/graph`
+- Application facade: `pkg/cortexdb`
+- Higher-level workflows: `KnowledgeMemory`, `memoryflow`, `graphflow`
+- Agent exposure layer: `GraphRAGTools`, MCP
+
+## Common Compositions
+
+- Chat assistant: `memoryflow.IngestTranscript -> memoryflow.WakeUpLayers -> memoryflow.CloseSession`
+- Enterprise knowledge-base QA: `SaveKnowledge -> SearchKnowledge`
+- Personal assistant memory: `SaveMemory -> KnowledgeMemory.Recall`
+- Graph question answering: `UpsertKnowledgeGraph -> QueryKnowledgeGraph -> ExplainKnowledgeGraphInference`
+- Codebase knowledge graph: `graphflow.Pipeline.Run`
+
+## Source Pointers
+
+- Architecture and API selection overview: `README.md`, `README_CN.md`
+- Knowledge APIs: `pkg/cortexdb/knowledge_api.go`
+- Memory APIs: `pkg/cortexdb/memory_api.go`
+- GraphRAG query path: `pkg/cortexdb/graphrag.go`
+- KnowledgeMemory facade: `pkg/cortexdb/brain.go`
+- Memory workflow service: `pkg/memoryflow/service.go`
+- Corpus-to-graph pipeline: `pkg/graphflow/pipeline.go`
+- Tool and MCP exposure: `pkg/cortexdb/graphrag_tool_defs.go`, `pkg/cortexdb/mcp.go`
+
 ## Install
 
 ```go

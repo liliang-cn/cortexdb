@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 // SHACL IRIs
@@ -35,14 +36,18 @@ const (
 	SHACLSeverityWarning   = SHACLNamespace + "Warning"
 	SHACLSeverityViolation = SHACLNamespace + "Violation"
 
-	SHACLIRI               = SHACLNamespace + "IRI"
-	SHACLBlankNode         = SHACLNamespace + "BlankNode"
-	SHACLLiteral           = SHACLNamespace + "Literal"
-	SHACLBlankNodeOrIRI    = SHACLNamespace + "BlankNodeOrIRI"
+	SHACLIRI                = SHACLNamespace + "IRI"
+	SHACLBlankNode          = SHACLNamespace + "BlankNode"
+	SHACLLiteral            = SHACLNamespace + "Literal"
+	SHACLBlankNodeOrIRI     = SHACLNamespace + "BlankNodeOrIRI"
 	SHACLBlankNodeOrLiteral = SHACLNamespace + "BlankNodeOrLiteral"
-	SHACLIRIOrLiteral      = SHACLNamespace + "IRIOrLiteral"
+	SHACLIRIOrLiteral       = SHACLNamespace + "IRIOrLiteral"
 
 	RDFType = RDFNamespace + "type"
+
+	rdfFirstIRI = RDFNamespace + "first"
+	rdfRestIRI  = RDFNamespace + "rest"
+	rdfNilIRI   = RDFNamespace + "nil"
 )
 
 // SHACLValidationResult represents a single constraint violation.
@@ -193,6 +198,17 @@ func parseSHACLPropertyShape(id RDFTerm, bySubject map[string][]RDFTriple) (shac
 			if re, err := regexp.Compile(tr.Object.Value); err == nil {
 				prop.Pattern = re
 			}
+		case SHACLIn:
+			values, err := parseSHACLInValues(tr.Object, bySubject)
+			if err != nil {
+				return prop, err
+			}
+			prop.In = append(prop.In, values...)
+		case SHACLNodeKind:
+			prop.NodeKind = tr.Object.Value
+		case SHACLClass:
+			classTerm := tr.Object
+			prop.Class = &classTerm
 		case SHACLSeverity:
 			prop.Severity = tr.Object.Value
 		case SHACLMessage:
@@ -201,6 +217,60 @@ func parseSHACLPropertyShape(id RDFTerm, bySubject map[string][]RDFTriple) (shac
 	}
 
 	return prop, nil
+}
+
+func parseSHACLInValues(head RDFTerm, bySubject map[string][]RDFTriple) ([]RDFTerm, error) {
+	if head.Kind == RDFTermIRI && head.Value == rdfNilIRI {
+		return nil, nil
+	}
+	if head.Kind != RDFTermBlankNode {
+		return []RDFTerm{head}, nil
+	}
+
+	seen := map[string]struct{}{}
+	values := make([]RDFTerm, 0)
+	current := head
+
+	for {
+		key := current.String()
+		if _, ok := seen[key]; ok {
+			return nil, fmt.Errorf("sh:in rdf list cycle detected at %s", key)
+		}
+		seen[key] = struct{}{}
+
+		triples, ok := bySubject[key]
+		if !ok {
+			return nil, fmt.Errorf("sh:in rdf list node not found: %s", key)
+		}
+
+		var (
+			first *RDFTerm
+			rest  *RDFTerm
+		)
+		for _, tr := range triples {
+			switch tr.Predicate.Value {
+			case rdfFirstIRI:
+				value := tr.Object
+				first = &value
+			case rdfRestIRI:
+				value := tr.Object
+				rest = &value
+			}
+		}
+
+		if first == nil || rest == nil {
+			return nil, fmt.Errorf("sh:in rdf list node %s must define rdf:first and rdf:rest", key)
+		}
+		values = append(values, *first)
+
+		if rest.Kind == RDFTermIRI && rest.Value == rdfNilIRI {
+			return values, nil
+		}
+		if rest.Kind != RDFTermBlankNode {
+			return nil, fmt.Errorf("sh:in rdf list rest must be blank node or rdf:nil, got %s", rest.Kind)
+		}
+		current = *rest
+	}
 }
 
 func (g *GraphStore) findSHACLTargets(ctx context.Context, shape shaclNodeShape) ([]RDFTerm, error) {
@@ -225,7 +295,7 @@ func (g *GraphStore) findSHACLTargets(ctx context.Context, shape shaclNodeShape)
 		targets = append(targets, node)
 	}
 
-	return targets, nil
+	return uniqueSHACLTargets(targets), nil
 }
 
 func (g *GraphStore) validateSHACLProperty(ctx context.Context, focusNode RDFTerm, prop shaclPropertyShape) ([]SHACLValidationResult, error) {
@@ -246,7 +316,7 @@ func (g *GraphStore) validateSHACLProperty(ctx context.Context, focusNode RDFTer
 		results = append(results, SHACLValidationResult{
 			FocusNode: focusNode,
 			Path:      prop.Path,
-			Message:   fmt.Sprintf("Less than %d values", *prop.MinCount),
+			Message:   shaclValidationMessage(prop, fmt.Sprintf("Less than %d values", *prop.MinCount)),
 			Severity:  prop.Severity,
 			Source:    prop.ID,
 		})
@@ -255,7 +325,7 @@ func (g *GraphStore) validateSHACLProperty(ctx context.Context, focusNode RDFTer
 		results = append(results, SHACLValidationResult{
 			FocusNode: focusNode,
 			Path:      prop.Path,
-			Message:   fmt.Sprintf("More than %d values", *prop.MaxCount),
+			Message:   shaclValidationMessage(prop, fmt.Sprintf("More than %d values", *prop.MaxCount)),
 			Severity:  prop.Severity,
 			Source:    prop.ID,
 		})
@@ -272,11 +342,53 @@ func (g *GraphStore) validateSHACLProperty(ctx context.Context, focusNode RDFTer
 					FocusNode: focusNode,
 					Path:      prop.Path,
 					Value:     val,
-					Message:   fmt.Sprintf("Value does not have datatype %s", prop.Datatype),
+					Message:   shaclValidationMessage(prop, fmt.Sprintf("Value does not have datatype %s", prop.Datatype)),
 					Severity:  prop.Severity,
 					Source:    prop.ID,
 				})
 			}
+		}
+
+		// Node-kind constraint
+		if prop.NodeKind != "" && !matchesSHACLNodeKind(val, prop.NodeKind) {
+			results = append(results, SHACLValidationResult{
+				FocusNode: focusNode,
+				Path:      prop.Path,
+				Value:     val,
+				Message:   shaclValidationMessage(prop, fmt.Sprintf("Value does not match required node kind %s", prop.NodeKind)),
+				Severity:  prop.Severity,
+				Source:    prop.ID,
+			})
+		}
+
+		// Class constraint
+		if prop.Class != nil {
+			hasClass, err := g.valueHasSHACLClass(ctx, val, *prop.Class)
+			if err != nil {
+				return nil, err
+			}
+			if !hasClass {
+				results = append(results, SHACLValidationResult{
+					FocusNode: focusNode,
+					Path:      prop.Path,
+					Value:     val,
+					Message:   shaclValidationMessage(prop, fmt.Sprintf("Value does not have class %s", prop.Class.Value)),
+					Severity:  prop.Severity,
+					Source:    prop.ID,
+				})
+			}
+		}
+
+		// Enumeration constraint
+		if len(prop.In) > 0 && !containsTerm(prop.In, val) {
+			results = append(results, SHACLValidationResult{
+				FocusNode: focusNode,
+				Path:      prop.Path,
+				Value:     val,
+				Message:   shaclValidationMessage(prop, "Value is not in the allowed set"),
+				Severity:  prop.Severity,
+				Source:    prop.ID,
+			})
 		}
 
 		// Numeric constraints
@@ -287,7 +399,7 @@ func (g *GraphStore) validateSHACLProperty(ctx context.Context, focusNode RDFTer
 					FocusNode: focusNode,
 					Path:      prop.Path,
 					Value:     val,
-					Message:   "Value is not a number",
+					Message:   shaclValidationMessage(prop, "Value is not a number"),
 					Severity:  prop.Severity,
 					Source:    prop.ID,
 				})
@@ -297,7 +409,7 @@ func (g *GraphStore) validateSHACLProperty(ctx context.Context, focusNode RDFTer
 						FocusNode: focusNode,
 						Path:      prop.Path,
 						Value:     val,
-						Message:   fmt.Sprintf("Value %f is less than %f", num, *prop.MinInclusive),
+						Message:   shaclValidationMessage(prop, fmt.Sprintf("Value %f is less than %f", num, *prop.MinInclusive)),
 						Severity:  prop.Severity,
 						Source:    prop.ID,
 					})
@@ -307,7 +419,7 @@ func (g *GraphStore) validateSHACLProperty(ctx context.Context, focusNode RDFTer
 						FocusNode: focusNode,
 						Path:      prop.Path,
 						Value:     val,
-						Message:   fmt.Sprintf("Value %f is greater than %f", num, *prop.MaxInclusive),
+						Message:   shaclValidationMessage(prop, fmt.Sprintf("Value %f is greater than %f", num, *prop.MaxInclusive)),
 						Severity:  prop.Severity,
 						Source:    prop.ID,
 					})
@@ -322,7 +434,7 @@ func (g *GraphStore) validateSHACLProperty(ctx context.Context, focusNode RDFTer
 					FocusNode: focusNode,
 					Path:      prop.Path,
 					Value:     val,
-					Message:   fmt.Sprintf("Value does not match pattern %s", prop.Pattern.String()),
+					Message:   shaclValidationMessage(prop, fmt.Sprintf("Value does not match pattern %s", prop.Pattern.String())),
 					Severity:  prop.Severity,
 					Source:    prop.ID,
 				})
@@ -331,4 +443,58 @@ func (g *GraphStore) validateSHACLProperty(ctx context.Context, focusNode RDFTer
 	}
 
 	return results, nil
+}
+
+func uniqueSHACLTargets(targets []RDFTerm) []RDFTerm {
+	unique := make([]RDFTerm, 0, len(targets))
+	for _, target := range targets {
+		if containsTerm(unique, target) {
+			continue
+		}
+		unique = append(unique, target)
+	}
+	return unique
+}
+
+func matchesSHACLNodeKind(term RDFTerm, nodeKind string) bool {
+	switch nodeKind {
+	case SHACLIRI:
+		return term.Kind == RDFTermIRI
+	case SHACLBlankNode:
+		return term.Kind == RDFTermBlankNode
+	case SHACLLiteral:
+		return term.Kind == RDFTermLiteral
+	case SHACLBlankNodeOrIRI:
+		return term.Kind == RDFTermBlankNode || term.Kind == RDFTermIRI
+	case SHACLBlankNodeOrLiteral:
+		return term.Kind == RDFTermBlankNode || term.Kind == RDFTermLiteral
+	case SHACLIRIOrLiteral:
+		return term.Kind == RDFTermIRI || term.Kind == RDFTermLiteral
+	default:
+		return true
+	}
+}
+
+func (g *GraphStore) valueHasSHACLClass(ctx context.Context, value RDFTerm, class RDFTerm) (bool, error) {
+	if value.Kind != RDFTermIRI && value.Kind != RDFTermBlankNode {
+		return false, nil
+	}
+	predicate := NewIRI(RDFType)
+	triples, err := g.FindTriples(ctx, TriplePattern{
+		Subject:   &value,
+		Predicate: &predicate,
+		Object:    &class,
+		Limit:     1,
+	})
+	if err != nil {
+		return false, err
+	}
+	return len(triples) > 0, nil
+}
+
+func shaclValidationMessage(prop shaclPropertyShape, fallback string) string {
+	if strings.TrimSpace(prop.Message) != "" {
+		return prop.Message
+	}
+	return fallback
 }

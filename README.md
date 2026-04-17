@@ -255,6 +255,8 @@ report, _ := db.ValidateKnowledgeGraphSHACL(ctx, cortexdb.KnowledgeGraphSHACLVal
 _ = report
 ```
 
+SHACL-lite currently supports `sh:targetClass`, `sh:targetNode`, `sh:datatype`, `sh:minCount`, `sh:maxCount`, `sh:minInclusive`, `sh:maxInclusive`, `sh:pattern`, `sh:class`, `sh:nodeKind`, `sh:in`, and `sh:message`.
+
 Knowledge graph benchmark coverage is available in `pkg/graph`:
 
 ```bash
@@ -274,7 +276,7 @@ Reference run on Apple M2 Pro, `-benchtime=3x`:
 | RDFS incremental refresh | changed subclass triple fixture | ~859.85 ms | ~1.2 ops/s | ~46 MB |
 | SHACL-lite validation | 500 people age constraints | ~139.24 ms | ~7.2 ops/s | ~6.6 MB |
 
-These numbers are a local reference point, not a portability guarantee. The RDFS and SPARQL subquery benchmarks are intentionally stress-heavy and useful for tracking optimizer work.
+These numbers are a local reference point, not a portability guarantee. The RDFS chain fixture and SPARQL subquery benchmark are intentionally stress-heavy and useful for tracking optimizer work. The suite also includes `BenchmarkKnowledgeGraphRDFSIncrementalLocalRefresh` to measure a more realistic localized change on a multi-component graph.
 
 ## GraphFlow
 

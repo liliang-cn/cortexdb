@@ -109,6 +109,61 @@ func TestRDFTripleLifecycle(t *testing.T) {
 	}
 }
 
+func TestRDFTripleBatchPartialFailure(t *testing.T) {
+	dbPath := fmt.Sprintf("test_rdf_partial_%d.db", time.Now().UnixNano())
+	defer func() { _ = os.Remove(dbPath) }()
+
+	store, err := core.New(dbPath, 16)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	ctx := context.Background()
+	if err := store.Init(ctx); err != nil {
+		t.Fatalf("init store: %v", err)
+	}
+
+	graphStore := NewGraphStore(store)
+	if err := graphStore.InitGraphSchema(ctx); err != nil {
+		t.Fatalf("init graph schema: %v", err)
+	}
+
+	triples := []*RDFTriple{
+		{
+			Subject:   NewIRI("https://example.com/alice"),
+			Predicate: NewIRI("https://schema.org/name"),
+			Object:    NewLiteral("Alice"),
+		},
+		{
+			Subject:   NewLiteral("invalid-subject"),
+			Predicate: NewIRI("https://schema.org/name"),
+			Object:    NewLiteral("Broken"),
+		},
+	}
+
+	result, err := graphStore.UpsertTriplesBatch(ctx, triples)
+	if err != nil {
+		t.Fatalf("upsert triples batch: %v", err)
+	}
+	if result.SuccessCount != 1 || result.FailedCount != 1 {
+		t.Fatalf("expected one success and one failure, got %+v", result)
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("expected one batch error, got %+v", result.Errors)
+	}
+
+	found, err := graphStore.FindTriples(ctx, TriplePattern{
+		Subject: ptrTerm(NewIRI("https://example.com/alice")),
+	})
+	if err != nil {
+		t.Fatalf("find persisted triple: %v", err)
+	}
+	if len(found) != 1 {
+		t.Fatalf("expected valid triple to persist, got %+v", found)
+	}
+}
+
 func TestRDFImportRoundTrip(t *testing.T) {
 	dbPath := fmt.Sprintf("test_rdf_roundtrip_%d.db", time.Now().UnixNano())
 	defer func() { _ = os.Remove(dbPath) }()

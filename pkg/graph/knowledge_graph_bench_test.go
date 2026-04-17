@@ -167,6 +167,30 @@ func BenchmarkKnowledgeGraphRDFSIncrementalRefresh(b *testing.B) {
 	}
 }
 
+func BenchmarkKnowledgeGraphRDFSIncrementalLocalRefresh(b *testing.B) {
+	ctx := context.Background()
+	g := newBenchmarkGraphStore(b, 8)
+	seedBenchmarkRDFSForestGraph(b, ctx, g, 32, 8)
+	if _, err := g.RefreshRDFSInferences(ctx); err != nil {
+		b.Fatal(err)
+	}
+	seed := RDFTriple{
+		Subject:   NewIRI("https://example.com/component-7/Class7"),
+		Predicate: NewIRI(rdfsSubClassOfIRI),
+		Object:    NewIRI("https://example.com/component-7/FinalClass"),
+	}
+	if err := g.UpsertTriple(ctx, &seed); err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := g.RefreshRDFSInferencesIncremental(ctx, []RDFTriple{seed}); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkKnowledgeGraphSHACLValidate(b *testing.B) {
 	ctx := context.Background()
 	g := newBenchmarkGraphStore(b, 8)
@@ -244,6 +268,30 @@ func seedBenchmarkRDFSGraph(b *testing.B, ctx context.Context, g *GraphStore, co
 			&RDFTriple{Subject: class, Predicate: NewIRI(rdfsSubClassOfIRI), Object: nextClass},
 			&RDFTriple{Subject: instance, Predicate: NewIRI(rdfTypeIRI), Object: class},
 		)
+	}
+	if _, err := g.UpsertTriplesBatch(ctx, triples); err != nil {
+		b.Fatal(err)
+	}
+}
+
+func seedBenchmarkRDFSForestGraph(b *testing.B, ctx context.Context, g *GraphStore, components, chainLen int) {
+	b.Helper()
+	if components <= 0 || chainLen <= 0 {
+		b.Fatal("components and chainLen must be positive")
+	}
+
+	triples := make([]*RDFTriple, 0, components*chainLen*2)
+	for component := 0; component < components; component++ {
+		base := fmt.Sprintf("https://example.com/component-%d/", component)
+		for i := 0; i < chainLen; i++ {
+			class := NewIRI(fmt.Sprintf("%sClass%d", base, i))
+			nextClass := NewIRI(fmt.Sprintf("%sClass%d", base, i+1))
+			instance := NewIRI(fmt.Sprintf("%sinstance-%d", base, i))
+			triples = append(triples,
+				&RDFTriple{Subject: class, Predicate: NewIRI(rdfsSubClassOfIRI), Object: nextClass},
+				&RDFTriple{Subject: instance, Predicate: NewIRI(rdfTypeIRI), Object: class},
+			)
+		}
 	}
 	if _, err := g.UpsertTriplesBatch(ctx, triples); err != nil {
 		b.Fatal(err)

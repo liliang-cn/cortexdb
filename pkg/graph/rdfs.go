@@ -452,7 +452,7 @@ func computeRDFSInferenceRecords(explicitTriples []RDFTriple) map[string]rdfsInf
 }
 
 func (g *GraphStore) persistInferredRecords(ctx context.Context, records map[string]rdfsInferenceRecord) (int, error) {
-	inferredCount := 0
+	inferredTriples := make([]*RDFTriple, 0, len(records))
 	for _, record := range records {
 		if record.Explicit {
 			continue
@@ -461,12 +461,24 @@ func (g *GraphStore) persistInferredRecords(ctx context.Context, records map[str
 		inferredTriple.Inferred = true
 		inferredTriple.Rule = record.Rule
 		inferredTriple.SupportIDs = append([]string(nil), record.SupportIDs...)
-		if err := g.UpsertTriple(ctx, &inferredTriple); err != nil {
-			return 0, err
-		}
-		inferredCount++
+		tripleCopy := inferredTriple
+		inferredTriples = append(inferredTriples, &tripleCopy)
 	}
-	return inferredCount, nil
+	if len(inferredTriples) == 0 {
+		return 0, nil
+	}
+
+	result, err := g.UpsertTriplesBatch(ctx, inferredTriples)
+	if err != nil {
+		return 0, err
+	}
+	if result.FailedCount > 0 {
+		if len(result.Errors) > 0 {
+			return result.SuccessCount, result.Errors[0]
+		}
+		return result.SuccessCount, fmt.Errorf("failed to persist %d inferred triples", result.FailedCount)
+	}
+	return result.SuccessCount, nil
 }
 
 func (g *GraphStore) normalizeInferenceSeedTriples(ctx context.Context, triples []RDFTriple) ([]RDFTriple, error) {
@@ -641,6 +653,7 @@ func (g *GraphStore) deleteInferredTriplesByID(ctx context.Context, ids []string
 	if len(ids) == 0 {
 		return 0, nil
 	}
+	ids = uniqueSortedStrings(ids)
 	tx, err := g.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("begin delete inferred transaction: %w", err)
@@ -648,15 +661,22 @@ func (g *GraphStore) deleteInferredTriplesByID(ctx context.Context, ids []string
 	defer func() { _ = tx.Rollback() }()
 
 	deleted := 0
-	for _, id := range ids {
-		result, err := tx.ExecContext(ctx, `DELETE FROM graph_edges WHERE id = ?`, id)
+	for _, chunk := range chunkStrings(ids, 900) {
+		args := make([]any, len(chunk))
+		for i, id := range chunk {
+			args[i] = id
+		}
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(chunk)), ",")
+
+		result, err := tx.ExecContext(ctx, fmt.Sprintf(`DELETE FROM graph_edges WHERE id IN (%s)`, placeholders), args...)
 		if err != nil {
 			return deleted, fmt.Errorf("delete inferred graph edge: %w", err)
 		}
 		if _, err := result.RowsAffected(); err != nil {
 			return deleted, fmt.Errorf("count inferred graph edge delete: %w", err)
 		}
-		result, err = tx.ExecContext(ctx, `DELETE FROM kg_triples WHERE id = ? AND inferred = 1`, id)
+
+		result, err = tx.ExecContext(ctx, fmt.Sprintf(`DELETE FROM kg_triples WHERE inferred = 1 AND id IN (%s)`, placeholders), args...)
 		if err != nil {
 			return deleted, fmt.Errorf("delete inferred triple: %w", err)
 		}
@@ -670,6 +690,24 @@ func (g *GraphStore) deleteInferredTriplesByID(ctx context.Context, ids []string
 		return deleted, fmt.Errorf("commit delete inferred transaction: %w", err)
 	}
 	return deleted, nil
+}
+
+func chunkStrings(values []string, size int) [][]string {
+	if len(values) == 0 {
+		return nil
+	}
+	if size <= 0 {
+		size = len(values)
+	}
+	chunks := make([][]string, 0, (len(values)+size-1)/size)
+	for start := 0; start < len(values); start += size {
+		end := start + size
+		if end > len(values) {
+			end = len(values)
+		}
+		chunks = append(chunks, values[start:end])
+	}
+	return chunks
 }
 
 func addInferredRecord(records map[string]rdfsInferenceRecord, triple RDFTriple, rule string, supportIDs []string) bool {
