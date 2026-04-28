@@ -3,6 +3,7 @@ package cortexdb
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"sync"
 
@@ -117,6 +118,13 @@ func (db *DB) Vector() core.Store {
 // Graph returns the graph store interface
 func (db *DB) Graph() *graph.GraphStore {
 	return db.graph
+}
+
+// SQL returns the underlying *sql.DB handle. It is intended for sibling
+// workflow packages that need to manage their own tables on the same SQLite
+// file (e.g. pkg/agentmem). Callers must not close the returned handle.
+func (db *DB) SQL() *sql.DB {
+	return db.store.GetDB()
 }
 
 // DBInfo provides information about the database instance
