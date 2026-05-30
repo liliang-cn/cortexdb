@@ -33,6 +33,8 @@ type SQLDumpSource struct {
 	order      []string            // table insertion order for stable Schemas()
 	records    []Record
 	unparsed   []string
+	copyTable  string   // current COPY block target table
+	copyCols   []string // current COPY block columns
 }
 
 // NewSQLDumpSource parses the entire dump eagerly.
@@ -62,7 +64,8 @@ func NewSQLDumpSource(r io.Reader, opts DumpOptions) (*SQLDumpSource, error) {
 func (s *SQLDumpSource) Unparsed() []string { return s.unparsed }
 
 func (s *SQLDumpSource) parse(dump string) error {
-	for _, stmt := range splitStatements(dump) {
+	remainder := s.extractCopyBlocks(dump)
+	for _, stmt := range splitStatements(remainder) {
 		trimmed := strings.TrimSpace(stmt)
 		if trimmed == "" {
 			continue
@@ -80,6 +83,102 @@ func (s *SQLDumpSource) parse(dump string) error {
 		}
 	}
 	return nil
+}
+
+// extractCopyBlocks consumes "COPY <t> (cols) FROM stdin; <tab-rows> \." blocks
+// and returns the dump with those blocks removed (so the leftover is safe to
+// split on ';'). CREATE TABLE statements may appear before the COPY block, so
+// scan the remainder for them first.
+func (s *SQLDumpSource) extractCopyBlocks(dump string) string {
+	lines := strings.Split(dump, "\n")
+	var kept []string
+	i := 0
+	for i < len(lines) {
+		line := lines[i]
+		up := strings.ToUpper(strings.TrimSpace(line))
+		if strings.HasPrefix(up, "COPY ") && strings.Contains(up, "FROM STDIN") {
+			s.parseCopyHeader(line)
+			i++
+			for i < len(lines) {
+				if strings.TrimSpace(lines[i]) == `\.` {
+					i++
+					break
+				}
+				s.parseCopyRow(lines[i])
+				i++
+			}
+			continue
+		}
+		kept = append(kept, line)
+		i++
+	}
+	return strings.Join(kept, "\n")
+}
+
+// copyState tracks the table/columns of the COPY block currently being read.
+func (s *SQLDumpSource) parseCopyHeader(line string) {
+	line = strings.TrimSpace(line)
+	rest := strings.TrimSpace(line[len("COPY"):])
+	end := strings.IndexAny(rest, " (")
+	if end < 0 {
+		s.copyTable, s.copyCols = "", nil
+		return
+	}
+	table := unquoteIdent(rest[:end])
+	rest = strings.TrimSpace(rest[end:])
+	var cols []string
+	if strings.HasPrefix(rest, "(") {
+		if close := strings.Index(rest, ")"); close >= 0 {
+			for _, c := range strings.Split(rest[1:close], ",") {
+				cols = append(cols, unquoteIdent(c))
+			}
+		}
+	} else if declared, ok := s.columns[table]; ok {
+		for _, c := range declared {
+			cols = append(cols, c.Name)
+		}
+	}
+	if _, seen := s.columns[table]; !seen {
+		s.order = append(s.order, table)
+		decl := make([]Column, len(cols))
+		for i, c := range cols {
+			decl[i] = Column{Name: c}
+		}
+		s.columns[table] = decl
+	}
+	s.copyTable, s.copyCols = table, cols
+}
+
+func (s *SQLDumpSource) parseCopyRow(line string) {
+	if s.copyTable == "" || strings.TrimSpace(line) == "" {
+		return
+	}
+	fields := strings.Split(line, "\t")
+	vals := make(map[string]string, len(s.copyCols))
+	nulls := make(map[string]bool)
+	for i, c := range s.copyCols {
+		if i < len(fields) {
+			f := fields[i]
+			if f == `\N` {
+				nulls[c] = true
+			} else {
+				vals[c] = decodeCopyField(f)
+			}
+		} else {
+			nulls[c] = true
+		}
+	}
+	s.records = append(s.records, Record{
+		Table:  s.copyTable,
+		Values: vals,
+		Nulls:  nulls,
+		Row:    s.tableRowCount(s.copyTable),
+	})
+}
+
+func decodeCopyField(f string) string {
+	r := strings.NewReplacer(`\t`, "\t", `\n`, "\n", `\r`, "\r", `\\`, `\`)
+	return r.Replace(f)
 }
 
 // splitStatements splits on ';' that is outside single/double quotes, honoring
