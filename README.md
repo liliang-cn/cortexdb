@@ -21,6 +21,9 @@ pkg/memoryflow
 pkg/graphflow
   Corpus-to-graph workflow: extraction schema, build, analyze, report, export, HTML.
 
+pkg/importflow
+  External structured-data import (CSV / MySQL-PG dumps) into RAG + knowledge-graph foundations, AI-assisted mapping optional.
+
 pkg/graph
   Low-level graph engine: property graph, RDF triples/quads, SPARQL, RDFS, SHACL.
 

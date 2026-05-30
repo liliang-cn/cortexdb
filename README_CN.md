@@ -21,6 +21,9 @@ pkg/memoryflow
 pkg/graphflow
   Corpus-to-graph workflow：extraction schema、build、analyze、report、export、HTML。
 
+pkg/importflow
+  外部结构化数据导入（CSV / MySQL-PG dump）到 RAG + 知识图谱基础设施，AI 辅助映射可选。
+
 pkg/graph
   底层图引擎：property graph、RDF triples/quads、SPARQL、RDFS、SHACL。
 
