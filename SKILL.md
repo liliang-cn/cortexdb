@@ -1,6 +1,6 @@
 ---
 name: cortexdb
-description: Use CortexDB for local-first AI memory, vector search, RAG, knowledge graphs, SPARQL/RDFS/SHACL, corpus-to-graph workflows, and MCP/tool calling. Use when working with CortexDB, embeddings, memory, RAG, GraphRAG, knowledge graph, RDF, SPARQL, SHACL, memoryflow, graphflow, or MCP tools.
+description: Use CortexDB for local-first AI memory, vector search, RAG, knowledge graphs, SPARQL/RDFS/SHACL, corpus-to-graph workflows, external structured-data import (CSV / SQL dumps), and MCP/tool calling. Use when working with CortexDB, embeddings, memory, RAG, GraphRAG, knowledge graph, RDF, SPARQL, SHACL, data import, CSV/SQL dump import, memoryflow, graphflow, importflow, or MCP tools.
 ---
 
 # CortexDB Skill
@@ -51,7 +51,8 @@ Choose by the job to be done:
 | Full chat-assistant memory workflow | `pkg/memoryflow` | Turns transcripts into episodic memories, supports recall, wake-up layers, and end-of-session promotion. |
 | RDF, SPARQL, RDFS, or SHACL work | Knowledge graph APIs in `pkg/cortexdb` | Standard graph surface for upsert, find, query, import, export, validation, inference, and explanation. |
 | Build a graph from documents, code, or other corpora and analyze it | `pkg/graphflow` | Runs the fixed pipeline `detect -> extract -> build -> analyze -> report -> export`. |
-| Expose CortexDB to an agent or MCP client | `db.GraphRAGTools()` or `db.NewMCPServer()` | Wraps the high-level APIs as tool definitions or an MCP server rather than introducing a second implementation path. |
+| Import external CSV or MySQL/PG SQL dumps into RAG + knowledge graph | `pkg/importflow` `New().Run()` / `AutoImport()` | Parses a source into records, routes columns via a `MappingPlan` to RAG content and KG entities/relations, with optional AI mapping inference and triple extraction. |
+| Expose CortexDB to an agent or MCP client | `db.GraphRAGTools()` or `db.NewMCPServer()`; `importflow.NewMCPServer()` for import tools | Wraps the high-level APIs as tool definitions or an MCP server rather than introducing a second implementation path. |
 
 ## How To Choose
 
@@ -87,6 +88,7 @@ Choose by the job to be done:
 - KnowledgeMemory facade: `pkg/cortexdb/brain.go`
 - Memory workflow service: `pkg/memoryflow/service.go`
 - Corpus-to-graph pipeline: `pkg/graphflow/pipeline.go`
+- External-data import: `pkg/importflow/importer.go`, `pkg/importflow/source_dump.go`, `pkg/importflow/mcp.go`
 - Tool and MCP exposure: `pkg/cortexdb/graphrag_tool_defs.go`, `pkg/cortexdb/mcp.go`
 
 ## Install
@@ -293,6 +295,32 @@ OPENAI_BASE_URL=http://43.167.167.6:8080/v1
 OPENAI_MODEL=gpt-5.4
 ```
 
+## ImportFlow
+
+Use `pkg/importflow` to import external structured data (CSV, MySQL/PostgreSQL dumps)
+into RAG + knowledge-graph foundations in one pass:
+
+```go
+src, _ := importflow.NewSQLDumpSource(strings.NewReader(dump), importflow.DumpOptions{Dialect: importflow.DialectMySQL})
+defer src.Close()
+// or importflow.NewCSVSource(reader, importflow.CSVOptions{Table: "people"})
+
+im := importflow.New(db)
+plan := importflow.MappingPlan{Tables: map[string]importflow.TablePlan{
+    "people": {
+        RAG: &importflow.RAGPlan{ContentTmpl: "{name}: {bio}", IDColumn: "id"},
+        KG:  &importflow.KGPlan{Entities: []importflow.EntityMap{{Ref: "p", Type: "Person", IDTmpl: "{id}", LabelTmpl: "{name}"}}},
+    },
+}}
+rep, _ := im.Run(ctx, src, plan) // rep.RowsRead/ChunksIndexed/TriplesCreated/UnparsedStatements
+```
+
+AI is optional and injected via interfaces — `WithMappingInferer` (infers the plan from
+the schema), `WithTextRefiner`, `WithExtractor` (graphflow triple extraction). With an
+inferer, `im.AutoImport(ctx, src, importflow.Goal{BuildRAG: true, BuildKG: true})` does
+plan + run in one step. RAG works with no embedder (lexical FTS5). The mapping inferer
+reuses the same `graphflow.JSONGenerator` interface.
+
 ## Tools and MCP
 
 In-process tool calls:
@@ -323,6 +351,7 @@ Separate workflow toolboxes:
 
 - memoryflow: `memoryflow_ingest_transcript`, `memoryflow_recall`, `memoryflow_wake_up_layers`, `memoryflow_prepare_reply`
 - graphflow: `graphflow_build`, `graphflow_analyze`, `graphflow_report`, `graphflow_export`, `graphflow_run`
+- importflow: `importflow_plan`, `importflow_run` (via `importflow.NewToolbox(im)` or `importflow.NewMCPServer(im, opts)` / `importflow.RunMCPStdio(ctx, im, opts)`)
 
 ## Optional Semantic Router
 
@@ -348,6 +377,7 @@ go run ./examples/03_memoryflow
 go run ./examples/04_knowledge_graph
 go run ./examples/05_graphflow
 go run ./examples/06_tools_mcp
+go run ./examples/07_importflow
 ```
 
 Use `examples/05_graphflow` to verify OpenAI-compatible LLM graph extraction with structured output.
