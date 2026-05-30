@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CortexDB - Local-First AI Memory and Knowledge Graph</title>
     <meta name="description"
-        content="CortexDB is a pure-Go, single-file AI memory and knowledge graph library with vectors, lexical search, RAG, memoryflow, graphflow, RDF/SPARQL/RDFS/SHACL, and MCP tools.">
+        content="CortexDB is a pure-Go, single-file AI memory and knowledge graph library with vectors, lexical search, RAG, memoryflow, graphflow, importflow, RDF/SPARQL/RDFS/SHACL, and MCP tools.">
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -197,9 +197,9 @@
 
                 <p class="text-xl md:text-2xl text-gray-600 dark:text-gray-300 mb-10 max-w-4xl mx-auto leading-relaxed font-light tracking-wide"
                     data-i18n
-                    data-en="CortexDB combines vectors, FTS5 lexical search, RAG knowledge storage, MemoryFlow, GraphFlow, RDF/SPARQL/RDFS/SHACL, and MCP-aligned tools in one SQLite-backed Go library."
-                    data-zh="CortexDB 将向量检索、FTS5 词法搜索、RAG knowledge、MemoryFlow、GraphFlow、RDF/SPARQL/RDFS/SHACL 与 MCP 工具整合到一个 SQLite-backed Go 库中。">
-                    CortexDB combines vectors, FTS5 lexical search, RAG knowledge storage, MemoryFlow, GraphFlow, RDF/SPARQL/RDFS/SHACL, and MCP-aligned tools in one SQLite-backed Go library.
+                    data-en="CortexDB combines vectors, FTS5 lexical search, RAG knowledge storage, MemoryFlow, GraphFlow, ImportFlow, RDF/SPARQL/RDFS/SHACL, and MCP-aligned tools in one SQLite-backed Go library."
+                    data-zh="CortexDB 将向量检索、FTS5 词法搜索、RAG knowledge、MemoryFlow、GraphFlow、ImportFlow、RDF/SPARQL/RDFS/SHACL 与 MCP 工具整合到一个 SQLite-backed Go 库中。">
+                    CortexDB combines vectors, FTS5 lexical search, RAG knowledge storage, MemoryFlow, GraphFlow, ImportFlow, RDF/SPARQL/RDFS/SHACL, and MCP-aligned tools in one SQLite-backed Go library.
                 </p>
 
                 <div class="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
@@ -332,6 +332,24 @@
                 <div
                     class="feature-card bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700">
                     <div
+                        class="w-12 h-12 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-xl flex items-center justify-center mb-6">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4">
+                            </path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="ImportFlow" data-zh="ImportFlow">ImportFlow</h3>
+                    <p class="text-gray-600 dark:text-gray-300" data-i18n
+                        data-en="Import external structured data (CSV, MySQL/PostgreSQL dumps) into RAG and knowledge-graph foundations in one pass, with optional AI-assisted mapping, triple extraction, and text refinement."
+                        data-zh="将外部结构化数据（CSV、MySQL/PostgreSQL dump）一次导入为 RAG 与知识图谱基础，AI 辅助的映射推断、三元组抽取与文本清洗均可选。">
+                        Import external structured data (CSV, MySQL/PostgreSQL dumps) into RAG and knowledge-graph foundations in one pass, with optional AI-assisted mapping, triple extraction, and text refinement.
+                    </p>
+                </div>
+
+                <div
+                    class="feature-card bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700">
+                    <div
                         class="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center mb-6">
                         <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -431,9 +449,9 @@
                 <h2 class="text-4xl font-bold mb-4" data-i18n data-en="Architecture Overview" data-zh="架构概览">
                     Architecture Overview</h2>
                 <p class="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto" data-i18n
-                    data-en="Modular Go packages for cortexdb, memoryflow, graphflow, embedded KG, storage, and tools"
-                    data-zh="模块化 Go 包覆盖 cortexdb、memoryflow、graphflow、内嵌 KG、存储与工具">
-                    Modular Go packages for cortexdb, memoryflow, graphflow, embedded KG, storage, and tools
+                    data-en="Modular Go packages for cortexdb, memoryflow, graphflow, importflow, embedded KG, storage, and tools"
+                    data-zh="模块化 Go 包覆盖 cortexdb、memoryflow、graphflow、importflow、内嵌 KG、存储与工具">
+                    Modular Go packages for cortexdb, memoryflow, graphflow, importflow, embedded KG, storage, and tools
                 </p>
             </div>
 
@@ -469,6 +487,17 @@
                             data-en="Corpus-to-graph extraction schema, build, analysis, report, JSON export, and HTML visualization."
                             data-zh="Corpus-to-graph extraction schema、build、analysis、report、JSON 与 HTML 可视化。">
                             Corpus-to-graph extraction schema, build, analysis, report, JSON export, and HTML visualization.
+                        </p>
+                    </div>
+
+                    <div
+                        class="p-6 bg-gradient-to-r from-teal-50 to-emerald-50 dark:from-teal-900/20 dark:to-emerald-900/20 rounded-xl border border-teal-200 dark:border-teal-700">
+                        <h3 class="text-xl font-bold mb-3 text-teal-900 dark:text-teal-100" data-i18n
+                            data-en="ImportFlow Package" data-zh="ImportFlow 包">ImportFlow Package</h3>
+                        <p class="text-teal-800 dark:text-teal-200" data-i18n
+                            data-en="Source adapters (CSV, MySQL/PG dump) → MappingPlan → dual RAG + KG sinks, with pluggable AI MappingInferer, TextRefiner, and graphflow triple extraction."
+                            data-zh="Source 适配器（CSV、MySQL/PG dump）→ MappingPlan → RAG 与 KG 双 sink，可插拔的 AI MappingInferer、TextRefiner 与 graphflow 三元组抽取。">
+                            Source adapters (CSV, MySQL/PG dump) → MappingPlan → dual RAG + KG sinks, with pluggable AI MappingInferer, TextRefiner, and graphflow triple extraction.
                         </p>
                     </div>
 
@@ -698,6 +727,28 @@ func main() {
 
                 <div
                     class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+                    <div class="h-2 bg-gradient-to-r from-teal-500 to-emerald-500"></div>
+                    <div class="p-6">
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="ImportFlow" data-zh="ImportFlow">ImportFlow</h3>
+                        <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
+                            data-en="Import a CSV or SQL dump into RAG + knowledge graph: Source parsing, MappingPlan routing, and Plan/Run/AutoImport with optional AI inference."
+                            data-zh="将 CSV 或 SQL dump 导入为 RAG + 知识图谱：Source 解析、MappingPlan 路由，以及 Plan/Run/AutoImport，AI 推断可选。">
+                            Import a CSV or SQL dump into RAG + knowledge graph: Source parsing, MappingPlan routing, and Plan/Run/AutoImport with optional AI inference.
+                        </p>
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/07_importflow"
+                            class="inline-flex items-center text-teal-600 dark:text-teal-400 hover:underline">
+                            <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
+                            <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14">
+                                </path>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+
+                <div
+                    class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
                     <div class="h-2 bg-gradient-to-r from-teal-500 to-green-500"></div>
                     <div class="p-6">
                         <h3 class="text-xl font-bold mb-3" data-i18n data-en="Tools and MCP" data-zh="Tools 与 MCP">Tools and MCP</h3>
@@ -855,9 +906,9 @@ func main() {
                         <span class="text-xl font-bold text-white">CortexDB</span>
                     </div>
                     <p class="text-gray-400 mb-4 max-w-md" data-i18n
-                        data-en="Pure-Go single-file AI memory and knowledge graph library with MemoryFlow, GraphFlow, RDF/SPARQL/RDFS/SHACL, and MCP tools."
-                        data-zh="纯 Go 嵌入式向量 + 图数据库，内置 KnowledgeMemory 与 Memory API与无 Embedding 模式。">
-                        Pure-Go single-file AI memory and knowledge graph library with MemoryFlow, GraphFlow, RDF/SPARQL/RDFS/SHACL, and MCP tools.
+                        data-en="Pure-Go single-file AI memory and knowledge graph library with MemoryFlow, GraphFlow, ImportFlow, RDF/SPARQL/RDFS/SHACL, and MCP tools."
+                        data-zh="纯 Go 嵌入式向量 + 图数据库，内置 MemoryFlow、GraphFlow、ImportFlow、KnowledgeMemory 与 Memory API 与无 Embedding 模式。">
+                        Pure-Go single-file AI memory and knowledge graph library with MemoryFlow, GraphFlow, ImportFlow, RDF/SPARQL/RDFS/SHACL, and MCP tools.
                     </p>
                     <div class="flex space-x-4">
                         <a href="https://github.com/liliang-cn/cortexdb"
