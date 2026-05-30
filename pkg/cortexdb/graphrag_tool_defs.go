@@ -463,11 +463,18 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 }
 
 func toolObjectSchema(required []string, properties map[string]any) map[string]any {
-	return map[string]any{
+	schema := map[string]any{
 		"type":       "object",
 		"properties": properties,
-		"required":   required,
 	}
+	// Only emit "required" when there is at least one required field. A nil
+	// slice serializes as "required": null, which strict JSON Schema
+	// validators (e.g. OpenAI / DeepSeek function-calling) reject with
+	// "null is not of type array".
+	if len(required) > 0 {
+		schema["required"] = required
+	}
+	return schema
 }
 
 func toolStringSchema(description string) map[string]any {

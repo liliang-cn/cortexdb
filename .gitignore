@@ -38,6 +38,8 @@ go.work
 examples/graphflow_visualization/.env
 examples/graphflow_visualization/graphflow_output/
 examples/graphflow_visualization/graphflow_visualization
+examples/kg_e2e/kg_e2e
+/kg_e2e
 knowledge_graph_advanced
 
 # OS generated files

@@ -139,7 +139,13 @@ func (t *Toolbox) Call(ctx context.Context, name string, input json.RawMessage) 
 }
 
 func gfObjectSchema(required []string, properties map[string]any) map[string]any {
-	return map[string]any{"type": "object", "properties": properties, "required": required}
+	schema := map[string]any{"type": "object", "properties": properties}
+	// Omit "required" when empty; a nil slice serializes as "required": null,
+	// which strict function-calling validators reject.
+	if len(required) > 0 {
+		schema["required"] = required
+	}
+	return schema
 }
 
 func gfStringSchema(description string) map[string]any {
