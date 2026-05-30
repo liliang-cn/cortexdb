@@ -39,7 +39,10 @@ func TestDumpSourceInsert(t *testing.T) {
 
 func TestDumpSourceQuoteEscapes(t *testing.T) {
 	dump := "INSERT INTO t (a) VALUES ('O''Brien'),('line1\\nline2');\n"
-	src, _ := NewSQLDumpSource(strings.NewReader(dump), DumpOptions{})
+	// Explicitly MySQL dialect: this test asserts MySQL-style backslash escapes
+	// (\n -> newline). Default Auto is PG-safe (backslash literal) to avoid
+	// silently corrupting Postgres data.
+	src, _ := NewSQLDumpSource(strings.NewReader(dump), DumpOptions{Dialect: DialectMySQL})
 	defer src.Close()
 	var rows []Record
 	_ = src.Records(context.Background(), func(r Record) error { rows = append(rows, r); return nil })
@@ -51,5 +54,41 @@ func TestDumpSourceQuoteEscapes(t *testing.T) {
 	}
 	if v, _ := rows[1].Get("a"); v != "line1\nline2" {
 		t.Fatalf("a1 = %q; want line1<newline>line2", v)
+	}
+}
+
+func TestDumpSourcePostgresBackslashLiteral(t *testing.T) {
+	// In a PG dump, a literal backslash appears as a single backslash inside a
+	// standard single-quoted string; it must NOT be treated as an escape.
+	dump := "INSERT INTO t (p) VALUES ('C:\\path');\n"
+	src, err := NewSQLDumpSource(strings.NewReader(dump), DumpOptions{Dialect: DialectPostgres})
+	if err != nil {
+		t.Fatalf("NewSQLDumpSource: %v", err)
+	}
+	defer src.Close()
+	var rows []Record
+	_ = src.Records(context.Background(), func(r Record) error { rows = append(rows, r); return nil })
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d; want 1", len(rows))
+	}
+	if v, _ := rows[0].Get("p"); v != `C:\path` {
+		t.Fatalf("p = %q; want %q (backslash preserved in PG)", v, `C:\path`)
+	}
+}
+
+func TestDumpSourceMySQLBackslashEscape(t *testing.T) {
+	dump := "INSERT INTO t (a) VALUES ('line1\\nline2');\n"
+	src, err := NewSQLDumpSource(strings.NewReader(dump), DumpOptions{Dialect: DialectMySQL})
+	if err != nil {
+		t.Fatalf("NewSQLDumpSource: %v", err)
+	}
+	defer src.Close()
+	var rows []Record
+	_ = src.Records(context.Background(), func(r Record) error { rows = append(rows, r); return nil })
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d; want 1", len(rows))
+	}
+	if v, _ := rows[0].Get("a"); v != "line1\nline2" {
+		t.Fatalf("a = %q; want line1<newline>line2 (MySQL unescape)", v)
 	}
 }

@@ -4,7 +4,6 @@ package importflow
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"testing"
 )
 
@@ -42,5 +41,4 @@ func TestToolboxCallRun(t *testing.T) {
 	if rep.ChunksIndexed != 1 {
 		t.Fatalf("ChunksIndexed = %d; want 1", rep.ChunksIndexed)
 	}
-	_ = strings.TrimSpace // keep import if unused after edits
 }

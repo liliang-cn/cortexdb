@@ -64,8 +64,19 @@ func NewSQLDumpSource(r io.Reader, opts DumpOptions) (*SQLDumpSource, error) {
 func (s *SQLDumpSource) Unparsed() []string { return s.unparsed }
 
 func (s *SQLDumpSource) parse(dump string) error {
+	// First pass: parse all CREATE TABLE statements so that column order is known
+	// before COPY blocks (which may omit the column list) are extracted. Without
+	// this, parseCopyHeader's column fallback always misses and COPY rows lose
+	// every value. parseCreateTable is idempotent for an already-seen table.
+	for _, stmt := range splitStatements(dump, s.dialect) {
+		trimmed := strings.TrimSpace(stmt)
+		if strings.HasPrefix(strings.ToUpper(trimmed), "CREATE TABLE") {
+			s.parseCreateTable(trimmed)
+		}
+	}
+	// Now COPY headers can resolve their columns from s.columns.
 	remainder := s.extractCopyBlocks(dump)
-	for _, stmt := range splitStatements(remainder) {
+	for _, stmt := range splitStatements(remainder, s.dialect) {
 		trimmed := strings.TrimSpace(stmt)
 		if trimmed == "" {
 			continue
@@ -73,7 +84,8 @@ func (s *SQLDumpSource) parse(dump string) error {
 		upper := strings.ToUpper(trimmed)
 		switch {
 		case strings.HasPrefix(upper, "CREATE TABLE"):
-			s.parseCreateTable(trimmed)
+			// Already handled in the first pass; skip to avoid double work.
+			continue
 		case strings.HasPrefix(upper, "INSERT INTO"):
 			if err := s.parseInsert(trimmed); err != nil {
 				s.unparsed = append(s.unparsed, trimmed)
@@ -115,7 +127,9 @@ func (s *SQLDumpSource) extractCopyBlocks(dump string) string {
 	return strings.Join(kept, "\n")
 }
 
-// copyState tracks the table/columns of the COPY block currently being read.
+// parseCopyHeader records the target table and columns of a COPY ... FROM stdin
+// header. If the header omits an explicit column list, columns are resolved from
+// a previously parsed CREATE TABLE for the same table.
 func (s *SQLDumpSource) parseCopyHeader(line string) {
 	line = strings.TrimSpace(line)
 	rest := strings.TrimSpace(line[len("COPY"):])
@@ -182,8 +196,11 @@ func decodeCopyField(f string) string {
 }
 
 // splitStatements splits on ';' that is outside single/double quotes, honoring
-// the backslash and doubled-quote escapes used by MySQL/PG dumps.
-func splitStatements(s string) []string {
+// the doubled-quote escape and (for MySQL) backslash escapes. For Postgres and
+// the default Auto dialect, backslash is treated as a literal character inside
+// standard single-quoted strings so it cannot mask a closing quote.
+func splitStatements(s string, dialect Dialect) []string {
+	mysqlEscapes := dialect == DialectMySQL
 	var out []string
 	var b strings.Builder
 	var quote rune
@@ -192,7 +209,7 @@ func splitStatements(s string) []string {
 		c := runes[i]
 		if quote != 0 {
 			b.WriteRune(c)
-			if c == '\\' && i+1 < len(runes) {
+			if mysqlEscapes && c == '\\' && i+1 < len(runes) {
 				i++
 				b.WriteRune(runes[i])
 				continue
@@ -245,6 +262,9 @@ func (s *SQLDumpSource) parseCreateTable(stmt string) {
 		return
 	}
 	table := unquoteIdent(fields[2])
+	if _, seen := s.columns[table]; seen {
+		return // already parsed (e.g. first-pass CREATE TABLE scan)
+	}
 	body := stmt[open+1:]
 	if close := strings.LastIndex(body, ")"); close >= 0 {
 		body = body[:close]
@@ -332,7 +352,7 @@ func (s *SQLDumpSource) parseInsert(stmt string) error {
 	if vi < 0 {
 		return fmt.Errorf("missing VALUES")
 	}
-	tuples := parseValueTuples(rest[vi+len("VALUES"):])
+	tuples := parseValueTuples(rest[vi+len("VALUES"):], s.dialect)
 	if len(tuples) == 0 {
 		return fmt.Errorf("no value tuples")
 	}
@@ -380,8 +400,13 @@ type cell struct {
 }
 
 // parseValueTuples parses "(a,b),(c,d)" into tuples of cells, honoring quotes,
-// doubled-quote and backslash escapes, and bareword NULL.
-func parseValueTuples(s string) [][]cell {
+// doubled-quote escapes and bareword NULL. Backslash handling is dialect-aware:
+// for MySQL, backslash escapes (\n,\t,\r,\\,\') are decoded; for Postgres and
+// the default Auto dialect, backslash is a literal character inside standard
+// single-quoted strings (the conservative choice, so PG data is never silently
+// corrupted).
+func parseValueTuples(s string, dialect Dialect) [][]cell {
+	mysqlEscapes := dialect == DialectMySQL
 	var tuples [][]cell
 	runes := []rune(s)
 	i := 0
@@ -412,7 +437,7 @@ func parseValueTuples(s string) [][]cell {
 		for i < len(runes) {
 			c := runes[i]
 			if quote != 0 {
-				if c == '\\' && i+1 < len(runes) {
+				if mysqlEscapes && c == '\\' && i+1 < len(runes) {
 					next := runes[i+1]
 					switch next {
 					case 'n':
