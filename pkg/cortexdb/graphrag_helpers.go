@@ -110,39 +110,43 @@ func (db *DB) upsertGraphRAGDocumentRecord(ctx context.Context, doc *core.Docume
 	return nil
 }
 
+// splitGraphRAGText splits text into overlapping chunks of up to chunkSize
+// words. It uses a sliding window over ALL words in the document (whitespace,
+// including newlines, is collapsed) rather than chunking each line/paragraph
+// independently. This keeps short lines — headings, list items, single
+// commands — merged with their surrounding context instead of becoming tiny
+// standalone chunks, which produce semantically thin embeddings and poor
+// retrieval ranking.
 func splitGraphRAGText(text string, chunkSize, chunkOverlap int) []string {
-	paragraphs := strings.FieldsFunc(text, func(r rune) bool {
-		return r == '\n' || r == '\r'
-	})
+	if chunkSize <= 0 {
+		chunkSize = 120
+	}
+	if chunkOverlap < 0 || chunkOverlap >= chunkSize {
+		chunkOverlap = 0
+	}
+
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return nil
+	}
+	if len(words) <= chunkSize {
+		return []string{strings.Join(words, " ")}
+	}
+
+	step := chunkSize - chunkOverlap
+	if step <= 0 {
+		step = chunkSize
+	}
 
 	var chunks []string
-	for _, paragraph := range paragraphs {
-		paragraph = strings.TrimSpace(paragraph)
-		if paragraph == "" {
-			continue
+	for start := 0; start < len(words); start += step {
+		end := start + chunkSize
+		if end > len(words) {
+			end = len(words)
 		}
-		words := strings.Fields(paragraph)
-		if len(words) == 0 {
-			continue
-		}
-		if len(words) <= chunkSize {
-			chunks = append(chunks, strings.Join(words, " "))
-			continue
-		}
-
-		step := chunkSize - chunkOverlap
-		if step <= 0 {
-			step = chunkSize
-		}
-		for start := 0; start < len(words); start += step {
-			end := start + chunkSize
-			if end > len(words) {
-				end = len(words)
-			}
-			chunks = append(chunks, strings.Join(words[start:end], " "))
-			if end == len(words) {
-				break
-			}
+		chunks = append(chunks, strings.Join(words[start:end], " "))
+		if end == len(words) {
+			break
 		}
 	}
 

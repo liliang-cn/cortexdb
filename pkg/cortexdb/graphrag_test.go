@@ -102,8 +102,10 @@ func TestGraphRAGInsertAndSearch(t *testing.T) {
 		}, "\n\n"),
 	}
 
+	// ChunkSize is in words; the doc is ~16 words. With the sliding-window
+	// chunker a small size forces the content to span two overlapping chunks.
 	ingest, err := db.InsertGraphDocument(ctx, doc, GraphRAGIngestOptions{
-		ChunkSize: 32,
+		ChunkSize: 10,
 		Extractor: fixtureExtractor{},
 	})
 	if err != nil {
