@@ -115,6 +115,8 @@
                         data-en="Features" data-zh="特性">Features</a>
                     <a href="#architecture" class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                         data-i18n data-en="Architecture" data-zh="架构">Architecture</a>
+                    <a href="#self-kg-demo" class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        data-i18n data-en="Demo" data-zh="演示">Demo</a>
                     <a href="#examples" class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors" data-i18n
                         data-en="Examples" data-zh="示例">Examples</a>
                     <a href="https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2"
@@ -594,6 +596,114 @@ func main() {
     })
 }</code></pre>
                 </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Self Knowledge Graph Demo Section -->
+    <section id="self-kg-demo" class="py-20">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"
+                    data-i18n data-en="Live Demo: CortexDB Mapping Itself" data-zh="演示：CortexDB 把自己变成知识图谱">
+                    Live Demo: CortexDB Mapping Itself</h2>
+                <p class="text-xl text-gray-600 dark:text-gray-300" data-i18n
+                    data-en="One markdown overview of this project, fed through graphflow with an LLM extractor — out comes a queryable knowledge graph: 69 nodes, 74 edges, answers included."
+                    data-zh="一份项目说明 markdown，经 graphflow 工作流 + LLM 抽取，产出可查询的知识图谱：69 个节点、74 条边，还能直接回答问题。">
+                    One markdown overview of this project, fed through graphflow with an LLM extractor — out comes a
+                    queryable knowledge graph: 69 nodes, 74 edges, answers included.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+                <div class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden">
+                    <img src="assets/selfkg-overview.png" alt="Knowledge graph overview — 69 nodes extracted from the project docs"
+                        class="w-full" loading="lazy">
+                    <div class="p-4 text-sm text-gray-600 dark:text-gray-300" data-i18n
+                        data-en="The full graph: layers, APIs, tools, binaries and the relations between them — extracted automatically from docs/PROJECT_OVERVIEW.md."
+                        data-zh="全图：分层、API、工具、二进制与它们之间的关系 — 全部从 docs/PROJECT_OVERVIEW.md 自动抽取。">
+                        The full graph: layers, APIs, tools, binaries and the relations between them — extracted
+                        automatically from docs/PROJECT_OVERVIEW.md.
+                    </div>
+                </div>
+                <div class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden">
+                    <img src="assets/selfkg-zoom.png" alt="Zoom on the CortexDB hub node: created_by Liang Li, uses SQLite, implemented in Go"
+                        class="w-full" loading="lazy">
+                    <div class="p-4 text-sm text-gray-600 dark:text-gray-300" data-i18n
+                        data-en="Zooming on the hub: CortexDB —created_by→ Liang Li, —uses→ SQLite storage kernel, —implemented_in→ Go, —adopts→ LLM interface injection."
+                        data-zh="枢纽特写：CortexDB —created_by→ Liang Li、—uses→ SQLite 存储内核、—implemented_in→ Go、—adopts→ LLM 接口注入机制。">
+                        Zooming on the hub: CortexDB —created_by→ Liang Li, —uses→ SQLite storage kernel,
+                        —implemented_in→ Go, —adopts→ LLM interface injection.
+                    </div>
+                </div>
+            </div>
+
+            <div class="max-w-3xl mx-auto mb-12">
+                <h3 class="text-2xl font-bold mb-6 text-center" data-i18n
+                    data-en="Ask the graph — answers come from edges, not from an LLM"
+                    data-zh="对图谱提问 — 答案来自图里的边，而不是 LLM 的想象">
+                    Ask the graph — answers come from edges, not from an LLM</h3>
+                <div class="space-y-4">
+                    <div class="flex flex-col gap-2">
+                        <div class="self-end max-w-[85%] bg-blue-600 text-white rounded-2xl rounded-br-sm px-4 py-2"
+                            data-i18n data-en="Who created CortexDB?" data-zh="谁创建了 CortexDB？">Who created CortexDB?</div>
+                        <div class="self-start max-w-[85%] bg-gray-100 dark:bg-gray-800 rounded-2xl rounded-bl-sm px-4 py-2">
+                            <span class="font-semibold">Liang Li</span>
+                            <span class="text-xs text-gray-500 ml-2">CortexDB —created_by→ Liang Li</span>
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <div class="self-end max-w-[85%] bg-blue-600 text-white rounded-2xl rounded-br-sm px-4 py-2"
+                            data-i18n data-en="What is the storage kernel?" data-zh="CortexDB 的存储内核是什么？">What is the storage kernel?</div>
+                        <div class="self-start max-w-[85%] bg-gray-100 dark:bg-gray-800 rounded-2xl rounded-bl-sm px-4 py-2">
+                            <span class="font-semibold" data-i18n data-en="SQLite storage kernel" data-zh="SQLite 存储内核">SQLite storage kernel</span>
+                            <span class="text-xs text-gray-500 ml-2">CortexDB —uses→ SQLite</span>
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <div class="self-end max-w-[85%] bg-blue-600 text-white rounded-2xl rounded-br-sm px-4 py-2"
+                            data-i18n data-en="Which language is it implemented in?" data-zh="CortexDB 是用什么语言实现的？">Which language is it implemented in?</div>
+                        <div class="self-start max-w-[85%] bg-gray-100 dark:bg-gray-800 rounded-2xl rounded-bl-sm px-4 py-2">
+                            <span class="font-semibold">Go</span>
+                            <span class="text-xs text-gray-500 ml-2">CortexDB —implemented_in→ Go</span>
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <div class="self-end max-w-[85%] bg-blue-600 text-white rounded-2xl rounded-br-sm px-4 py-2"
+                            data-i18n data-en="What does the public facade depend on?" data-zh="公共门面层和哪些模块有依赖关系？">What does the public facade depend on?</div>
+                        <div class="self-start max-w-[85%] bg-gray-100 dark:bg-gray-800 rounded-2xl rounded-bl-sm px-4 py-2">
+                            <span class="font-semibold" data-i18n data-en="Engine layers: core storage &amp; vector index, graph &amp; semantics"
+                                data-zh="引擎层：核心存储与向量索引；引擎层：图与语义处理">Engine layers: core storage &amp; vector index, graph &amp; semantics</span>
+                            <span class="text-xs text-gray-500 ml-2" data-i18n data-en="2 edges traversed" data-zh="遍历 2 条边">2 edges traversed</span>
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <div class="self-end max-w-[85%] bg-blue-600 text-white rounded-2xl rounded-br-sm px-4 py-2"
+                            data-i18n data-en="Which node is the biggest hub?" data-zh="整个图谱里连接最多的枢纽节点是？">Which node is the biggest hub?</div>
+                        <div class="self-start max-w-[85%] bg-gray-100 dark:bg-gray-800 rounded-2xl rounded-bl-sm px-4 py-2">
+                            <span class="font-semibold">GraphRAGTools</span>
+                            <span class="text-xs text-gray-500 ml-2" data-i18n data-en="12 relations" data-zh="12 条关系">12 relations</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="max-w-3xl mx-auto text-center">
+                <div class="bg-gray-900 rounded-xl p-6 text-left overflow-x-auto mb-4">
+                    <pre class="text-sm text-gray-100"><code># build the graph of this very project (any OpenAI-compatible LLM works)
+go run ./examples/08_self_knowledge_graph
+
+# then ask it questions — answers are graph traversals, fully deterministic
+go test ./examples/08_self_knowledge_graph -v</code></pre>
+                </div>
+                <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/08_self_knowledge_graph"
+                    class="inline-flex items-center text-blue-600 dark:text-blue-400 hover:underline">
+                    <span data-i18n data-en="View the demo source" data-zh="查看演示源码">View the demo source</span>
+                    <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                    </svg>
+                </a>
             </div>
         </div>
     </section>
