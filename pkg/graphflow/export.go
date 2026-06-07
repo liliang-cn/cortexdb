@@ -220,7 +220,9 @@ const htmlVisualization = `<!DOCTYPE html>
 		function exportPNG(){var png=cy.png({full:true,scale:2,bg:'#f5f7fa'});var a=document.createElement('a');a.href=png;a.download='graph.png';a.click()}
 		document.getElementById('searchInput').addEventListener('input',function(e){var q=e.target.value.toLowerCase();if(!q){cy.elements().removeClass('dimmed highlighted');return}cy.elements().addClass('dimmed');cy.nodes().forEach(function(n){if(n.data('label').toLowerCase().includes(q)||n.id().toLowerCase().includes(q)){n.removeClass('dimmed').addClass('highlighted')}})});
 		document.getElementById('typeFilter').addEventListener('change',function(e){var t=e.target.value;if(!t){cy.nodes().removeClass('dimmed');return}cy.nodes().addClass('dimmed');cy.nodes('[type="'+t+'"]').removeClass('dimmed')});
-		var GRAPH_DATA=JSON.parse(atob('GRAPH_JSON_PLACEHOLDER'));
+		// atob yields a Latin-1 byte string; decode the bytes as UTF-8 so
+		// non-ASCII labels (e.g. Chinese) survive the round-trip.
+		var GRAPH_DATA=JSON.parse(new TextDecoder('utf-8').decode(Uint8Array.from(atob('GRAPH_JSON_PLACEHOLDER'),function(c){return c.charCodeAt(0)})));
 		initCy(GRAPH_DATA.nodes,GRAPH_DATA.edges);
 	</script>
 </body>

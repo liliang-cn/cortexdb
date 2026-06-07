@@ -2,8 +2,11 @@ package graphflow_test
 
 import (
 	"context"
+	"encoding/base64"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
@@ -163,4 +166,63 @@ func containsAt(s, substr string, start int) bool {
 		}
 	}
 	return false
+}
+
+// TestExportHTMLUnicodeLabels guards against mojibake: the embedded payload is
+// base64, and the template must decode it as UTF-8 (plain atob() yields a
+// Latin-1 byte string, garbling any non-ASCII label).
+func TestExportHTMLUnicodeLabels(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	db, err := cortexdb.Open(cortexdb.DefaultConfig(filepath.Join(tmpDir, "test.db")))
+	if err != nil {
+		t.Fatalf("failed to open db: %v", err)
+	}
+	defer db.Close()
+
+	extractions := []graphflow.ExtractionResult{
+		{
+			SourceID: "doc-cn",
+			Title:    "中文文档",
+			Nodes: []graphflow.ExtractionNode{
+				{ID: "facade", Label: "公共门面层", Type: "layer"},
+				{ID: "engine", Label: "引擎层", Type: "layer"},
+			},
+			Edges: []graphflow.ExtractionEdge{
+				{Source: "engine", Target: "facade", Relation: "支撑", Confidence: graphflow.ConfidenceExtracted},
+			},
+		},
+	}
+	if _, err := graphflow.Build(ctx, db, extractions, graphflow.BuildOptions{}); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	result, err := graphflow.ExportHTML(ctx, db, graphflow.ExportRequest{OutputDir: tmpDir})
+	if err != nil {
+		t.Fatalf("export html: %v", err)
+	}
+	html, err := os.ReadFile(result.GraphHTML)
+	if err != nil {
+		t.Fatalf("read html: %v", err)
+	}
+
+	// The template must decode the base64 payload as UTF-8, not Latin-1.
+	if !strings.Contains(string(html), "TextDecoder") {
+		t.Fatal("graph.html must decode the embedded payload with TextDecoder('utf-8')")
+	}
+
+	// The embedded payload itself must round-trip the Chinese labels.
+	re := regexp.MustCompile(`atob\('([A-Za-z0-9+/=]+)'\)`)
+	match := re.FindSubmatch(html)
+	if match == nil {
+		t.Fatal("embedded base64 payload not found in graph.html")
+	}
+	payload, err := base64.StdEncoding.DecodeString(string(match[1]))
+	if err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if !strings.Contains(string(payload), "公共门面层") {
+		t.Fatalf("payload lost the Chinese label: %.200s", payload)
+	}
 }
