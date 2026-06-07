@@ -1,0 +1,31 @@
+# CortexDB
+
+> CortexDB is a pure-Go, single-file AI memory and knowledge graph library. One SQLite file (via modernc.org/sqlite, zero CGO) holds vectors, FTS5 full-text search, RAG knowledge, scoped agent memory, and an RDF knowledge graph with SPARQL, RDFS-lite inference, and SHACL-lite validation. It exposes MCP tools for AI agents and a gRPC sidecar with a typed Rust client.
+
+Key facts:
+- Language: Go (module github.com/liliang-cn/cortexdb/v2), with a Rust client (cortexdb-client on crates.io) via the cortexdb-grpc sidecar
+- Storage: a single SQLite file; no server required, no CGO
+- License: MIT, free for commercial use
+- LLM-independent: never imports an LLM SDK; embeddings and extraction are optional interfaces; lexical retrieval works with zero configuration
+- Retrieval: vector, lexical (FTS5), and hybrid GraphRAG with graph expansion
+- Knowledge graph: RDF triples/quads, practical SPARQL subset, RDFS-lite incremental inference, SHACL-lite validation, Turtle/N-Triples/N-Quads/TriG import/export
+- Workflows: MemoryFlow (conversation memory), GraphFlow (corpus → knowledge graph), ImportFlow (CSV / MySQL / PostgreSQL dumps → RAG + KG)
+- Agent integration: MCP server (stdio), in-process toolbox, gRPC ToolsService
+
+## Docs
+
+- [Project README](https://github.com/liliang-cn/cortexdb/blob/main/README.md): full feature and API documentation
+- [Go API reference](https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2): package documentation
+- [Project overview](https://liliang-cn.github.io/cortexdb/PROJECT_OVERVIEW.md): structure, features, and usage in one page
+- [Rust client](https://crates.io/crates/cortexdb-client): typed gRPC client crate with managed-server feature
+
+## Examples
+
+- [Runnable examples](https://github.com/liliang-cn/cortexdb/tree/main/examples): core vectors, RAG, memoryflow, knowledge graph/SPARQL, graphflow, MCP tools, importflow, and a self-knowledge-graph demo
+- [Self knowledge graph demo](https://github.com/liliang-cn/cortexdb/tree/main/examples/08_self_knowledge_graph): CortexDB turning its own docs into a queryable knowledge graph, with deterministic Q&A over graph edges
+
+## Install
+
+- Go library: go get github.com/liliang-cn/cortexdb/v2
+- gRPC sidecar: go install github.com/liliang-cn/cortexdb/v2/cmd/cortexdb-grpc@latest
+- Rust client: cargo add cortexdb-client

@@ -1,0 +1,6 @@
+# All crawlers welcome, including AI search and citation bots
+# (GPTBot, ChatGPT-User, PerplexityBot, ClaudeBot, Google-Extended, Bingbot)
+User-agent: *
+Allow: /
+
+Sitemap: https://liliang-cn.github.io/cortexdb/sitemap.xml
