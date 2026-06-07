@@ -51,6 +51,42 @@ jobs:
             cd - > /dev/null
           done
 
+  rust-client:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: clients/rust
+
+      - name: Build sidecar
+        run: go build -o clients/rust/target/cortexdb-grpc ./cmd/cortexdb-grpc
+
+      - name: Lint
+        working-directory: clients/rust
+        run: |
+          cargo fmt --check
+          cargo clippy --all-features -- -D warnings
+
+      - name: Test
+        working-directory: clients/rust
+        env:
+          CORTEXDB_GRPC_BIN: ${{ github.workspace }}/clients/rust/target/cortexdb-grpc
+        run: cargo test --all-features
+
   release:
     needs: test
     if: startsWith(github.ref, 'refs/tags/v')
@@ -65,5 +101,51 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-sidecar:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        include:
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Build sidecar binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          ext=""
+          if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+          mkdir -p dist
+          go build -trimpath -ldflags="-s -w" -o "dist/cortexdb-grpc${ext}" ./cmd/cortexdb-grpc
+          tar -czf "dist/cortexdb-grpc_${GOOS}_${GOARCH}.tar.gz" -C dist "cortexdb-grpc${ext}"
+          (cd dist && shasum -a 256 "cortexdb-grpc_${GOOS}_${GOARCH}.tar.gz" > "cortexdb-grpc_${GOOS}_${GOARCH}.tar.gz.sha256")
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/cortexdb-grpc_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz
+            dist/cortexdb-grpc_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -5,9 +5,10 @@ use std::path::{Path, PathBuf};
 
 use crate::CortexClient;
 
-/// Version tag of the sidecar binaries this crate downloads.
-/// Kept in lockstep with the crate version at release time.
-pub const SIDECAR_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// CortexDB release tag (without the leading `v`) whose sidecar binaries this
+/// crate downloads. The repo is versioned independently of this crate — bump
+/// this constant when releasing against a newer sidecar.
+pub const SIDECAR_VERSION: &str = "2.21.0";
 
 const RELEASE_BASE: &str = "https://github.com/liliang-cn/cortexdb/releases/download";
 
