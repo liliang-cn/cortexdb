@@ -134,7 +134,25 @@ has something to download.
   `cargo test`. Existing Go gates (`go build ./...`, `go test -race`)
   unchanged. Release workflow gains the multi-platform binary matrix.
 
-## 5. Docs
+## 5. Future: multi-node (explicitly out of scope for v1)
+
+v1 is single-node: one sidecar owns one SQLite file. The gRPC boundary is
+what makes later evolution possible without touching the proto or the Rust
+client:
+
+- **Sharding / multi-tenant** (most aligned with CortexDB's one-file-per-brain
+  model): run N independent sidecars, route by tenant/agent in a thin client-
+  side routing layer. No server changes needed.
+- **Read replicas / HA**: primary owns writes; replicas sync the SQLite file
+  via WAL replication (Litestream/LiteFS-style) and rebuild in-memory state
+  (HNSW etc.) locally. Write RPCs on a replica would return
+  `FAILED_PRECONDITION` ("read-only replica") — reserve this semantic now in
+  the error-mapping docs so clients can handle it later.
+- **Raft-style strongly consistent multi-writer**: out of scope permanently;
+  it contradicts the embedded single-file design. Users needing this should
+  use a different storage layer.
+
+## 6. Docs
 
 README + README_CN + SKILL.md get a "Use from Rust (gRPC sidecar)" section
 covering: starting the sidecar manually, the env config, the crate's connect
