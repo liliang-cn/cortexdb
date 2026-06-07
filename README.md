@@ -346,6 +346,71 @@ Tool groups include:
 - memoryflow: `memoryflow_ingest_transcript`, `memoryflow_recall`, `memoryflow_wake_up_layers`, `memoryflow_prepare_reply`
 - graphflow: `graphflow_build`, `graphflow_analyze`, `graphflow_report`, `graphflow_export`, `graphflow_run`
 
+## Use from Rust (gRPC sidecar)
+
+The full facade is also served over gRPC by the `cortexdb-grpc` sidecar, with a
+typed Rust client crate ([`cortexdb-client`](clients/rust/cortexdb-client)).
+
+Start the sidecar:
+
+```bash
+go install github.com/liliang-cn/cortexdb/v2/cmd/cortexdb-grpc@latest
+CORTEXDB_PATH=my.db CORTEXDB_GRPC_TOKEN=s3cret cortexdb-grpc
+# listening on 127.0.0.1:47821
+```
+
+| Env / flag | Default | Meaning |
+|---|---|---|
+| `CORTEXDB_PATH` / `-db` | `cortexdb.db` | SQLite file |
+| `CORTEXDB_GRPC_ADDR` / `-addr` | `127.0.0.1:47821` | listen address (localhost-only) |
+| `CORTEXDB_GRPC_TOKEN` / `-token` | empty (auth off) | bearer token for every RPC |
+| `OPENAI_BASE_URL` | empty (lexical mode) | OpenAI-compatible embeddings endpoint |
+| `OPENAI_API_KEY` | empty | embeddings API key |
+| `CORTEXDB_EMBED_MODEL` | `text-embedding-3-small` | embedding model |
+| `CORTEXDB_EMBED_DIM` | `1536` | embedding dimension |
+
+Works with any OpenAI-compatible endpoint, e.g. Ollama:
+`OPENAI_BASE_URL=http://localhost:11434/v1 CORTEXDB_EMBED_MODEL=embeddinggemma CORTEXDB_EMBED_DIM=768`.
+
+From Rust:
+
+```rust
+use cortexdb_client::{proto, CortexClient};
+
+let client = CortexClient::builder("http://127.0.0.1:47821")
+    .token("s3cret")
+    .connect()
+    .await?;
+client.knowledge().save_knowledge(proto::SaveKnowledgeRequest {
+    knowledge_id: "k1".into(),
+    content: "CortexDB from Rust over gRPC.".into(),
+    ..Default::default()
+}).await?;
+let hits = client.knowledge().search_knowledge(proto::SearchKnowledgeRequest {
+    query: "rust grpc".into(), top_k: 3, ..Default::default()
+}).await?.into_inner();
+```
+
+Services: `knowledge()`, `memory()`, `graph()` (SPARQL/RDF/SHACL/inference/ontology),
+`graphrag()`, `tools()` (generic tool dispatch, same surface as MCP), `admin()`.
+
+With the `managed-server` feature the crate resolves (env → PATH → GitHub
+Releases download with sha256 verification) and spawns the sidecar itself on a
+random port with a fresh random token:
+
+```rust
+use cortexdb_client::sidecar::Sidecar;
+
+let running = Sidecar::ensure().await?.spawn("my.db").await?;
+let client = running.client().await?;
+```
+
+Notes: token auth rides plaintext gRPC — fine on localhost; add TLS or a
+reverse proxy for cross-machine use. v1 is single-node: one sidecar owns one
+SQLite file (multi-user apps use memory scopes / KG namespaces / collections
+inside the file). Proto contract lives in `proto/cortexdb/v1/`; regenerate with
+`scripts/gen-proto.sh` (Go) and `cargo run -p gen` in `clients/rust/` (Rust).
+
 ## Optional Semantic Router
 
 `pkg/semantic-router` remains available as an optional utility for routing user input to handlers or CortexDB tools before retrieval. It is not required by the main CortexDB, MemoryFlow, or GraphFlow paths.

@@ -353,6 +353,27 @@ Separate workflow toolboxes:
 - graphflow: `graphflow_build`, `graphflow_analyze`, `graphflow_report`, `graphflow_export`, `graphflow_run`
 - importflow: `importflow_plan`, `importflow_run` (via `importflow.NewToolbox(im)` or `importflow.NewMCPServer(im, opts)` / `importflow.RunMCPStdio(ctx, im, opts)`)
 
+## gRPC Sidecar + Rust Client
+
+The full facade is also served over gRPC for non-Go callers:
+
+- Server binary: `cmd/cortexdb-grpc` (env/flags: `CORTEXDB_PATH`,
+  `CORTEXDB_GRPC_ADDR` default `127.0.0.1:47821`, `CORTEXDB_GRPC_TOKEN` enables
+  bearer auth, `OPENAI_BASE_URL`/`OPENAI_API_KEY`/`CORTEXDB_EMBED_MODEL`/
+  `CORTEXDB_EMBED_DIM` wire an OpenAI-compatible embedder; unset → lexical mode).
+- Proto contract: `proto/cortexdb/v1/` — services `KnowledgeService`,
+  `MemoryService`, `KnowledgeGraphService`, `GraphRagService`, `ToolsService`
+  (generic `CallTool(name, json)` over the same toolbox as MCP), `AdminService`.
+- Go layers: generated stubs in `pkg/rpc/v1`, conversion-only handlers in
+  `pkg/rpcserver` (no business logic there). Regenerate via `scripts/gen-proto.sh`.
+- Rust client: `clients/rust/cortexdb-client` (crates.io). Connect with
+  `CortexClient::builder(endpoint).token(t).connect()`; optional
+  `managed-server` feature downloads/spawns the sidecar with an auto token
+  (`Sidecar::ensure().spawn(db)`). Generated Rust code is committed
+  (`src/gen/`); regenerate with `cargo run -p gen` from `clients/rust/`.
+- Single-node by design: one sidecar process owns one SQLite file; isolate
+  multi-user data with memory scopes / KG namespaces / collections.
+
 ## Optional Semantic Router
 
 `pkg/semantic-router` is optional. Use it before CortexDB tools when you need intent routing.

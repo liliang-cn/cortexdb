@@ -344,6 +344,66 @@ _ = server
 - memoryflow：`memoryflow_ingest_transcript`、`memoryflow_recall`、`memoryflow_wake_up_layers`、`memoryflow_prepare_reply`
 - graphflow：`graphflow_build`、`graphflow_analyze`、`graphflow_report`、`graphflow_export`、`graphflow_run`
 
+## 从 Rust 使用（gRPC sidecar）
+
+完整 facade 也可以通过 `cortexdb-grpc` sidecar 以 gRPC 暴露，并提供类型化的
+Rust 客户端 crate（[`cortexdb-client`](clients/rust/cortexdb-client)）。
+
+启动 sidecar：
+
+```bash
+go install github.com/liliang-cn/cortexdb/v2/cmd/cortexdb-grpc@latest
+CORTEXDB_PATH=my.db CORTEXDB_GRPC_TOKEN=s3cret cortexdb-grpc
+# 监听 127.0.0.1:47821
+```
+
+| 环境变量 / flag | 默认值 | 含义 |
+|---|---|---|
+| `CORTEXDB_PATH` / `-db` | `cortexdb.db` | SQLite 文件 |
+| `CORTEXDB_GRPC_ADDR` / `-addr` | `127.0.0.1:47821` | 监听地址（仅本机） |
+| `CORTEXDB_GRPC_TOKEN` / `-token` | 空（不启用认证） | 每个 RPC 的 Bearer token |
+| `OPENAI_BASE_URL` | 空（lexical 模式） | OpenAI 兼容 embeddings 端点 |
+| `OPENAI_API_KEY` | 空 | embeddings API key |
+| `CORTEXDB_EMBED_MODEL` | `text-embedding-3-small` | 嵌入模型 |
+| `CORTEXDB_EMBED_DIM` | `1536` | 向量维度 |
+
+兼容任何 OpenAI 风格端点，例如 Ollama：
+`OPENAI_BASE_URL=http://localhost:11434/v1 CORTEXDB_EMBED_MODEL=embeddinggemma CORTEXDB_EMBED_DIM=768`。
+
+Rust 侧：
+
+```rust
+use cortexdb_client::{proto, CortexClient};
+
+let client = CortexClient::builder("http://127.0.0.1:47821")
+    .token("s3cret")
+    .connect()
+    .await?;
+client.knowledge().save_knowledge(proto::SaveKnowledgeRequest {
+    knowledge_id: "k1".into(),
+    content: "CortexDB from Rust over gRPC.".into(),
+    ..Default::default()
+}).await?;
+```
+
+服务包含：`knowledge()`、`memory()`、`graph()`（SPARQL/RDF/SHACL/推理/本体）、
+`graphrag()`、`tools()`（通用工具分发，和 MCP 同一套 surface）、`admin()`。
+
+启用 `managed-server` feature 后，crate 可以自己解析二进制（环境变量 → PATH →
+从 GitHub Releases 下载并校验 sha256），用随机端口 + 随机 token 拉起 sidecar：
+
+```rust
+use cortexdb_client::sidecar::Sidecar;
+
+let running = Sidecar::ensure().await?.spawn("my.db").await?;
+let client = running.client().await?;
+```
+
+注意：token 走明文 gRPC，仅适合 localhost；跨机器请自行加 TLS 或反向代理。
+v1 为单节点：一个 sidecar 管一个 SQLite 文件（多用户用文件内的 memory scope /
+KG namespace / collection 隔离）。Proto 契约在 `proto/cortexdb/v1/`；Go 侧用
+`scripts/gen-proto.sh` 重新生成，Rust 侧在 `clients/rust/` 下 `cargo run -p gen`。
+
 ## Optional Semantic Router
 
 `pkg/semantic-router` 仍然作为可选工具包保留，可在 retrieval 前把用户输入路由到 handler 或 CortexDB tool。它不是 CortexDB、MemoryFlow、GraphFlow 主路径的必需依赖。
