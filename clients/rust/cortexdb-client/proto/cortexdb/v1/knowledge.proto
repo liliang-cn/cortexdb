@@ -1,0 +1,117 @@
+syntax = "proto3";
+package cortexdb.v1;
+option go_package = "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1;rpcv1";
+
+import "google/protobuf/timestamp.proto";
+import "cortexdb/v1/common.proto";
+
+message KnowledgeRecord {
+  string id = 1;
+  string title = 2;
+  string content = 3;
+  string source_url = 4;
+  string author = 5;
+  string collection = 6;
+  map<string, string> metadata = 7;
+  repeated string chunk_ids = 8;
+  repeated string entities = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+message SaveKnowledgeRequest {
+  string knowledge_id = 1;
+  string title = 2;
+  string content = 3;
+  string source_url = 4;
+  string author = 5;
+  string collection = 6;
+  int32 chunk_size = 7;
+  int32 chunk_overlap = 8;
+  map<string, string> metadata = 9;
+  repeated ToolEntityInput entities = 10;
+  repeated ToolRelationInput relations = 11;
+}
+
+message SaveKnowledgeResponse {
+  KnowledgeRecord knowledge = 1;
+  string document_node_id = 2;
+  repeated string entity_node_ids = 3;
+  repeated string relation_edge_ids = 4;
+}
+
+message UpdateKnowledgeRequest {
+  string knowledge_id = 1;
+  optional string title = 2;
+  optional string content = 3;
+  optional string source_url = 4;
+  optional string author = 5;
+  optional string collection = 6;
+  optional int32 chunk_size = 7;
+  optional int32 chunk_overlap = 8;
+  map<string, string> metadata = 9;
+  repeated ToolEntityInput entities = 10;
+  repeated ToolRelationInput relations = 11;
+}
+
+message GetKnowledgeRequest { string knowledge_id = 1; }
+message GetKnowledgeResponse { KnowledgeRecord knowledge = 1; }
+
+message DeleteKnowledgeRequest { string knowledge_id = 1; }
+message DeleteKnowledgeResponse {
+  string knowledge_id = 1;
+  bool deleted = 2;
+}
+
+message SearchKnowledgeRequest {
+  string query = 1;
+  string collection = 2;
+  int32 top_k = 3;
+  int32 max_hops = 4;
+  int32 max_related_chunks = 5;
+  int32 max_context_chunks = 6;
+  int32 max_context_chars = 7;
+  int32 per_document_limit = 8;
+  double diversity_lambda = 9;
+  bool disable_rerank = 10;
+  repeated string entity_names = 11;
+  repeated string keywords = 12;
+  repeated string alternate_queries = 13;
+  string retrieval_mode = 14;
+  bool disable_graph = 15;
+  bool graph_light = 16;
+  int32 max_expansion_seeds = 17;
+  int32 max_traversal_nodes = 18;
+  int32 max_entities_per_chunk = 19;
+  optional RetrievalPlan plan = 20;
+}
+
+message KnowledgeSearchHit {
+  string knowledge_id = 1;
+  string title = 2;
+  string source_url = 3;
+  string author = 4;
+  string snippet = 5;
+  double score = 6;
+  repeated string chunk_ids = 7;
+  repeated string entities = 8;
+  map<string, string> metadata = 9;
+}
+
+message SearchKnowledgeResponse {
+  string query = 1;
+  RetrievalPlan plan = 2;
+  RetrievalDecision decision = 3;
+  repeated KnowledgeSearchHit results = 4;
+  repeated GraphRagChunkResult chunks = 5;
+  repeated string entities = 6;
+  string context = 7;
+}
+
+service KnowledgeService {
+  rpc SaveKnowledge(SaveKnowledgeRequest) returns (SaveKnowledgeResponse);
+  rpc UpdateKnowledge(UpdateKnowledgeRequest) returns (SaveKnowledgeResponse);
+  rpc GetKnowledge(GetKnowledgeRequest) returns (GetKnowledgeResponse);
+  rpc SearchKnowledge(SearchKnowledgeRequest) returns (SearchKnowledgeResponse);
+  rpc DeleteKnowledge(DeleteKnowledgeRequest) returns (DeleteKnowledgeResponse);
+}

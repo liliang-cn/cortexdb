@@ -1,0 +1,87 @@
+syntax = "proto3";
+package cortexdb.v1;
+option go_package = "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1;rpcv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+import "cortexdb/v1/common.proto";
+
+message MemoryRecord {
+  string id = 1;
+  string user_id = 2;
+  string session_id = 3;
+  string scope = 4;
+  string namespace = 5;
+  string role = 6;
+  string content = 7;
+  google.protobuf.Struct metadata = 8;
+  double importance = 9;
+  int32 ttl_seconds = 10;
+  google.protobuf.Timestamp expires_at = 11;
+  google.protobuf.Timestamp created_at = 12;
+}
+
+message SaveMemoryRequest {
+  string memory_id = 1;
+  string user_id = 2;
+  string session_id = 3;
+  string scope = 4;
+  string namespace = 5;
+  string role = 6;
+  string content = 7;
+  google.protobuf.Struct metadata = 8;
+  double importance = 9;
+  int32 ttl_seconds = 10;
+}
+
+message SaveMemoryResponse { MemoryRecord memory = 1; }
+
+message UpdateMemoryRequest {
+  string memory_id = 1;
+  optional string content = 2;
+  google.protobuf.Struct metadata = 3;
+  optional double importance = 4;
+  optional int32 ttl_seconds = 5;
+}
+
+message GetMemoryRequest { string memory_id = 1; }
+message GetMemoryResponse { MemoryRecord memory = 1; }
+
+message DeleteMemoryRequest { string memory_id = 1; }
+message DeleteMemoryResponse {
+  string memory_id = 1;
+  bool deleted = 2;
+}
+
+message SearchMemoryRequest {
+  string query = 1;
+  string user_id = 2;
+  string session_id = 3;
+  string scope = 4;
+  string namespace = 5;
+  int32 top_k = 6;
+  repeated string keywords = 7;
+  repeated string alternate_queries = 8;
+  string retrieval_mode = 9;
+  optional RetrievalPlan plan = 10;
+}
+
+message MemorySearchHit {
+  MemoryRecord memory = 1;
+  double score = 2;
+}
+
+message SearchMemoryResponse {
+  string query = 1;
+  RetrievalPlan plan = 2;
+  RetrievalDecision decision = 3;
+  repeated MemorySearchHit results = 4;
+}
+
+service MemoryService {
+  rpc SaveMemory(SaveMemoryRequest) returns (SaveMemoryResponse);
+  rpc UpdateMemory(UpdateMemoryRequest) returns (SaveMemoryResponse);
+  rpc GetMemory(GetMemoryRequest) returns (GetMemoryResponse);
+  rpc SearchMemory(SearchMemoryRequest) returns (SearchMemoryResponse);
+  rpc DeleteMemory(DeleteMemoryRequest) returns (DeleteMemoryResponse);
+}

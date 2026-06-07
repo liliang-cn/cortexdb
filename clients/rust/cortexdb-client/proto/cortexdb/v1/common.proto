@@ -1,0 +1,60 @@
+syntax = "proto3";
+package cortexdb.v1;
+option go_package = "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1;rpcv1";
+
+message RetrievalFilters {
+  string collection = 1;
+  repeated string document_ids = 2;
+  string user_id = 3;
+  string session_id = 4;
+  string scope = 5;
+  string namespace = 6;
+}
+
+message RetrievalPlan {
+  string query = 1;
+  repeated string keywords = 2;
+  repeated string alternate_queries = 3;
+  repeated string entity_names = 4;
+  string retrieval_mode = 5;
+  optional RetrievalFilters filters = 6;
+}
+
+message RetrievalDecision {
+  string requested_mode = 1;
+  string effective_mode = 2;
+  bool use_graph = 3;
+  string reason = 4;
+}
+
+message GraphRagChunkResult {
+  string id = 1;
+  string document_id = 2;
+  string content = 3;
+  double score = 4;
+  double base_score = 5;
+  double rerank_score = 6;
+  repeated string entities = 7;
+}
+
+message ToolEntityInput {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  string description = 4;
+  repeated string chunk_ids = 5;
+  map<string, string> metadata = 6;
+}
+
+message ToolRelationInput {
+  string from = 1;
+  string to = 2;
+  string type = 3;
+  double weight = 4;
+  repeated string chunk_ids = 5;
+  map<string, string> metadata = 6;
+  bool inferred = 7;
+  string provenance = 8;
+  string rule_id = 9;
+  repeated string support_edge_ids = 10;
+}
