@@ -11,8 +11,7 @@ fn binary_path() -> Option<std::path::PathBuf> {
     if let Ok(p) = std::env::var("CORTEXDB_GRPC_BIN") {
         return Some(p.into());
     }
-    let fallback =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/cortexdb-grpc");
+    let fallback = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/cortexdb-grpc");
     fallback.exists().then_some(fallback)
 }
 
@@ -157,8 +156,9 @@ async fn roundtrip_against_sidecar() {
     let q = client
         .graph()
         .query_sparql(proto::QuerySparqlRequest {
-            query: "SELECT ?o WHERE { <https://example.com/alice> <https://example.com/knows> ?o . }"
-                .into(),
+            query:
+                "SELECT ?o WHERE { <https://example.com/alice> <https://example.com/knows> ?o . }"
+                    .into(),
         })
         .await
         .expect("sparql")
@@ -175,5 +175,45 @@ async fn roundtrip_against_sidecar() {
     assert!(tools.tools.iter().any(|t| t.name == "knowledge_search"));
 
     child.kill().await.ok();
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[cfg(feature = "managed-server")]
+#[tokio::test]
+async fn managed_sidecar_spawn() {
+    use cortexdb_client::sidecar::Sidecar;
+
+    let Some(bin) = binary_path() else {
+        eprintln!("skipping: cortexdb-grpc binary not found (set CORTEXDB_GRPC_BIN)");
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("cortexdb-managed-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let sidecar = Sidecar::from_binary(&bin);
+    let running = sidecar.spawn(dir.join("managed.db")).await.expect("spawn");
+    assert!(!running.token().is_empty());
+
+    let client = running.client().await.expect("client");
+    let ok = client
+        .admin()
+        .health(proto::HealthRequest {})
+        .await
+        .expect("health")
+        .into_inner();
+    assert!(ok.ok);
+
+    // Unauthenticated access must be rejected (managed mode is authed by default).
+    let anon = CortexClient::connect(running.endpoint().to_string())
+        .await
+        .unwrap();
+    let err = anon
+        .admin()
+        .health(proto::HealthRequest {})
+        .await
+        .unwrap_err();
+    assert_eq!(err.code(), tonic::Code::Unauthenticated);
+
+    running.shutdown().await.expect("shutdown");
     std::fs::remove_dir_all(&dir).ok();
 }

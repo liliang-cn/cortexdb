@@ -51,7 +51,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .await?
         .into_inner();
     for hit in res.results {
-        println!("hit: {} (score {:.3}) — {}", hit.knowledge_id, hit.score, hit.snippet);
+        println!(
+            "hit: {} (score {:.3}) — {}",
+            hit.knowledge_id, hit.score, hit.snippet
+        );
     }
     Ok(())
 }
