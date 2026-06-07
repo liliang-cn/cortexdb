@@ -152,6 +152,19 @@ client:
   it contradicts the embedded single-file design. Users needing this should
   use a different storage layer.
 
+### Multi-tenancy / per-user DB files
+
+v1: one sidecar process owns exactly one DB file. Multi-user apps isolate
+within the file using the existing primitives: memory `UserID` + `Scope`
+buckets, knowledge-graph namespaces, GraphRAG collections. Per-user files
+remain possible by spawning one sidecar per file (fine for desktop/agent use,
+not for high-tenant-count servers).
+
+Evolution path (deliberately deferred): add an optional `database` field to
+requests (or connection metadata) plus a server-side DB-handle pool with LRU
+eviction over a data directory. Optional proto fields are backward-compatible,
+so deferring costs nothing.
+
 ## 6. Docs
 
 README + README_CN + SKILL.md get a "Use from Rust (gRPC sidecar)" section
