@@ -149,6 +149,7 @@ dependencies = [
  "prost-types",
  "rand",
  "reqwest",
+ "serde_json",
  "sha2",
  "tar",
  "tokio",
