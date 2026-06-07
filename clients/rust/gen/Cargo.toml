@@ -1,0 +1,10 @@
+# Dev-only code generator: regenerates ../cortexdb-client/src/gen from the
+# vendored protos. Never published.
+[package]
+name = "gen"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+tonic-prost-build = "0.14"

@@ -83,8 +83,9 @@ Notes:
 
 ## 3. Rust client — `clients/rust/cortexdb-client/`
 
-- tonic + prost; `build.rs` compiles protos vendored into the crate (copied
-  from `proto/` by the regen step) so the crate publishes standalone.
+- tonic + prost; generated code is committed under `src/gen/` (produced by a
+  dev-only `gen` crate from protos vendored by the regen step), so the crate
+  publishes standalone and builds on docs.rs/offline without `protoc`.
 - Entry type: `CortexClient::connect(addr)` exposing `.knowledge()`,
   `.memory()`, `.graph()`, `.graphrag()`, `.tools()`, `.admin()` sub-clients.
 - Auth: `CortexClient::builder(addr).token(t).connect()` attaches

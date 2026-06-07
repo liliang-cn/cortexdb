@@ -1,0 +1,3 @@
+[workspace]
+members = ["cortexdb-client", "gen"]
+resolver = "2"

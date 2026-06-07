@@ -1,0 +1,41 @@
+[package]
+name = "cortexdb-client"
+version = "0.1.0"
+edition = "2021"
+description = "Typed gRPC client for CortexDB (AI memory + knowledge graph sidecar)"
+license = "MIT"
+repository = "https://github.com/liliang-cn/cortexdb"
+keywords = ["cortexdb", "rag", "knowledge-graph", "grpc", "ai"]
+categories = ["database", "api-bindings"]
+
+[dependencies]
+tonic = "0.14"
+prost = "0.14"
+prost-types = "0.14"
+tonic-prost = "0.14"
+
+# managed-server feature deps
+tokio = { version = "1", features = ["process", "fs", "io-util", "time"], optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
+sha2 = { version = "0.10", optional = true }
+hex = { version = "0.4", optional = true }
+dirs = { version = "6", optional = true }
+rand = { version = "0.9", optional = true }
+flate2 = { version = "1", optional = true }
+tar = { version = "0.4", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "time"] }
+
+[features]
+default = []
+managed-server = [
+    "dep:tokio",
+    "dep:reqwest",
+    "dep:sha2",
+    "dep:hex",
+    "dep:dirs",
+    "dep:rand",
+    "dep:flate2",
+    "dep:tar",
+]
