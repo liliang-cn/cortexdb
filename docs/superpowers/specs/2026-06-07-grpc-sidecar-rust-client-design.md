@@ -64,6 +64,14 @@ Notes:
   supported via godotenv, matching `cmd/cortexdb-mcp-stdio`):
   - `CORTEXDB_PATH` (default `cortexdb.db`)
   - `CORTEXDB_GRPC_ADDR` (default `127.0.0.1:47821`, localhost-only)
+  - `CORTEXDB_GRPC_TOKEN` — when set, a unary interceptor requires
+    `authorization: Bearer <token>` metadata on every RPC (including
+    `AdminService.Health`); mismatch or absence returns `UNAUTHENTICATED`.
+    Comparison is constant-time; error messages never echo the token. When
+    unset, auth is disabled (zero-config localhost default). The token rides
+    plaintext gRPC — fine for localhost/trusted networks; cross-machine
+    deployments must add TLS or a reverse proxy themselves (v1 ships no
+    built-in TLS).
   - `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `CORTEXDB_EMBED_MODEL` — when set,
     the binary wires an OpenAI-compatible embeddings client implemented with
     plain `net/http`, living under `cmd/cortexdb-grpc` (the "no LLM SDKs under
@@ -79,6 +87,9 @@ Notes:
   from `proto/` by the regen step) so the crate publishes standalone.
 - Entry type: `CortexClient::connect(addr)` exposing `.knowledge()`,
   `.memory()`, `.graph()`, `.graphrag()`, `.tools()`, `.admin()` sub-clients.
+- Auth: `CortexClient::builder(addr).token(t).connect()` attaches
+  `authorization: Bearer <token>` to every request via a tonic interceptor;
+  plain `connect(addr)` sends no token (matches the server's no-auth default).
 - `examples/` with save→search round-trips for RAG, memory, and SPARQL.
 
 ### Sidecar distribution (C + A)
@@ -91,8 +102,11 @@ Notes:
   1. `Sidecar::ensure()` resolves a binary: `$CORTEXDB_GRPC_BIN` → `PATH` →
      download the platform-matching prebuilt from GitHub Releases into
      `~/.cache/cortexdb/bin/<version>/`, verifying sha256.
-  2. `sidecar.spawn(db_path)` launches it on a random high ephemeral port and
-     returns the address; the child process is killed on drop.
+  2. `sidecar.spawn(db_path)` launches it on a random high ephemeral port
+     with a freshly generated random token (passed via `CORTEXDB_GRPC_TOKEN`
+     to the child and pre-configured on the returned client), and returns the
+     address; the child process is killed on drop. Managed mode is therefore
+     authenticated by default.
   - Binary version is pinned to the crate version (download URL embeds the
     release tag). No build-time network access — `cargo build` stays offline
     and docs.rs builds work.
@@ -110,7 +124,8 @@ has something to download.
 
 - **Go:** `pkg/rpcserver` tests run the server in-process over `bufconn`,
   covering both embedder mode (fake embedder) and lexical mode, matching the
-  existing dual-mode test convention.
+  existing dual-mode test convention. Auth interceptor tests cover: no token
+  configured (open), valid token, missing/wrong token (`UNAUTHENTICATED`).
 - **Rust:** `cargo test` integration test spawns the locally built
   `cortexdb-grpc` binary on an ephemeral port against a temp DB. The
   `managed-server` download path is unit-tested with a mocked release URL;
