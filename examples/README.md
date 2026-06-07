@@ -1,6 +1,6 @@
 # CortexDB Examples
 
-The examples are organized by the current public architecture. There are six runnable folders:
+The examples are organized by the current public architecture:
 
 ```bash
 go run ./examples/01_core
@@ -9,6 +9,8 @@ go run ./examples/03_memoryflow
 go run ./examples/04_knowledge_graph
 go run ./examples/05_graphflow
 go run ./examples/06_tools_mcp
+go run ./examples/07_importflow
+go run ./examples/08_self_knowledge_graph
 ```
 
 ## 01_core
@@ -76,6 +78,29 @@ Toolbox/MCP-aligned APIs through `db.GraphRAGTools()`.
 
 Use this for agents and external LLM orchestration.
 
+## 07_importflow
+
+Structured-data import through `pkg/importflow`.
+
+- parses a CSV (or MySQL/PostgreSQL dump) source
+- builds a MappingPlan routing columns to RAG and knowledge-graph sinks
+- Plan/Run/AutoImport flow with optional AI-assisted mapping
+
+Use this to bootstrap a CortexDB file from existing structured data.
+
+## 08_self_knowledge_graph
+
+Dogfooding demo: CortexDB maps itself.
+
+- splits `docs/PROJECT_OVERVIEW.md` into sections
+- extracts entities/relations with an LLM (local Ollama or any
+  OpenAI-compatible endpoint via `EXTRACT_BASE_URL`/`EXTRACT_API_KEY`)
+- builds, analyzes, and exports the graph (JSON, report, HTML viz)
+- `qa_test.go` answers natural-language questions deterministically
+  from graph edges
+
+Use this as the end-to-end graphflow reference.
+
 ## Rule of Thumb
 
 ```text
@@ -85,4 +110,6 @@ Need chat/session memory?             -> 03_memoryflow
 Need RDF/SPARQL/RDFS/SHACL?           -> 04_knowledge_graph
 Need corpus-to-graph/report/export?   -> 05_graphflow
 Need agent tool/MCP integration?      -> 06_tools_mcp
+Need to import CSV / SQL dumps?       -> 07_importflow
+Want the full graphflow E2E demo?     -> 08_self_knowledge_graph
 ```

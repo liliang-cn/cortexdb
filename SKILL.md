@@ -399,6 +399,7 @@ go run ./examples/04_knowledge_graph
 go run ./examples/05_graphflow
 go run ./examples/06_tools_mcp
 go run ./examples/07_importflow
+go run ./examples/08_self_knowledge_graph   # docs -> graphflow -> KG of this project; qa_test.go answers from graph edges
 ```
 
 Use `examples/05_graphflow` to verify OpenAI-compatible LLM graph extraction with structured output.

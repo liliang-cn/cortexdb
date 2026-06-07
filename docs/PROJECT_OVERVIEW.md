@@ -56,10 +56,11 @@ embeddinggemma 模型。cortexdb-client 是发布在 crates.io 的 Rust crate，
 ## 常用命令与示例
 
 go build 编译全部代码。go test -race 运行完整测试套件。
-examples 目录包含八个可运行示例：01_core 演示向量检索，
+examples 目录包含九个可运行示例：01_core 演示向量检索，
 02_rag 演示 RAG 知识管理，03_memoryflow 演示对话记忆工作流，
 04_knowledge_graph 演示 SPARQL 与推理，05_graphflow 演示语料建图，
 06_tools_mcp 演示工具调用，07_importflow 演示结构化数据导入，
+08_self_knowledge_graph 演示把项目文档建成知识图谱并做图谱问答，
 kg_e2e 演示端到端知识图谱流程。scripts/gen-proto.sh 重新生成
 gRPC 代码。BenchmarkRAG 与 BenchmarkKnowledgeGraph 是 README
 引用的性能基准。

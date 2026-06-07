@@ -4,6 +4,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/liliang-cn/cortexdb/v2)](https://goreportcard.com/report/github.com/liliang-cn/cortexdb/v2)
 [![Go Reference](https://pkg.go.dev/badge/github.com/liliang-cn/cortexdb/v2.svg)](https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Crates.io](https://img.shields.io/crates/v/cortexdb-client.svg?label=cortexdb-client)](https://crates.io/crates/cortexdb-client)
 
 CortexDB is a pure-Go, single-file AI memory and knowledge graph library. It uses SQLite as the storage kernel and exposes vector search, lexical search, RAG knowledge storage, agent memory workflows, RDF/SPARQL/RDFS/SHACL knowledge graph features, corpus-to-graph workflows, and MCP-aligned tool APIs.
 
@@ -349,7 +350,12 @@ Tool groups include:
 ## Use from Rust (gRPC sidecar)
 
 The full facade is also served over gRPC by the `cortexdb-grpc` sidecar, with a
-typed Rust client crate ([`cortexdb-client`](clients/rust/cortexdb-client)).
+typed Rust client crate published on crates.io:
+
+```bash
+cargo add cortexdb-client                            # pure client
+cargo add cortexdb-client --features managed-server  # + auto-download/spawn the sidecar
+```
 
 Start the sidecar:
 
@@ -438,6 +444,8 @@ go run ./examples/03_memoryflow
 go run ./examples/04_knowledge_graph
 go run ./examples/05_graphflow
 go run ./examples/06_tools_mcp
+go run ./examples/07_importflow
+go run ./examples/08_self_knowledge_graph   # builds a KG of this project itself; qa_test.go answers questions from it
 ```
 
 See [examples/README.md](examples/README.md) for the selection guide.

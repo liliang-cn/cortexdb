@@ -347,7 +347,12 @@ _ = server
 ## 从 Rust 使用（gRPC sidecar）
 
 完整 facade 也可以通过 `cortexdb-grpc` sidecar 以 gRPC 暴露，并提供类型化的
-Rust 客户端 crate（[`cortexdb-client`](clients/rust/cortexdb-client)）。
+Rust 客户端 crate 已发布到 crates.io：
+
+```bash
+cargo add cortexdb-client                            # 纯客户端
+cargo add cortexdb-client --features managed-server  # + 自动下载/拉起边车
+```
 
 启动 sidecar：
 
@@ -422,7 +427,7 @@ _ = route.RouteName
 
 ## Examples
 
-现在 examples 按架构收敛为 6 个：
+examples 按架构组织：
 
 ```bash
 go run ./examples/01_core
@@ -431,6 +436,8 @@ go run ./examples/03_memoryflow
 go run ./examples/04_knowledge_graph
 go run ./examples/05_graphflow
 go run ./examples/06_tools_mcp
+go run ./examples/07_importflow
+go run ./examples/08_self_knowledge_graph   # 把本项目文档建成知识图谱；qa_test.go 用图谱回答问题
 ```
 
 选择指南见 [examples/README.md](examples/README.md)。
