@@ -448,6 +448,26 @@ SQLite file (multi-user apps use memory scopes / KG namespaces / collections
 inside the file). Proto contract lives in `proto/cortexdb/v1/`; clients live
 under `clients/{rust,python,node}/`.
 
+## Agent Skills (Hermes, OpenClaw, …)
+
+Two [agentskills.io](https://agentskills.io)-format skills under `skills/` wire
+CortexDB in as the memory + knowledge-graph layer for an AI agent — install them
+straight from the agent's marketplace:
+
+```bash
+# OpenClaw (ClawHub)
+clawhub skill install cortexdb-agent-memory
+
+# Hermes / any agentskills.io client, from git or skills.sh
+hermes skills install git:liliang-cn/cortexdb@main
+npx skills add liliang-cn/cortexdb
+```
+
+`skills/cortexdb-memory-hermes` (Python) and `skills/cortexdb-memory-openclaw`
+(Node) each teach the agent to `remember` / `recall`, do RAG, and store and
+query an RDF/SPARQL knowledge graph, with a ready-to-use helper module under
+`scripts/`.
+
 ## Optional Semantic Router
 
 `pkg/semantic-router` remains available as an optional utility for routing user input to handlers or CortexDB tools before retrieval. It is not required by the main CortexDB, MemoryFlow, or GraphFlow paths.

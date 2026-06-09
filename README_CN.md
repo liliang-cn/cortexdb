@@ -440,6 +440,24 @@ v1 为单节点：一个 sidecar 管一个 SQLite 文件（多用户用文件内
 KG namespace / collection 隔离）。Proto 契约在 `proto/cortexdb/v1/`；三种客户端
 分别在 `clients/{rust,python,node}/`。
 
+## Agent Skills（Hermes、OpenClaw 等）
+
+`skills/` 下有两个 [agentskills.io](https://agentskills.io) 格式的 skill，把
+CortexDB 接成 agent 的记忆 + 知识图谱层，可直接从各自市场一键安装：
+
+```bash
+# OpenClaw（ClawHub）
+clawhub skill install cortexdb-agent-memory
+
+# Hermes / 任意 agentskills.io 客户端，从 git 或 skills.sh
+hermes skills install git:liliang-cn/cortexdb@main
+npx skills add liliang-cn/cortexdb
+```
+
+`skills/cortexdb-memory-hermes`（Python）与 `skills/cortexdb-memory-openclaw`
+（Node）分别教 agent 做 `remember` / `recall`、RAG，以及存储和查询
+RDF/SPARQL 知识图谱，`scripts/` 下附带即用的 helper 模块。
+
 ## Optional Semantic Router
 
 `pkg/semantic-router` 仍然作为可选工具包保留，可在 retrieval 前把用户输入路由到 handler 或 CortexDB tool。它不是 CortexDB、MemoryFlow、GraphFlow 主路径的必需依赖。

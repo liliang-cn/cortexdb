@@ -379,6 +379,12 @@ The full facade is also served over gRPC for non-Go callers:
     agents (OpenClaw); protos loaded at runtime, no build step.
 - Single-node by design: one sidecar process owns one SQLite file; isolate
   multi-user data with memory scopes / KG namespaces / collections.
+- Agent Skills: `skills/cortexdb-memory-hermes` (Python) and
+  `skills/cortexdb-memory-openclaw` (Node) are agentskills.io-format skills that
+  wire CortexDB in as agent memory + KG. Published to ClawHub
+  (`clawhub skill install cortexdb-agent-memory`) and installable from git /
+  skills.sh (`hermes skills install git:liliang-cn/cortexdb@main`,
+  `npx skills add liliang-cn/cortexdb`).
 
 ## Optional Semantic Router
 
