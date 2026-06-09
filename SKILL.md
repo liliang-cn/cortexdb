@@ -353,7 +353,7 @@ Separate workflow toolboxes:
 - graphflow: `graphflow_build`, `graphflow_analyze`, `graphflow_report`, `graphflow_export`, `graphflow_run`
 - importflow: `importflow_plan`, `importflow_run` (via `importflow.NewToolbox(im)` or `importflow.NewMCPServer(im, opts)` / `importflow.RunMCPStdio(ctx, im, opts)`)
 
-## gRPC Sidecar + Rust Client
+## gRPC Sidecar + Rust / Python / Node clients
 
 The full facade is also served over gRPC for non-Go callers:
 
@@ -366,11 +366,17 @@ The full facade is also served over gRPC for non-Go callers:
   (generic `CallTool(name, json)` over the same toolbox as MCP), `AdminService`.
 - Go layers: generated stubs in `pkg/rpc/v1`, conversion-only handlers in
   `pkg/rpcserver` (no business logic there). Regenerate via `scripts/gen-proto.sh`.
-- Rust client: `clients/rust/cortexdb-client` (crates.io). Connect with
-  `CortexClient::builder(endpoint).token(t).connect()`; optional
-  `managed-server` feature downloads/spawns the sidecar with an auto token
-  (`Sidecar::ensure().spawn(db)`). Generated Rust code is committed
-  (`src/gen/`); regenerate with `cargo run -p gen` from `clients/rust/`.
+- Clients (all published under the name `cortexdb-client`, mirroring the same
+  `knowledge`/`memory`/`graph`/`graphrag`/`tools`/`admin` sub-clients + bearer token):
+  - Rust — `clients/rust/` (crates.io): `cargo add cortexdb-client`;
+    `CortexClient::builder(endpoint).token(t).connect()`; optional
+    `managed-server` feature downloads/spawns the sidecar with an auto token
+    (`Sidecar::ensure().spawn(db)`). Generated code committed (`src/gen/`).
+  - Python — `clients/python/` (PyPI): `pip install cortexdb-client`;
+    `CortexClient.connect(endpoint, token=t)`. Target for Python agents (Hermes).
+  - Node — `clients/node/` (npm): `npm install cortexdb-client`;
+    `CortexClient.connect(endpoint, { token })`, promise-based. Target for Node
+    agents (OpenClaw); protos loaded at runtime, no build step.
 - Single-node by design: one sidecar process owns one SQLite file; isolate
   multi-user data with memory scopes / KG namespaces / collections.
 

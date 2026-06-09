@@ -344,15 +344,20 @@ _ = server
 - memoryflow：`memoryflow_ingest_transcript`、`memoryflow_recall`、`memoryflow_wake_up_layers`、`memoryflow_prepare_reply`
 - graphflow：`graphflow_build`、`graphflow_analyze`、`graphflow_report`、`graphflow_export`、`graphflow_run`
 
-## 从 Rust 使用（gRPC sidecar）
+## 从其他语言使用（gRPC sidecar）
 
-完整 facade 也可以通过 `cortexdb-grpc` sidecar 以 gRPC 暴露，并提供类型化的
-Rust 客户端 crate 已发布到 crates.io：
+完整 facade 也可以通过 `cortexdb-grpc` sidecar 以 gRPC 暴露，并提供 **Rust /
+Python / Node** 三种类型化客户端 —— 给 Hermes（Python）或 OpenClaw（Node）
+这类 agent 接上持久记忆和 SPARQL 知识图谱：
 
 ```bash
-cargo add cortexdb-client                            # 纯客户端
-cargo add cortexdb-client --features managed-server  # + 自动下载/拉起边车
+cargo add cortexdb-client    # Rust  (crates.io)
+pip install cortexdb-client  # Python (PyPI)   —— 如 Hermes
+npm install cortexdb-client  # Node   (npm)    —— 如 OpenClaw
 ```
+
+三个客户端的 sub-client 结构一致（`knowledge`、`memory`、`graph`、`graphrag`、
+`tools`、`admin`），都支持 Bearer Token 认证。
 
 启动 sidecar：
 
@@ -394,7 +399,33 @@ client.knowledge().save_knowledge(proto::SaveKnowledgeRequest {
 服务包含：`knowledge()`、`memory()`、`graph()`（SPARQL/RDF/SHACL/推理/本体）、
 `graphrag()`、`tools()`（通用工具分发，和 MCP 同一套 surface）、`admin()`。
 
-启用 `managed-server` feature 后，crate 可以自己解析二进制（环境变量 → PATH →
+Python 侧（Hermes 风格的 agent 记忆）：
+
+```python
+from cortexdb_client import CortexClient, proto
+
+with CortexClient.connect("127.0.0.1:47821", token="s3cret") as client:
+    client.memory.SaveMemory(proto.SaveMemoryRequest(
+        memory_id="m1", user_id="alice", scope="user",
+        content="Alice 偏好 Python，不喜欢重型框架。"))
+    hits = client.memory.SearchMemory(proto.SearchMemoryRequest(
+        query="用户喜欢什么？", user_id="alice", scope="user", top_k=3))
+```
+
+Node 侧（OpenClaw 风格的 agent 记忆）：
+
+```js
+const { CortexClient } = require('cortexdb-client');
+
+const client = CortexClient.connect('127.0.0.1:47821', { token: 's3cret' });
+await client.memory.SaveMemory({
+  memoryId: 'm1', userId: 'alice', scope: 'user',
+  content: 'Alice 本地跑 OpenClaw，偏好 TypeScript。' });
+const hits = await client.memory.SearchMemory({
+  query: '用户偏好什么技术栈？', userId: 'alice', scope: 'user', topK: 3 });
+```
+
+启用 `managed-server` feature 后，**Rust** crate 可以自己解析二进制（环境变量 → PATH →
 从 GitHub Releases 下载并校验 sha256），用随机端口 + 随机 token 拉起 sidecar：
 
 ```rust
@@ -406,8 +437,8 @@ let client = running.client().await?;
 
 注意：token 走明文 gRPC，仅适合 localhost；跨机器请自行加 TLS 或反向代理。
 v1 为单节点：一个 sidecar 管一个 SQLite 文件（多用户用文件内的 memory scope /
-KG namespace / collection 隔离）。Proto 契约在 `proto/cortexdb/v1/`；Go 侧用
-`scripts/gen-proto.sh` 重新生成，Rust 侧在 `clients/rust/` 下 `cargo run -p gen`。
+KG namespace / collection 隔离）。Proto 契约在 `proto/cortexdb/v1/`；三种客户端
+分别在 `clients/{rust,python,node}/`。
 
 ## Optional Semantic Router
 

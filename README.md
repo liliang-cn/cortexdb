@@ -347,15 +347,20 @@ Tool groups include:
 - memoryflow: `memoryflow_ingest_transcript`, `memoryflow_recall`, `memoryflow_wake_up_layers`, `memoryflow_prepare_reply`
 - graphflow: `graphflow_build`, `graphflow_analyze`, `graphflow_report`, `graphflow_export`, `graphflow_run`
 
-## Use from Rust (gRPC sidecar)
+## Use from other languages (gRPC sidecar)
 
-The full facade is also served over gRPC by the `cortexdb-grpc` sidecar, with a
-typed Rust client crate published on crates.io:
+The full facade is also served over gRPC by the `cortexdb-grpc` sidecar, with
+typed clients published for **Rust, Python, and Node** — give a Hermes (Python)
+or OpenClaw (Node) agent durable memory plus a SPARQL knowledge graph:
 
 ```bash
-cargo add cortexdb-client                            # pure client
-cargo add cortexdb-client --features managed-server  # + auto-download/spawn the sidecar
+cargo add cortexdb-client    # Rust  (crates.io)
+pip install cortexdb-client  # Python (PyPI)   — e.g. Hermes
+npm install cortexdb-client  # Node   (npm)    — e.g. OpenClaw
 ```
+
+All three clients mirror the same sub-client layout (`knowledge`, `memory`,
+`graph`, `graphrag`, `tools`, `admin`) and bearer-token auth.
 
 Start the sidecar:
 
@@ -400,7 +405,33 @@ let hits = client.knowledge().search_knowledge(proto::SearchKnowledgeRequest {
 Services: `knowledge()`, `memory()`, `graph()` (SPARQL/RDF/SHACL/inference/ontology),
 `graphrag()`, `tools()` (generic tool dispatch, same surface as MCP), `admin()`.
 
-With the `managed-server` feature the crate resolves (env → PATH → GitHub
+From Python (Hermes-style agent memory):
+
+```python
+from cortexdb_client import CortexClient, proto
+
+with CortexClient.connect("127.0.0.1:47821", token="s3cret") as client:
+    client.memory.SaveMemory(proto.SaveMemoryRequest(
+        memory_id="m1", user_id="alice", scope="user",
+        content="Alice prefers Python and dislikes heavy frameworks."))
+    hits = client.memory.SearchMemory(proto.SearchMemoryRequest(
+        query="what does the user like?", user_id="alice", scope="user", top_k=3))
+```
+
+From Node (OpenClaw-style agent memory):
+
+```js
+const { CortexClient } = require('cortexdb-client');
+
+const client = CortexClient.connect('127.0.0.1:47821', { token: 's3cret' });
+await client.memory.SaveMemory({
+  memoryId: 'm1', userId: 'alice', scope: 'user',
+  content: 'Alice runs OpenClaw locally and prefers TypeScript.' });
+const hits = await client.memory.SearchMemory({
+  query: 'what stack does the user prefer?', userId: 'alice', scope: 'user', topK: 3 });
+```
+
+With the `managed-server` feature the **Rust** crate resolves (env → PATH → GitHub
 Releases download with sha256 verification) and spawns the sidecar itself on a
 random port with a fresh random token:
 
@@ -414,8 +445,8 @@ let client = running.client().await?;
 Notes: token auth rides plaintext gRPC — fine on localhost; add TLS or a
 reverse proxy for cross-machine use. v1 is single-node: one sidecar owns one
 SQLite file (multi-user apps use memory scopes / KG namespaces / collections
-inside the file). Proto contract lives in `proto/cortexdb/v1/`; regenerate with
-`scripts/gen-proto.sh` (Go) and `cargo run -p gen` in `clients/rust/` (Rust).
+inside the file). Proto contract lives in `proto/cortexdb/v1/`; clients live
+under `clients/{rust,python,node}/`.
 
 ## Optional Semantic Router
 

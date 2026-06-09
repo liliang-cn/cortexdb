@@ -1,4 +1,4 @@
-# @cortexdb/client (Node.js)
+# cortexdb-client (Node.js)
 
 Typed gRPC client for [CortexDB](https://github.com/liliang-cn/cortexdb) — a
 pure-Go, single-file AI memory and knowledge graph database, served as a
@@ -8,7 +8,7 @@ memory **and** a queryable knowledge graph.
 ## Install
 
 ```bash
-npm install @cortexdb/client
+npm install cortexdb-client
 ```
 
 Start the sidecar (one binary, one SQLite file):
@@ -22,7 +22,7 @@ CORTEXDB_PATH=agent.db CORTEXDB_GRPC_TOKEN=s3cret cortexdb-grpc
 ## Quick start
 
 ```js
-const { CortexClient } = require('@cortexdb/client');
+const { CortexClient } = require('cortexdb-client');
 
 const client = CortexClient.connect('127.0.0.1:47821', { token: 's3cret' });
 
