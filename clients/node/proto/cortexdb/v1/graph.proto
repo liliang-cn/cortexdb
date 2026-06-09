@@ -1,0 +1,237 @@
+syntax = "proto3";
+package cortexdb.v1;
+option go_package = "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1;rpcv1";
+
+import "google/protobuf/timestamp.proto";
+
+message RdfTerm {
+  string kind = 1;
+  string value = 2;
+  string datatype = 3;
+  string language = 4;
+}
+
+message RdfTriple {
+  string id = 1;
+  RdfTerm subject = 2;
+  RdfTerm predicate = 3;
+  RdfTerm object = 4;
+  optional RdfTerm graph = 5;
+  bool inferred = 6;
+  string rule = 7;
+  repeated string support_ids = 8;
+}
+
+message TriplePattern {
+  optional RdfTerm subject = 1;
+  optional RdfTerm predicate = 2;
+  optional RdfTerm object = 3;
+  optional RdfTerm graph = 4;
+  optional bool inferred = 5;
+  int32 limit = 6;
+}
+
+message GraphNamespace {
+  string prefix = 1;
+  string uri = 2;
+}
+
+message UpsertNamespaceRequest {
+  string prefix = 1;
+  string uri = 2;
+}
+message UpsertNamespaceResponse { GraphNamespace namespace = 1; }
+message ListNamespacesRequest {}
+message ListNamespacesResponse { repeated GraphNamespace namespaces = 1; }
+
+message UpsertKnowledgeGraphRequest { repeated RdfTriple triples = 1; }
+message UpsertKnowledgeGraphResponse {
+  repeated string triple_ids = 1;
+  int32 count = 2;
+}
+
+message FindKnowledgeGraphRequest { TriplePattern pattern = 1; }
+message FindKnowledgeGraphResponse { repeated RdfTriple triples = 1; }
+
+message DeleteKnowledgeGraphRequest {
+  repeated string triple_ids = 1;
+  repeated RdfTriple triples = 2;
+  optional TriplePattern pattern = 3;
+}
+message DeleteKnowledgeGraphResponse { int32 deleted = 1; }
+
+message ImportKnowledgeGraphRequest {
+  string format = 1;
+  string content = 2;
+}
+message ImportKnowledgeGraphResponse {
+  string format = 1;
+  int32 count = 2;
+}
+
+message ExportKnowledgeGraphRequest { string format = 1; }
+message ExportKnowledgeGraphResponse {
+  string format = 1;
+  string content = 2;
+}
+
+message SparqlBinding { map<string, RdfTerm> vars = 1; }
+
+message SparqlResult {
+  string query_type = 1;
+  repeated string vars = 2;
+  repeated SparqlBinding bindings = 3;
+  repeated RdfTriple triples = 4;
+  bool boolean = 5;
+  int32 count = 6;
+}
+
+message QuerySparqlRequest { string query = 1; }
+message QuerySparqlResponse { SparqlResult result = 1; }
+
+message ShaclValidationResult {
+  RdfTerm focus_node = 1;
+  RdfTerm path = 2;
+  RdfTerm value = 3;
+  string message = 4;
+  string severity = 5;
+  RdfTerm source_shape = 6;
+}
+
+message ShaclReport {
+  bool conforms = 1;
+  repeated ShaclValidationResult results = 2;
+}
+
+message ValidateShaclRequest { repeated RdfTriple shapes = 1; }
+message ValidateShaclResponse { ShaclReport report = 1; }
+
+message RefreshInferenceRequest {
+  string mode = 1;
+  repeated string triple_ids = 2;
+  repeated RdfTriple triples = 3;
+  optional TriplePattern pattern = 4;
+}
+message InferenceRefreshResult {
+  int32 explicit_count = 1;
+  int32 inferred_count = 2;
+  bool incremental = 3;
+  int32 affected_explicit_count = 4;
+  int32 removed_inferred_count = 5;
+}
+message RefreshInferenceResponse { InferenceRefreshResult result = 1; }
+
+message SummarizeInferenceRequest {}
+message InferenceSummary {
+  int32 explicit_count = 1;
+  int32 inferred_count = 2;
+  map<string, int32> rules = 3;
+}
+message SummarizeInferenceResponse { InferenceSummary result = 1; }
+
+message InferenceExplanation {
+  RdfTriple triple = 1;
+  bool explicit = 2;
+  string rule = 3;
+  repeated string support_triple_ids = 4;
+}
+
+message InferenceTraceEntry {
+  string triple_id = 1;
+  string parent_triple_id = 2;
+  int32 depth = 3;
+  InferenceExplanation explanation = 4;
+  bool truncated = 5;
+}
+
+message ExplainInferenceRequest {
+  string triple_id = 1;
+  int32 depth = 2;
+}
+message ExplainInferenceResponse {
+  InferenceExplanation explanation = 1;
+  repeated InferenceTraceEntry trace = 2;
+}
+
+message InferenceMatchExplanation {
+  InferenceExplanation explanation = 1;
+  repeated InferenceTraceEntry trace = 2;
+}
+
+message ExplainInferenceMatchRequest {
+  TriplePattern pattern = 1;
+  int32 depth = 2;
+}
+message ExplainInferenceMatchResponse { repeated InferenceMatchExplanation matches = 1; }
+
+message OntologyEntityType {
+  string name = 1;
+  string description = 2;
+  repeated string required_properties = 3;
+}
+
+message OntologyRelationType {
+  string name = 1;
+  string description = 2;
+  repeated string allowed_from_types = 3;
+  repeated string allowed_to_types = 4;
+  repeated string required_properties = 5;
+}
+
+message OntologySchema {
+  string schema_id = 1;
+  string name = 2;
+  string description = 3;
+  int32 version = 4;
+  bool active = 5;
+  map<string, string> metadata = 6;
+  repeated OntologyEntityType entity_types = 7;
+  repeated OntologyRelationType relation_types = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message SaveOntologySchemaRequest {
+  string schema_id = 1;
+  string name = 2;
+  string description = 3;
+  int32 version = 4;
+  bool activate = 5;
+  bool deactivate = 6;
+  map<string, string> metadata = 7;
+  repeated OntologyEntityType entity_types = 8;
+  repeated OntologyRelationType relation_types = 9;
+}
+message SaveOntologySchemaResponse { OntologySchema schema = 1; }
+
+message GetOntologySchemaRequest { string schema_id = 1; }
+message GetOntologySchemaResponse { OntologySchema schema = 1; }
+
+message ListOntologySchemasRequest { bool active_only = 1; }
+message ListOntologySchemasResponse { repeated OntologySchema schemas = 1; }
+
+message DeleteOntologySchemaRequest { string schema_id = 1; }
+message DeleteOntologySchemaResponse {
+  string schema_id = 1;
+  bool deleted = 2;
+}
+
+service KnowledgeGraphService {
+  rpc UpsertNamespace(UpsertNamespaceRequest) returns (UpsertNamespaceResponse);
+  rpc ListNamespaces(ListNamespacesRequest) returns (ListNamespacesResponse);
+  rpc UpsertKnowledgeGraph(UpsertKnowledgeGraphRequest) returns (UpsertKnowledgeGraphResponse);
+  rpc FindKnowledgeGraph(FindKnowledgeGraphRequest) returns (FindKnowledgeGraphResponse);
+  rpc DeleteKnowledgeGraph(DeleteKnowledgeGraphRequest) returns (DeleteKnowledgeGraphResponse);
+  rpc ImportKnowledgeGraph(ImportKnowledgeGraphRequest) returns (ImportKnowledgeGraphResponse);
+  rpc ExportKnowledgeGraph(ExportKnowledgeGraphRequest) returns (ExportKnowledgeGraphResponse);
+  rpc QuerySparql(QuerySparqlRequest) returns (QuerySparqlResponse);
+  rpc ValidateShacl(ValidateShaclRequest) returns (ValidateShaclResponse);
+  rpc RefreshInference(RefreshInferenceRequest) returns (RefreshInferenceResponse);
+  rpc SummarizeInference(SummarizeInferenceRequest) returns (SummarizeInferenceResponse);
+  rpc ExplainInference(ExplainInferenceRequest) returns (ExplainInferenceResponse);
+  rpc ExplainInferenceMatch(ExplainInferenceMatchRequest) returns (ExplainInferenceMatchResponse);
+  rpc SaveOntologySchema(SaveOntologySchemaRequest) returns (SaveOntologySchemaResponse);
+  rpc GetOntologySchema(GetOntologySchemaRequest) returns (GetOntologySchemaResponse);
+  rpc ListOntologySchemas(ListOntologySchemasRequest) returns (ListOntologySchemasResponse);
+  rpc DeleteOntologySchema(DeleteOntologySchemaRequest) returns (DeleteOntologySchemaResponse);
+}

@@ -1,0 +1,1 @@
+recursive-include cortexdb_client/_pb *.py

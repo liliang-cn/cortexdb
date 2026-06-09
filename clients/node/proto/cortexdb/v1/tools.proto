@@ -1,0 +1,28 @@
+syntax = "proto3";
+package cortexdb.v1;
+option go_package = "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1;rpcv1";
+
+message ToolDefinition {
+  string name = 1;
+  string description = 2;
+  // JSON-serialized input schema (map[string]any in Go).
+  string input_schema_json = 3;
+}
+
+message ListToolsRequest {}
+message ListToolsResponse { repeated ToolDefinition tools = 1; }
+
+message CallToolRequest {
+  string name = 1;
+  // JSON-encoded tool arguments.
+  string args_json = 2;
+}
+message CallToolResponse {
+  // JSON-encoded tool result.
+  string result_json = 1;
+}
+
+service ToolsService {
+  rpc ListTools(ListToolsRequest) returns (ListToolsResponse);
+  rpc CallTool(CallToolRequest) returns (CallToolResponse);
+}

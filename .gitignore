@@ -54,3 +54,4 @@ Thumbs.db
 .prompt/
 .claude/
 CLAUDE.md
+clients/target/

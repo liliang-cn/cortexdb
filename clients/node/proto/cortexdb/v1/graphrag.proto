@@ -1,0 +1,96 @@
+syntax = "proto3";
+package cortexdb.v1;
+option go_package = "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1;rpcv1";
+
+import "cortexdb/v1/common.proto";
+
+message InsertGraphDocumentRequest {
+  string id = 1;
+  string title = 2;
+  string content = 3;
+  map<string, string> metadata = 4;
+  // ingest options (GraphRAGIngestOptions minus Extractor)
+  string collection = 5;
+  int32 chunk_size = 6;
+  int32 chunk_overlap = 7;
+}
+
+message InsertGraphDocumentResponse {
+  string document_node_id = 1;
+  repeated string chunk_node_ids = 2;
+  repeated string entity_node_ids = 3;
+}
+
+message SearchGraphRagRequest {
+  string query = 1;
+  string collection = 2;
+  int32 top_k = 3;
+  int32 max_hops = 4;
+  int32 max_related_chunks = 5;
+  int32 max_context_chunks = 6;
+  int32 max_context_chars = 7;
+  int32 per_document_limit = 8;
+  bool rerank = 9;
+  bool disable_rerank = 10;
+  double diversity_lambda = 11;
+  bool disable_graph = 12;
+  string retrieval_mode = 13;
+  bool graph_light = 14;
+  int32 max_expansion_seeds = 15;
+  int32 max_traversal_nodes = 16;
+  int32 max_entities_per_chunk = 17;
+  optional RetrievalPlan plan = 18;
+}
+
+message SearchGraphRagResponse {
+  string query = 1;
+  RetrievalPlan plan = 2;
+  RetrievalDecision decision = 3;
+  repeated GraphRagChunkResult chunks = 4;
+  repeated string entities = 5;
+  string context = 6;
+}
+
+message InsertTextRequest {
+  string id = 1;
+  string text = 2;
+  map<string, string> metadata = 3;
+}
+message InsertTextResponse {}
+
+message InsertTextBatchRequest {
+  map<string, string> texts = 1;
+  map<string, string> metadata = 2;
+}
+message InsertTextBatchResponse {}
+
+message ScoredText {
+  string id = 1;
+  string content = 2;
+  string doc_id = 3;
+  string collection = 4;
+  map<string, string> metadata = 5;
+  double score = 6;
+}
+
+message SearchTextRequest {
+  string query = 1;
+  string collection = 2;
+  int32 top_k = 3;
+}
+message SearchTextResponse { repeated ScoredText results = 1; }
+
+message HybridSearchTextRequest {
+  string query = 1;
+  int32 top_k = 2;
+}
+message HybridSearchTextResponse { repeated ScoredText results = 1; }
+
+service GraphRagService {
+  rpc InsertGraphDocument(InsertGraphDocumentRequest) returns (InsertGraphDocumentResponse);
+  rpc SearchGraphRag(SearchGraphRagRequest) returns (SearchGraphRagResponse);
+  rpc InsertText(InsertTextRequest) returns (InsertTextResponse);
+  rpc InsertTextBatch(InsertTextBatchRequest) returns (InsertTextBatchResponse);
+  rpc SearchText(SearchTextRequest) returns (SearchTextResponse);
+  rpc HybridSearchText(HybridSearchTextRequest) returns (HybridSearchTextResponse);
+}

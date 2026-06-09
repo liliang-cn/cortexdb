@@ -1,0 +1,18 @@
+syntax = "proto3";
+package cortexdb.v1;
+option go_package = "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1;rpcv1";
+
+message HealthRequest {}
+message HealthResponse { bool ok = 1; }
+
+message InfoRequest {}
+message InfoResponse {
+  string version = 1;
+  string db_path = 2;
+  bool has_embedder = 3;
+}
+
+service AdminService {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc Info(InfoRequest) returns (InfoResponse);
+}
