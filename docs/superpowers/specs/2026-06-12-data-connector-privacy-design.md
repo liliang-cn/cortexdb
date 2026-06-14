@@ -15,8 +15,9 @@ source → introspect(schema) → classify(PII) → MaskingPlan (human-signed)
        → desensitize → importflow.Run → RAG + knowledge graph
 ```
 
-Non-goals (v1): REST/飞书 sources, an un-mask key-custody service, distributed
-multi-node import. These are v2.
+Non-goals (v1): REST/飞书 sources, distributed multi-node import. These are v2.
+**Reversibility / un-mask key custody IS in v1** (see "Reversibility & key
+custody" below).
 
 ## Where it lives
 
@@ -109,10 +110,15 @@ type Desensitizer interface { Apply(r importflow.Record) importflow.Record }
 - `mask` — partial: `138****1234`, `张*`, `a***@b.com`
 - `hash` — deterministic token, **per-tenant salt**: same input → same token, so
   GraphRAG entity edges survive without leaking the原值
-- `pseudonymize` — consistent fake value; reversible only by the data owner via a
-  tenant-held map
+- `pseudonymize` — consistent fake value; reversible only by the data owner via
+  the tenant vault (see below)
 - `generalize` — `34`→`30-40`, city→province, date→month
 - `keep` — non-sensitive
+
+Reversible actions (`pseudonymize`, keyed `hash` when marked reversible) write
+the original→token mapping to the **vault** so the data owner can un-mask later.
+Irreversible actions (`redact`, `generalize`, unsalted/one-way `hash`) never
+touch the vault.
 
 ## Classification: three layers (v1)
 
@@ -138,13 +144,54 @@ text is chunked/embedded.
   residual re-identification risk is surfaced in the report, never claimed to be
   zero.
 
+## Reversibility & key custody (v1)
+
+Some fields must be recoverable by the data owner (e.g. resolve a pseudonymized
+customer back to the real record for an operational action), while **never**
+being recoverable by the LLM or by anyone holding only the knowledge DB. v1 ships
+a **token vault** that makes this split explicit.
+
+```go
+type KeyProvider interface { TenantKey(ctx, tenant string) ([]byte, error) }
+// impls: EnvKey, FileKey (0600), later KMS. Keys are never logged or persisted
+// in the knowledge DB.
+
+type Vault interface {
+    // Put stores enc(original) under a stable token; returns the token to embed.
+    Put(ctx, tenant, piiKind, original string) (token string, err error)
+    // Resolve reverses token→original; requires the tenant key. Audited.
+    Resolve(ctx, tenant string, tokens []string) (map[string]string, error)
+}
+```
+
+Design:
+
+- **Separate file, separate trust domain.** The vault is its own
+  `*.vault.db` (SQLite), distinct from the CortexDB knowledge file. Leaking the
+  agent's knowledge DB does **not** leak originals — un-mask needs *both* the
+  vault file *and* the tenant key.
+- **Encryption.** Values are stored as AES-256-GCM ciphertext under the
+  per-tenant key from `KeyProvider`. Tokens are deterministic per (tenant, kind,
+  value) so relationships/joins survive (GraphRAG edges), but the token reveals
+  nothing without the vault+key.
+- **The only reverse path** is `connector.Unmask(ctx, tenant, tokens, keyProvider)`
+  → `map[token]original`. Every call is recorded in an audit log (who/when/how
+  many) for compliance.
+- **The LLM never gets a reverse path.** RAG/embeddings receive only tokens
+  (or fully irreversible values). The vault is operational-side only; it is never
+  read during retrieval/inference. This keeps invariant #3 intact.
+- **Right to erasure.** Dropping a tenant's vault file (or a token row)
+  permanently destroys reversibility — a clean GDPR-style erase that leaves the
+  knowledge graph's structure intact (tokens become opaque forever).
+
 ## Privacy invariants (enforced, not aspirational)
 
 1. **Default-deny**: a column that is unclassified but "looks sensitive" defaults
    to the strictest action (drop/redact), never `keep`. Fail toward safety.
 2. **Deterministic hash preserves relationships** for GraphRAG edges (per-tenant salt).
-3. **Irreversible into the LLM**: anything fed to RAG/embeddings uses irreversible
-   actions (redact/generalize/hash) only. Pseudonymize/reversible never reaches the LLM. (Design invariant — locked.)
+3. **Irreversible into the LLM**: anything fed to RAG/embeddings only ever sees a
+   token or a fully irreversible value. Reversible originals live solely in the
+   tenant vault and are never read during retrieval/inference. (Design invariant — locked.)
 4. **In-place before any trust boundary**: desensitization runs tenant-side /
    in-process, before data enters the LLM or leaves the tenant's DB.
 5. **Audit & provenance**: the run records which column got which action and how
@@ -157,11 +204,13 @@ text is chunked/embedded.
 ## Integration & surface
 
 - `Run` path: `importflow.New(db).Run(ctx, connector.Desensitized(src, plan), mappingPlan)`.
-- Agent-callable: add `connector_introspect`, `connector_plan`,
-  `connector_run` to a toolbox + MCP (same pattern as importflow's toolbox), so
-  SuperLeo/harness can drive "connect my DB → review plan → import" over MCP/gRPC.
-- Multi-tenant: salt + output DB are per-tenant, consistent with the one-file-
-  per-brain model.
+- Agent-callable: **ride importflow's existing toolbox + MCP** — no separate
+  binary. `connector_introspect`, `connector_plan`, `connector_run`, and
+  `connector_unmask` are registered onto the importflow MCP/toolbox surface
+  (connector depends on importflow, extends its tool set). SuperLeo/harness drive
+  "connect my DB → review plan → import → (later) un-mask" over the same MCP/gRPC.
+- Multi-tenant: salt, vault file, and output DB are all per-tenant, consistent
+  with the one-file-per-brain model.
 
 ## Testing
 
@@ -171,13 +220,20 @@ text is chunked/embedded.
   columns and `Records()` masks values; unsigned plan → `Run` refuses.
 - Free-text scan: fixtures with embedded phone/email/id/name → assert redaction +
   reported residual-risk note.
+- Vault: deterministic token per (tenant,kind,value); `Unmask` with the right key
+  round-trips original; wrong/absent key fails; dropping the vault file makes
+  tokens permanently opaque; tokens reaching the RAG sink are never reversible
+  there (no vault read on the retrieval path).
 - Postgres/MySQL sources: integration tests against disposable containers
   (skipped when no DB available), introspection + streaming.
 - Both no-embedder (lexical) and embedder modes for the downstream import.
 
 ## Open decisions
 
-1. Un-mask / reversibility key custody (pseudonymize map) — v2; v1 ships only
-   irreversible + deterministic-hash.
-2. Exact LLM classification prompt + confidence threshold for escalation to human.
-3. Whether `connector` gets its own MCP binary or rides importflow's.
+1. Exact LLM classification prompt + confidence threshold for escalating an
+   "unsure" column to mandatory human review.
+2. `KeyProvider` v1 impls to ship: env var + file (0600) are in; KMS/age/SOPS later.
+3. Vault audit-log destination: same vault file vs a separate append-only log.
+
+Resolved: connector rides importflow's MCP (no separate binary); reversibility /
+un-mask key custody is in v1 via the tenant vault (above).
