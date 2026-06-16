@@ -19,12 +19,13 @@ type SourceOptions struct {
 }
 
 type sqlSource struct {
-	db         *sql.DB
-	driver     string // "pgx" | "mysql"
-	opts       SourceOptions
-	listTables func(ctx context.Context, db *sql.DB, schema string) ([]string, error)
-	listCols   func(ctx context.Context, db *sql.DB, schema, table string) ([]importflow.Column, error)
-	quote      func(ident string) string
+	db          *sql.DB
+	driver      string // "pgx" | "mysql"
+	opts        SourceOptions
+	listTables  func(ctx context.Context, db *sql.DB, schema string) ([]string, error)
+	listCols    func(ctx context.Context, db *sql.DB, schema, table string) ([]importflow.Column, error)
+	quote       func(ident string) string
+	placeholder func(n int) string // $1 (pg) | ? (mysql)
 }
 
 // NewPostgresSource connects to Postgres and returns an importflow.Source.
@@ -45,7 +46,8 @@ func NewPostgresSource(dsn string, opts SourceOptions) (importflow.Source, error
 	return &sqlSource{
 		db: db, driver: "pgx", opts: opts,
 		listTables: pgListTables, listCols: pgListColumns,
-		quote: quotePostgresIdent,
+		quote:       quotePostgresIdent,
+		placeholder: func(n int) string { return fmt.Sprintf("$%d", n) },
 	}, nil
 }
 
@@ -196,6 +198,12 @@ func (s *sqlSource) readRows(ctx context.Context, table string, limit int) ([]im
 	if err != nil {
 		return nil, err
 	}
+	return scanRows(rows, table)
+}
+
+// scanRows reads column names from the result set and converts every row to an
+// importflow.Record. It closes rows on return.
+func scanRows(rows *sql.Rows, table string) ([]importflow.Record, error) {
 	defer rows.Close()
 	colNames, _ := rows.Columns()
 	var out []importflow.Record
@@ -221,6 +229,30 @@ func (s *sqlSource) readRows(ctx context.Context, table string, limit int) ([]im
 		idx++
 	}
 	return out, rows.Err()
+}
+
+// readRowsWhere selects rows matching a cursor predicate, ordered by the cursor
+// then primary key for stable pagination. Used by the polling change source; the
+// snapshot Records()/Schemas() paths are unchanged.
+func (s *sqlSource) readRowsWhere(ctx context.Context, table, cursorCol, watermark string, keyCols []string, limit int) ([]importflow.Record, error) {
+	q := "SELECT * FROM " + s.quote(table)
+	args := []any{}
+	if watermark != "" {
+		q += " WHERE " + s.quote(cursorCol) + " > " + s.placeholder(1)
+		args = append(args, watermark)
+	}
+	q += " ORDER BY " + s.quote(cursorCol)
+	for _, k := range keyCols {
+		q += ", " + s.quote(k)
+	}
+	if limit > 0 {
+		q += fmt.Sprintf(" LIMIT %d", limit)
+	}
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	return scanRows(rows, table)
 }
 
 func valueToString(v any) string {

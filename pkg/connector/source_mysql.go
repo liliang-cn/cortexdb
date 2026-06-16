@@ -31,7 +31,8 @@ func NewMySQLSource(dsn string, opts SourceOptions) (importflow.Source, error) {
 	return &sqlSource{
 		db: db, driver: "mysql", opts: opts,
 		listTables: myListTables, listCols: myListColumns,
-		quote: quoteMySQLIdent,
+		quote:       quoteMySQLIdent,
+		placeholder: func(int) string { return "?" },
 	}, nil
 }
 
