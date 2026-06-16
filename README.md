@@ -314,6 +314,44 @@ Then run:
 go run ./examples/05_graphflow
 ```
 
+## Data connector (privacy / desensitization)
+
+`pkg/connector` is a privacy gate in front of ImportFlow. It connects to a live
+PostgreSQL/MySQL database (or wraps any `importflow.Source`), introspects the
+schema, classifies PII (rule-based, with an optional LLM classifier), and applies
+a **human-signed** `MaskingPlan` before any bulk data moves — schema-first,
+data-second.
+
+```go
+src, _ := connector.NewPostgresSource(dsn, connector.SourceOptions{}) // or any importflow.Source, e.g. a CSV
+plan, _ := connector.BuildMaskingPlan(ctx, src, connector.NewRuleClassifier(),
+    connector.PlanOptions{ScanTextColumns: true})
+// review plan.Columns, then a human signs it — Run refuses an unsigned plan
+plan.Sign("you", time.Now())
+
+vault, _ := connector.OpenSQLiteVault("tenant.vault.db")
+d, _ := connector.NewDesensitizer(plan, connector.DesensitizerOptions{
+    Tenant: "acme", KeyProvider: kp, Vault: vault})
+
+rep, _ := importflow.New(db).Run(ctx, connector.Desensitized(src, d), mapping)
+```
+
+Guarantees:
+
+- **Default-deny / fails closed** — a column not covered by the signed plan is an
+  error, never silently passed through.
+- Per-column actions: `drop`, `redact`, `mask`, `generalize`, `hash`,
+  `pseudonymize`; free-text columns get in-place PII redaction.
+- Pseudonyms are **reversible** via a *separate* AES-256-GCM token vault, keyed
+  per tenant. The RAG/LLM path never reads the vault; `connector.Unmask` is the
+  only reverse path.
+- Quasi-identifier re-identification risk is reduced, not claimed to be zero —
+  generalization narrows but does not eliminate residual risk.
+
+Agent-callable tools ride ImportFlow's MCP surface: `connector_introspect`,
+`connector_plan`, `connector_run`, `connector_unmask`. See
+`examples/09_connector`.
+
 ## Tools and MCP
 
 For in-process tool calling:
@@ -497,6 +535,7 @@ go run ./examples/05_graphflow
 go run ./examples/06_tools_mcp
 go run ./examples/07_importflow
 go run ./examples/08_self_knowledge_graph   # builds a KG of this project itself; qa_test.go answers questions from it
+go run ./examples/09_connector              # desensitize a CSV through the privacy gate, then import to RAG
 ```
 
 See [examples/README.md](examples/README.md) for the selection guide.

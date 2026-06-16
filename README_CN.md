@@ -311,6 +311,32 @@ OPENAI_MODEL=gpt-5.4
 go run ./examples/05_graphflow
 ```
 
+## 数据连接器（隐私 / 脱敏）
+
+`pkg/connector` 是 ImportFlow 前面的一道隐私闸门：连接线上
+PostgreSQL/MySQL 数据库（或包装任意 `importflow.Source`），introspect schema，
+对 PII 做分类（规则为主，可选 LLM 分类器），并在任何批量数据移动之前应用一份
+**人工签署**的 `MaskingPlan`——先 schema、后数据（schema-first, data-second）。
+
+```go
+src, _ := connector.NewPostgresSource(dsn, connector.SourceOptions{}) // 或 NewCSVSource、NewMySQLSource 等
+plan, _ := connector.BuildMaskingPlan(ctx, src, connector.NewRuleClassifier(), connector.PlanOptions{ScanTextColumns: true})
+plan.Sign("you", time.Now()) // 未签署的 plan，Run 会拒绝
+vault, _ := connector.OpenSQLiteVault("tenant.vault.db")
+d, _ := connector.NewDesensitizer(plan, connector.DesensitizerOptions{Tenant: "acme", KeyProvider: kp, Vault: vault})
+rep, _ := importflow.New(db).Run(ctx, connector.Desensitized(src, d), mapping)
+```
+
+关键保证：
+
+- **默认拒绝 / fail closed**：签署 plan 未覆盖的列会直接报错，绝不静默放行。
+- 每列动作可选 `drop`/`redact`/`mask`/`generalize`/`hash`/`pseudonymize`；自由文本列做就地 PII 红线（redaction）。
+- 假名（pseudonym）可逆，但还原依赖一个**独立**的 AES-256-GCM token vault，按租户分密钥；RAG/LLM 检索路径永远不会读取 vault，`connector.Unmask` 是唯一的反向通道。
+- 对准标识符（quasi-identifier）的再识别风险是降低、而非声称归零——generalization 收窄但不消除残余风险。
+
+可被 agent 调用的工具挂在 ImportFlow 的 MCP surface 上：`connector_introspect`、
+`connector_plan`、`connector_run`、`connector_unmask`。参见 `examples/09_connector`。
+
 ## Tools 和 MCP
 
 进程内 tool calling：
@@ -487,6 +513,7 @@ go run ./examples/05_graphflow
 go run ./examples/06_tools_mcp
 go run ./examples/07_importflow
 go run ./examples/08_self_knowledge_graph   # 把本项目文档建成知识图谱；qa_test.go 用图谱回答问题
+go run ./examples/09_connector              # 通过隐私闸门脱敏一份 CSV，再导入 RAG
 ```
 
 选择指南见 [examples/README.md](examples/README.md)。

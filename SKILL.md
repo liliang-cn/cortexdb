@@ -321,6 +321,29 @@ inferer, `im.AutoImport(ctx, src, importflow.Goal{BuildRAG: true, BuildKG: true}
 plan + run in one step. RAG works with no embedder (lexical FTS5). The mapping inferer
 reuses the same `graphflow.JSONGenerator` interface.
 
+## Data connector (privacy / desensitization)
+
+`pkg/connector` is a privacy gate in front of ImportFlow: connect to a live
+PostgreSQL/MySQL DB (or wrap any `importflow.Source`), introspect schema, classify PII
+(rule-based + optional LLM), and apply a **human-signed** `MaskingPlan` before any bulk
+data moves (schema-first, data-second):
+
+```go
+src, _ := connector.NewPostgresSource(dsn, connector.SourceOptions{}) // or NewCSVSource, NewMySQLSource, ...
+plan, _ := connector.BuildMaskingPlan(ctx, src, connector.NewRuleClassifier(), connector.PlanOptions{ScanTextColumns: true})
+plan.Sign("you", time.Now()) // Run refuses an unsigned plan
+vault, _ := connector.OpenSQLiteVault("tenant.vault.db")
+d, _ := connector.NewDesensitizer(plan, connector.DesensitizerOptions{Tenant: "acme", KeyProvider: kp, Vault: vault})
+rep, _ := importflow.New(db).Run(ctx, connector.Desensitized(src, d), mapping)
+```
+
+Default-deny: a column not covered by the signed plan is an error, never silently passed
+through. Per-column actions are `drop`/`redact`/`mask`/`generalize`/`hash`/`pseudonymize`,
+plus in-place free-text PII redaction. Pseudonyms are reversible via a *separate*
+AES-256-GCM token vault keyed per tenant; the RAG/LLM path never reads the vault and
+`connector.Unmask` is the only reverse path. Quasi-identifier re-identification risk is
+reduced, not zero. See `examples/09_connector`.
+
 ## Tools and MCP
 
 In-process tool calls:
@@ -352,6 +375,7 @@ Separate workflow toolboxes:
 - memoryflow: `memoryflow_ingest_transcript`, `memoryflow_recall`, `memoryflow_wake_up_layers`, `memoryflow_prepare_reply`
 - graphflow: `graphflow_build`, `graphflow_analyze`, `graphflow_report`, `graphflow_export`, `graphflow_run`
 - importflow: `importflow_plan`, `importflow_run` (via `importflow.NewToolbox(im)` or `importflow.NewMCPServer(im, opts)` / `importflow.RunMCPStdio(ctx, im, opts)`)
+- connector: `connector_introspect`, `connector_plan`, `connector_run`, `connector_unmask` (privacy gate over a live DB/source; rides importflow's MCP surface)
 
 ## gRPC Sidecar + Rust / Python / Node clients
 
