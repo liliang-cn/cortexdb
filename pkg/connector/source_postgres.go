@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/liliang-cn/cortexdb/v2/pkg/importflow"
@@ -261,6 +262,11 @@ func valueToString(v any) string {
 		return string(t)
 	case string:
 		return t
+	case time.Time:
+		// RFC3339 round-trips as a SQL timestamp literal (Postgres accepts ISO 8601
+		// for timestamptz). The default %v format ("... +0800 CST") does NOT parse
+		// back, which breaks the polling cursor watermark for timestamp columns.
+		return t.Format(time.RFC3339Nano)
 	default:
 		return fmt.Sprintf("%v", t)
 	}
