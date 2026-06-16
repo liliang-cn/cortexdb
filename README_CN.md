@@ -334,8 +334,15 @@ rep, _ := importflow.New(db).Run(ctx, connector.Desensitized(src, d), mapping)
 - 假名（pseudonym）可逆，但还原依赖一个**独立**的 AES-256-GCM token vault，按租户分密钥；RAG/LLM 检索路径永远不会读取 vault，`connector.Unmask` 是唯一的反向通道。
 - 对准标识符（quasi-identifier）的再识别风险是降低、而非声称归零——generalization 收窄但不消除残余风险。
 
-可被 agent 调用的工具挂在 ImportFlow 的 MCP surface 上：`connector_introspect`、
-`connector_plan`、`connector_run`、`connector_unmask`。参见 `examples/09_connector`。
+因为脱敏器是一个 `importflow.Source` 装饰器，同一批脱敏后的记录会同时进入
+**RAG 和知识图谱**：被假名化的连接键变成确定性 token，所以 KG 实体 IRI 和它们之间
+的关系边都能保留，而原始 PII 永远不会进入图谱。
+
+可被 agent 调用的工具——`connector_introspect`、`connector_plan`、`connector_run`、
+`connector_unmask`——通过 `connector.NewToolbox(db, opts)` + `connector.NewMCPServer(tb, opts)`
+/ `connector.RunMCPStdio(ctx, tb, opts)` 暴露为 MCP；也可以用
+`connector.RegisterMCPTools(server, tb)` 挂到已有的 MCP server（比如 ImportFlow 的）上。
+`cmd/cortexdb-connector-mcp` 二进制可直接用 stdio 跑这四个工具。参见 `examples/09_connector`。
 
 ## Tools 和 MCP
 

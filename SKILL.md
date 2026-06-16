@@ -337,12 +337,23 @@ d, _ := connector.NewDesensitizer(plan, connector.DesensitizerOptions{Tenant: "a
 rep, _ := importflow.New(db).Run(ctx, connector.Desensitized(src, d), mapping)
 ```
 
-Default-deny: a column not covered by the signed plan is an error, never silently passed
-through. Per-column actions are `drop`/`redact`/`mask`/`generalize`/`hash`/`pseudonymize`,
-plus in-place free-text PII redaction. Pseudonyms are reversible via a *separate*
-AES-256-GCM token vault keyed per tenant; the RAG/LLM path never reads the vault and
-`connector.Unmask` is the only reverse path. Quasi-identifier re-identification risk is
-reduced, not zero. See `examples/09_connector`.
+Default-deny: a column not covered by the signed plan is dropped, never silently passed
+through (the desensitizer fails closed). Per-column actions are
+`drop`/`redact`/`mask`/`generalize`/`hash`/`pseudonymize`, plus in-place free-text PII
+redaction. Pseudonyms are reversible via a *separate* AES-256-GCM token vault keyed per
+tenant; the RAG/LLM path never reads the vault and `connector.Unmask` is the only reverse
+path. Quasi-identifier re-identification risk is reduced, not zero.
+
+The desensitizer is an `importflow.Source` decorator, so the same masked records feed
+**both RAG and the knowledge graph** — pseudonymized join keys become deterministic tokens,
+so KG entity IRIs and `bought`/etc. edges survive while the original PII never enters the
+graph. See `examples/09_connector` (RAG) and the `e2e_test.go` KG case.
+
+Agent surface: `connector.NewToolbox(db, ToolboxOptions{Vault, KeyProvider, Tenant})` →
+`connector.NewMCPServer(tb, opts)` / `connector.RunMCPStdio(ctx, tb, opts)`, or
+`connector.RegisterMCPTools(server, tb)` to ride an existing MCP server (e.g. importflow's).
+The `cmd/cortexdb-connector-mcp` binary runs the four tools over stdio (config via
+`CORTEXDB_PATH`, `CONNECTOR_VAULT_PATH`, `CONNECTOR_TENANT`, `CONNECTOR_KEY_FILE`).
 
 ## Tools and MCP
 
@@ -375,7 +386,7 @@ Separate workflow toolboxes:
 - memoryflow: `memoryflow_ingest_transcript`, `memoryflow_recall`, `memoryflow_wake_up_layers`, `memoryflow_prepare_reply`
 - graphflow: `graphflow_build`, `graphflow_analyze`, `graphflow_report`, `graphflow_export`, `graphflow_run`
 - importflow: `importflow_plan`, `importflow_run` (via `importflow.NewToolbox(im)` or `importflow.NewMCPServer(im, opts)` / `importflow.RunMCPStdio(ctx, im, opts)`)
-- connector: `connector_introspect`, `connector_plan`, `connector_run`, `connector_unmask` (privacy gate over a live DB/source; rides importflow's MCP surface)
+- connector: `connector_introspect`, `connector_plan`, `connector_run`, `connector_unmask` — privacy gate over a live DB/source feeding RAG + KG. Wire via `connector.NewMCPServer(tb, opts)` / `connector.RunMCPStdio(ctx, tb, opts)`, `connector.RegisterMCPTools(server, tb)` to ride another server, or run `cmd/cortexdb-connector-mcp`.
 
 ## gRPC Sidecar + Rust / Python / Node clients
 

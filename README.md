@@ -348,8 +348,16 @@ Guarantees:
 - Quasi-identifier re-identification risk is reduced, not claimed to be zero —
   generalization narrows but does not eliminate residual risk.
 
-Agent-callable tools ride ImportFlow's MCP surface: `connector_introspect`,
-`connector_plan`, `connector_run`, `connector_unmask`. See
+Because the desensitizer is an `importflow.Source` decorator, the same masked
+records feed **both RAG and the knowledge graph**: a pseudonymized join key
+becomes a deterministic token, so KG entity IRIs and their relations survive
+while the original PII never enters the graph.
+
+Agent-callable tools — `connector_introspect`, `connector_plan`, `connector_run`,
+`connector_unmask` — are exposed over MCP via `connector.NewToolbox(db, opts)` +
+`connector.NewMCPServer(tb, opts)` / `connector.RunMCPStdio(ctx, tb, opts)`, or
+`connector.RegisterMCPTools(server, tb)` to ride an existing server (e.g.
+ImportFlow's). The `cmd/cortexdb-connector-mcp` binary runs them over stdio. See
 `examples/09_connector`.
 
 ## Tools and MCP
