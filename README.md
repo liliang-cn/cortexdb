@@ -627,6 +627,7 @@ go run ./examples/08_self_knowledge_graph   # builds a KG of this project itself
 go run ./examples/09_connector              # desensitize a CSV through the privacy gate, then import to RAG
 go run ./examples/10_support_brain -driver postgres -dsn '...'  # end-to-end: live Postgres/MySQL → desensitize → RAG+KG → masked Q&A → un-mask → live CDC
 go run ./examples/11_unified_brain -pg '...' -my '...'          # two live DBs → one KG, concurrent streaming CDC, RDFS inference + SPARQL aggregate + SHACL
+go run ./examples/12_incident_agent -model gpt-5.5             # REQUIRES an LLM: extract a KG from incident reports, then an agent answers via tools (search/graph)
 ```
 
 See [examples/README.md](examples/README.md) for the selection guide.
