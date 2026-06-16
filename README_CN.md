@@ -350,7 +350,8 @@ rep, _ := importflow.New(db).Run(ctx, connector.Desensitized(src, d), mapping)
 持续保持同步：它消费行级 `ChangeEvent`，并把幂等 upsert（以及硬删除）应用到 RAG +
 知识图谱。
 
-`Watcher` 现支持两种变更源：
+`Watcher` 现支持三种变更源；真正的 CDC（捕获硬删除、持续流式推送）对 **Postgres
+和 MySQL 均已可用**。
 
 **Route A —— 轮询（`NewPollingChangeSource`）**：按需对每张表执行
 `WHERE <cursor> > <watermark>` 轮询，与数据库无关（PG/MySQL/Neon），并从存在知识库里
@@ -392,11 +393,30 @@ w, _ := connector.NewWatcher(db, src, connector.WatcherOptions{
 go w.Run(ctx) // 持续流式推送 insert/update/delete；按 LSN 恢复
 ```
 
+**Route B-MySQL —— MySQL binlog（`NewMySQLBinlogSource`）**：基于 ROW 格式 binlog
+（通过 go-mysql canal）的真正 CDC 源。与 Route B-PG 一样，它**能捕获硬删除**并
+**持续流式推送**——`w.Run(ctx)` 会一直阻塞直到 ctx 被取消，并按 binlog 位点
+（`Checkpoint.Position`）恢复。前置条件：MySQL `binlog_format=ROW`、
+`binlog_row_image=FULL`（MySQL 8 默认即如此）、一个拥有
+`REPLICATION SLAVE, REPLICATION CLIENT` 权限的用户，以及一个唯一的 `ServerID`。
+
+```go
+src, _ := connector.NewMySQLBinlogSource(dsn, connector.MySQLBinlogOptions{
+    ServerID: 1101, Tables: map[string][]string{"orders": {"id"}},
+})
+w, _ := connector.NewWatcher(db, src, connector.WatcherOptions{
+    SourceKey: "orders-binlog", Desensitizer: d, Checkpoint: cp,
+    Mapping: importflow.MappingPlan{Tables: map[string]importflow.TablePlan{
+        "orders": {RAG: &importflow.RAGPlan{ContentTmpl: "{name}", IDColumn: "id"}},
+    }},
+})
+go w.Run(ctx) // 持续流式推送 insert/update/delete；按 binlog 位点恢复
+```
+
 - **前置条件**：每张 RAG 表的 `MappingPlan` 必须以主键作为 key（`RAGPlan.IDColumn`），
   这样 update/delete 才能定位到正确的 chunk——否则 `NewWatcher` 会报错。
 - **隐私不变**：每一行变更仍会经过已签署的 `MaskingPlan`——原始 PII 永远不会进入
-  RAG/KG，被假名化的 key 仍变成同样的确定性 token，所以 KG 的边能够保留（两种路由皆然）。
-- **仍在规划中（Route B-MySQL）**：MySQL binlog CDC 是唯一剩下的 CDC 部分，目前尚未实现。
+  RAG/KG，被假名化的 key 仍变成同样的确定性 token，所以 KG 的边能够保留（三种路由皆然）。
 
 ## Tools 和 MCP
 

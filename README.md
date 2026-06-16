@@ -367,7 +367,8 @@ continuously in sync with a live DB **through the same privacy gate** — it
 consumes row-level `ChangeEvent`s and applies idempotent upserts (and hard
 deletes) to RAG + the knowledge graph.
 
-Two change sources feed a `Watcher`:
+Three change sources feed a `Watcher`. True CDC (hard-delete capture, continuous
+streaming) is available for **both Postgres and MySQL**.
 
 **Route A — polling (`NewPollingChangeSource`):** polls
 `WHERE <cursor> > <watermark>` per table on demand. DB-agnostic
@@ -412,14 +413,33 @@ w, _ := connector.NewWatcher(db, src, connector.WatcherOptions{
 go w.Run(ctx) // streams insert/update/delete continuously; resumes by LSN
 ```
 
+**Route B-MySQL — MySQL binlog (`NewMySQLBinlogSource`):** a true CDC source
+reading the ROW-format binlog (via go-mysql canal). Like Route B-PG it
+**captures hard deletes** and **streams continuously** — `w.Run(ctx)` blocks
+until ctx is cancelled and resumes by binlog position
+(`Checkpoint.Position`). Prerequisites: MySQL `binlog_format=ROW`,
+`binlog_row_image=FULL` (both defaults in MySQL 8), a user with
+`REPLICATION SLAVE, REPLICATION CLIENT`, and a unique `ServerID`.
+
+```go
+src, _ := connector.NewMySQLBinlogSource(dsn, connector.MySQLBinlogOptions{
+    ServerID: 1101, Tables: map[string][]string{"orders": {"id"}},
+})
+w, _ := connector.NewWatcher(db, src, connector.WatcherOptions{
+    SourceKey: "orders-binlog", Desensitizer: d, Checkpoint: cp,
+    Mapping: importflow.MappingPlan{Tables: map[string]importflow.TablePlan{
+        "orders": {RAG: &importflow.RAGPlan{ContentTmpl: "{name}", IDColumn: "id"}},
+    }},
+})
+go w.Run(ctx) // streams insert/update/delete; resumes by binlog position
+```
+
 - **Precondition:** every RAG table's `MappingPlan` must key on the primary key
   (`RAGPlan.IDColumn`) so updates/deletes address the right chunk — `NewWatcher`
   errors otherwise.
 - **Privacy unchanged:** every streamed row still passes the signed
   `MaskingPlan` — raw PII never enters RAG/KG, and pseudonymized keys become the
-  same deterministic tokens so KG edges survive (both routes).
-- **Still planned (Route B-MySQL):** MySQL binlog CDC is the only remaining CDC
-  piece — not yet implemented.
+  same deterministic tokens so KG edges survive (all three routes).
 
 ## Tools and MCP
 
