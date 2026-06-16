@@ -628,6 +628,7 @@ go run ./examples/09_connector              # desensitize a CSV through the priv
 go run ./examples/10_support_brain -driver postgres -dsn '...'  # end-to-end: live Postgres/MySQL → desensitize → RAG+KG → masked Q&A → un-mask → live CDC
 go run ./examples/11_unified_brain -pg '...' -my '...'          # two live DBs → one KG, concurrent streaming CDC, RDFS inference + SPARQL aggregate + SHACL
 go run ./examples/12_incident_agent -model gpt-5.5             # REQUIRES an LLM: extract a KG from incident reports, then an agent answers via tools (search/graph)
+go run ./examples/13_scale_analytics -pg '...' -my '...'       # larger volume: timed bulk ingest + throughput, SPARQL/RDFS/SHACL analytics, CDC under load
 ```
 
 See [examples/README.md](examples/README.md) for the selection guide.
