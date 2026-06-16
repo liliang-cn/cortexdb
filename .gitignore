@@ -33,6 +33,9 @@ go.work
 *.sqlite3
 **/*.db-shm
 **/*.db-wal
+# SQLite WAL/SHM sidecars (WAL mode), incl. test DBs whose base name doesn't end in .db
+**/*-shm
+**/*-wal
 
 # Example-generated artifacts
 examples/graphflow_visualization/.env
