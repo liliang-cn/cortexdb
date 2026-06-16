@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/liliang-cn/cortexdb/v2/pkg/importflow"
@@ -44,8 +45,14 @@ func NewPostgresSource(dsn string, opts SourceOptions) (importflow.Source, error
 	return &sqlSource{
 		db: db, driver: "pgx", opts: opts,
 		listTables: pgListTables, listCols: pgListColumns,
-		quote: func(s string) string { return `"` + s + `"` },
+		quote: quotePostgresIdent,
 	}, nil
+}
+
+// quotePostgresIdent double-quotes an identifier, escaping any embedded double
+// quote so a table name can never break out of the SELECT.
+func quotePostgresIdent(s string) string {
+	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }
 
 func pgListTables(ctx context.Context, db *sql.DB, schema string) ([]string, error) {
@@ -149,7 +156,7 @@ func (s *sqlSource) Schemas(ctx context.Context) ([]importflow.Schema, error) {
 		if err != nil {
 			return nil, err
 		}
-		sample, err := s.readRows(ctx, t, cols, s.opts.SampleSize)
+		sample, err := s.readRows(ctx, t, s.opts.SampleSize)
 		if err != nil {
 			return nil, err
 		}
@@ -164,11 +171,7 @@ func (s *sqlSource) Records(ctx context.Context, fn func(importflow.Record) erro
 		return err
 	}
 	for _, t := range tables {
-		cols, err := s.listCols(ctx, s.db, s.opts.Schema, t)
-		if err != nil {
-			return err
-		}
-		recs, err := s.readRows(ctx, t, cols, s.opts.RowLimit)
+		recs, err := s.readRows(ctx, t, s.opts.RowLimit)
 		if err != nil {
 			return err
 		}
@@ -181,8 +184,10 @@ func (s *sqlSource) Records(ctx context.Context, fn func(importflow.Record) erro
 	return nil
 }
 
-// readRows selects up to limit rows (0 = all) and converts them to Records.
-func (s *sqlSource) readRows(ctx context.Context, table string, cols []importflow.Column, limit int) ([]importflow.Record, error) {
+// readRows selects up to limit rows (0 = all) and converts them to Records. It
+// reads column names from the result set itself, so it needs no precomputed
+// column list.
+func (s *sqlSource) readRows(ctx context.Context, table string, limit int) ([]importflow.Record, error) {
 	q := "SELECT * FROM " + s.quote(table)
 	if limit > 0 {
 		q += fmt.Sprintf(" LIMIT %d", limit)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/liliang-cn/cortexdb/v2/pkg/importflow"
@@ -30,8 +31,14 @@ func NewMySQLSource(dsn string, opts SourceOptions) (importflow.Source, error) {
 	return &sqlSource{
 		db: db, driver: "mysql", opts: opts,
 		listTables: myListTables, listCols: myListColumns,
-		quote: func(s string) string { return "`" + s + "`" },
+		quote: quoteMySQLIdent,
 	}, nil
+}
+
+// quoteMySQLIdent backtick-quotes an identifier, escaping any embedded backtick
+// so a table name can never break out of the SELECT.
+func quoteMySQLIdent(s string) string {
+	return "`" + strings.ReplaceAll(s, "`", "``") + "`"
 }
 
 func myListTables(ctx context.Context, db *sql.DB, schema string) ([]string, error) {
