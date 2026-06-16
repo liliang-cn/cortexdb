@@ -625,6 +625,7 @@ go run ./examples/06_tools_mcp
 go run ./examples/07_importflow
 go run ./examples/08_self_knowledge_graph   # builds a KG of this project itself; qa_test.go answers questions from it
 go run ./examples/09_connector              # desensitize a CSV through the privacy gate, then import to RAG
+go run ./examples/10_support_brain -driver postgres -dsn '...'  # end-to-end: live Postgres/MySQL → desensitize → RAG+KG → masked Q&A → un-mask → live CDC
 ```
 
 See [examples/README.md](examples/README.md) for the selection guide.
