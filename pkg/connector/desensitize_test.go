@@ -97,6 +97,76 @@ func TestDesensitizedRefusesUnsignedPlan(t *testing.T) {
 	}
 }
 
+// The gate must fail CLOSED: a column the signed plan never classified (no rule,
+// not text-scan) must not leak through — neither in records nor in the schema.
+func TestDesensitizedUnlistedColumnFailsClosed(t *testing.T) {
+	// source has an extra "secret" column the plan does not mention
+	src := &fakeSource{
+		schema: importflow.Schema{Table: "users", Columns: []importflow.Column{
+			{Name: "id"}, {Name: "secret"},
+		}, Sample: []importflow.Record{
+			{Table: "users", Values: map[string]string{"id": "1", "secret": "leak-me"}},
+		}},
+		records: []importflow.Record{
+			{Table: "users", Values: map[string]string{"id": "1", "secret": "leak-me"}},
+		},
+	}
+	p := MaskingPlan{Columns: []ColumnRule{{Table: "users", Column: "id", Action: ActionKeep}}}
+	p.Sign("tester", time.Unix(1, 0))
+	d, err := NewDesensitizer(p, DesensitizerOptions{Tenant: "t", KeyProvider: testKP(), Vault: testVault(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	safe := Desensitized(src, d)
+
+	// schema must not list the unlisted column
+	schemas, _ := safe.Schemas(context.Background())
+	for _, c := range schemas[0].Columns {
+		if c.Name == "secret" {
+			t.Fatal("unlisted column leaked into schema (fail-open)")
+		}
+	}
+	// the desensitized sample row must not carry it either
+	for _, r := range schemas[0].Sample {
+		if _, ok := r.Values["secret"]; ok {
+			t.Fatal("unlisted column leaked into schema sample (fail-open)")
+		}
+	}
+	// records must not carry it
+	var got importflow.Record
+	_ = safe.Records(context.Background(), func(r importflow.Record) error { got = r; return nil })
+	if v, ok := got.Values["secret"]; ok {
+		t.Fatalf("unlisted column leaked into record (fail-open): %q", v)
+	}
+	if got.Values["id"] != "1" {
+		t.Fatalf("kept column altered: %q", got.Values["id"])
+	}
+}
+
+// Schemas() must desensitize the Sample rows too, so PII in samples never
+// reaches the mapping-inference step.
+func TestDesensitizedSchemaMasksSamples(t *testing.T) {
+	src := newFake()
+	src.schema.Sample = []importflow.Record{
+		{Table: "users", Values: map[string]string{"id": "1", "name": "张三", "phone": "13812341234", "ssn": "110101199003078888", "notes": "call 13900000000"}},
+	}
+	d := mustDesensitizer(t, signedPlan())
+	schemas, err := Desensitized(src, d).Schemas(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := schemas[0].Sample[0]
+	if s.Values["phone"] != "138****1234" {
+		t.Fatalf("sample phone not masked: %q", s.Values["phone"])
+	}
+	if _, ok := s.Values["ssn"]; ok {
+		t.Fatal("dropped column present in sample")
+	}
+	if contains(s.Values["notes"], "13900000000") {
+		t.Fatalf("sample free-text PII not redacted: %q", s.Values["notes"])
+	}
+}
+
 func contains(s, sub string) bool { return indexOf(s, sub) >= 0 }
 func indexOf(s, sub string) int {
 	for i := 0; i+len(sub) <= len(s); i++ {

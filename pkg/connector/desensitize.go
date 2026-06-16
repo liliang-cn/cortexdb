@@ -13,6 +13,13 @@ type DesensitizerOptions struct {
 	KeyProvider KeyProvider  // required when the plan has reversible actions
 	Vault       Vault        // required when the plan has reversible actions
 	TextScanner *TextScanner // defaults to NewTextScanner()
+	// OnUnlisted is the action applied to a column that the plan does NOT cover
+	// (no ColumnRule and not a TextScan column). The gate fails CLOSED: the
+	// default is ActionDrop, so a column the signed plan never classified can
+	// never leak through — even when the plan is hand-written (e.g. supplied to
+	// the connector_run tool) and applied to a live source whose real columns
+	// drifted from the plan. Set it to ActionRedact/ActionKeep only with intent.
+	OnUnlisted MaskAction
 }
 
 // Desensitizer applies a signed MaskingPlan to records.
@@ -40,14 +47,33 @@ func NewDesensitizer(plan MaskingPlan, opts DesensitizerOptions) (*Desensitizer,
 	if ts == nil {
 		ts = NewTextScanner()
 	}
+	if opts.OnUnlisted == "" {
+		opts.OnUnlisted = ActionDrop // fail closed: unknown columns never leak
+	}
 	return &Desensitizer{plan: plan, opts: opts, ts: ts}, nil
 }
 
-// keptColumns returns a table's columns minus any with action drop.
+// resolve returns the effective action, PII kind, and text-scan flag for a
+// table/column. A column the plan does not classify falls back to OnUnlisted
+// (default ActionDrop) so the gate fails closed regardless of plan provenance.
+func (d *Desensitizer) resolve(table, col string) (action MaskAction, kind PiiKind, scan bool) {
+	if r, ok := d.plan.RuleFor(table, col); ok {
+		return r.Action, r.PiiKind, d.plan.TextScanFor(table, col)
+	}
+	if d.plan.TextScanFor(table, col) {
+		// Explicitly listed for free-text scanning even without a column rule.
+		return ActionKeep, PiiNone, true
+	}
+	return d.opts.OnUnlisted, PiiNone, false
+}
+
+// keptColumns returns a table's columns minus any whose effective action is
+// drop (explicit ActionDrop rules AND unlisted columns under a default-deny
+// OnUnlisted), keeping the desensitized schema consistent with the records.
 func (d *Desensitizer) keptColumns(table string, cols []importflow.Column) []importflow.Column {
 	out := make([]importflow.Column, 0, len(cols))
 	for _, c := range cols {
-		if r, ok := d.plan.RuleFor(table, c.Name); ok && r.Action == ActionDrop {
+		if action, _, _ := d.resolve(table, c.Name); action == ActionDrop {
 			continue
 		}
 		out = append(out, c)
@@ -55,33 +81,25 @@ func (d *Desensitizer) keptColumns(table string, cols []importflow.Column) []imp
 	return out
 }
 
-// Apply desensitizes one record per the plan. Dropped columns are removed;
-// reversible actions write to the vault and emit a token.
+// Apply desensitizes one record per the plan. Dropped columns (explicit or
+// unlisted-under-default-deny) are removed entirely; reversible actions write to
+// the vault and emit a token.
 func (d *Desensitizer) Apply(ctx context.Context, r importflow.Record) (importflow.Record, error) {
 	out := importflow.Record{Table: r.Table, Row: r.Row, Values: map[string]string{}, Nulls: map[string]bool{}}
 	for col, val := range r.Values {
+		action, kind, scan := d.resolve(r.Table, col)
+		if action == ActionDrop {
+			// Omit entirely — not even a Nulls marker, so a dropped column leaks
+			// neither its value nor its existence.
+			continue
+		}
 		if r.Nulls[col] {
 			out.Nulls[col] = true
 			continue
 		}
-		rule, ok := d.plan.RuleFor(r.Table, col)
-		if !ok {
-			// Unclassified but present: if it's a text-scan column, redact PII;
-			// otherwise default-deny is enforced at plan-build time, so a missing
-			// rule here means "keep" only for columns the plan explicitly knows.
-			if d.plan.TextScanFor(r.Table, col) {
-				masked, _ := d.ts.Scan(val)
-				out.Values[col] = masked
-			} else {
-				out.Values[col] = val
-			}
-			continue
-		}
-		switch rule.Action {
-		case ActionDrop:
-			// omit entirely
+		switch action {
 		case ActionKeep:
-			if d.plan.TextScanFor(r.Table, col) {
+			if scan {
 				masked, _ := d.ts.Scan(val)
 				out.Values[col] = masked
 			} else {
@@ -90,19 +108,19 @@ func (d *Desensitizer) Apply(ctx context.Context, r importflow.Record) (importfl
 		case ActionRedact:
 			out.Values[col] = Redact(val)
 		case ActionMask:
-			out.Values[col] = MaskValue(rule.PiiKind, val)
+			out.Values[col] = MaskValue(kind, val)
 		case ActionGeneralize:
-			out.Values[col] = GeneralizeValue(rule.PiiKind, val)
+			out.Values[col] = GeneralizeValue(kind, val)
 		case ActionHash:
-			out.Values[col] = oneWayToken(rule.PiiKind, val)
+			out.Values[col] = oneWayToken(kind, val)
 		case ActionPseudonymize:
-			tok, err := d.opts.Vault.Put(ctx, d.opts.Tenant, rule.PiiKind, val, d.opts.KeyProvider)
+			tok, err := d.opts.Vault.Put(ctx, d.opts.Tenant, kind, val, d.opts.KeyProvider)
 			if err != nil {
 				return out, err
 			}
 			out.Values[col] = tok
 		default:
-			out.Values[col] = MaskValue(rule.PiiKind, val)
+			out.Values[col] = MaskValue(kind, val)
 		}
 	}
 	return out, nil
