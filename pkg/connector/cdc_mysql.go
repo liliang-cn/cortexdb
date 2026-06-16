@@ -3,6 +3,8 @@ package connector
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
@@ -43,6 +45,9 @@ func NewMySQLBinlogSource(dsn string, opts MySQLBinlogOptions) (ChangeSource, er
 		opts.ServerID = 1001
 	}
 	cfg := canal.NewDefaultConfig()
+	// A library should not spam stderr; silence canal's default INFO logging.
+	// Callers wanting binlog logs can wrap with their own logger upstream.
+	cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg.Addr = mc.Addr
 	cfg.User = mc.User
 	cfg.Password = mc.Passwd
