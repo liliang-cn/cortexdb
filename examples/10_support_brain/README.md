@@ -23,6 +23,12 @@ operational action such as sending a notification).
 No LLM or embedder is required — retrieval runs in CortexDB's lexical mode and
 relationships are answered with SPARQL, so the run is fully deterministic.
 
+Optionally add a natural-language answer step with `-llm`: the model receives
+**only the desensitized context** (tokens + masked phones), so it phrases a
+support reply while real PII never reaches the LLM. Configure via env
+`OPENAI_API_KEY` and `OPENAI_BASE_URL` (any OpenAI-compatible endpoint) and
+`-model <id>`.
+
 ## Run it
 
 Start a throwaway database, then point the demo at it (`-seed` creates and
@@ -41,7 +47,14 @@ go run ./examples/10_support_brain -driver mysql \
 ```
 
 Flags: `-driver postgres|mysql`, `-dsn <connection string>`, `-seed=false` if the
-tables already exist.
+tables already exist, `-llm` to add an LLM answer step, `-model <id>` (default
+`gpt-5.5`).
+
+```bash
+# with an LLM phrasing the answer over masked context
+OPENAI_API_KEY=sk-... OPENAI_BASE_URL=https://your-endpoint/v1 \
+  go run ./examples/10_support_brain -driver postgres -dsn '...' -llm
+```
 
 ## What to look at
 

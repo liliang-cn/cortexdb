@@ -55,16 +55,18 @@ func main() {
 	driver := flag.String("driver", "postgres", "postgres | mysql")
 	dsn := flag.String("dsn", "", "database DSN (postgres URL or go-sql-driver mysql DSN)")
 	seed := flag.Bool("seed", true, "create + populate demo customers/orders tables")
+	useLLM := flag.Bool("llm", false, "phrase the final answer with an LLM (OpenAI-compatible) over the MASKED context")
+	model := flag.String("model", "gpt-5.5", "chat model id (with -llm)")
 	flag.Parse()
 	if *dsn == "" {
 		log.Fatal("set -dsn (e.g. postgres://postgres:p@localhost:5432/postgres?sslmode=disable)")
 	}
-	if err := run(*driver, *dsn, *seed); err != nil {
+	if err := run(*driver, *dsn, *seed, *useLLM, *model); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(driver, dsn string, seed bool) error {
+func run(driver, dsn string, seed, useLLM bool, model string) error {
 	ctx := context.Background()
 	sqlDriver, connDriver := "pgx", "postgres"
 	if driver == "mysql" {
@@ -190,6 +192,42 @@ func run(driver, dsn string, seed bool) error {
 		fmt.Printf("  • %s\n", row["order"].Value)
 	}
 
+	// --- 4b. (optional) let an LLM phrase the answer — over MASKED context only --
+	// The model receives only desensitized text (tokens + masked phones), so real
+	// PII never reaches the LLM. Enable with -llm and OPENAI_API_KEY.
+	if useLLM {
+		apiKey := os.Getenv("OPENAI_API_KEY")
+		if apiKey == "" {
+			fmt.Println("\n(-llm set but OPENAI_API_KEY is empty; skipping LLM answer)")
+		} else {
+			baseURL := os.Getenv("OPENAI_BASE_URL")
+			if baseURL == "" {
+				baseURL = "https://api.openai.com/v1"
+			}
+			var ctxLines []string
+			for _, h := range res.Results {
+				full, _ := db.GetKnowledge(ctx, cortexdb.KnowledgeGetRequest{KnowledgeID: h.KnowledgeID})
+				ctxLines = append(ctxLines, "- "+full.Knowledge.Content)
+			}
+			ords, _ := db.SearchKnowledge(ctx, cortexdb.KnowledgeSearchRequest{Query: "order status amount", TopK: 5})
+			for _, h := range ords.Results {
+				full, _ := db.GetKnowledge(ctx, cortexdb.KnowledgeGetRequest{KnowledgeID: h.KnowledgeID})
+				ctxLines = append(ctxLines, "- "+full.Knowledge.Content)
+			}
+			system := "You are ACME's customer-support assistant. Answer the user's question using ONLY the provided context. " +
+				"The context is already privacy-masked: customer names appear as tokens like tok_xxxx and phone numbers as 138****1234. " +
+				"Never invent or attempt to reveal real personal data; refer to customers by their token. Be concise."
+			user := "Question: Who are our VIP customers and what has the customer with order 101 purchased?\n\nContext:\n" + strings.Join(ctxLines, "\n")
+			fmt.Println("\n=== LLM answer (model sees only masked context) ===")
+			answer, err := askLLM(ctx, baseURL, apiKey, model, system, user)
+			if err != nil {
+				fmt.Printf("  (LLM call failed: %v)\n", err)
+			} else {
+				fmt.Println(indent(answer, "  "))
+			}
+		}
+	}
+
 	// --- 5. authorized operational action: un-mask one name via the vault -------
 	// Customer content carries a pseudonym token for the name; the RAG/LLM path
 	// only ever sees the token. To actually contact the customer we resolve it.
@@ -239,6 +277,11 @@ func openSource(driver, dsn string) (importflow.Source, error) {
 		return connector.NewMySQLSource(dsn, opts)
 	}
 	return connector.NewPostgresSource(dsn, opts)
+}
+
+// indent prefixes every line of s with pre.
+func indent(s, pre string) string {
+	return pre + strings.ReplaceAll(strings.TrimSpace(s), "\n", "\n"+pre)
 }
 
 // setAction overrides the action for one column in the plan (the human review).
