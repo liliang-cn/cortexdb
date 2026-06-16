@@ -96,3 +96,135 @@ func TestEndToEndDesensitizedImport(t *testing.T) {
 		assertNoLeak(t, hit.Knowledge.Content)
 	}
 }
+
+// kgFakeSource is a re-readable in-memory source modelling an "orders" table
+// whose join key (customer_phone) is itself PII. Two rows share the same
+// customer so the test can prove the pseudonymized token preserves the edge.
+type kgFakeSource struct{}
+
+func (kgFakeSource) Schemas(context.Context) ([]importflow.Schema, error) {
+	return []importflow.Schema{{
+		Table: "orders",
+		Columns: []importflow.Column{
+			{Name: "customer_phone", Type: "text"},
+			{Name: "product_id", Type: "text"},
+			{Name: "city", Type: "text"},
+		},
+	}}, nil
+}
+
+func (kgFakeSource) Records(_ context.Context, fn func(importflow.Record) error) error {
+	rows := []importflow.Record{
+		{Table: "orders", Row: 0, Values: map[string]string{"customer_phone": "13812341234", "product_id": "P1", "city": "Chengdu"}},
+		{Table: "orders", Row: 1, Values: map[string]string{"customer_phone": "13812341234", "product_id": "P2", "city": "Chengdu"}},
+	}
+	for _, r := range rows {
+		if err := fn(r); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (kgFakeSource) Close() error { return nil }
+
+// TestEndToEndDesensitizedKnowledgeGraph proves the connector feeds the
+// KNOWLEDGE GRAPH sink (not just RAG): external rows whose identity column is
+// PII are pseudonymized, and the resulting entity IRIs carry the deterministic
+// token — so the "customer bought product" edges survive (joins preserved) while
+// the raw phone number never appears anywhere in the graph.
+func TestEndToEndDesensitizedKnowledgeGraph(t *testing.T) {
+	dir := t.TempDir()
+	db, err := cortexdb.Open(cortexdb.DefaultConfig(filepath.Join(dir, "kb.db")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+
+	src := kgFakeSource{}
+
+	// The join key (customer_phone) is PII → pseudonymize so the same customer
+	// maps to the same token (and thus the same entity IRI) across rows, while
+	// the original phone goes only to the vault. product_id / city are kept.
+	plan := MaskingPlan{Columns: []ColumnRule{
+		{Table: "orders", Column: "customer_phone", PiiKind: PiiPhone, Action: ActionPseudonymize},
+		{Table: "orders", Column: "product_id", Action: ActionKeep},
+		{Table: "orders", Column: "city", Action: ActionKeep},
+	}}
+	plan.Sign("reviewer", time.Unix(1, 0))
+
+	vault, err := OpenSQLiteVault(filepath.Join(dir, "v.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer vault.Close()
+	d, err := NewDesensitizer(plan, DesensitizerOptions{Tenant: "t", KeyProvider: testKP(), Vault: vault})
+	if err != nil {
+		t.Fatal(err)
+	}
+	safe := Desensitized(src, d)
+
+	// Build the graph: a Customer entity keyed by the (now tokenized) phone, a
+	// Product entity keyed by product_id, connected by a "bought" relation.
+	mapping := importflow.MappingPlan{Tables: map[string]importflow.TablePlan{
+		"orders": {KG: &importflow.KGPlan{
+			Entities: []importflow.EntityMap{
+				{Ref: "customer", Type: "Customer", IDTmpl: "{customer_phone}", Props: []string{"city"}},
+				{Ref: "product", Type: "Product", IDTmpl: "{product_id}"},
+			},
+			Relations: []importflow.RelationMap{
+				{Subject: "customer", Predicate: "bought", Object: "product"},
+			},
+		}},
+	}}
+	rep, err := importflow.New(db).Run(ctx, safe, mapping)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Sanity: triples really were created, so the assertions below aren't vacuous.
+	// 2 rows × (rdf:type + city prop + product rdf:type + bought) — at minimum the
+	// two relation edges plus entity-type triples must exist.
+	if rep.TriplesCreated == 0 {
+		t.Fatalf("no triples created (rows read=%d)", rep.RowsRead)
+	}
+
+	// Dump the whole graph and inspect it.
+	exp, err := db.ExportKnowledgeGraph(ctx, cortexdb.KnowledgeGraphExportRequest{Format: "ntriples"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := exp.Content
+
+	// 1. The raw phone must NOT appear anywhere in the graph.
+	if indexOf(g, "13812341234") >= 0 {
+		t.Fatalf("raw PII leaked into the knowledge graph:\n%s", g)
+	}
+	// 2. The customer entity IRI must carry the deterministic token.
+	tok, err := vault.Put(ctx, "t", PiiPhone, "13812341234", testKP())
+	if err != nil {
+		t.Fatal(err)
+	}
+	customerIRI := "urn:cortexdb:Customer:" + tok
+	if indexOf(g, customerIRI) < 0 {
+		t.Fatalf("tokenized customer entity %q not found in graph:\n%s", customerIRI, g)
+	}
+	// 3. The edges survived: both products are linked to the SAME customer token,
+	//    proving the pseudonym preserved the join across the two rows.
+	for _, pid := range []string{"P1", "P2"} {
+		edge := "<" + customerIRI + "> <urn:cortexdb:rel:bought> <urn:cortexdb:Product:" + pid + ">"
+		if indexOf(g, edge) < 0 {
+			t.Fatalf("expected preserved edge %s in graph:\n%s", edge, g)
+		}
+	}
+
+	// 4. The vault still reverses the token to the original (operational un-mask),
+	//    even though the graph itself never exposes it.
+	got, err := Unmask(ctx, vault, "t", []string{tok}, testKP())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[tok] != "13812341234" {
+		t.Fatalf("vault un-mask failed: %v", got)
+	}
+}
