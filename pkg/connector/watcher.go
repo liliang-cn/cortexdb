@@ -35,6 +35,14 @@ type Watcher struct {
 	im   *importflow.Importer
 }
 
+// cursorCheckpointer is implemented by polling-style sources that track a
+// per-table watermark cursor (Route A). Log-based sources (Route B) will
+// implement a position-based checkpointer instead.
+type cursorCheckpointer interface {
+	LoadWatermarks(cursor string) error
+	WatermarkJSON() (string, error)
+}
+
 // NewWatcher validates options (incl. the stable-key precondition) and returns a
 // Watcher. It does not start consuming until Run.
 func NewWatcher(db *cortexdb.DB, src ChangeSource, opts WatcherOptions) (*Watcher, error) {
@@ -56,11 +64,36 @@ func NewWatcher(db *cortexdb.DB, src ChangeSource, opts WatcherOptions) (*Watche
 }
 
 // Run consumes changes until the source's Changes returns (polling: one batch;
-// log-based: until ctx is cancelled), applying each event.
+// log-based: until ctx is cancelled), applying each event. For cursor-based
+// sources it seeds the watermark from the checkpoint before draining and saves
+// the advanced watermark after a successful drain.
 func (w *Watcher) Run(ctx context.Context) error {
-	return w.src.Changes(ctx, func(e ChangeEvent) error {
+	if cc, ok := w.src.(cursorCheckpointer); ok {
+		cp, found, err := w.opts.Checkpoint.Load(ctx, w.opts.SourceKey)
+		if err != nil {
+			return err
+		}
+		if found {
+			if err := cc.LoadWatermarks(cp.Cursor); err != nil {
+				return err
+			}
+		}
+	}
+
+	if err := w.src.Changes(ctx, func(e ChangeEvent) error {
 		return w.apply(ctx, e)
-	})
+	}); err != nil {
+		return err
+	}
+
+	if cc, ok := w.src.(cursorCheckpointer); ok {
+		cursor, err := cc.WatermarkJSON()
+		if err != nil {
+			return err
+		}
+		return w.opts.Checkpoint.Save(ctx, w.opts.SourceKey, Checkpoint{Cursor: cursor})
+	}
+	return nil
 }
 
 func (w *Watcher) apply(ctx context.Context, e ChangeEvent) error {
