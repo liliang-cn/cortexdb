@@ -18,12 +18,18 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 		return wrapError("init", ErrStoreClosed)
 	}
 
-	// Open database connection
-	// _journal_mode=WAL: Better concurrency
-	// _synchronous=NORMAL: Good balance of safety and speed
-	// _busy_timeout=5000: Wait up to 5s for lock instead of failing immediately
-	// _cache_size=-2000: Use 2MB of memory for cache (negative value = kb)
-	dsn := fmt.Sprintf("%s?_journal_mode=WAL&_synchronous=NORMAL&_busy_timeout=5000&_cache_size=-2000", s.config.Path)
+	// Open database connection. NOTE: pragmas must use modernc.org/sqlite's
+	// `_pragma=name(value)` DSN syntax — the mattn/CGO `_journal_mode=...` form is
+	// silently ignored by this pure-Go driver, which previously left WAL and the
+	// busy timeout unset (causing SQLITE_BUSY under concurrent readers/writers).
+	// Pragmas in the DSN apply to EVERY pooled connection (unlike a one-off
+	// PRAGMA via Exec, which only affects a single connection).
+	//   journal_mode(WAL): better read/write concurrency
+	//   synchronous(NORMAL): good balance of safety and speed
+	//   busy_timeout(5000): wait up to 5s for a lock instead of failing immediately
+	//   cache_size(-2000): 2MB page cache (negative = KiB)
+	//   foreign_keys(ON): enforce FK cascades on every connection
+	dsn := fmt.Sprintf("%s?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)&_pragma=cache_size(-2000)&_pragma=foreign_keys(ON)", s.config.Path)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return wrapError("init", fmt.Errorf("failed to open database: %w", err))
