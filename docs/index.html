@@ -304,9 +304,9 @@
 
                 <p class="text-xl md:text-2xl text-gray-600 dark:text-gray-300 mb-10 max-w-4xl mx-auto leading-relaxed font-light tracking-wide"
                     data-i18n
-                    data-en="One SQLite file holds vectors, search, RAG, agent memory, and a SPARQL knowledge graph — with MCP tools and a Rust-ready gRPC sidecar."
-                    data-zh="一个 SQLite 文件装下向量、检索、RAG、代理记忆与 SPARQL 知识图谱 — 自带 MCP 工具与 Rust 可用的 gRPC 边车。">
-                    One SQLite file holds vectors, search, RAG, agent memory, and a SPARQL knowledge graph — with MCP tools and a Rust-ready gRPC sidecar.
+                    data-en="One SQLite file holds vectors, search, RAG, agent memory, and a SPARQL knowledge graph. Connect live Postgres/MySQL with PII-safe desensitization and near-real-time CDC — plus MCP tools and a Rust-ready gRPC sidecar."
+                    data-zh="一个 SQLite 文件装下向量、检索、RAG、代理记忆与 SPARQL 知识图谱。接入线上 Postgres/MySQL，自带 PII 脱敏与近实时 CDC — 还有 MCP 工具与 Rust 可用的 gRPC 边车。">
+                    One SQLite file holds vectors, search, RAG, agent memory, and a SPARQL knowledge graph. Connect live Postgres/MySQL with PII-safe desensitization and near-real-time CDC — plus MCP tools and a Rust-ready gRPC sidecar.
                 </p>
 
                 <div class="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
@@ -451,6 +451,24 @@
                         data-en="Import external structured data (CSV, MySQL/PostgreSQL dumps) into RAG and knowledge-graph foundations in one pass, with optional AI-assisted mapping, triple extraction, and text refinement."
                         data-zh="将外部结构化数据（CSV、MySQL/PostgreSQL dump）一次导入为 RAG 与知识图谱基础，AI 辅助的映射推断、三元组抽取与文本清洗均可选。">
                         Import external structured data (CSV, MySQL/PostgreSQL dumps) into RAG and knowledge-graph foundations in one pass, with optional AI-assisted mapping, triple extraction, and text refinement.
+                    </p>
+                </div>
+
+                <div
+                    class="feature-card bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700">
+                    <div
+                        class="w-12 h-12 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-xl flex items-center justify-center mb-6">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z">
+                            </path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-4" data-i18n data-en="Data Connector + CDC" data-zh="数据连接器 + CDC">Data Connector + CDC</h3>
+                    <p class="text-gray-600 dark:text-gray-300" data-i18n
+                        data-en="Connect live Postgres/MySQL, classify and desensitize PII under a human-signed plan, then keep it in sync in near real time — polling, Postgres logical replication, or MySQL binlog (inserts/updates/hard-deletes). Reversible pseudonyms live in a separate AES-256-GCM vault; the RAG/LLM path never sees raw PII."
+                        data-zh="接入线上 Postgres/MySQL，按人工签字方案识别并脱敏 PII，再以近实时方式持续同步——轮询、Postgres 逻辑复制或 MySQL binlog（增/改/硬删除）。可逆假名存于独立的 AES-256-GCM 金库，RAG/LLM 链路永不接触原始 PII。">
+                        Connect live Postgres/MySQL, classify and desensitize PII under a human-signed plan, then keep it in sync in near real time — polling, Postgres logical replication, or MySQL binlog (inserts/updates/hard-deletes). Reversible pseudonyms live in a separate AES-256-GCM vault; the RAG/LLM path never sees raw PII.
                     </p>
                 </div>
 
@@ -1093,6 +1111,116 @@ await c.memory.SaveMemory({
                         </p>
                         <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/08_self_knowledge_graph"
                             class="inline-flex items-center text-fuchsia-600 dark:text-fuchsia-400 hover:underline">
+                            <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
+                            <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14">
+                                </path>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+
+                <div
+                    class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+                    <div class="h-2 bg-gradient-to-r from-teal-500 to-cyan-500"></div>
+                    <div class="p-6">
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Data Connector" data-zh="数据连接器">Data Connector</h3>
+                        <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
+                            data-en="Privacy gate: connect a live Postgres/MySQL, classify and desensitize PII under a human-signed plan, then import to RAG + knowledge graph. Reversible pseudonyms in a separate vault."
+                            data-zh="隐私闸门：接入线上 Postgres/MySQL，按人工签字方案识别并脱敏 PII，再导入 RAG + 知识图谱。可逆假名存于独立金库。">
+                            Privacy gate: connect a live Postgres/MySQL, classify and desensitize PII under a human-signed plan, then import to RAG + knowledge graph. Reversible pseudonyms in a separate vault.
+                        </p>
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/09_connector"
+                            class="inline-flex items-center text-teal-600 dark:text-teal-400 hover:underline">
+                            <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
+                            <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14">
+                                </path>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+
+                <div
+                    class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+                    <div class="h-2 bg-gradient-to-r from-blue-500 to-cyan-500"></div>
+                    <div class="p-6">
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Support Brain (live DB)" data-zh="客服大脑（线上库）">Support Brain (live DB)</h3>
+                        <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
+                            data-en="End-to-end over a real Postgres/MySQL: desensitize → masked Q&amp;A + SPARQL → audited un-mask → live CDC sync. Optional LLM phrases answers over masked context only."
+                            data-zh="基于真实 Postgres/MySQL 的端到端：脱敏 → 脱敏问答 + SPARQL → 审计解密 → 实时 CDC 同步。可选 LLM 仅在脱敏上下文上作答。">
+                            End-to-end over a real Postgres/MySQL: desensitize → masked Q&amp;A + SPARQL → audited un-mask → live CDC sync. Optional LLM phrases answers over masked context only.
+                        </p>
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/10_support_brain"
+                            class="inline-flex items-center text-blue-600 dark:text-blue-400 hover:underline">
+                            <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
+                            <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14">
+                                </path>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+
+                <div
+                    class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+                    <div class="h-2 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
+                    <div class="p-6">
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Unified Brain (2 DBs + CDC)" data-zh="统一大脑（双库 + CDC）">Unified Brain (2 DBs + CDC)</h3>
+                        <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
+                            data-en="Two live databases merged into one knowledge graph with concurrent streaming CDC (Postgres logical replication + MySQL binlog), free-text PII redaction, and RDFS + SPARQL + SHACL reasoning. No LLM."
+                            data-zh="两个线上库合并为一个知识图谱，并发流式 CDC（Postgres 逻辑复制 + MySQL binlog）、自由文本 PII 遮蔽，以及 RDFS + SPARQL + SHACL 推理。无需 LLM。">
+                            Two live databases merged into one knowledge graph with concurrent streaming CDC (Postgres logical replication + MySQL binlog), free-text PII redaction, and RDFS + SPARQL + SHACL reasoning. No LLM.
+                        </p>
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/11_unified_brain"
+                            class="inline-flex items-center text-indigo-600 dark:text-indigo-400 hover:underline">
+                            <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
+                            <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14">
+                                </path>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+
+                <div
+                    class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+                    <div class="h-2 bg-gradient-to-r from-amber-500 to-orange-500"></div>
+                    <div class="p-6">
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Incident Agent (LLM)" data-zh="事故分析 Agent（LLM）">Incident Agent (LLM)</h3>
+                        <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
+                            data-en="LLM-required: extract a knowledge graph from unstructured incident reports, then an agent answers an analytical question by choosing tools (lexical search, graph centrality) and citing sources."
+                            data-zh="需要 LLM：从非结构化故障报告中抽取知识图谱，再由 agent 自主调用工具（词法检索、图中心度）回答分析性问题并给出引用。">
+                            LLM-required: extract a knowledge graph from unstructured incident reports, then an agent answers an analytical question by choosing tools (lexical search, graph centrality) and citing sources.
+                        </p>
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/12_incident_agent"
+                            class="inline-flex items-center text-amber-600 dark:text-amber-400 hover:underline">
+                            <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
+                            <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14">
+                                </path>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+
+                <div
+                    class="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+                    <div class="h-2 bg-gradient-to-r from-rose-500 to-red-500"></div>
+                    <div class="p-6">
+                        <h3 class="text-xl font-bold mb-3" data-i18n data-en="Scale + Analytics" data-zh="规模 + 分析">Scale + Analytics</h3>
+                        <p class="text-gray-600 dark:text-gray-300 mb-4" data-i18n
+                            data-en="Larger volume: timed bulk dual-source ingest with throughput numbers, SPARQL/RDFS/SHACL analytics over tens of thousands of rows, and CDC under a concurrent write load."
+                            data-zh="更大数据量：计时批量双源导入并给出吞吐数字，在数万行上跑 SPARQL/RDFS/SHACL 分析，并在并发写入负载下做 CDC。">
+                            Larger volume: timed bulk dual-source ingest with throughput numbers, SPARQL/RDFS/SHACL analytics over tens of thousands of rows, and CDC under a concurrent write load.
+                        </p>
+                        <a href="https://github.com/liliang-cn/cortexdb/tree/main/examples/13_scale_analytics"
+                            class="inline-flex items-center text-rose-600 dark:text-rose-400 hover:underline">
                             <span data-i18n data-en="View Example" data-zh="查看示例">View Example</span>
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"

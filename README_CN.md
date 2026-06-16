@@ -22,7 +22,10 @@ pkg/graphflow
   Corpus-to-graph workflow：extraction schema、build、analyze、report、export、HTML。
 
 pkg/importflow
-  外部结构化数据导入（CSV / MySQL-PG dump）到 RAG + 知识图谱基础设施，AI 辅助映射可选。
+  外部结构化数据导入（CSV / SQL dump / 线上 Postgres-MySQL）到 RAG + 知识图谱基础设施，AI 辅助映射可选。
+
+pkg/connector
+  importflow 之上的隐私闸门：线上 Postgres/MySQL 源、PII 识别 + 人工签字脱敏（遮蔽、自由文本红线、可逆 AES-256-GCM 金库），以及近实时 CDC（轮询 / Postgres 逻辑复制 / MySQL binlog）。
 
 pkg/graph
   底层图引擎：property graph、RDF triples/quads、SPARQL、RDFS、SHACL。
