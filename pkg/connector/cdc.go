@@ -37,6 +37,9 @@ type ChangeEvent struct {
 	Table string
 	Key   map[string]string
 	Row   importflow.Record
+	// Position is the source's resume token for this event (Route B: the LSN /
+	// binlog position string). Empty for polling sources.
+	Position string
 }
 
 // ChangeSource streams row changes. For polling (Route A) Changes returns after

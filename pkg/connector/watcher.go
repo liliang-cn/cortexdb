@@ -43,6 +43,13 @@ type cursorCheckpointer interface {
 	WatermarkJSON() (string, error)
 }
 
+// positionCheckpointer is implemented by log-based sources (Route B: PG logical
+// replication, MySQL binlog) that resume from an opaque position token (LSN /
+// binlog position) carried on each ChangeEvent.Position.
+type positionCheckpointer interface {
+	LoadPosition(pos string) error
+}
+
 // NewWatcher validates options (incl. the stable-key precondition) and returns a
 // Watcher. It does not start consuming until Run.
 func NewWatcher(db *cortexdb.DB, src ChangeSource, opts WatcherOptions) (*Watcher, error) {
@@ -68,24 +75,40 @@ func NewWatcher(db *cortexdb.DB, src ChangeSource, opts WatcherOptions) (*Watche
 // sources it seeds the watermark from the checkpoint before draining and saves
 // the advanced watermark after a successful drain.
 func (w *Watcher) Run(ctx context.Context) error {
-	if cc, ok := w.src.(cursorCheckpointer); ok {
-		cp, found, err := w.opts.Checkpoint.Load(ctx, w.opts.SourceKey)
-		if err != nil {
-			return err
-		}
-		if found {
+	// Seed resume position from the checkpoint.
+	cp, found, err := w.opts.Checkpoint.Load(ctx, w.opts.SourceKey)
+	if err != nil {
+		return err
+	}
+	if found {
+		if cc, ok := w.src.(cursorCheckpointer); ok {
 			if err := cc.LoadWatermarks(cp.Cursor); err != nil {
+				return err
+			}
+		}
+		if pc, ok := w.src.(positionCheckpointer); ok {
+			if err := pc.LoadPosition(cp.Position); err != nil {
 				return err
 			}
 		}
 	}
 
+	_, isPosition := w.src.(positionCheckpointer)
 	if err := w.src.Changes(ctx, func(e ChangeEvent) error {
-		return w.apply(ctx, e)
+		if err := w.apply(ctx, e); err != nil {
+			return err
+		}
+		// Position-based sources checkpoint after each applied event (at-least-once;
+		// apply is idempotent, so a replayed event on restart is safe).
+		if isPosition && e.Position != "" {
+			return w.opts.Checkpoint.Save(ctx, w.opts.SourceKey, Checkpoint{Position: e.Position})
+		}
+		return nil
 	}); err != nil {
 		return err
 	}
 
+	// Cursor-based sources checkpoint the advanced watermark after a full drain.
 	if cc, ok := w.src.(cursorCheckpointer); ok {
 		cursor, err := cc.WatermarkJSON()
 		if err != nil {
