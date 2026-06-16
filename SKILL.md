@@ -359,11 +359,14 @@ The `cmd/cortexdb-connector-mcp` binary runs the four tools over stdio (config v
 
 A `Watcher` keeps a knowledge base continuously in sync with a live DB **through
 the same privacy gate** — it consumes row-level `ChangeEvent`s and applies
-idempotent upserts (and hard deletes) to RAG + KG. Available now is **Route A
-(polling)**: `NewPollingChangeSource` polls `WHERE <cursor> > <watermark>` per
-table on demand, is DB-agnostic (PG/MySQL/Neon), and resumes from a checkpoint
-stored in the knowledge DB. **Library API only** — `w.Run(ctx)` does one pass and
-the caller schedules it (loop / cron); no bundled daemon or MCP tool this phase.
+idempotent upserts (and hard deletes) to RAG + KG. Two change sources feed it.
+
+**Route A (polling, `NewPollingChangeSource`):** polls
+`WHERE <cursor> > <watermark>` per table on demand, is DB-agnostic
+(PG/MySQL/Neon), resumes from a checkpoint in the knowledge DB. **Library API
+only** — `w.Run(ctx)` does one pass and the caller schedules it (loop / cron).
+Needs a monotonic cursor column (e.g. `updated_at`) and **cannot see hard
+deletes**.
 
 ```go
 src, _ := connector.NewPollingChangeSource("postgres", dsn, connector.PollingOptions{
@@ -378,14 +381,33 @@ w, _ := connector.NewWatcher(db, src, connector.WatcherOptions{
 _ = w.Run(ctx) // schedule on an interval; resumes from the checkpoint
 ```
 
-Precondition: every RAG table's `MappingPlan` must key on the primary key
-(`RAGPlan.IDColumn`) so updates/deletes hit the right chunk — `NewWatcher` errors
-otherwise. Privacy is unchanged: every streamed row still passes the signed
-`MaskingPlan`, raw PII never enters RAG/KG, and pseudonymized keys become the same
-deterministic tokens so KG edges survive. Hard deletes + lower-latency true CDC
-(**Routes B**: Postgres logical replication, MySQL binlog) are **planned for a
-later phase** — not yet implemented; polling alone cannot see hard deletes. Limits:
-single-node, seconds-scale, needs a monotonic cursor column (e.g. `updated_at`).
+**Route B-PG (Postgres logical replication, `NewPostgresCDCSource`):** a true
+CDC source over `pgoutput` that **captures hard deletes** and **streams
+continuously** — `w.Run(ctx)` blocks until ctx is cancelled and resumes by LSN
+from the checkpoint (`Checkpoint.Position`). Prerequisites: `wal_level=logical`,
+a publication (`CREATE PUBLICATION cdc_pub FOR TABLE ...`), and a replication
+slot (auto-created); default `REPLICA IDENTITY` (PK) carries the delete key.
+
+```go
+src, _ := connector.NewPostgresCDCSource(dsn, connector.PostgresCDCOptions{
+    Publication: "cdc_pub", Slot: "cdc_slot",
+    Tables: map[string][]string{"orders": {"id"}},
+})
+w, _ := connector.NewWatcher(db, src, connector.WatcherOptions{
+    SourceKey: "orders-cdc", Desensitizer: d, Checkpoint: cp,
+    Mapping: importflow.MappingPlan{Tables: map[string]importflow.TablePlan{
+        "orders": {RAG: &importflow.RAGPlan{ContentTmpl: "{name}", IDColumn: "id"}},
+    }},
+})
+go w.Run(ctx) // streams insert/update/delete continuously; resumes by LSN
+```
+
+Precondition (both routes): every RAG table's `MappingPlan` must key on the
+primary key (`RAGPlan.IDColumn`) so updates/deletes hit the right chunk —
+`NewWatcher` errors otherwise. Privacy is unchanged: every streamed row still
+passes the signed `MaskingPlan`, raw PII never enters RAG/KG, and pseudonymized
+keys become the same deterministic tokens so KG edges survive. **Route B-MySQL**
+(binlog) is the only remaining CDC piece — still planned, not yet implemented.
 
 ## Tools and MCP
 

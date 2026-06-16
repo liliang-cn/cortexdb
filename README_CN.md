@@ -350,10 +350,13 @@ rep, _ := importflow.New(db).Run(ctx, connector.Desensitized(src, d), mapping)
 持续保持同步：它消费行级 `ChangeEvent`，并把幂等 upsert（以及硬删除）应用到 RAG +
 知识图谱。
 
-当前可用的是 **Route A（轮询 polling）**：`NewPollingChangeSource` 按需对每张表执行
+`Watcher` 现支持两种变更源：
+
+**Route A —— 轮询（`NewPollingChangeSource`）**：按需对每张表执行
 `WHERE <cursor> > <watermark>` 轮询，与数据库无关（PG/MySQL/Neon），并从存在知识库里
 的 checkpoint 恢复进度。它**只提供库 API**——`w.Run(ctx)` 跑一轮，由调用方自己调度
-（循环 / cron / 自建守护进程）；本阶段没有内置 daemon，也没有对应的 MCP 工具。
+（循环 / cron / 自建守护进程）。需要一个单调递增的游标列（如 `updated_at`），
+且**看不到硬删除**。
 
 ```go
 src, _ := connector.NewPollingChangeSource("postgres", dsn, connector.PollingOptions{
@@ -368,15 +371,32 @@ w, _ := connector.NewWatcher(db, src, connector.WatcherOptions{
 _ = w.Run(ctx) // 按间隔调度；从 checkpoint 恢复
 ```
 
+**Route B-PG —— Postgres 逻辑复制（`NewPostgresCDCSource`）**：基于 `pgoutput`
+的真正 CDC 源。它**能捕获硬删除**（轮询做不到），并**持续流式推送**——`w.Run(ctx)`
+会一直阻塞直到 ctx 被取消，并按 LSN 从 checkpoint（`Checkpoint.Position`）恢复。
+前置条件：Postgres `wal_level=logical`、一个 publication
+（`CREATE PUBLICATION cdc_pub FOR TABLE ...`）以及一个 replication slot（自动创建）。
+默认的 `REPLICA IDENTITY`（主键）就足以让删除事件携带 key。
+
+```go
+src, _ := connector.NewPostgresCDCSource(dsn, connector.PostgresCDCOptions{
+    Publication: "cdc_pub", Slot: "cdc_slot",
+    Tables: map[string][]string{"orders": {"id"}},
+})
+w, _ := connector.NewWatcher(db, src, connector.WatcherOptions{
+    SourceKey: "orders-cdc", Desensitizer: d, Checkpoint: cp,
+    Mapping: importflow.MappingPlan{Tables: map[string]importflow.TablePlan{
+        "orders": {RAG: &importflow.RAGPlan{ContentTmpl: "{name}", IDColumn: "id"}},
+    }},
+})
+go w.Run(ctx) // 持续流式推送 insert/update/delete；按 LSN 恢复
+```
+
 - **前置条件**：每张 RAG 表的 `MappingPlan` 必须以主键作为 key（`RAGPlan.IDColumn`），
   这样 update/delete 才能定位到正确的 chunk——否则 `NewWatcher` 会报错。
 - **隐私不变**：每一行变更仍会经过已签署的 `MaskingPlan`——原始 PII 永远不会进入
-  RAG/KG，被假名化的 key 仍变成同样的确定性 token，所以 KG 的边能够保留。
-- **硬删除 + 真正的 CDC（Routes B）**：Postgres 逻辑复制（logical replication）和
-  MySQL binlog 可以捕获删除、以更低延迟流式推送变更——这些**计划在后续阶段实现**，
-  目前尚未提供。仅靠轮询看不到硬删除。
-- **诚实的边界**：单机、秒级；轮询需要一个单调递增的游标列（如 `updated_at`），
-  且会漏掉硬删除。
+  RAG/KG，被假名化的 key 仍变成同样的确定性 token，所以 KG 的边能够保留（两种路由皆然）。
+- **仍在规划中（Route B-MySQL）**：MySQL binlog CDC 是唯一剩下的 CDC 部分，目前尚未实现。
 
 ## Tools 和 MCP
 

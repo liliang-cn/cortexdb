@@ -367,12 +367,14 @@ continuously in sync with a live DB **through the same privacy gate** — it
 consumes row-level `ChangeEvent`s and applies idempotent upserts (and hard
 deletes) to RAG + the knowledge graph.
 
-Available now (**Route A, polling**): `NewPollingChangeSource` polls
-`WHERE <cursor> > <watermark>` per table on demand. It is DB-agnostic
+Two change sources feed a `Watcher`:
+
+**Route A — polling (`NewPollingChangeSource`):** polls
+`WHERE <cursor> > <watermark>` per table on demand. DB-agnostic
 (PostgreSQL/MySQL/Neon), resumes from a checkpoint stored in the knowledge DB,
-and is exposed as a **library API only** — `w.Run(ctx)` does one pass; the
-caller schedules it (loop / cron / their own daemon). There is no bundled daemon
-or MCP tool in this phase.
+exposed as a **library API only** — `w.Run(ctx)` does one pass; the caller
+schedules it (loop / cron / their own daemon). Needs a monotonic cursor column
+(e.g. `updated_at`) and **cannot see hard deletes**.
 
 ```go
 src, _ := connector.NewPollingChangeSource("postgres", dsn, connector.PollingOptions{
@@ -387,18 +389,37 @@ w, _ := connector.NewWatcher(db, src, connector.WatcherOptions{
 _ = w.Run(ctx) // schedule on an interval; resumes from the checkpoint
 ```
 
+**Route B-PG — Postgres logical replication (`NewPostgresCDCSource`):** a true
+CDC source over `pgoutput`. It **captures hard deletes** (unlike polling) and
+**streams continuously** — `w.Run(ctx)` blocks until ctx is cancelled and
+resumes by LSN from the checkpoint (`Checkpoint.Position`). Prerequisites:
+Postgres `wal_level=logical`, a publication
+(`CREATE PUBLICATION cdc_pub FOR TABLE ...`), and a replication slot
+(auto-created). The default `REPLICA IDENTITY` (primary key) is enough for
+deletes to carry the key.
+
+```go
+src, _ := connector.NewPostgresCDCSource(dsn, connector.PostgresCDCOptions{
+    Publication: "cdc_pub", Slot: "cdc_slot",
+    Tables: map[string][]string{"orders": {"id"}},
+})
+w, _ := connector.NewWatcher(db, src, connector.WatcherOptions{
+    SourceKey: "orders-cdc", Desensitizer: d, Checkpoint: cp,
+    Mapping: importflow.MappingPlan{Tables: map[string]importflow.TablePlan{
+        "orders": {RAG: &importflow.RAGPlan{ContentTmpl: "{name}", IDColumn: "id"}},
+    }},
+})
+go w.Run(ctx) // streams insert/update/delete continuously; resumes by LSN
+```
+
 - **Precondition:** every RAG table's `MappingPlan` must key on the primary key
   (`RAGPlan.IDColumn`) so updates/deletes address the right chunk — `NewWatcher`
   errors otherwise.
 - **Privacy unchanged:** every streamed row still passes the signed
   `MaskingPlan` — raw PII never enters RAG/KG, and pseudonymized keys become the
-  same deterministic tokens so KG edges survive.
-- **Hard deletes + true CDC (Routes B):** PostgreSQL logical replication and
-  MySQL binlog capture deletes and stream changes with lower latency — these are
-  **planned for a later phase**, not yet implemented. Polling alone cannot see
-  hard deletes.
-- **Honest limits:** single-node, seconds-scale; polling needs a monotonic
-  cursor column (e.g. `updated_at`) and misses hard deletes.
+  same deterministic tokens so KG edges survive (both routes).
+- **Still planned (Route B-MySQL):** MySQL binlog CDC is the only remaining CDC
+  piece — not yet implemented.
 
 ## Tools and MCP
 
