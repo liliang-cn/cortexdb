@@ -51,3 +51,21 @@ func TestVaultWrongKeyFails(t *testing.T) {
 		t.Fatal("expected decrypt failure with wrong key")
 	}
 }
+
+// shortKeyProvider returns an undersized key without self-policing, to prove the
+// vault's own crypto path rejects it (rather than relying on the provider).
+type shortKeyProvider []byte
+
+func (s shortKeyProvider) TenantKey(context.Context, string) ([]byte, error) { return s, nil }
+
+// A non-32-byte key must be rejected by the vault itself, so the AES-256
+// guarantee does not silently downgrade to AES-128/192 with a short key.
+func TestVaultRejectsShortKey(t *testing.T) {
+	dir := t.TempDir()
+	short := shortKeyProvider([]byte("0123456789abcdef")) // 16 bytes — would be AES-128
+	v, _ := OpenSQLiteVault(filepath.Join(dir, "t.vault.db"))
+	defer v.Close()
+	if _, err := v.Put(context.Background(), "t", PiiPhone, "13812341234", short); err == nil {
+		t.Fatal("expected Put to reject a non-32-byte key")
+	}
+}

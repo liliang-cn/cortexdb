@@ -110,7 +110,21 @@ func (v *SQLiteVault) Resolve(ctx context.Context, tenant string, tokens []strin
 	return out, nil
 }
 
+// requireAES256Key rejects any key that is not exactly 32 bytes, so the
+// AES-256 guarantee is structural and does not depend on every KeyProvider
+// policing its own output (a 16/24-byte key would otherwise silently downgrade
+// to AES-128/192).
+func requireAES256Key(key []byte) error {
+	if len(key) != 32 {
+		return fmt.Errorf("connector: key must be 32 bytes for AES-256, got %d", len(key))
+	}
+	return nil
+}
+
 func sealAESGCM(key, plaintext []byte) ([]byte, error) {
+	if err := requireAES256Key(key); err != nil {
+		return nil, err
+	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -127,6 +141,9 @@ func sealAESGCM(key, plaintext []byte) ([]byte, error) {
 }
 
 func openAESGCM(key, blob []byte) ([]byte, error) {
+	if err := requireAES256Key(key); err != nil {
+		return nil, err
+	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
