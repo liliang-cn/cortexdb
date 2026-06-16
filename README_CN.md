@@ -344,6 +344,40 @@ rep, _ := importflow.New(db).Run(ctx, connector.Desensitized(src, d), mapping)
 `connector.RegisterMCPTools(server, tb)` 挂到已有的 MCP server（比如 ImportFlow 的）上。
 `cmd/cortexdb-connector-mcp` 二进制可直接用 stdio 跑这四个工具。参见 `examples/09_connector`。
 
+### 近实时同步（CDC）
+
+除了一次性导入，`Watcher` 还能让 CortexDB 知识库**通过同一道隐私闸门**与线上数据库
+持续保持同步：它消费行级 `ChangeEvent`，并把幂等 upsert（以及硬删除）应用到 RAG +
+知识图谱。
+
+当前可用的是 **Route A（轮询 polling）**：`NewPollingChangeSource` 按需对每张表执行
+`WHERE <cursor> > <watermark>` 轮询，与数据库无关（PG/MySQL/Neon），并从存在知识库里
+的 checkpoint 恢复进度。它**只提供库 API**——`w.Run(ctx)` 跑一轮，由调用方自己调度
+（循环 / cron / 自建守护进程）；本阶段没有内置 daemon，也没有对应的 MCP 工具。
+
+```go
+src, _ := connector.NewPollingChangeSource("postgres", dsn, connector.PollingOptions{
+    Tables: []connector.TableCursor{{Table: "orders", CursorColumn: "updated_at", KeyColumns: []string{"id"}}},
+})
+w, _ := connector.NewWatcher(db, src, connector.WatcherOptions{
+    SourceKey: "orders", Desensitizer: d, Checkpoint: cp,
+    Mapping: importflow.MappingPlan{Tables: map[string]importflow.TablePlan{
+        "orders": {RAG: &importflow.RAGPlan{ContentTmpl: "{name}", IDColumn: "id"}},
+    }},
+})
+_ = w.Run(ctx) // 按间隔调度；从 checkpoint 恢复
+```
+
+- **前置条件**：每张 RAG 表的 `MappingPlan` 必须以主键作为 key（`RAGPlan.IDColumn`），
+  这样 update/delete 才能定位到正确的 chunk——否则 `NewWatcher` 会报错。
+- **隐私不变**：每一行变更仍会经过已签署的 `MaskingPlan`——原始 PII 永远不会进入
+  RAG/KG，被假名化的 key 仍变成同样的确定性 token，所以 KG 的边能够保留。
+- **硬删除 + 真正的 CDC（Routes B）**：Postgres 逻辑复制（logical replication）和
+  MySQL binlog 可以捕获删除、以更低延迟流式推送变更——这些**计划在后续阶段实现**，
+  目前尚未提供。仅靠轮询看不到硬删除。
+- **诚实的边界**：单机、秒级；轮询需要一个单调递增的游标列（如 `updated_at`），
+  且会漏掉硬删除。
+
 ## Tools 和 MCP
 
 进程内 tool calling：

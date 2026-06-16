@@ -360,6 +360,46 @@ Agent-callable tools — `connector_introspect`, `connector_plan`, `connector_ru
 ImportFlow's). The `cmd/cortexdb-connector-mcp` binary runs them over stdio. See
 `examples/09_connector`.
 
+### Near-real-time sync (CDC)
+
+Beyond one-shot imports, a `Watcher` keeps a CortexDB knowledge base
+continuously in sync with a live DB **through the same privacy gate** — it
+consumes row-level `ChangeEvent`s and applies idempotent upserts (and hard
+deletes) to RAG + the knowledge graph.
+
+Available now (**Route A, polling**): `NewPollingChangeSource` polls
+`WHERE <cursor> > <watermark>` per table on demand. It is DB-agnostic
+(PostgreSQL/MySQL/Neon), resumes from a checkpoint stored in the knowledge DB,
+and is exposed as a **library API only** — `w.Run(ctx)` does one pass; the
+caller schedules it (loop / cron / their own daemon). There is no bundled daemon
+or MCP tool in this phase.
+
+```go
+src, _ := connector.NewPollingChangeSource("postgres", dsn, connector.PollingOptions{
+    Tables: []connector.TableCursor{{Table: "orders", CursorColumn: "updated_at", KeyColumns: []string{"id"}}},
+})
+w, _ := connector.NewWatcher(db, src, connector.WatcherOptions{
+    SourceKey: "orders", Desensitizer: d, Checkpoint: cp,
+    Mapping: importflow.MappingPlan{Tables: map[string]importflow.TablePlan{
+        "orders": {RAG: &importflow.RAGPlan{ContentTmpl: "{name}", IDColumn: "id"}},
+    }},
+})
+_ = w.Run(ctx) // schedule on an interval; resumes from the checkpoint
+```
+
+- **Precondition:** every RAG table's `MappingPlan` must key on the primary key
+  (`RAGPlan.IDColumn`) so updates/deletes address the right chunk — `NewWatcher`
+  errors otherwise.
+- **Privacy unchanged:** every streamed row still passes the signed
+  `MaskingPlan` — raw PII never enters RAG/KG, and pseudonymized keys become the
+  same deterministic tokens so KG edges survive.
+- **Hard deletes + true CDC (Routes B):** PostgreSQL logical replication and
+  MySQL binlog capture deletes and stream changes with lower latency — these are
+  **planned for a later phase**, not yet implemented. Polling alone cannot see
+  hard deletes.
+- **Honest limits:** single-node, seconds-scale; polling needs a monotonic
+  cursor column (e.g. `updated_at`) and misses hard deletes.
+
 ## Tools and MCP
 
 For in-process tool calling:
