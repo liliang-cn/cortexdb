@@ -27,6 +27,15 @@ type pollingChangeSource struct {
 	watermarks map[string]string // table -> last seen cursor value
 }
 
+// Compile-time guarantees: a polling source is both a ChangeSource and a
+// cursorCheckpointer, so the Watcher always seeds/saves its watermark (a future
+// refactor dropping a method would fail the build rather than silently disabling
+// resume).
+var (
+	_ ChangeSource       = (*pollingChangeSource)(nil)
+	_ cursorCheckpointer = (*pollingChangeSource)(nil)
+)
+
 // NewPollingChangeSource opens a live SQL source for polling. driver is
 // "postgres"/"pgx" or "mysql".
 func NewPollingChangeSource(driver, dsn string, opts PollingOptions) (ChangeSource, error) {
