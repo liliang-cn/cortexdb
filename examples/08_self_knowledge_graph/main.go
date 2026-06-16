@@ -1,8 +1,12 @@
 // Dogfooding demo: turn docs/PROJECT_OVERVIEW.md (CortexDB's own project
-// overview) into a knowledge graph using CortexDB's graphflow workflow, with
-// a local Ollama qwen3.5 model as the LLM extractor.
+// overview) into a knowledge graph using CortexDB's graphflow workflow, with an
+// LLM extractor.
 //
-// Prereqs: ollama pull qwen3.5
+// LLM config (any OpenAI-compatible endpoint), via env or a .env (godotenv):
+//   OPENAI_API_KEY + OPENAI_BASE_URL + OPENAI_MODEL   (e.g. DashScope qwen-plus)
+// If those are unset it falls back to a local Ollama (OLLAMA_BASE / OLLAMA_MODEL,
+// default http://localhost:11434 + qwen3.5).
+//
 // Run:     go run ./examples/08_self_knowledge_graph
 // Output:  examples/08_self_knowledge_graph/out/ (graph JSON, report, HTML viz)
 package main
@@ -18,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graphflow"
 )
@@ -205,6 +210,7 @@ func firstExisting(paths ...string) string {
 }
 
 func main() {
+	_ = godotenv.Load(".env", "../../.env")
 	ollamaBase := os.Getenv("OLLAMA_BASE")
 	if ollamaBase == "" {
 		ollamaBase = "http://localhost:11434"
@@ -236,23 +242,23 @@ func main() {
 	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
-	// EXTRACT_BASE_URL + EXTRACT_API_KEY select an OpenAI-compatible endpoint
-	// (e.g. DashScope qwen-plus); otherwise fall back to local Ollama.
+	// Prefer the standard OPENAI_* config (from .env, an OpenAI-compatible endpoint
+	// such as DashScope) — same as the other examples. EXTRACT_* overrides it, and
+	// a local Ollama is the last-resort fallback when no endpoint is configured.
+	base := firstNonEmpty(os.Getenv("EXTRACT_BASE_URL"), os.Getenv("OPENAI_BASE_URL"))
+	apiKey := firstNonEmpty(os.Getenv("EXTRACT_API_KEY"), os.Getenv("OPENAI_API_KEY"))
 	var generator graphflow.JSONGenerator
-	if base := os.Getenv("EXTRACT_BASE_URL"); base != "" {
-		extractModel := os.Getenv("EXTRACT_MODEL")
-		if extractModel == "" {
-			extractModel = "qwen-plus"
-		}
+	if base != "" && apiKey != "" {
+		extractModel := firstNonEmpty(os.Getenv("EXTRACT_MODEL"), os.Getenv("OPENAI_MODEL"), "qwen-plus")
 		fmt.Printf("extractor: %s via %s\n", extractModel, base)
 		generator = &openAICompatJSONGenerator{
 			baseURL: base,
-			apiKey:  os.Getenv("EXTRACT_API_KEY"),
+			apiKey:  apiKey,
 			model:   extractModel,
 			client:  &http.Client{Timeout: 5 * time.Minute},
 		}
 	} else {
-		fmt.Printf("extractor: %s via %s (local ollama)\n", model, ollamaBase)
+		fmt.Printf("extractor: %s via %s (local ollama; set OPENAI_API_KEY/OPENAI_BASE_URL in .env to use a hosted model)\n", model, ollamaBase)
 		generator = &ollamaJSONGenerator{
 			baseURL: ollamaBase,
 			model:   model,
@@ -304,4 +310,14 @@ func main() {
 	fmt.Println(report)
 	fmt.Printf("artifacts:\n  db:     %s\n  graph:  %s\n  report: %s\n  html:   %s\n",
 		dbPath, export.GraphJSON, export.ReportMarkdown, html.GraphHTML)
+}
+
+// firstNonEmpty returns the first non-empty string.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if s := strings.TrimSpace(v); s != "" {
+			return s
+		}
+	}
+	return ""
 }

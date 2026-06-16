@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/joho/godotenv"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graphflow"
 	"github.com/openai/openai-go/v3"
@@ -53,6 +54,7 @@ throttling. Mitigation: added exponential backoff to the export client.`},
 }
 
 func main() {
+	_ = godotenv.Load(".env", "../../.env")
 	model := flagModel()
 	apiKey := strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
 	if apiKey == "" {
@@ -68,7 +70,12 @@ func main() {
 }
 
 func flagModel() string {
-	model := "gpt-5.5"
+	// default from OPENAI_MODEL (.env) so the example matches the active provider;
+	// -model overrides.
+	model := strings.TrimSpace(os.Getenv("OPENAI_MODEL"))
+	if model == "" {
+		model = "gpt-5.5"
+	}
 	for i, a := range os.Args {
 		if a == "-model" && i+1 < len(os.Args) {
 			model = os.Args[i+1]
