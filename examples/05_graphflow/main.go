@@ -69,7 +69,13 @@ Carol validates the rollout checklist.
 
 	extraction, err := extractor.Extract(ctx, doc)
 	if err != nil {
-		log.Fatal(err)
+		// The LLM extractor is optional: if the endpoint is unreachable or errors,
+		// fall back to the deterministic heuristic extractor so the example still runs.
+		fmt.Printf("LLM extraction failed (%v); falling back to heuristic extractor\n", err)
+		extraction, err = graphflow.HeuristicExtractor{}.Extract(ctx, doc)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 	extractions := []graphflow.ExtractionResult{*extraction}
 

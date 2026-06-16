@@ -619,14 +619,15 @@ _ = route.RouteName
 The examples are intentionally small and architecture-oriented:
 
 ```bash
+# 01-07, 09, kg_e2e run standalone (no external services). 08, 10-13 need an LLM and/or a live DB (noted below).
 go run ./examples/01_core
 go run ./examples/02_rag
 go run ./examples/03_memoryflow
 go run ./examples/04_knowledge_graph
-go run ./examples/05_graphflow
+go run ./examples/05_graphflow                # heuristic by default; uses an LLM if OPENAI_* / .env is set (falls back gracefully if unreachable)
 go run ./examples/06_tools_mcp
 go run ./examples/07_importflow
-go run ./examples/08_self_knowledge_graph   # builds a KG of this project itself; qa_test.go answers questions from it
+go run ./examples/08_self_knowledge_graph   # needs a local Ollama (ollama pull qwen3.5); builds a KG of this project, qa_test.go answers from it
 go run ./examples/09_connector              # desensitize a CSV through the privacy gate, then import to RAG
 go run ./examples/10_support_brain -driver postgres -dsn '...'  # end-to-end: live Postgres/MySQL → desensitize → RAG+KG → masked Q&A → un-mask → live CDC
 go run ./examples/11_unified_brain -pg '...' -my '...'          # two live DBs → one KG, concurrent streaming CDC, RDFS inference + SPARQL aggregate + SHACL
