@@ -3,6 +3,8 @@ package connector
 import (
 	"context"
 	"fmt"
+	"maps"
+	"sort"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
@@ -133,9 +135,7 @@ func (w *Watcher) deleteEntity(ctx context.Context, iri string) error {
 // become the same token used at index time.
 func (w *Watcher) desensitizeKey(ctx context.Context, table string, key map[string]string) (map[string]string, error) {
 	rec := importflow.Record{Table: table, Values: map[string]string{}, Nulls: map[string]bool{}}
-	for k, v := range key {
-		rec.Values[k] = v
-	}
+	maps.Copy(rec.Values, key)
 	out, err := w.opts.Desensitizer.Apply(ctx, rec)
 	if err != nil {
 		return nil, err
@@ -144,8 +144,13 @@ func (w *Watcher) desensitizeKey(ctx context.Context, table string, key map[stri
 }
 
 func columnsFromRecord(r importflow.Record) []importflow.Column {
-	cols := make([]importflow.Column, 0, len(r.Values))
+	names := make([]string, 0, len(r.Values))
 	for name := range r.Values {
+		names = append(names, name)
+	}
+	sort.Strings(names) // deterministic column order
+	cols := make([]importflow.Column, 0, len(names))
+	for _, name := range names {
 		cols = append(cols, importflow.Column{Name: name})
 	}
 	return cols
