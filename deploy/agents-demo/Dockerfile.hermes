@@ -1,0 +1,25 @@
+# Hermes Agent (Nous Research) installed via the official CLI script, configured
+# to use a local Ollama model and the CortexDB memory skill.
+FROM debian:bookworm-slim
+
+# xz-utils: the installer extracts a Node.js tarball; uv: the installer's runtime.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates bash git python3 python3-pip xz-utils && \
+    rm -rf /var/lib/apt/lists/*
+
+# uv (Hermes installer requires it).
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Install Hermes (FHS layout → /usr/local/bin/hermes).
+RUN curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
+ENV PATH="/root/.hermes/node/bin:${PATH}"
+
+# Point Hermes at the host's Ollama (qwen3.5) and the in-cluster sidecar.
+ENV OPENAI_BASE_URL=http://host.docker.internal:11434/v1 \
+    OPENAI_API_KEY=local \
+    CORTEXDB_GRPC_ENDPOINT=cortexdb:47821
+
+COPY entrypoint.hermes.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]

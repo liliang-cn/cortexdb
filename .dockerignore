@@ -1,0 +1,20 @@
+# Keep the Docker build context small — only Go sources are needed for the
+# cortexdb-grpc image; everything below is build output, deps, or unrelated.
+clients/rust/target
+clients/python/.venv
+clients/python/dist
+clients/node/node_modules
+clients/target
+**/node_modules
+.git
+docs/assets
+docs/.playwright-mcp
+.playwright-mcp
+*.db
+*.db-shm
+*.db-wal
+**/__pycache__
+**/.venv
+**/*.pyc
+examples/**/out
+deploy/agents-demo/*-config

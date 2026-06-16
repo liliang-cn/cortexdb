@@ -1,0 +1,81 @@
+# Local demo: run OpenClaw (Node) and Hermes (Python) agents with CortexDB as
+# their memory + knowledge-graph brain, all backed by a local Ollama model.
+#
+#   ollama pull qwen3.5 embeddinggemma   # on the host
+#   docker compose -f deploy/agents-demo/docker-compose.yml up -d --build
+#
+# Then:
+#   docker compose ... exec hermes hermes chat
+#   open http://localhost:18789           # OpenClaw control UI
+#
+# Build context is the repo root (note the `context: ../..`).
+
+services:
+  # The brain: cortexdb-grpc sidecar, vectors via the host's Ollama.
+  cortexdb:
+    build:
+      context: ../..
+      dockerfile: deploy/agents-demo/Dockerfile.cortexdb
+    image: cortexdb-grpc:demo
+    command: >-
+      -addr 0.0.0.0:47821 -db /data/agent.db
+    environment:
+      OPENAI_BASE_URL: http://host.docker.internal:11434/v1
+      CORTEXDB_EMBED_MODEL: embeddinggemma
+      CORTEXDB_EMBED_DIM: "768"
+      # no token here so the demo agents connect without auth; set
+      # CORTEXDB_GRPC_TOKEN for a locked-down setup.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "47821:47821"
+    volumes:
+      - cortexdb-data:/data
+    restart: unless-stopped
+
+  # OpenClaw (Node agent), official image, model = host Ollama.
+  openclaw:
+    image: ghcr.io/openclaw/openclaw:latest
+    depends_on:
+      - cortexdb
+    environment:
+      OPENCLAW_MODE: local
+      OLLAMA_HOST: http://host.docker.internal:11434
+      # gateway binds 0.0.0.0 in a container, so it requires auth — demo token:
+      OPENCLAW_GATEWAY_TOKEN: demo-openclaw
+      # OpenClaw reaches the host Ollama and the sidecar over the compose network.
+      CORTEXDB_GRPC_ENDPOINT: cortexdb:47821
+    command: ["node", "openclaw.mjs", "gateway", "--allow-unconfigured"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "18789:18789"
+    volumes:
+      - openclaw-config:/home/node/.openclaw
+      - openclaw-workspace:/home/node/openclaw-workspace
+      - ../../skills/cortexdb-memory-openclaw:/skills/cortexdb-memory-openclaw:ro
+    restart: unless-stopped
+
+  # Hermes (Python agent), built from the official installer, model = host Ollama.
+  hermes:
+    build:
+      context: .
+      dockerfile: Dockerfile.hermes
+    depends_on:
+      - cortexdb
+    environment:
+      OPENAI_BASE_URL: http://host.docker.internal:11434/v1
+      OPENAI_API_KEY: local
+      CORTEXDB_GRPC_ENDPOINT: cortexdb:47821
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - hermes-config:/root/.hermes
+      - ../../skills:/skills:ro
+    restart: unless-stopped
+
+volumes:
+  cortexdb-data:
+  openclaw-config:
+  openclaw-workspace:
+  hermes-config:
