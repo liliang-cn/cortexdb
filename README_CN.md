@@ -330,6 +330,13 @@ plan, tables, _ := importflow.MappingFromDDL(ddlText, importflow.DDLMappingOptio
 （输入 `{ddl, relation_style}`）即可拿到 `{mapping_plan, tables, notes}`，
 随后用 `importflow_run` / `connector_run` 真正建图。
 
+需要更丰富的映射时，`importflow.MappingFromDDLWithLLM`（以及 `importflow_ddl_plan_ai`
+MCP 工具）会用 LLM 在确定性基线之上做增强：语义化的关系名（`customer_id` → `placed_by`）、
+超出外键的隐式关系、把自由文本列路由到正文三元组抽取、以及把多对多中间表折叠为一条直接关系。
+任何 LLM 出错都会回退到确定性基线，并同时返回两份计划（`{mapping_plan, baseline, tables,
+notes, llm_used}`）便于审阅。需要一个 LLM 后端推断器（`WithMappingInferer(LLMInferer{...})`）；
+`pkg/` 内不引入任何 LLM SDK——统一走 `graphflow.JSONGenerator` 接缝。
+
 ## 数据连接器（隐私 / 脱敏）
 
 `pkg/connector` 是 ImportFlow 前面的一道隐私闸门：连接线上

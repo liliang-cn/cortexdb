@@ -335,6 +335,16 @@ The `importflow_ddl_plan` MCP tool exposes the same thing — an agent pastes a
 schema (input `{ddl, relation_style}`) and gets back `{mapping_plan, tables,
 notes}`, then runs `importflow_run` / `connector_run` to build it.
 
+For richer mappings, `importflow.MappingFromDDLWithLLM` (and the
+`importflow_ddl_plan_ai` MCP tool) refines that deterministic baseline with an
+LLM — semantic relation names (`customer_id` → `placed_by`), implicit relations
+beyond raw foreign keys, routing free-text columns to in-content triple
+extraction, and collapsing many-to-many junction tables into a direct relation.
+It falls back to the deterministic baseline on any LLM error and returns both
+plans (`{mapping_plan, baseline, tables, notes, llm_used}`) so the change is
+reviewable. Requires an LLM-backed inferer (`WithMappingInferer(LLMInferer{...})`);
+no LLM SDK enters `pkg/` — it goes through the `graphflow.JSONGenerator` seam.
+
 ## Data connector (privacy / desensitization)
 
 `pkg/connector` is a privacy gate in front of ImportFlow. It connects to a live
