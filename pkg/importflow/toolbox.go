@@ -49,6 +49,17 @@ func (t *Toolbox) Definitions() []cortexdb.ToolDefinition {
 				},
 			),
 		},
+		{
+			Name:        "importflow_ddl_plan",
+			Description: "Derive a knowledge-graph MappingPlan from SQL DDL (CREATE TABLE with primary/foreign keys), deterministically and without an LLM. Returns a reviewable plan plus the parsed tables.",
+			InputSchema: ifObjectSchema(
+				[]string{"ddl"},
+				map[string]any{
+					"ddl":            ifStringSchema("SQL DDL: one or more CREATE TABLE statements."),
+					"relation_style": ifEnumSchema("How to name relation predicates from foreign keys.", "column", "reftable"),
+				},
+			),
+		},
 	}
 }
 
@@ -59,6 +70,8 @@ func (t *Toolbox) Call(ctx context.Context, name string, input json.RawMessage) 
 		return t.callPlan(ctx, input)
 	case "importflow_run":
 		return t.callRun(ctx, input)
+	case "importflow_ddl_plan":
+		return t.callDDLPlan(input)
 	default:
 		return nil, fmt.Errorf("importflow: unknown tool %q", name)
 	}
@@ -133,4 +146,35 @@ func ifBoolSchema(desc string) map[string]any { return map[string]any{"type": "b
 
 func ifEnumSchema(desc string, values ...string) map[string]any {
 	return map[string]any{"type": "string", "description": desc, "enum": values}
+}
+
+type ddlPlanInput struct {
+	DDL           string `json:"ddl"`
+	RelationStyle string `json:"relation_style"`
+}
+
+type ddlPlanResult struct {
+	MappingPlan MappingPlan `json:"mapping_plan"`
+	Tables      []DDLTable  `json:"tables"`
+	Notes       []string    `json:"notes,omitempty"`
+}
+
+func (t *Toolbox) callDDLPlan(input json.RawMessage) (any, error) {
+	var in ddlPlanInput
+	if err := json.Unmarshal(input, &in); err != nil {
+		return nil, err
+	}
+	plan, tables, err := MappingFromDDL(in.DDL, DDLMappingOptions{RelationStyle: in.RelationStyle})
+	if err != nil {
+		return nil, err
+	}
+	var notes []string
+	for _, tb := range tables {
+		if len(tb.PrimaryKey) == 0 {
+			notes = append(notes, fmt.Sprintf("table %q has no primary key; using synthesized table:row ids and no KG entity for it", tb.Name))
+		} else if len(tb.PrimaryKey) > 1 {
+			notes = append(notes, fmt.Sprintf("table %q has a composite primary key; using synthesized table:row ids and no KG entity for it", tb.Name))
+		}
+	}
+	return ddlPlanResult{MappingPlan: plan, Tables: tables, Notes: notes}, nil
 }
