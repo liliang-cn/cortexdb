@@ -153,9 +153,13 @@ func ifObjectSchema(required []string, props map[string]any) map[string]any {
 	return s
 }
 
-func ifStringSchema(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
+func ifStringSchema(desc string) map[string]any {
+	return map[string]any{"type": "string", "description": desc}
+}
 
-func ifBoolSchema(desc string) map[string]any { return map[string]any{"type": "boolean", "description": desc} }
+func ifBoolSchema(desc string) map[string]any {
+	return map[string]any{"type": "boolean", "description": desc}
+}
 
 func ifEnumSchema(desc string, values ...string) map[string]any {
 	return map[string]any{"type": "string", "description": desc, "enum": values}
