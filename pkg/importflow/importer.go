@@ -184,7 +184,10 @@ func (im *Importer) extractFromText(ctx context.Context, r Record, kp *KGPlan) (
 
 const rdfsLabelIRI = "http://www.w3.org/2000/01/rdf-schema#label"
 
-// textEntityIRI builds a stable IRI for an entity extracted from free text.
+// textEntityIRI builds a stable IRI for an entity extracted from free text. The name is
+// lower-cased so that differently-cased mentions ("Apple"/"apple") coalesce onto one node;
+// the original text is preserved separately as an rdfs:label. The escaped tail is an opaque
+// key (not meant to be parsed back — the label is the recoverable form).
 func textEntityIRI(name string) string {
 	return "urn:cortexdb:text:" + url.PathEscape(strings.ToLower(strings.TrimSpace(name)))
 }

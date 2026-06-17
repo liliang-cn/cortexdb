@@ -81,8 +81,10 @@ func reconcileRefined(refined, baseline MappingPlan) (MappingPlan, bool) {
 }
 
 // tablePlanExecutable reports whether every relation in the table's KG plan references
-// entities declared in that same plan (mapTriples drops relations whose subject/object
-// ref is unknown, so a plan that violates this would silently produce no edges).
+// entities declared in that same plan. mapTriples drops relations whose subject/object
+// ref is unknown, so this rules out the dangling-ref failure mode. (It does not guarantee
+// edges at runtime: an entity whose id_tmpl renders empty for a row still yields none —
+// the same property the deterministic baseline has.)
 func tablePlanExecutable(tp TablePlan) bool {
 	if tp.KG == nil {
 		return true
