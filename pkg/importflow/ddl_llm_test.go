@@ -1,10 +1,16 @@
 package importflow
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"os"
+	"strings"
 	"testing"
+	"time"
 )
 
 // fakeGen is a JSONGenerator stub: returns Out (or Err) regardless of prompt.
@@ -140,4 +146,75 @@ func TestToolbox_DDLPlanAI_NoInferer(t *testing.T) {
 func mustJSONString(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
+}
+
+// liveGen is a minimal OpenAI-compatible chat client for the skipped live test.
+type liveGen struct {
+	base, key, model string
+}
+
+func (g liveGen) GenerateJSON(ctx context.Context, system, user string) ([]byte, error) {
+	reqBody, _ := json.Marshal(map[string]any{
+		"model": g.model,
+		"messages": []map[string]string{
+			{"role": "system", "content": system},
+			{"role": "user", "content": user},
+		},
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(g.base, "/")+"/chat/completions", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+g.key)
+	resp, err := (&http.Client{Timeout: 120 * time.Second}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var parsed struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, err
+	}
+	if len(parsed.Choices) == 0 {
+		return nil, errors.New("no choices in response")
+	}
+	return []byte(parsed.Choices[0].Message.Content), nil
+}
+
+func TestMappingFromDDLWithLLM_Live(t *testing.T) {
+	key := os.Getenv("OPENAI_API_KEY")
+	if key == "" {
+		t.Skip("set OPENAI_API_KEY (and optionally OPENAI_BASE_URL/OPENAI_MODEL) to run the live DDL→KG test")
+	}
+	base := os.Getenv("OPENAI_BASE_URL")
+	if base == "" {
+		base = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+	}
+	model := os.Getenv("OPENAI_MODEL")
+	if model == "" {
+		model = "qwen3.7-plus"
+	}
+	gen := liveGen{base: base, key: key, model: model}
+	plan, tables, llmUsed, err := MappingFromDDLWithLLM(context.Background(), llmTestDDL, gen, DDLMappingOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(tables) != 2 {
+		t.Fatalf("expected 2 parsed tables, got %d", len(tables))
+	}
+	if !llmUsed {
+		t.Fatal("expected llmUsed=true with a reachable model")
+	}
+	if len(plan.Tables) == 0 {
+		t.Fatal("expected a non-empty refined plan")
+	}
+	t.Logf("refined plan tables: %d, orders KG present: %v", len(plan.Tables), plan.Tables["orders"].KG != nil)
 }
