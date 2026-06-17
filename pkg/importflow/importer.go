@@ -4,6 +4,8 @@ package importflow
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
@@ -161,12 +163,28 @@ func (im *Importer) extractFromText(ctx context.Context, r Record, kp *KGPlan) (
 			return nil, err
 		}
 		for _, e := range res.Edges {
-			triples = append(triples, graph.RDFTriple{
-				Subject:   graph.NewLiteral(e.Source),
-				Predicate: graph.NewIRI("urn:cortexdb:rel:" + e.Relation),
-				Object:    graph.NewLiteral(e.Target),
-			})
+			src := strings.TrimSpace(e.Source)
+			tgt := strings.TrimSpace(e.Target)
+			if src == "" || tgt == "" {
+				continue
+			}
+			// RDF subjects must be IRIs/blank nodes, so mint stable IRIs for the
+			// extracted entities and keep the original text as an rdfs:label.
+			si := graph.NewIRI(textEntityIRI(src))
+			oi := graph.NewIRI(textEntityIRI(tgt))
+			triples = append(triples,
+				graph.RDFTriple{Subject: si, Predicate: graph.NewIRI(rdfsLabelIRI), Object: graph.NewLiteral(src)},
+				graph.RDFTriple{Subject: oi, Predicate: graph.NewIRI(rdfsLabelIRI), Object: graph.NewLiteral(tgt)},
+				graph.RDFTriple{Subject: si, Predicate: graph.NewIRI("urn:cortexdb:rel:" + e.Relation), Object: oi},
+			)
 		}
 	}
 	return triples, nil
+}
+
+const rdfsLabelIRI = "http://www.w3.org/2000/01/rdf-schema#label"
+
+// textEntityIRI builds a stable IRI for an entity extracted from free text.
+func textEntityIRI(name string) string {
+	return "urn:cortexdb:text:" + url.PathEscape(strings.ToLower(strings.TrimSpace(name)))
 }
