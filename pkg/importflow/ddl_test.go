@@ -104,3 +104,65 @@ func TestParseDDLConstraintForm(t *testing.T) {
 		t.Fatalf("constraint fk: %+v", tb.ForeignKeys)
 	}
 }
+
+func TestMappingFromDDL(t *testing.T) {
+	ddl := `
+CREATE TABLE customers (id INT PRIMARY KEY, name TEXT, city TEXT);
+CREATE TABLE orders (id INT PRIMARY KEY, customer_id INT REFERENCES customers(id), product TEXT, amount NUMERIC, status TEXT);
+`
+	plan, tables, err := MappingFromDDL(ddl, DDLMappingOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tables) != 2 {
+		t.Fatalf("tables: %d", len(tables))
+	}
+
+	cust := plan.Tables["customers"]
+	if cust.RAG == nil || cust.RAG.IDColumn != "id" {
+		t.Fatalf("customers RAG: %+v", cust.RAG)
+	}
+	if cust.KG == nil || len(cust.KG.Entities) != 1 ||
+		cust.KG.Entities[0].Type != "Customer" || cust.KG.Entities[0].IDTmpl != "{id}" {
+		t.Fatalf("customers KG entity: %+v", cust.KG)
+	}
+
+	ord := plan.Tables["orders"]
+	if ord.RAG.IDColumn != "id" {
+		t.Fatalf("orders RAG id: %+v", ord.RAG)
+	}
+	types := map[string]EntityMap{}
+	for _, e := range ord.KG.Entities {
+		types[e.Type] = e
+	}
+	if types["Order"].IDTmpl != "{id}" {
+		t.Fatalf("Order entity: %+v", types["Order"])
+	}
+	if types["Customer"].IDTmpl != "{customer_id}" {
+		t.Fatalf("ref Customer entity: %+v", types["Customer"])
+	}
+	if len(ord.KG.Relations) != 1 {
+		t.Fatalf("orders relations: %+v", ord.KG.Relations)
+	}
+	rel := ord.KG.Relations[0]
+	if rel.Subject != "orders" || rel.Predicate != "customer" || rel.Object != "customers" {
+		t.Fatalf("relation: %+v", rel)
+	}
+	for _, p := range types["Order"].Props {
+		if p == "customer_id" {
+			t.Fatal("customer_id should not be an Order prop")
+		}
+	}
+}
+
+func TestMappingFromDDLRelationStyleReftable(t *testing.T) {
+	ddl := `CREATE TABLE a (id INT PRIMARY KEY, b_ref INT REFERENCES bs(id));`
+	plan, _, err := MappingFromDDL(ddl, DDLMappingOptions{RelationStyle: "reftable"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel := plan.Tables["a"].KG.Relations[0]
+	if rel.Predicate != "references_bs" {
+		t.Fatalf("predicate: %q", rel.Predicate)
+	}
+}

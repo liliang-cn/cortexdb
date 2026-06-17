@@ -242,3 +242,142 @@ func normalizeDDLType(t string) string {
 		return ""
 	}
 }
+
+// DDLMappingOptions tunes MappingFromDDL.
+type DDLMappingOptions struct {
+	// RelationStyle picks the relation predicate from a foreign key:
+	//   "" / "column": strip a trailing _id from the FK column (customer_id -> "customer"),
+	//                  fallback "references_<reftable>".
+	//   "reftable":    predicate = "references_<reftable>".
+	RelationStyle string
+	IncludeRAG    *bool // default true
+	IncludeKG     *bool // default true
+}
+
+// MappingFromDDL parses DDL and derives a deterministic MappingPlan: tables ->
+// entities (PK -> id), foreign keys -> referenced entities + relations, non-key
+// columns -> RAG content + entity props. It also returns the parsed tables.
+func MappingFromDDL(ddl string, opts DDLMappingOptions) (MappingPlan, []DDLTable, error) {
+	tables, err := ParseDDL(ddl)
+	if err != nil {
+		return MappingPlan{}, nil, err
+	}
+	includeRAG := opts.IncludeRAG == nil || *opts.IncludeRAG
+	includeKG := opts.IncludeKG == nil || *opts.IncludeKG
+
+	plan := MappingPlan{Tables: map[string]TablePlan{}}
+	for _, tb := range tables {
+		idCol := ""
+		if len(tb.PrimaryKey) == 1 {
+			idCol = tb.PrimaryKey[0]
+		}
+		fkCols := map[string]bool{}
+		for _, fk := range tb.ForeignKeys {
+			fkCols[fk.Column] = true
+		}
+		pkCols := map[string]bool{}
+		for _, c := range tb.PrimaryKey {
+			pkCols[c] = true
+		}
+
+		var tp TablePlan
+		if includeRAG {
+			tp.RAG = &RAGPlan{IDColumn: idCol, ContentTmpl: ddlRAGTemplate(tb, fkCols, pkCols)}
+		}
+		if includeKG {
+			tp.KG = ddlKGPlan(tb, idCol, fkCols, pkCols, opts)
+		}
+		plan.Tables[tb.Name] = tp
+	}
+	return plan, tables, nil
+}
+
+// ddlRAGTemplate joins non-PK, non-FK columns as "{col}"; falls back to all columns.
+func ddlRAGTemplate(tb DDLTable, fkCols, pkCols map[string]bool) string {
+	var parts []string
+	for _, c := range tb.Columns {
+		if pkCols[c.Name] || fkCols[c.Name] {
+			continue
+		}
+		parts = append(parts, "{"+c.Name+"}")
+	}
+	if len(parts) == 0 {
+		for _, c := range tb.Columns {
+			parts = append(parts, "{"+c.Name+"}")
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+// ddlKGPlan builds the KG plan: the table's own entity (if it has a single-column
+// PK) plus one referenced entity + relation per foreign key.
+func ddlKGPlan(tb DDLTable, idCol string, fkCols, pkCols map[string]bool, opts DDLMappingOptions) *KGPlan {
+	kg := &KGPlan{}
+	used := map[string]bool{} // entity refs already taken (avoid self-ref/dup collisions)
+
+	if idCol != "" {
+		var props []string
+		for _, c := range tb.Columns {
+			if pkCols[c.Name] || fkCols[c.Name] {
+				continue
+			}
+			props = append(props, c.Name)
+		}
+		kg.Entities = append(kg.Entities, EntityMap{
+			Ref: tb.Name, Type: ddlTypeName(tb.Name), IDTmpl: "{" + idCol + "}", Props: props,
+		})
+		used[tb.Name] = true
+	}
+
+	for _, fk := range tb.ForeignKeys {
+		ref := ddlUniqueRef(fk.RefTable, used)
+		kg.Entities = append(kg.Entities, EntityMap{
+			Ref: ref, Type: ddlTypeName(fk.RefTable), IDTmpl: "{" + fk.Column + "}",
+		})
+		kg.Relations = append(kg.Relations, RelationMap{
+			Subject: tb.Name, Predicate: ddlPredicateFor(fk, opts), Object: ref,
+		})
+	}
+	if len(kg.Entities) == 0 && len(kg.Relations) == 0 {
+		return nil
+	}
+	return kg
+}
+
+func ddlUniqueRef(base string, used map[string]bool) string {
+	ref := base
+	for n := 2; used[ref]; n++ {
+		ref = fmt.Sprintf("%s#%d", base, n)
+	}
+	used[ref] = true
+	return ref
+}
+
+func ddlPredicateFor(fk DDLForeignKey, opts DDLMappingOptions) string {
+	if strings.EqualFold(opts.RelationStyle, "reftable") {
+		return "references_" + fk.RefTable
+	}
+	base := fk.Column
+	for _, suf := range []string{"_id", "_ID", "Id", "ID"} {
+		if strings.HasSuffix(base, suf) && len(base) > len(suf) {
+			return base[:len(base)-len(suf)]
+		}
+	}
+	if base != "" {
+		return base
+	}
+	return "references_" + fk.RefTable
+}
+
+// ddlTypeName singularizes (naive: strip one trailing 's') and TitleCases a table
+// name: orders -> Order, customers -> Customer.
+func ddlTypeName(table string) string {
+	t := table
+	if strings.HasSuffix(t, "s") && len(t) > 1 {
+		t = t[:len(t)-1]
+	}
+	if t == "" {
+		return table
+	}
+	return strings.ToUpper(t[:1]) + t[1:]
+}
