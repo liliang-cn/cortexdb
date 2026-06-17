@@ -1,0 +1,85 @@
+package importflow
+
+import "testing"
+
+func TestParseDDL(t *testing.T) {
+	ddl := `
+CREATE TABLE customers (
+  id INT PRIMARY KEY,
+  name TEXT,
+  city VARCHAR(64)
+);
+CREATE TABLE IF NOT EXISTS public.orders (
+  id INT PRIMARY KEY,
+  customer_id INT REFERENCES customers(id),
+  amount NUMERIC(10,2),
+  status TEXT,
+  FOREIGN KEY (status) REFERENCES statuses(code)
+);
+`
+	tables, err := ParseDDL(ddl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tables) != 2 {
+		t.Fatalf("want 2 tables, got %d", len(tables))
+	}
+	byName := map[string]DDLTable{}
+	for _, tb := range tables {
+		byName[tb.Name] = tb
+	}
+	cust := byName["customers"]
+	if len(cust.Columns) != 3 || cust.Columns[0].Name != "id" {
+		t.Fatalf("customers columns: %+v", cust.Columns)
+	}
+	if len(cust.PrimaryKey) != 1 || cust.PrimaryKey[0] != "id" {
+		t.Fatalf("customers pk: %+v", cust.PrimaryKey)
+	}
+	ord := byName["orders"] // schema prefix stripped
+	if ord.Name != "orders" {
+		t.Fatalf("orders name: %q", ord.Name)
+	}
+	cols := map[string]string{}
+	for _, c := range ord.Columns {
+		cols[c.Name] = c.Type
+	}
+	if _, ok := cols["amount"]; !ok || len(ord.Columns) != 4 {
+		t.Fatalf("orders columns: %+v", ord.Columns)
+	}
+	if len(ord.ForeignKeys) != 2 {
+		t.Fatalf("orders fks: %+v", ord.ForeignKeys)
+	}
+	fk := map[string]DDLForeignKey{}
+	for _, f := range ord.ForeignKeys {
+		fk[f.Column] = f
+	}
+	if fk["customer_id"].RefTable != "customers" || fk["customer_id"].RefColumn != "id" {
+		t.Fatalf("customer_id fk: %+v", fk["customer_id"])
+	}
+	if fk["status"].RefTable != "statuses" || fk["status"].RefColumn != "code" {
+		t.Fatalf("status fk: %+v", fk["status"])
+	}
+}
+
+func TestParseDDLMySQLBackticksAndTableLevelPK(t *testing.T) {
+	ddl := "CREATE TABLE `orders` (`id` INT, `customer_id` INT, PRIMARY KEY (`id`), FOREIGN KEY (`customer_id`) REFERENCES `customers`(`id`));"
+	tables, err := ParseDDL(ddl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tables) != 1 || tables[0].Name != "orders" {
+		t.Fatalf("tables: %+v", tables)
+	}
+	if len(tables[0].PrimaryKey) != 1 || tables[0].PrimaryKey[0] != "id" {
+		t.Fatalf("pk: %+v", tables[0].PrimaryKey)
+	}
+	if len(tables[0].ForeignKeys) != 1 || tables[0].ForeignKeys[0].RefTable != "customers" {
+		t.Fatalf("fk: %+v", tables[0].ForeignKeys)
+	}
+}
+
+func TestParseDDLNoCreateTable(t *testing.T) {
+	if _, err := ParseDDL("SELECT 1;"); err == nil {
+		t.Fatal("expected error when no CREATE TABLE present")
+	}
+}
