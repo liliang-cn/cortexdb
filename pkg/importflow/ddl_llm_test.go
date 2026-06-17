@@ -95,6 +95,52 @@ func TestMappingFromDDLWithLLM_FallbackOnEmpty(t *testing.T) {
 	}
 }
 
+func TestMappingFromDDLWithLLM_DanglingRelationFallsBack(t *testing.T) {
+	// orders' relation points at a "ghost" ref with no entity → not executable, so
+	// orders falls back to the baseline (predicate "customer"); customers is fine and
+	// is adopted, so llmUsed stays true.
+	refined := []byte(`{"tables":{
+	  "customers":{"kg":{"entities":[{"ref":"customers","type":"Person","id_tmpl":"{id}"}]}},
+	  "orders":{"kg":{
+	    "entities":[{"ref":"orders","type":"Order","id_tmpl":"{id}"}],
+	    "relations":[{"subject":"orders","predicate":"placed_by","object":"ghost"}]}}}}`)
+	plan, _, llmUsed, err := MappingFromDDLWithLLM(context.Background(), llmTestDDL, fakeGen{Out: refined}, DDLMappingOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !llmUsed {
+		t.Fatal("expected llmUsed=true (customers was adopted)")
+	}
+	if got := plan.Tables["orders"].KG.Relations[0].Predicate; got != "customer" {
+		t.Fatalf("expected orders to fall back to baseline predicate customer, got %q", got)
+	}
+	if got := plan.Tables["customers"].KG.Entities[0].Type; got != "Person" {
+		t.Fatalf("expected refined customers entity type Person, got %q", got)
+	}
+}
+
+func TestMappingFromDDLWithLLM_DroppedTableUnioned(t *testing.T) {
+	// LLM returns only orders (dropping customers). The dropped table must be unioned
+	// back from the baseline so no table silently disappears.
+	refined := []byte(`{"tables":{
+	  "orders":{"kg":{
+	    "entities":[{"ref":"orders","type":"Order","id_tmpl":"{id}"},{"ref":"customers","type":"Customer","id_tmpl":"{customer_id}"}],
+	    "relations":[{"subject":"orders","predicate":"placed_by","object":"customers"}]}}}}`)
+	plan, _, llmUsed, err := MappingFromDDLWithLLM(context.Background(), llmTestDDL, fakeGen{Out: refined}, DDLMappingOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !llmUsed {
+		t.Fatal("expected llmUsed=true")
+	}
+	if _, ok := plan.Tables["customers"]; !ok {
+		t.Fatal("expected dropped customers table to be unioned back from baseline")
+	}
+	if got := plan.Tables["orders"].KG.Relations[0].Predicate; got != "placed_by" {
+		t.Fatalf("expected refined orders predicate placed_by, got %q", got)
+	}
+}
+
 func TestMappingFromDDLWithLLM_NilGen(t *testing.T) {
 	if _, _, _, err := MappingFromDDLWithLLM(context.Background(), llmTestDDL, nil, DDLMappingOptions{}); err == nil {
 		t.Fatal("expected hard error for nil generator")

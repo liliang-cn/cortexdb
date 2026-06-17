@@ -15,9 +15,13 @@ the baseline by:
 1. clearer relation predicates and entity types/labels (e.g. customer_id -> "placed_by", type "Customer");
 2. relations implied by column names even without a declared foreign key;
 3. routing long free-text columns (description, notes, body, comment) to kg.text_extract;
-4. collapsing many-to-many junction tables into a direct relation between the two referenced entities.
-Keep every table the baseline keeps, unless it is a pure junction table. Do NOT invent
-columns that are not in the schema. JSON shape:
+4. collapsing many-to-many junction tables: declare BOTH referenced entities (each with
+   id_tmpl bound to its foreign-key column) and a single direct relation between them; do
+   NOT declare an entity for the junction table itself.
+INVARIANT: every relation's "subject" and "object" MUST each match the "ref" of an entity
+declared in the SAME table's kg.entities — otherwise the relation cannot be built and is
+dropped. Keep every table the baseline keeps. Do NOT invent columns that are not in the
+schema, and do NOT invent tables. JSON shape:
 {"tables":{"<table>":{"skip":false,
   "rag":{"namespace":"","content_tmpl":"{col}","id_column":"","metadata":["col"],"refine":false},
   "kg":{"entities":[{"ref":"","type":"","id_tmpl":"{col}","label_tmpl":"{col}","props":["col"]}],
@@ -50,7 +54,49 @@ func MappingFromDDLWithLLM(ctx context.Context, ddl string, gen graphflow.JSONGe
 	if jerr := json.Unmarshal(sanitizeJSON(raw), &refined); jerr != nil || len(refined.Tables) == 0 {
 		return baseline, tables, false, nil
 	}
-	return refined, tables, true, nil
+	merged, usedRefined := reconcileRefined(refined, baseline)
+	if !usedRefined {
+		return baseline, tables, false, nil
+	}
+	return merged, tables, true, nil
+}
+
+// reconcileRefined keeps the deterministic baseline as the source of truth for the set
+// of tables, adopting a refined table only when it is executable (its relations bind to
+// entities declared in the same table). Tables the LLM dropped or hallucinated, or
+// refined tables with dangling relations, fall back to the baseline. usedRefined reports
+// whether at least one refined table was adopted.
+func reconcileRefined(refined, baseline MappingPlan) (MappingPlan, bool) {
+	merged := MappingPlan{Tables: make(map[string]TablePlan, len(baseline.Tables))}
+	usedRefined := false
+	for name, base := range baseline.Tables {
+		if rt, ok := refined.Tables[name]; ok && tablePlanExecutable(rt) {
+			merged.Tables[name] = rt
+			usedRefined = true
+			continue
+		}
+		merged.Tables[name] = base
+	}
+	return merged, usedRefined
+}
+
+// tablePlanExecutable reports whether every relation in the table's KG plan references
+// entities declared in that same plan (mapTriples drops relations whose subject/object
+// ref is unknown, so a plan that violates this would silently produce no edges).
+func tablePlanExecutable(tp TablePlan) bool {
+	if tp.KG == nil {
+		return true
+	}
+	refs := make(map[string]bool, len(tp.KG.Entities))
+	for _, e := range tp.KG.Entities {
+		refs[e.Ref] = true
+	}
+	for _, r := range tp.KG.Relations {
+		if !refs[r.Subject] || !refs[r.Object] {
+			return false
+		}
+	}
+	return true
 }
 
 func buildDDLLLMUserPrompt(tables []DDLTable, baseline MappingPlan) (string, error) {
