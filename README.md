@@ -317,6 +317,24 @@ Then run:
 go run ./examples/05_graphflow
 ```
 
+## ImportFlow: DDL → knowledge graph
+
+`importflow.MappingFromDDL` turns `CREATE TABLE` DDL into a reviewable
+`MappingPlan` **deterministically — no LLM**: tables become entity classes,
+the primary key becomes the entity id, **foreign keys become relations**, and
+columns become RAG content + entity properties. It covers a practical
+`CREATE TABLE` subset for Postgres and MySQL (it does not parse `ALTER` or
+views). `importflow.ParseDDL` exposes the raw parsed tables (columns, PK, FK).
+
+```go
+plan, tables, _ := importflow.MappingFromDDL(ddlText, importflow.DDLMappingOptions{})
+// review plan, then build the graph: importflow.New(db).Run(ctx, src, plan)
+```
+
+The `importflow_ddl_plan` MCP tool exposes the same thing — an agent pastes a
+schema (input `{ddl, relation_style}`) and gets back `{mapping_plan, tables,
+notes}`, then runs `importflow_run` / `connector_run` to build it.
+
 ## Data connector (privacy / desensitization)
 
 `pkg/connector` is a privacy gate in front of ImportFlow. It connects to a live

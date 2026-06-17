@@ -314,6 +314,22 @@ OPENAI_MODEL=gpt-5.4
 go run ./examples/05_graphflow
 ```
 
+## ImportFlow：DDL → 知识图谱
+
+`importflow.MappingFromDDL` 把 `CREATE TABLE` DDL **确定性地（不依赖 LLM）**
+转成一份可审阅的 `MappingPlan`：表变成实体类，主键变成实体 id，**外键变成关系**，
+列变成 RAG 内容 + 实体属性。它覆盖 Postgres / MySQL 的 `CREATE TABLE` 实用子集
+（不解析 `ALTER` 或视图）。`importflow.ParseDDL` 可单独拿到解析出的表（列、主键、外键）。
+
+```go
+plan, tables, _ := importflow.MappingFromDDL(ddlText, importflow.DDLMappingOptions{})
+// 审阅 plan 后再建图：importflow.New(db).Run(ctx, src, plan)
+```
+
+`importflow_ddl_plan` MCP 工具暴露同一能力——agent 粘贴一份 schema
+（输入 `{ddl, relation_style}`）即可拿到 `{mapping_plan, tables, notes}`，
+随后用 `importflow_run` / `connector_run` 真正建图。
+
 ## 数据连接器（隐私 / 脱敏）
 
 `pkg/connector` 是 ImportFlow 前面的一道隐私闸门：连接线上

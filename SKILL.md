@@ -321,6 +321,12 @@ inferer, `im.AutoImport(ctx, src, importflow.Goal{BuildRAG: true, BuildKG: true}
 plan + run in one step. RAG works with no embedder (lexical FTS5). The mapping inferer
 reuses the same `graphflow.JSONGenerator` interface.
 
+`importflow.MappingFromDDL(ddl, importflow.DDLMappingOptions{})` turns a `CREATE TABLE`
+DDL subset (Postgres/MySQL) into a reviewable `MappingPlan` **deterministically, no LLM** —
+tables→entity classes, PK→entity id, FK→relations, columns→RAG content + props (no
+`ALTER`/views). `importflow.ParseDDL` returns the raw parsed tables. Review the plan, then
+feed it to `im.Run` / the connector to build the graph.
+
 ## Data connector (privacy / desensitization)
 
 `pkg/connector` is a privacy gate in front of ImportFlow: connect to a live
@@ -461,7 +467,7 @@ Separate workflow toolboxes:
 
 - memoryflow: `memoryflow_ingest_transcript`, `memoryflow_recall`, `memoryflow_wake_up_layers`, `memoryflow_prepare_reply`
 - graphflow: `graphflow_build`, `graphflow_analyze`, `graphflow_report`, `graphflow_export`, `graphflow_run`
-- importflow: `importflow_plan`, `importflow_run` (via `importflow.NewToolbox(im)` or `importflow.NewMCPServer(im, opts)` / `importflow.RunMCPStdio(ctx, im, opts)`)
+- importflow: `importflow_plan`, `importflow_run`, `importflow_ddl_plan` (deterministic `CREATE TABLE` DDL → reviewable knowledge-graph MappingPlan, no LLM) (via `importflow.NewToolbox(im)` or `importflow.NewMCPServer(im, opts)` / `importflow.RunMCPStdio(ctx, im, opts)`)
 - connector: `connector_introspect`, `connector_plan`, `connector_run`, `connector_unmask` — privacy gate over a live DB/source feeding RAG + KG. Wire via `connector.NewMCPServer(tb, opts)` / `connector.RunMCPStdio(ctx, tb, opts)`, `connector.RegisterMCPTools(server, tb)` to ride another server, or run `cmd/cortexdb-connector-mcp`.
 
 ## gRPC Sidecar + Rust / Python / Node clients
