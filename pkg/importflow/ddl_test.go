@@ -83,3 +83,24 @@ func TestParseDDLNoCreateTable(t *testing.T) {
 		t.Fatal("expected error when no CREATE TABLE present")
 	}
 }
+
+func TestParseDDLConstraintForm(t *testing.T) {
+	ddl := `CREATE TABLE orders (
+  id INT,
+  customer_id INT,
+  CONSTRAINT pk_orders PRIMARY KEY (id),
+  CONSTRAINT fk_cust FOREIGN KEY (customer_id) REFERENCES customers(id)
+);`
+	tables, err := ParseDDL(ddl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb := tables[0]
+	if len(tb.PrimaryKey) != 1 || tb.PrimaryKey[0] != "id" {
+		t.Fatalf("constraint pk: %+v", tb.PrimaryKey)
+	}
+	if len(tb.ForeignKeys) != 1 || tb.ForeignKeys[0].Column != "customer_id" ||
+		tb.ForeignKeys[0].RefTable != "customers" || tb.ForeignKeys[0].RefColumn != "id" {
+		t.Fatalf("constraint fk: %+v", tb.ForeignKeys)
+	}
+}
