@@ -2,6 +2,7 @@ package importflow
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 )
@@ -98,4 +99,45 @@ func TestMappingFromDDLWithLLM_BadDDL(t *testing.T) {
 	if _, _, _, err := MappingFromDDLWithLLM(context.Background(), "SELECT 1;", fakeGen{Out: []byte(`{"tables":{"x":{}}}`)}, DDLMappingOptions{}); err == nil {
 		t.Fatal("expected hard error when no CREATE TABLE is present")
 	}
+}
+
+func TestToolbox_DDLPlanAI(t *testing.T) {
+	refined := []byte(`{"tables":{
+	  "orders":{"kg":{
+	    "entities":[{"ref":"orders","type":"Order","id_tmpl":"{id}"},{"ref":"customers","type":"Customer","id_tmpl":"{customer_id}"}],
+	    "relations":[{"subject":"orders","predicate":"placed_by","object":"customers"}]}}}}`)
+	im := New(nil, WithMappingInferer(LLMInferer{Client: fakeGen{Out: refined}}))
+	tb := NewToolbox(im)
+
+	in := []byte(`{"ddl":` + mustJSONString(llmTestDDL) + `}`)
+	out, err := tb.Call(context.Background(), "importflow_ddl_plan_ai", in)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	res, ok := out.(ddlPlanAIResult)
+	if !ok {
+		t.Fatalf("expected ddlPlanAIResult, got %T", out)
+	}
+	if !res.LLMUsed {
+		t.Fatal("expected LLMUsed=true")
+	}
+	if res.MappingPlan.Tables["orders"].KG.Relations[0].Predicate != "placed_by" {
+		t.Fatal("expected refined predicate in MappingPlan")
+	}
+	if res.Baseline.Tables["orders"].KG.Relations[0].Predicate != "customer" {
+		t.Fatal("expected deterministic baseline alongside refined plan")
+	}
+}
+
+func TestToolbox_DDLPlanAI_NoInferer(t *testing.T) {
+	tb := NewToolbox(New(nil))
+	in := []byte(`{"ddl":` + mustJSONString(llmTestDDL) + `}`)
+	if _, err := tb.Call(context.Background(), "importflow_ddl_plan_ai", in); err == nil {
+		t.Fatal("expected error when no LLM-backed inferer is configured")
+	}
+}
+
+func mustJSONString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
 }

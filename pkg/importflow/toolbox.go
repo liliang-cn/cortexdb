@@ -60,6 +60,17 @@ func (t *Toolbox) Definitions() []cortexdb.ToolDefinition {
 				},
 			),
 		},
+		{
+			Name:        "importflow_ddl_plan_ai",
+			Description: "Derive a knowledge-graph MappingPlan from SQL DDL using an LLM to refine the deterministic baseline (semantic predicates, implicit relations, free-text extraction, junction-table collapse). Requires the Importer to be configured with an LLM-backed inferer. Returns the refined plan, the deterministic baseline for comparison, the parsed tables, and llm_used.",
+			InputSchema: ifObjectSchema(
+				[]string{"ddl"},
+				map[string]any{
+					"ddl":            ifStringSchema("SQL DDL: one or more CREATE TABLE statements."),
+					"relation_style": ifEnumSchema("How to name relation predicates from foreign keys (baseline only).", "column", "reftable"),
+				},
+			),
+		},
 	}
 }
 
@@ -72,6 +83,8 @@ func (t *Toolbox) Call(ctx context.Context, name string, input json.RawMessage) 
 		return t.callRun(ctx, input)
 	case "importflow_ddl_plan":
 		return t.callDDLPlan(input)
+	case "importflow_ddl_plan_ai":
+		return t.callDDLPlanAI(ctx, input)
 	default:
 		return nil, fmt.Errorf("importflow: unknown tool %q", name)
 	}
@@ -168,6 +181,11 @@ func (t *Toolbox) callDDLPlan(input json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	return ddlPlanResult{MappingPlan: plan, Tables: tables, Notes: ddlPlanNotes(tables)}, nil
+}
+
+// ddlPlanNotes flags tables whose primary key prevents a clean KG entity mapping.
+func ddlPlanNotes(tables []DDLTable) []string {
 	var notes []string
 	for _, tb := range tables {
 		if len(tb.PrimaryKey) == 0 {
@@ -176,5 +194,37 @@ func (t *Toolbox) callDDLPlan(input json.RawMessage) (any, error) {
 			notes = append(notes, fmt.Sprintf("table %q has a composite primary key; using synthesized table:row ids and no KG entity for it", tb.Name))
 		}
 	}
-	return ddlPlanResult{MappingPlan: plan, Tables: tables, Notes: notes}, nil
+	return notes
+}
+
+type ddlPlanAIResult struct {
+	MappingPlan MappingPlan `json:"mapping_plan"`
+	Baseline    MappingPlan `json:"baseline"`
+	Tables      []DDLTable  `json:"tables"`
+	Notes       []string    `json:"notes,omitempty"`
+	LLMUsed     bool        `json:"llm_used"`
+}
+
+func (t *Toolbox) callDDLPlanAI(ctx context.Context, input json.RawMessage) (any, error) {
+	var in ddlPlanInput
+	if err := json.Unmarshal(input, &in); err != nil {
+		return nil, err
+	}
+	if t.im == nil {
+		return nil, fmt.Errorf("importflow: importflow_ddl_plan_ai requires a Toolbox built over an Importer")
+	}
+	li, ok := t.im.inferer.(LLMInferer)
+	if !ok || li.Client == nil {
+		return nil, fmt.Errorf("importflow: importflow_ddl_plan_ai requires an LLM-backed inferer; construct the Importer with WithMappingInferer(LLMInferer{Client: gen})")
+	}
+	opts := DDLMappingOptions{RelationStyle: in.RelationStyle}
+	baseline, _, err := MappingFromDDL(in.DDL, opts)
+	if err != nil {
+		return nil, err
+	}
+	plan, tables, llmUsed, err := MappingFromDDLWithLLM(ctx, in.DDL, li.Client, opts)
+	if err != nil {
+		return nil, err
+	}
+	return ddlPlanAIResult{MappingPlan: plan, Baseline: baseline, Tables: tables, Notes: ddlPlanNotes(tables), LLMUsed: llmUsed}, nil
 }
