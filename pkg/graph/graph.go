@@ -278,6 +278,34 @@ func (g *GraphStore) GetNode(ctx context.Context, nodeID string) (*GraphNode, er
 	return &node, nil
 }
 
+// MergeEntities collapses surface-form duplicate nodes into one canonical node:
+// every edge referencing an alias is repointed to canonicalID, self-loops created
+// by the merge are dropped, and the alias nodes are deleted. Used for entity
+// resolution (e.g. unifying "r0" / "DRBD resource" / "resources" into one entity).
+func (g *GraphStore) MergeEntities(ctx context.Context, canonicalID string, aliasIDs []string) error {
+	if canonicalID == "" {
+		return fmt.Errorf("canonicalID required")
+	}
+	for _, alias := range aliasIDs {
+		if alias == "" || alias == canonicalID {
+			continue
+		}
+		if _, err := g.db.ExecContext(ctx, `UPDATE graph_edges SET from_node_id = ? WHERE from_node_id = ?`, canonicalID, alias); err != nil {
+			return fmt.Errorf("repoint from-edges: %w", err)
+		}
+		if _, err := g.db.ExecContext(ctx, `UPDATE graph_edges SET to_node_id = ? WHERE to_node_id = ?`, canonicalID, alias); err != nil {
+			return fmt.Errorf("repoint to-edges: %w", err)
+		}
+		if _, err := g.db.ExecContext(ctx, `DELETE FROM graph_edges WHERE from_node_id = to_node_id`); err != nil {
+			return fmt.Errorf("drop self-loops: %w", err)
+		}
+		if err := g.DeleteNode(ctx, alias); err != nil && err.Error() != fmt.Sprintf("node not found: %s", alias) {
+			return err
+		}
+	}
+	return nil
+}
+
 // DeleteNode removes a node and all its edges
 func (g *GraphStore) DeleteNode(ctx context.Context, nodeID string) error {
 	// Edges are automatically deleted due to CASCADE

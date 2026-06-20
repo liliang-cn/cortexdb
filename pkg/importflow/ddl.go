@@ -31,22 +31,71 @@ type DDLTable struct {
 // skipped; it errors only when no CREATE TABLE was found at all.
 func ParseDDL(ddl string) ([]DDLTable, error) {
 	var tables []DDLTable
+	idx := map[string]int{} // upper(name) -> index in tables
+	var alters []string
 	for _, stmt := range strings.Split(ddl, ";") {
 		stmt = strings.TrimSpace(stmt)
 		if stmt == "" {
 			continue
 		}
-		if !strings.HasPrefix(strings.ToUpper(stmt), "CREATE TABLE") {
-			continue
-		}
-		if tb, ok := parseDDLCreateTable(stmt); ok {
-			tables = append(tables, tb)
+		u := strings.ToUpper(stmt)
+		switch {
+		case strings.HasPrefix(u, "CREATE TABLE"):
+			if tb, ok := parseDDLCreateTable(stmt); ok {
+				idx[strings.ToUpper(tb.Name)] = len(tables)
+				tables = append(tables, tb)
+			}
+		case strings.HasPrefix(u, "ALTER TABLE"):
+			alters = append(alters, stmt) // FKs are commonly declared out-of-line
 		}
 	}
 	if len(tables) == 0 {
 		return nil, fmt.Errorf("importflow: no CREATE TABLE statements parsed")
 	}
+	// Second pass: attach FOREIGN KEYs declared via ALTER TABLE ... ADD ... .
+	for _, stmt := range alters {
+		name, fk, ok := parseDDLAlterForeignKey(stmt)
+		if !ok {
+			continue
+		}
+		if i, exists := idx[strings.ToUpper(name)]; exists {
+			tables[i].ForeignKeys = append(tables[i].ForeignKeys, fk)
+		}
+	}
 	return tables, nil
+}
+
+// parseDDLAlterForeignKey extracts a foreign key from an
+// "ALTER TABLE <name> ADD [CONSTRAINT x] FOREIGN KEY (col) REFERENCES t(col)".
+func parseDDLAlterForeignKey(stmt string) (string, DDLForeignKey, bool) {
+	upper := strings.ToUpper(stmt)
+	if !strings.HasPrefix(upper, "ALTER TABLE") {
+		return "", DDLForeignKey{}, false
+	}
+	fkIdx := strings.Index(upper, "FOREIGN KEY")
+	if fkIdx < 0 {
+		return "", DDLForeignKey{}, false
+	}
+	fields := strings.Fields(strings.TrimSpace(stmt[len("ALTER TABLE"):]))
+	// skip optional ONLY / IF EXISTS qualifiers before the table name
+	for len(fields) > 0 {
+		switch strings.ToUpper(fields[0]) {
+		case "ONLY", "IF", "EXISTS":
+			fields = fields[1:]
+		default:
+			goto name
+		}
+	}
+name:
+	if len(fields) == 0 {
+		return "", DDLForeignKey{}, false
+	}
+	tname := ddlUnquoteIdent(fields[0])
+	fk, ok := parseDDLForeignKey(stmt[fkIdx:])
+	if !ok {
+		return "", DDLForeignKey{}, false
+	}
+	return tname, fk, true
 }
 
 func parseDDLCreateTable(stmt string) (DDLTable, bool) {

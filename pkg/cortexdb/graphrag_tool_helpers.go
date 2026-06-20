@@ -112,6 +112,14 @@ func (t *GraphRAGToolbox) loadToolChunks(ctx context.Context, scoreMap map[strin
 	return chunks, nil
 }
 
+// EntityNodeID returns the normalized graph node id that cortexdb stores an
+// entity under, given its raw id or name. Consumers that need to map a chunk or
+// source id to its entity node (e.g. to seed ExpandGraph) should use this rather
+// than reimplementing the normalization, which is otherwise an internal detail.
+func EntityNodeID(idOrName string) string {
+	return resolveEntityNodeID(idOrName, "")
+}
+
 func resolveEntityNodeID(id string, name string) string {
 	if strings.HasPrefix(id, "entity:") {
 		return id
