@@ -228,9 +228,109 @@ const htmlVisualization = `<!DOCTYPE html>
 </body>
 </html>`
 
+// htmlVisualization3D embeds the same graph payload as htmlVisualization but
+// renders it as an interactive WebGL scene via 3d-force-graph (Three.js). It
+// handles thousands of nodes, colors by node type, labels on hover, flies to a
+// node on click, and supports text search + type filtering. Same base64
+// GRAPH_JSON_PLACEHOLDER contract as the 2D template.
+const htmlVisualization3D = `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>CortexDB GraphFlow 3D Visualization</title>
+	<script src="https://unpkg.com/3d-force-graph@1.73.4/dist/3d-force-graph.min.js"></script>
+	<style>
+		*{box-sizing:border-box;margin:0;padding:0}
+		html,body{height:100%;background:#06080f;color:#cbd5e1;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden}
+		#graph{position:absolute;inset:0}
+		#toolbar{position:fixed;top:12px;left:12px;z-index:10;display:flex;flex-direction:column;gap:8px;background:rgba(13,20,36,.92);padding:12px;border:1px solid #1e293b;border-radius:8px;min-width:210px;backdrop-filter:blur(6px)}
+		#toolbar h3{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#64748b;margin-bottom:2px}
+		#toolbar input,#toolbar select{padding:6px 9px;border:1px solid #334155;border-radius:5px;font-size:13px;width:100%;background:#0b1120;color:#e2e8f0}
+		#toolbar button{padding:6px 10px;border:none;border-radius:5px;cursor:pointer;font-size:12px;background:#1e293b;color:#cbd5e1}
+		#toolbar button:hover{background:#334155}
+		#stats{font-size:11px;color:#64748b}
+		#legend{position:fixed;bottom:12px;left:12px;z-index:10;background:rgba(13,20,36,.92);border:1px solid #1e293b;padding:10px 12px;border-radius:8px;font-size:11px;max-height:42vh;overflow:auto;backdrop-filter:blur(6px)}
+		#legend b{display:block;margin-bottom:6px;color:#94a3b8}
+		.li{display:flex;align-items:center;gap:8px;margin-bottom:3px}
+		.dot{width:11px;height:11px;border-radius:3px;flex:none}
+		#detail{position:fixed;top:12px;right:12px;z-index:10;width:300px;background:rgba(13,20,36,.95);border:1px solid #1e293b;border-radius:8px;padding:12px;display:none;backdrop-filter:blur(6px)}
+		#detail.on{display:block}
+		#detail .t{font-size:14px;font-weight:600;color:#e2e8f0;word-break:break-word}
+		#detail .row{margin-top:8px}
+		#detail .k{font-size:10px;text-transform:uppercase;color:#64748b}
+		#detail .v{font-size:12px;color:#cbd5e1;word-break:break-word}
+		#detail .x{float:right;cursor:pointer;color:#64748b;font-size:18px;line-height:14px}
+	</style>
+</head>
+<body>
+	<div id="graph"></div>
+	<div id="toolbar">
+		<h3>Search</h3>
+		<input id="search" placeholder="Highlight nodes…" autocomplete="off">
+		<h3>Type</h3>
+		<select id="typeFilter"><option value="">All types</option></select>
+		<div style="display:flex;gap:6px">
+			<button onclick="GF.zoomToFit(600)">Fit</button>
+			<button id="spin">Spin</button>
+		</div>
+		<div id="stats"></div>
+	</div>
+	<div id="legend"><b>Node types</b><div id="legend-items"></div></div>
+	<div id="detail"><span class="x" onclick="closeDetail()">&times;</span><div class="t" id="d-title"></div><div id="d-body"></div></div>
+	<script>
+		// atob yields a Latin-1 byte string; decode as UTF-8 so non-ASCII labels survive.
+		var DATA=JSON.parse(new TextDecoder('utf-8').decode(Uint8Array.from(atob('GRAPH_JSON_PLACEHOLDER'),function(c){return c.charCodeAt(0)})));
+		// Named palette for common ontologies; anything else gets a stable hashed hue.
+		var NAMED={'Person':'#4f46e5','Organization':'#059669','Location':'#d97706','Concept':'#7c3aed','Event':'#dc2626','Document':'#0891b2','Product':'#2dd4bf','Project':'#f59e0b','function':'#2dd4bf','file':'#60a5fa','class':'#c084fc','config':'#fbbf24','service':'#4ade80'};
+		function colorOf(t){if(!t)return '#94a3b8';if(NAMED[t])return NAMED[t];var h=0;for(var i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))%360;return 'hsl('+h+',62%,62%)';}
+		var nodes=DATA.nodes.map(function(n){return {id:n.id,label:n.label||n.id,type:n.type||'',summary:n.summary||'',source:n.source_file||''};});
+		var ids={};nodes.forEach(function(n){ids[n.id]=true;});
+		var links=(DATA.edges||[]).filter(function(e){return ids[e.source]&&ids[e.target];}).map(function(e){return {source:e.source,target:e.target,relation:e.relation||'',confidence:e.confidence||''};});
+		var deg={};links.forEach(function(l){deg[l.source]=(deg[l.source]||0)+1;deg[l.target]=(deg[l.target]||0)+1;});
+		var hi='';
+		var GF=ForceGraph3D()(document.getElementById('graph'))
+			.backgroundColor('#06080f')
+			.graphData({nodes:nodes,links:links})
+			.nodeLabel(function(n){return '<div style="background:#0d1424;color:#e2e8f0;padding:4px 8px;border-radius:5px;border:1px solid #334155;font-size:12px">'+escapeHTML(n.label)+(n.type?' <span style=\"color:#64748b\">·'+escapeHTML(n.type)+'</span>':'')+'</div>';})
+			.nodeColor(function(n){if(hi){return (matches(n,hi)?colorOf(n.type):'#1e293b');}return colorOf(n.type);})
+			.nodeVal(function(n){return 1+Math.min(8,(deg[n.id]||0)*0.5);})
+			.nodeOpacity(0.92)
+			.linkColor(function(){return '#334155';})
+			.linkWidth(0.4)
+			.linkDirectionalArrowLength(2.2)
+			.linkDirectionalArrowRelPos(1)
+			.linkDirectionalParticles(0)
+			.cooldownTicks(nodes.length>1500?80:200)
+			.onNodeClick(function(n){
+				var dist=80,r=Math.hypot(n.x,n.y,n.z)||1,k=1+dist/r;
+				GF.cameraPosition({x:n.x*k,y:n.y*k,z:n.z*k},n,1200);
+				showDetail(n);
+			});
+		document.getElementById('stats').textContent=nodes.length+' nodes · '+links.length+' edges';
+		// legend + type filter
+		var types=Array.from(new Set(nodes.map(function(n){return n.type||'(none)';}))).sort();
+		document.getElementById('legend-items').innerHTML=types.map(function(t){return '<div class="li"><span class="dot" style="background:'+colorOf(t==='(none)'?'':t)+'"></span>'+escapeHTML(t)+'</div>';}).join('');
+		var tf=document.getElementById('typeFilter');tf.innerHTML='<option value="">All types</option>'+types.map(function(t){return '<option value="'+escapeHTML(t)+'">'+escapeHTML(t)+'</option>';}).join('');
+		tf.addEventListener('change',function(){var t=this.value;GF.nodeVisibility(function(n){return !t||(n.type||'(none)')===t;});});
+		// search highlight
+		document.getElementById('search').addEventListener('input',function(){hi=this.value.toLowerCase();GF.nodeColor(GF.nodeColor());});
+		function matches(n,q){return (n.label&&n.label.toLowerCase().indexOf(q)>=0)||(n.id&&n.id.toLowerCase().indexOf(q)>=0);}
+		// spin toggle
+		var spinning=false,angle=0,timer=null;
+		document.getElementById('spin').addEventListener('click',function(){spinning=!spinning;this.style.background=spinning?'#4f46e5':'';if(spinning){var dist=GF.cameraPosition().z||500;timer=setInterval(function(){angle+=Math.PI/600;GF.cameraPosition({x:dist*Math.sin(angle),z:dist*Math.cos(angle)});},30);}else{clearInterval(timer);}});
+		function showDetail(n){document.getElementById('d-title').textContent=n.label;var h='';h+=row('Type',n.type);h+=row('ID',n.id);if(n.summary)h+=row('Summary',n.summary);if(n.source)h+=row('Source',n.source);h+=row('Connections',String(deg[n.id]||0));document.getElementById('d-body').innerHTML=h;document.getElementById('detail').classList.add('on');}
+		function row(k,v){return v?'<div class="row"><div class="k">'+escapeHTML(k)+'</div><div class="v">'+escapeHTML(v)+'</div></div>':'';}
+		function closeDetail(){document.getElementById('detail').classList.remove('on');}
+		function escapeHTML(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+	</script>
+</body>
+</html>`
+
 // ExportHTML generates an HTML visualization of the graph.
-// It embeds the graph data directly in the HTML file and loads Cytoscape/Dagre
-// from a CDN at runtime. Open the HTML file in any modern browser to view it.
+// It embeds the graph data directly in the HTML file and loads the visualization
+// libraries from a CDN at runtime. req.View selects the renderer: "2d" (default,
+// Cytoscape) or "3d" (3d-force-graph / WebGL). Open the file in any modern browser.
 func ExportHTML(ctx context.Context, db *cortexdb.DB, req ExportRequest) (*ExportResult, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db is required")
@@ -303,7 +403,11 @@ func ExportHTML(ctx context.Context, db *cortexdb.DB, req ExportRequest) (*Expor
 
 	// Generate HTML with embedded data - use base64 encoding for safety
 	b64Data := base64.StdEncoding.EncodeToString(dataJSON)
-	htmlContent := strings.Replace(htmlVisualization, "GRAPH_JSON_PLACEHOLDER", b64Data, 1)
+	tmpl := htmlVisualization
+	if strings.EqualFold(strings.TrimSpace(req.View), "3d") {
+		tmpl = htmlVisualization3D
+	}
+	htmlContent := strings.Replace(tmpl, "GRAPH_JSON_PLACEHOLDER", b64Data, 1)
 
 	htmlPath := filepath.Join(req.OutputDir, "graph.html")
 	if err := os.WriteFile(htmlPath, []byte(htmlContent), 0o644); err != nil {

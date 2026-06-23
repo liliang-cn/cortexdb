@@ -126,6 +126,9 @@ type ExportRequest struct {
 	OutputDir string          `json:"output_dir"`
 	Analysis  *AnalysisReport `json:"analysis,omitempty"`
 	Report    string          `json:"report,omitempty"`
+	// View selects the ExportHTML renderer: "2d" (default, Cytoscape) or "3d"
+	// (a WebGL 3d-force-graph scene). Ignored by Export (JSON-only).
+	View string `json:"view,omitempty"`
 }
 
 // ExportResult returns the written file paths.

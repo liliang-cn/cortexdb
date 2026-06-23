@@ -226,3 +226,66 @@ func TestExportHTMLUnicodeLabels(t *testing.T) {
 		t.Fatalf("payload lost the Chinese label: %.200s", payload)
 	}
 }
+
+// TestExportHTML3D verifies the View:"3d" renderer emits a 3d-force-graph scene
+// while embedding the same base64 payload (with UTF-8 decoding) as the 2D view.
+func TestExportHTML3D(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	db, err := cortexdb.Open(cortexdb.DefaultConfig(filepath.Join(tmpDir, "test.db")))
+	if err != nil {
+		t.Fatalf("failed to open db: %v", err)
+	}
+	defer db.Close()
+
+	extractions := []graphflow.ExtractionResult{
+		{
+			SourceID: "doc-3d",
+			Title:    "3D demo",
+			Nodes: []graphflow.ExtractionNode{
+				{ID: "a", Label: "节点A", Type: "Concept"},
+				{ID: "b", Label: "Node B", Type: "Document"},
+			},
+			Edges: []graphflow.ExtractionEdge{
+				{Source: "a", Target: "b", Relation: "links_to", Confidence: graphflow.ConfidenceExtracted, Directed: true},
+			},
+		},
+	}
+	if _, err := graphflow.Build(ctx, db, extractions, graphflow.BuildOptions{}); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	result, err := graphflow.ExportHTML(ctx, db, graphflow.ExportRequest{OutputDir: tmpDir, View: "3d"})
+	if err != nil {
+		t.Fatalf("export 3d html: %v", err)
+	}
+	html, err := os.ReadFile(result.GraphHTML)
+	if err != nil {
+		t.Fatalf("read html: %v", err)
+	}
+	h := string(html)
+
+	if !contains(h, "3d-force-graph") || !contains(h, "ForceGraph3D") {
+		t.Error("3D HTML missing the 3d-force-graph library")
+	}
+	if contains(h, "cytoscape") {
+		t.Error("3D HTML should not pull in Cytoscape")
+	}
+	if !contains(h, "TextDecoder") {
+		t.Error("3D HTML must decode the embedded payload with TextDecoder('utf-8')")
+	}
+	if !contains(h, "CortexDB GraphFlow 3D Visualization") {
+		t.Error("3D HTML missing title")
+	}
+
+	// Default (no View) must still be the 2D Cytoscape renderer.
+	d2, err := graphflow.ExportHTML(ctx, db, graphflow.ExportRequest{OutputDir: filepath.Join(tmpDir, "2d")})
+	if err != nil {
+		t.Fatalf("export 2d html: %v", err)
+	}
+	c2, _ := os.ReadFile(d2.GraphHTML)
+	if !contains(string(c2), "cytoscape") {
+		t.Error("default View must remain the 2D Cytoscape renderer")
+	}
+}
