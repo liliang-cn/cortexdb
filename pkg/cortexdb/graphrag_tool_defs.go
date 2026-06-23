@@ -98,6 +98,11 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			),
 		},
 		{
+			Name:        "cortex_query",
+			Description: "Run CortexDB's composable Query API: dense vector, lexical, or hybrid prefetches fused with RRF, weighted RRF, or DBSF, then optionally filtered and formula-reranked.",
+			InputSchema: toolQueryRequestSchema(),
+		},
+		{
 			Name:        "search_chunks_by_entities",
 			Description: "Find chunks linked to specific entity nodes.",
 			InputSchema: toolObjectSchema(
@@ -233,6 +238,12 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.SearchText(ctx, req)
+	case "cortex_query":
+		var req QueryRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.Query(ctx, req)
 	case "search_chunks_by_entities":
 		var req ToolSearchChunksByEntitiesRequest
 		if err := json.Unmarshal(input, &req); err != nil {
@@ -518,5 +529,13 @@ func toolStringArraySchema(description string) map[string]any {
 		"type":        "array",
 		"description": description,
 		"items":       map[string]any{"type": "string"},
+	}
+}
+
+func toolNumberArraySchema(description string) map[string]any {
+	return map[string]any{
+		"type":        "array",
+		"description": description,
+		"items":       map[string]any{"type": "number"},
 	}
 }

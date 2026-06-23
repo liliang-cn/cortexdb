@@ -291,7 +291,7 @@ func TestGraphRAGToolsDispatcherAndDefinitions(t *testing.T) {
 	for _, def := range defs {
 		defByName[def.Name] = def
 	}
-	for _, name := range []string{"knowledge_save", "knowledge_search", "memory_save", "memory_search"} {
+	for _, name := range []string{"cortex_query", "knowledge_save", "knowledge_search", "memory_save", "memory_search"} {
 		if _, ok := defByName[name]; !ok {
 			t.Fatalf("expected tool definition %q", name)
 		}
@@ -318,6 +318,35 @@ func TestGraphRAGToolsDispatcherAndDefinitions(t *testing.T) {
 	}
 	if typedResp.DocumentNodeID == "" {
 		t.Fatal("expected non-empty document node ID")
+	}
+
+	queryPayload, err := json.Marshal(QueryRequest{
+		Query:       "Acme lexical tools",
+		QueryVector: []float32{1, 0, 0, 0},
+		Fusion:      QueryFusionWeightedRRF,
+		Limit:       2,
+		IncludeRaw:  true,
+		Prefetch: []QueryPrefetch{
+			{Name: "dense", Kind: QueryPrefetchVector, Weight: 1, Limit: 4},
+			{Name: "lexical", Kind: QueryPrefetchLexical, Weight: 1, Limit: 4},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal cortex query payload: %v", err)
+	}
+	queryRespAny, err := tools.Call(ctx, "cortex_query", queryPayload)
+	if err != nil {
+		t.Fatalf("dispatch cortex_query: %v", err)
+	}
+	queryResp, ok := queryRespAny.(*QueryResponse)
+	if !ok {
+		t.Fatalf("expected typed cortex query response, got %T", queryRespAny)
+	}
+	if len(queryResp.Results) == 0 {
+		t.Fatal("expected cortex_query results")
+	}
+	if len(queryResp.Results[0].SourceRanks) == 0 {
+		t.Fatalf("expected cortex_query raw source ranks, got %+v", queryResp.Results[0])
 	}
 
 	knowledgePayload, err := json.Marshal(KnowledgeSaveRequest{

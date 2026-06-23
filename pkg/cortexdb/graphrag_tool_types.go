@@ -1,6 +1,10 @@
 package cortexdb
 
-import "github.com/liliang-cn/cortexdb/v2/pkg/graph"
+import (
+	"context"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
+)
 
 const defaultLexicalVectorDim = 64
 
@@ -214,4 +218,9 @@ func (db *DB) HasEmbedder() bool {
 // GraphRAGTools returns the tool/function surface intended for external LLM orchestration.
 func (db *DB) GraphRAGTools() *GraphRAGToolbox {
 	return &GraphRAGToolbox{db: db}
+}
+
+// Query runs the composable CortexDB Query API through the toolbox surface.
+func (t *GraphRAGToolbox) Query(ctx context.Context, req QueryRequest) (*QueryResponse, error) {
+	return t.db.Query(ctx, req)
 }

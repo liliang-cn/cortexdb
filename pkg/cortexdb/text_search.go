@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
@@ -312,12 +313,14 @@ func (db *DB) ftsSearch(ctx context.Context, query string, opts TextSearchOption
 		if opts.Threshold > 0 && normalizedScore < opts.Threshold {
 			continue
 		}
+		metadata, _ := encoding.DecodeMetadata(metadataJSON)
 		results = append(results, core.ScoredEmbedding{
 			Embedding: core.Embedding{
 				ID:         id,
 				Collection: collectionName.String,
 				Content:    content,
 				DocID:      docID.String,
+				Metadata:   metadata,
 			},
 			Score: normalizedScore,
 		})

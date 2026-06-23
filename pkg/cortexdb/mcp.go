@@ -89,6 +89,16 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *resp, nil
 	})
+	addGraphRAGMCPTool(server, definitions["cortex_query"], func(ctx context.Context, req QueryRequest) (QueryResponse, error) {
+		resp, err := toolbox.Query(ctx, req)
+		if err != nil {
+			return QueryResponse{}, err
+		}
+		if resp == nil {
+			return QueryResponse{}, nil
+		}
+		return *resp, nil
+	})
 	addGraphRAGMCPTool(server, definitions["search_chunks_by_entities"], func(ctx context.Context, req ToolSearchChunksByEntitiesRequest) (ToolSearchChunksByEntitiesResponse, error) {
 		resp, err := toolbox.SearchChunksByEntities(ctx, req)
 		if err != nil {

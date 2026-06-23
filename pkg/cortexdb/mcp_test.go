@@ -53,6 +53,7 @@ func TestMCPServerToolFlow(t *testing.T) {
 	}
 
 	var searchTool *mcp.Tool
+	var cortexQueryTool *mcp.Tool
 	var knowledgeSearchTool *mcp.Tool
 	var memorySearchTool *mcp.Tool
 	var ontologySaveTool *mcp.Tool
@@ -62,6 +63,9 @@ func TestMCPServerToolFlow(t *testing.T) {
 	for _, tool := range toolList.Tools {
 		if tool.Name == "search_graphrag_lexical" {
 			searchTool = tool
+		}
+		if tool.Name == "cortex_query" {
+			cortexQueryTool = tool
 		}
 		if tool.Name == "knowledge_search" {
 			knowledgeSearchTool = tool
@@ -85,6 +89,9 @@ func TestMCPServerToolFlow(t *testing.T) {
 	if searchTool == nil {
 		t.Fatal("expected search_graphrag_lexical tool")
 	}
+	if cortexQueryTool == nil {
+		t.Fatal("expected cortex_query tool")
+	}
 	if knowledgeSearchTool == nil {
 		t.Fatal("expected knowledge_search tool")
 	}
@@ -105,6 +112,9 @@ func TestMCPServerToolFlow(t *testing.T) {
 	}
 	if !strings.Contains(searchTool.Description, "keywords") {
 		t.Fatalf("expected keyword guidance in tool description, got %q", searchTool.Description)
+	}
+	if !strings.Contains(cortexQueryTool.Description, "composable Query API") {
+		t.Fatalf("expected Query API guidance in cortex_query description, got %q", cortexQueryTool.Description)
 	}
 	if !strings.Contains(knowledgeSearchTool.Description, "keywords") {
 		t.Fatalf("expected keyword guidance in knowledge_search description, got %q", knowledgeSearchTool.Description)
@@ -170,6 +180,45 @@ func TestMCPServerToolFlow(t *testing.T) {
 	}
 	if entityResult.IsError {
 		t.Fatalf("upsert_entities returned tool error: %v", entityResult.GetError())
+	}
+
+	cortexQueryResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "cortex_query",
+		Arguments: map[string]any{
+			"query":        "Alice Acme research",
+			"query_vector": []float64{1, 0, 0, 0},
+			"fusion":       QueryFusionWeightedRRF,
+			"limit":        2,
+			"include_raw":  true,
+			"prefetch": []map[string]any{
+				{"name": "dense", "kind": QueryPrefetchVector, "weight": 1, "limit": 4},
+				{"name": "lexical", "kind": QueryPrefetchLexical, "weight": 1, "limit": 4},
+				{"name": "graph", "kind": QueryPrefetchGraph, "entity_names": []string{"Alice", "Acme"}, "weight": 1, "limit": 4, "max_hops": 1},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("call cortex_query: %v", err)
+	}
+	if cortexQueryResult.IsError {
+		t.Fatalf("cortex_query returned tool error: %v", cortexQueryResult.GetError())
+	}
+	var cortexQueryResp QueryResponse
+	cortexQueryPayload, err := json.Marshal(cortexQueryResult.StructuredContent)
+	if err != nil {
+		t.Fatalf("marshal cortex_query structured content: %v", err)
+	}
+	if err := json.Unmarshal(cortexQueryPayload, &cortexQueryResp); err != nil {
+		t.Fatalf("unmarshal cortex_query structured content: %v", err)
+	}
+	if len(cortexQueryResp.Results) == 0 {
+		t.Fatal("expected cortex_query results from MCP")
+	}
+	if len(cortexQueryResp.Results[0].SourceRanks) == 0 {
+		t.Fatalf("expected cortex_query raw source ranks from MCP, got %+v", cortexQueryResp.Results[0])
+	}
+	if cortexQueryResp.Results[0].SourceRanks["graph"] == 0 {
+		t.Fatalf("expected cortex_query graph source rank from MCP, got %+v", cortexQueryResp.Results[0])
 	}
 
 	searchResult, err := session.CallTool(ctx, &mcp.CallToolParams{
