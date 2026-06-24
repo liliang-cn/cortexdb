@@ -7,6 +7,8 @@ Local-first AI memory and knowledge graph, packaged for both **Claude Code** and
 
 The single directory carries two manifests — `.claude-plugin/plugin.json` (Claude Code) and `.codex-plugin/plugin.json` (Codex) — and a per-host MCP config (`.mcp.json` for Claude Code, `.mcp.codex.json` for Codex). The skill is shared.
 
+**No Go toolchain required.** Both MCP configs invoke a launcher (`bin/cortexdb-mcp`) that, on first run, downloads the prebuilt MCP server binary for your OS/arch from the GitHub release, caches it in the plugin data dir, and execs it. Prebuilt targets: macOS (amd64, arm64), Windows (amd64, arm64), Linux (amd64, arm64).
+
 ## Install — Claude Code
 
 From the marketplace (this repository):
@@ -33,13 +35,22 @@ codex plugin install cortexdb@cortexdb
 
 ## Requirements
 
-The MCP server launches via `go run github.com/liliang-cn/cortexdb/v2/cmd/cortexdb-mcp-stdio@latest`, so a **Go toolchain (1.25+)** must be on `PATH`. No CGO, no external services — storage is a single SQLite file.
+None to install — the launcher fetches a static, prebuilt binary (no CGO, no external services; storage is a single SQLite file). It needs `curl` or `wget` on macOS/Linux (both ship by default) and PowerShell on Windows (built in). If a download is impossible and a Go toolchain is present, the launcher falls back to `go run`.
+
+### Windows
+
+`.mcp.json` points at `bin/cortexdb-mcp` (the POSIX launcher), which covers macOS and Linux out of the box. On Windows, set the MCP server command to the bundled batch launcher instead:
+
+```
+${CLAUDE_PLUGIN_ROOT}/bin/cortexdb-mcp.cmd
+```
 
 ## Configuration
 
 | Env var | Default | Purpose |
 | --- | --- | --- |
-| `CORTEXDB_PATH` | `cortexdb.db` | Path to the SQLite database file the MCP server opens. Export it in your environment before launching to use a different file — the MCP config sets no `env` block, so the value is inherited. |
+| `CORTEXDB_PATH` | `cortexdb.db` | Path to the SQLite database file the MCP server opens. Export it in your environment to use a different file — it is inherited by the launched server. |
+| `CORTEXDB_MCP_BIN` | _(unset)_ | Path to a local MCP server binary to run instead of downloading (e.g. a dev build). |
 
 The server runs in **no-embedder (lexical) mode** by default — no API key required. RAG, knowledge graph, and memory tools all work without an embedder via lexical retrieval.
 

@@ -1,0 +1,55 @@
+#!/bin/sh
+# CortexDB MCP launcher (macOS / Linux).
+#
+# Resolves the host OS/arch, downloads the matching prebuilt MCP server binary
+# from the GitHub release (cached in the plugin data dir), then execs it so the
+# stdio MCP transport passes straight through. No Go toolchain required.
+#
+# Override the download with a local binary by setting CORTEXDB_MCP_BIN.
+# Falls back to `go run` only if the download fails and Go is installed.
+set -eu
+
+REPO="liliang-cn/cortexdb"
+
+if [ -n "${CORTEXDB_MCP_BIN:-}" ] && [ -x "${CORTEXDB_MCP_BIN}" ]; then
+  exec "${CORTEXDB_MCP_BIN}"
+fi
+
+os="$(uname -s)"
+arch="$(uname -m)"
+case "$os" in
+  Darwin) goos="darwin" ;;
+  Linux)  goos="linux" ;;
+  *) echo "cortexdb-mcp: unsupported OS '$os'" >&2; exit 1 ;;
+esac
+case "$arch" in
+  x86_64|amd64)   goarch="amd64" ;;
+  arm64|aarch64)  goarch="arm64" ;;
+  *) echo "cortexdb-mcp: unsupported arch '$arch'" >&2; exit 1 ;;
+esac
+
+asset="cortexdb-mcp-${goos}-${goarch}"
+cache_root="${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-$HOME/.cache}/cortexdb}"
+cache_dir="${cache_root}/bin"
+bin="${cache_dir}/${asset}"
+
+if [ ! -x "$bin" ]; then
+  mkdir -p "$cache_dir"
+  url="https://github.com/${REPO}/releases/latest/download/${asset}"
+  tmp="${bin}.download.$$"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$url" -o "$tmp"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO "$tmp" "$url"
+  else
+    if command -v go >/dev/null 2>&1; then
+      exec go run "github.com/${REPO}/v2/cmd/cortexdb-mcp-stdio@latest"
+    fi
+    echo "cortexdb-mcp: need curl or wget (or a Go toolchain) to obtain the server" >&2
+    exit 1
+  fi
+  chmod +x "$tmp"
+  mv -f "$tmp" "$bin"
+fi
+
+exec "$bin"
