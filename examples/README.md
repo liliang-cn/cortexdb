@@ -11,6 +11,13 @@ go run ./examples/05_graphflow
 go run ./examples/06_tools_mcp
 go run ./examples/07_importflow
 go run ./examples/08_self_knowledge_graph
+go run ./examples/09_connector
+go run ./examples/10_support_brain
+go run ./examples/11_unified_brain
+go run ./examples/12_incident_agent
+go run ./examples/13_scale_analytics
+go run ./examples/14_semantic_rag
+go run ./examples/15_cortex_query
 ```
 
 ## 01_core
@@ -101,6 +108,77 @@ Dogfooding demo: CortexDB maps itself.
 
 Use this as the end-to-end graphflow reference.
 
+## 09_connector
+
+Privacy-preserving import through `pkg/connector`.
+
+- classifies and masks sensitive CSV data
+- imports the safe view into RAG / KG sinks
+- demonstrates the reversible token vault boundary
+
+Use this before connecting live operational data to an agent memory layer.
+
+## 10_support_brain
+
+Live support-brain workflow.
+
+- connects to Postgres or MySQL
+- desensitizes rows before RAG/KG ingestion
+- answers with masked evidence and optional unmasking
+
+Use this for a support/copilot memory prototype over live business data.
+
+## 11_unified_brain
+
+Multi-source unified brain.
+
+- combines Postgres and MySQL sources
+- streams CDC into one knowledge graph
+- demonstrates SPARQL aggregates, RDFS inference, and SHACL checks
+
+Use this when the agent needs one view across several operational systems.
+
+## 12_incident_agent
+
+LLM-assisted incident analysis.
+
+- extracts a KG from unstructured incident reports
+- exposes deterministic search / graph tools
+- lets an agent decide which tool to call before answering
+
+Use this for tool-using agents over unstructured operational text.
+
+## 13_scale_analytics
+
+Larger-volume analytics harness.
+
+- timed bulk ingest
+- CDC under load
+- graph analytics and validation over larger fixtures
+
+Use this when you want a rough performance and scale sanity check.
+
+## 14_semantic_rag
+
+Embedding-backed semantic RAG.
+
+- plugs in an OpenAI-compatible embedding model
+- demonstrates paraphrase search by meaning
+- uses an LLM answer grounded on retrieved context
+
+Use this when you need true semantic vector retrieval.
+
+## 15_cortex_query
+
+Composable Cortex Query API.
+
+- runs dense vector, lexical FTS5, and graph/entity prefetches
+- fuses candidates with weighted RRF
+- shows payload filters, formula boosts, and source-rank debugging
+- runs fully offline with one local CortexDB file
+
+Use this when an agent needs vector + keyword + graph retrieval without a separate vector database or graph database service.
+
 ## Rule of Thumb
 
 ```text
@@ -112,4 +190,9 @@ Need corpus-to-graph/report/export?   -> 05_graphflow
 Need agent tool/MCP integration?      -> 06_tools_mcp
 Need to import CSV / SQL dumps?       -> 07_importflow
 Want the full graphflow E2E demo?     -> 08_self_knowledge_graph
+Need privacy-gated live data import?  -> 09_connector / 10_support_brain / 11_unified_brain
+Need an LLM tool-using graph agent?    -> 12_incident_agent
+Need scale/CDC analytics checks?       -> 13_scale_analytics
+Need real semantic vector retrieval?   -> 14_semantic_rag
+Need vector + lexical + graph fusion?  -> 15_cortex_query
 ```

@@ -1,0 +1,22 @@
+{
+  "name": "cortexdb",
+  "description": "Local-first AI memory and knowledge graph for Claude Code: vector search, RAG, GraphRAG, RDF/SPARQL/RDFS/SHACL, scoped agent memory, and corpus-to-graph workflows — bundled as a skill plus live MCP tools.",
+  "version": "2.29.0",
+  "author": {
+    "name": "Liang Li",
+    "email": "ll_faw@hotmail.com"
+  },
+  "homepage": "https://github.com/liliang-cn/cortexdb",
+  "repository": "https://github.com/liliang-cn/cortexdb",
+  "license": "MIT",
+  "keywords": [
+    "memory",
+    "rag",
+    "graphrag",
+    "knowledge-graph",
+    "vector-search",
+    "sparql",
+    "sqlite",
+    "mcp"
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "cortexdb",
+  "interface": {
+    "displayName": "CortexDB"
+  },
+  "plugins": [
+    {
+      "name": "cortexdb",
+      "source": {
+        "source": "local",
+        "path": "./plugins/cortexdb"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "cortexdb": {
+      "command": "go",
+      "args": [
+        "run",
+        "github.com/liliang-cn/cortexdb/v2/cmd/cortexdb-mcp-stdio@latest"
+      ]
+    }
+  }
+}

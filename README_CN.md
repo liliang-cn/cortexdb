@@ -591,6 +591,28 @@ npx skills add liliang-cn/cortexdb
 （Node）分别教 agent 做 `remember` / `recall`、RAG，以及存储和查询
 RDF/SPARQL 知识图谱，`scripts/` 下附带即用的 helper 模块。
 
+## Claude Code / Codex 插件
+
+`plugins/cortexdb/` 把 CortexDB 打包成同时面向 **Claude Code** 和 **Codex** 的插件 ——
+一个目录，两份 manifest（`.claude-plugin/` 与 `.codex-plugin/`）。它捆绑了 `cortexdb`
+skill 以及一个 MCP server（`cmd/cortexdb-mcp-stdio`），对外暴露实时工具：`knowledge_save`、
+`knowledge_search`、`memory_save`、`knowledge_graph_query`、`knowledge_graph_shacl_validate`、
+`knowledge_memory_recall`、`build_context` 等。MCP server 通过 `go run` 启动（需要
+`PATH` 中有 Go 1.25+），默认以无 embedder 的词法模式运行，无需 API key。
+
+```bash
+# Claude Code（marketplace 在 .claude-plugin/marketplace.json）
+/plugin marketplace add liliang-cn/cortexdb
+/plugin install cortexdb@cortexdb
+
+# Codex（marketplace 在 .agents/plugins/marketplace.json）
+codex plugin marketplace add liliang-cn/cortexdb
+codex plugin install cortexdb@cortexdb
+```
+
+在环境变量中设置 `CORTEXDB_PATH` 可让 server 指向不同的 SQLite 文件（默认 `cortexdb.db`）。
+详见 `plugins/cortexdb/README.md`。
+
 ## Optional Semantic Router
 
 `pkg/semantic-router` 仍然作为可选工具包保留，可在 retrieval 前把用户输入路由到 handler 或 CortexDB tool。它不是 CortexDB、MemoryFlow、GraphFlow 主路径的必需依赖。
@@ -607,6 +629,33 @@ route, _ := router.Route(ctx, "please remember this preference")
 _ = route.RouteName
 ```
 
+## Cortex Query
+
+`DB.Query` 是面向 agent 的可编排检索 API。它可以同时跑 dense vector、
+FTS5 lexical、hybrid 和 graph entity prefetch，再用 RRF / weighted RRF /
+DBSF 融合，并叠加 payload filter 和 formula boost。
+
+这是 CortexDB 的 local-first 路线：一个 SQLite 文件同时容纳 vectors、FTS5
+文本、RAG chunks、agent memory 和 graph edges，让 agent 在不额外部署向量
+数据库 + 图数据库服务栈的情况下，把向量、关键词和实体邻域信号一起用于检索。
+
+```go
+resp, _ := db.Query(ctx, cortexdb.QueryRequest{
+	Query:       "Apollo launch readiness Alice",
+	QueryVector: precomputedQueryVector,
+	EntityNames: []string{"Apollo", "Alice"},
+	Fusion:      cortexdb.QueryFusionWeightedRRF,
+	Limit:       3,
+	IncludeRaw:  true,
+	Prefetch: []cortexdb.QueryPrefetch{
+		{Name: "dense", Kind: cortexdb.QueryPrefetchVector},
+		{Name: "lexical", Kind: cortexdb.QueryPrefetchLexical},
+		{Name: "graph", Kind: cortexdb.QueryPrefetchGraph, EntityNames: []string{"Apollo", "Alice"}},
+	},
+})
+_ = resp.Results
+```
+
 ## Examples
 
 examples 按架构组织：
@@ -621,6 +670,12 @@ go run ./examples/06_tools_mcp
 go run ./examples/07_importflow
 go run ./examples/08_self_knowledge_graph   # 把本项目文档建成知识图谱；qa_test.go 用图谱回答问题
 go run ./examples/09_connector              # 通过隐私闸门脱敏一份 CSV，再导入 RAG
+go run ./examples/10_support_brain -driver postgres -dsn '...'  # live DB → 脱敏 → RAG+KG → masked Q&A
+go run ./examples/11_unified_brain -pg '...' -my '...'          # 两个 live DB → 一个 KG + CDC + SPARQL/RDFS/SHACL
+go run ./examples/12_incident_agent -model gpt-5.5             # LLM 抽取 KG，再用工具回答事故分析问题
+go run ./examples/13_scale_analytics -pg '...' -my '...'       # 大规模导入、吞吐、SPARQL/RDFS/SHACL analytics
+go run ./examples/14_semantic_rag                             # embedding-backed semantic RAG
+go run ./examples/15_cortex_query                             # 离线演示 vector + lexical + graph 融合检索
 ```
 
 选择指南见 [examples/README.md](examples/README.md)。

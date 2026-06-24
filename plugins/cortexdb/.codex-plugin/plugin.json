@@ -1,0 +1,34 @@
+{
+  "name": "cortexdb",
+  "version": "2.29.0",
+  "description": "Local-first AI memory and knowledge graph for Codex: vector search, RAG, GraphRAG, RDF/SPARQL/RDFS/SHACL, scoped agent memory, and corpus-to-graph workflows — bundled as a skill plus live MCP tools.",
+  "author": {
+    "name": "Liang Li",
+    "email": "ll_faw@hotmail.com",
+    "url": "https://github.com/liliang-cn/cortexdb"
+  },
+  "homepage": "https://github.com/liliang-cn/cortexdb",
+  "repository": "https://github.com/liliang-cn/cortexdb",
+  "license": "MIT",
+  "keywords": [
+    "memory",
+    "rag",
+    "graphrag",
+    "knowledge-graph",
+    "vector-search",
+    "sparql",
+    "sqlite",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.codex.json",
+  "interface": {
+    "displayName": "CortexDB",
+    "shortDescription": "Local-first AI memory and knowledge graph",
+    "longDescription": "CortexDB is a pure-Go, single-file AI memory and knowledge graph library on SQLite. This plugin bundles the CortexDB skill plus an MCP server exposing live tools for knowledge save/search, scoped memory, RDF/SPARQL knowledge graphs, SHACL validation, and GraphRAG context building.",
+    "developerName": "Liang Li",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://github.com/liliang-cn/cortexdb"
+  }
+}

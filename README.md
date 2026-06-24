@@ -626,6 +626,29 @@ npx skills add liliang-cn/cortexdb
 query an RDF/SPARQL knowledge graph, with a ready-to-use helper module under
 `scripts/`.
 
+## Claude Code / Codex plugin
+
+`plugins/cortexdb/` packages CortexDB as a plugin for both **Claude Code** and
+**Codex** — one directory, two manifests (`.claude-plugin/` and `.codex-plugin/`).
+It bundles the `cortexdb` skill plus an MCP server (`cmd/cortexdb-mcp-stdio`) that
+exposes live tools: `knowledge_save`, `knowledge_search`, `memory_save`,
+`knowledge_graph_query`, `knowledge_graph_shacl_validate`, `knowledge_memory_recall`,
+`build_context`, and more. The MCP server launches via `go run` (needs Go 1.25+ on
+`PATH`) and runs in no-embedder lexical mode by default — no API key.
+
+```bash
+# Claude Code (marketplace at .claude-plugin/marketplace.json)
+/plugin marketplace add liliang-cn/cortexdb
+/plugin install cortexdb@cortexdb
+
+# Codex (marketplace at .agents/plugins/marketplace.json)
+codex plugin marketplace add liliang-cn/cortexdb
+codex plugin install cortexdb@cortexdb
+```
+
+Set `CORTEXDB_PATH` in your environment to point the server at a different SQLite
+file (defaults to `cortexdb.db`). See `plugins/cortexdb/README.md` for details.
+
 ## Optional Semantic Router
 
 `pkg/semantic-router` remains available as an optional utility for routing user input to handlers or CortexDB tools before retrieval. It is not required by the main CortexDB, MemoryFlow, or GraphFlow paths.
@@ -642,12 +665,41 @@ route, _ := router.Route(ctx, "please remember this preference")
 _ = route.RouteName
 ```
 
+## Cortex Query
+
+`DB.Query` is the composable retrieval API for agents that need more than a
+single vector search. It can run dense vector, lexical FTS5, hybrid, and graph
+entity prefetches, then fuse them with RRF / weighted RRF / DBSF and apply
+payload filters or formula boosts.
+
+This is the local-first path: one CortexDB file can hold vectors, FTS5 text,
+RAG chunks, agent memory, and graph edges, so agents can combine vector,
+keyword, and entity-neighborhood signals without running a separate vector
+database plus graph database stack.
+
+```go
+resp, _ := db.Query(ctx, cortexdb.QueryRequest{
+	Query:       "Apollo launch readiness Alice",
+	QueryVector: precomputedQueryVector,
+	EntityNames: []string{"Apollo", "Alice"},
+	Fusion:      cortexdb.QueryFusionWeightedRRF,
+	Limit:       3,
+	IncludeRaw:  true,
+	Prefetch: []cortexdb.QueryPrefetch{
+		{Name: "dense", Kind: cortexdb.QueryPrefetchVector},
+		{Name: "lexical", Kind: cortexdb.QueryPrefetchLexical},
+		{Name: "graph", Kind: cortexdb.QueryPrefetchGraph, EntityNames: []string{"Apollo", "Alice"}},
+	},
+})
+_ = resp.Results
+```
+
 ## Examples
 
 The examples are intentionally small and architecture-oriented:
 
 ```bash
-# 01-07, 09, kg_e2e run standalone (no external services). 08, 10-13 need an LLM and/or a live DB (noted below).
+# 01-07, 09, 15, kg_e2e run standalone (no external services). 08, 10-14 need an LLM, embedding model, and/or a live DB (noted below).
 go run ./examples/01_core
 go run ./examples/02_rag
 go run ./examples/03_memoryflow
@@ -662,6 +714,7 @@ go run ./examples/11_unified_brain -pg '...' -my '...'          # two live DBs �
 go run ./examples/12_incident_agent -model gpt-5.5             # REQUIRES an LLM: extract a KG from incident reports, then an agent answers via tools (search/graph)
 go run ./examples/13_scale_analytics -pg '...' -my '...'       # larger volume: timed bulk ingest + throughput, SPARQL/RDFS/SHACL analytics, CDC under load
 go run ./examples/14_semantic_rag                             # needs an embedding model (OPENAI_*/.env): real vector search by meaning + LLM answer
+go run ./examples/15_cortex_query                             # offline: vector + lexical + graph prefetch, weighted RRF, payload/formula ranking
 ```
 
 See [examples/README.md](examples/README.md) for the selection guide.
