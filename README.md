@@ -4,6 +4,20 @@
 
 Pure-Go, single-file AI memory and knowledge graph library. SQLite is the kernel — one file holds vectors, lexical/RAG search, scoped agent memory, an RDF/SPARQL/RDFS/SHACL knowledge graph, and MCP tools. Built for local-first agents that need durable memory without a separate vector DB, graph DB, or MCP stack. Works with no embedder (lexical mode) or any OpenAI-compatible embeddings endpoint.
 
+## Why CortexDB?
+
+Use CortexDB when you want an agent memory layer that is embedded, inspectable, and graph-aware without standing up more infrastructure.
+
+| If you were considering... | CortexDB gives you... | Trade-off |
+| --- | --- | --- |
+| `chromem-go` or a small embedded vector store | Vectors plus lexical search, durable knowledge, scoped memory, RDF/SPARQL, and MCP tools in one SQLite file | More surface area if all you need is a tiny vector collection |
+| `sqlite-vec` or raw SQLite extensions | A Go facade for RAG, memory, hybrid retrieval, graph facts, and agent tools | Less low-level SQL control than wiring extensions yourself |
+| Chroma, Qdrant, LanceDB, or a hosted vector DB | No service to run, no separate storage plane, and lexical mode with no API key | Not trying to be a distributed vector database |
+| Fuseki, GraphDB, Stardog, or a standalone graph DB | Enough RDF/SPARQL/RDFS/SHACL for local-first agent workflows, next to the text and memory store | Not a full enterprise RDF server |
+| Custom memory tables for Claude Code/Codex | A packaged plugin, MCP server, auto-recall path, and reusable memory/KG tools | Bring your own product-specific memory policy |
+
+Planning a launch or community post? See [docs/LAUNCH_KIT.md](docs/LAUNCH_KIT.md) for ready-to-edit Show HN, Reddit, and demo scripts.
+
 ## Install & Quick Start
 
 ```bash
@@ -59,8 +73,12 @@ Tool groups: GraphRAG (`ingest_document`, `search_text`, `build_context`), knowl
 Install as a Claude Code / Codex plugin (bundles skill + MCP server, lexical mode, no API key):
 
 ```bash
-/plugin marketplace add liliang-cn/cortexdb && /plugin install cortexdb@cortexdb            # Claude Code
-codex plugin marketplace add liliang-cn/cortexdb && codex plugin install cortexdb@cortexdb  # Codex
+# Claude Code — run each as a slash command:
+/plugin marketplace add liliang-cn/cortexdb
+/plugin install cortexdb@cortexdb
+
+# Codex:
+codex plugin marketplace add liliang-cn/cortexdb && codex plugin install cortexdb@cortexdb
 ```
 
 ## Other languages (gRPC sidecar)

@@ -4,6 +4,20 @@
 
 纯 Go、单文件的 AI memory 和知识图谱库。SQLite 为存储内核——一个文件即承载向量、lexical/RAG 检索、分作用域的 agent memory、RDF/SPARQL/RDFS/SHACL 知识图谱，以及 MCP tools。为需要长期记忆的 local-first agent 而生，无需额外部署向量库、图数据库或 MCP 服务栈。支持无 embedder（lexical 模式）或任意 OpenAI 兼容的 embeddings 端点。
 
+## 为什么选 CortexDB？
+
+当你想给 agent 一个可嵌入、可审计、图谱感知的长期记忆层，又不想额外部署更多基础设施时，CortexDB 适合放进候选名单。
+
+| 如果你正在考虑... | CortexDB 给你... | 取舍 |
+| --- | --- | --- |
+| `chromem-go` 或小型嵌入式向量库 | 一个 SQLite 文件里的向量、lexical 检索、durable knowledge、分作用域 memory、RDF/SPARQL 和 MCP tools | 如果只需要一个很小的向量集合，CortexDB 的表面积会更大 |
+| `sqlite-vec` 或裸 SQLite 扩展 | 面向 RAG、memory、hybrid retrieval、graph facts 和 agent tools 的 Go facade | 不如自己拼扩展时那么底层可控 |
+| Chroma、Qdrant、LanceDB 或托管向量库 | 无需单独服务、无需额外存储平面，lexical 模式也不需要 API key | 目标不是分布式向量数据库 |
+| Fuseki、GraphDB、Stardog 或独立图数据库 | 足够支撑 local-first agent 工作流的 RDF/SPARQL/RDFS/SHACL，并且和文本、memory 存在同一文件 | 不是完整企业级 RDF server |
+| 为 Claude Code/Codex 自己写 memory 表 | 打包好的插件、MCP server、auto-recall 路径，以及可复用的 memory/KG tools | 具体产品的记忆策略仍需要你自己定义 |
+
+准备 launch 或社区发帖时，可看 [docs/LAUNCH_KIT.md](docs/LAUNCH_KIT.md)，里面有可直接改的 Show HN、Reddit 和 demo 脚本。
+
 ## 安装与快速开始
 
 ```bash
@@ -59,8 +73,12 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 作为 Claude Code / Codex 插件安装（打包 skill + MCP server，lexical 模式，无需 API key）：
 
 ```bash
-/plugin marketplace add liliang-cn/cortexdb && /plugin install cortexdb@cortexdb            # Claude Code
-codex plugin marketplace add liliang-cn/cortexdb && codex plugin install cortexdb@cortexdb  # Codex
+# Claude Code —— 逐条作为 slash 命令运行：
+/plugin marketplace add liliang-cn/cortexdb
+/plugin install cortexdb@cortexdb
+
+# Codex：
+codex plugin marketplace add liliang-cn/cortexdb && codex plugin install cortexdb@cortexdb
 ```
 
 ## 在其他语言中使用（gRPC sidecar）
