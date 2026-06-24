@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite" // SQLite driver
@@ -29,6 +32,15 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 	//   busy_timeout(5000): wait up to 5s for a lock instead of failing immediately
 	//   cache_size(-2000): 2MB page cache (negative = KiB)
 	//   foreign_keys(ON): enforce FK cascades on every connection
+	// Ensure the parent directory exists for file-backed databases so nested
+	// paths (e.g. ".cortexdb/cortexdb.db") open without the caller having to
+	// pre-create the directory. In-memory databases have no directory.
+	if dir := filepath.Dir(s.config.Path); dir != "" && dir != "." && !strings.HasPrefix(s.config.Path, ":memory:") && !strings.Contains(s.config.Path, ":memory:") {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return wrapError("init", fmt.Errorf("failed to create database directory %q: %w", dir, err))
+		}
+	}
+
 	dsn := fmt.Sprintf("%s?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)&_pragma=cache_size(-2000)&_pragma=foreign_keys(ON)", s.config.Path)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {

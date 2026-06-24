@@ -11,6 +11,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -44,6 +47,11 @@ type SQLiteVault struct{ db *sql.DB }
 
 // OpenSQLiteVault opens (creating if needed) a vault file.
 func OpenSQLiteVault(path string) (*SQLiteVault, error) {
+	if dir := filepath.Dir(path); dir != "" && dir != "." && !strings.Contains(path, ":memory:") {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, fmt.Errorf("connector: create vault directory %q: %w", dir, err)
+		}
+	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, err

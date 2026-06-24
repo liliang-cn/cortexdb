@@ -44,7 +44,7 @@ func runRecall() {
 
 	dbPath := os.Getenv("CORTEXDB_PATH")
 	if dbPath == "" {
-		dbPath = "cortexdb.db"
+		dbPath = ".cortexdb/cortexdb.db"
 	}
 	// Never create a database just to recall from it: if it isn't already
 	// there, this project simply has no CortexDB memory yet.
