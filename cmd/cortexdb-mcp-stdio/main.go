@@ -9,6 +9,14 @@ import (
 )
 
 func main() {
+	// `--recall` is a one-shot mode for the UserPromptSubmit hook: read a hook
+	// payload from stdin, retrieve matching memories, print additionalContext,
+	// and exit. Everything else launches the long-running MCP stdio server.
+	if len(os.Args) > 1 && os.Args[1] == "--recall" {
+		runRecall()
+		return
+	}
+
 	dbPath := os.Getenv("CORTEXDB_PATH")
 	if dbPath == "" {
 		dbPath = "cortexdb.db"

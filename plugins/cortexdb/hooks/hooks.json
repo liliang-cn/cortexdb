@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/cortexdb-recall",
+            "timeout": 10,
+            "statusMessage": "Recalling CortexDB memories..."
+          }
+        ]
+      }
+    ]
+  }
+}

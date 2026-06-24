@@ -51,8 +51,27 @@ ${CLAUDE_PLUGIN_ROOT}/bin/cortexdb-mcp.cmd
 | --- | --- | --- |
 | `CORTEXDB_PATH` | `cortexdb.db` | Path to the SQLite database file the MCP server opens. Export it in your environment to use a different file — it is inherited by the launched server. |
 | `CORTEXDB_MCP_BIN` | _(unset)_ | Path to a local MCP server binary to run instead of downloading (e.g. a dev build). |
+| `CORTEXDB_RECALL_TOPK` | `3` | How many matched memories the auto-recall hook injects per prompt (see below). |
 
 The server runs in **no-embedder (lexical) mode** by default — no API key required. RAG, knowledge graph, and memory tools all work without an embedder via lexical retrieval.
+
+## Auto-recall (Claude Code only)
+
+The plugin ships a `UserPromptSubmit` hook (`hooks/hooks.json` → `bin/cortexdb-recall`) that, on every prompt, searches the project's CortexDB for memories relevant to what you just typed and injects the top matches into context — so stored knowledge is used automatically, not only when a tool is called explicitly.
+
+It is built to stay out of the way:
+
+- **Scoped to real databases.** It looks for `$CORTEXDB_PATH` (else `./cortexdb.db`). If no database exists in the project, the hook does nothing — zero overhead, and it never creates a database.
+- **Asked once.** The first time it runs on a machine with a database present, it asks (via Claude) whether you want auto-recall, and remembers your answer in `${XDG_CACHE_HOME:-~/.cache}/cortexdb/autorecall`.
+- **Never blocks.** Any error — missing binary, query failure, no matches — exits silently so your prompt is never delayed.
+- **Bounded.** Injects at most `CORTEXDB_RECALL_TOPK` (default 3) snippets.
+
+Toggle it any time:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/bin/cortexdb-recall --enable    # turn on
+${CLAUDE_PLUGIN_ROOT}/bin/cortexdb-recall --disable   # turn off
+```
 
 ## Usage
 

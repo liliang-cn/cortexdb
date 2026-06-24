@@ -1,0 +1,59 @@
+#!/bin/sh
+# CortexDB auto-recall launcher for the Claude Code UserPromptSubmit hook.
+#
+# On each prompt it: locates the project's cortexdb.db, honors a global on/off
+# choice, and — when enabled — runs `cortexdb-mcp --recall` to inject matched
+# memories as additionalContext.
+#
+# It NEVER blocks the prompt: every problem path exits 0 with no output.
+#
+#   cortexdb-recall            run as the hook (reads hook JSON on stdin)
+#   cortexdb-recall --enable   turn auto-recall on  (writes the global sentinel)
+#   cortexdb-recall --disable  turn auto-recall off
+#
+# DB path:   $CORTEXDB_PATH, else ./cortexdb.db (skipped if absent).
+# Override the server binary with $CORTEXDB_MCP_BIN.
+set -eu
+
+cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/cortexdb"
+sentinel="${cache_root}/autorecall"
+
+# Absolute path to this launcher, so the first-run prompt can tell Claude exactly
+# what to run regardless of its working directory.
+self="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/$(basename "$0")"
+
+case "${1:-}" in
+  --enable)  mkdir -p "$cache_root"; printf 'on\n'  > "$sentinel"; echo "CortexDB auto-recall enabled.";  exit 0 ;;
+  --disable) mkdir -p "$cache_root"; printf 'off\n' > "$sentinel"; echo "CortexDB auto-recall disabled."; exit 0 ;;
+esac
+
+# No DB in this project -> nothing to recall. Never create one here.
+db="${CORTEXDB_PATH:-cortexdb.db}"
+[ -f "$db" ] || exit 0
+
+if [ -f "$sentinel" ]; then
+  case "$(cat "$sentinel" 2>/dev/null || true)" in
+    on*) : ;;        # enabled: fall through to recall
+    *)   exit 0 ;;   # off / anything else: stay quiet
+  esac
+else
+  # First run on this machine: have Claude ask the user once, then record it.
+  msg="CortexDB auto-recall is installed but not yet configured on this machine. Before answering, ask the user once whether they want CortexDB memories automatically retrieved and injected on every prompt. If they say yes, run: ${self} --enable . If they say no, run: ${self} --disable . Then continue with their request."
+  printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' "$msg"
+  exit 0
+fi
+
+# Enabled: reuse the same prebuilt MCP binary, in one-shot --recall mode.
+if [ -n "${CORTEXDB_MCP_BIN:-}" ] && [ -x "${CORTEXDB_MCP_BIN}" ]; then
+  exec "${CORTEXDB_MCP_BIN}" --recall
+fi
+
+os="$(uname -s)"; arch="$(uname -m)"
+case "$os" in Darwin) goos=darwin ;; Linux) goos=linux ;; *) exit 0 ;; esac
+case "$arch" in x86_64|amd64) goarch=amd64 ;; arm64|aarch64) goarch=arm64 ;; *) exit 0 ;; esac
+
+# Use the binary the MCP launcher already fetched. Don't download from inside a
+# per-prompt hook; if it isn't cached yet, just stay quiet until it is.
+bin="${cache_root}/bin/cortexdb-mcp-${goos}-${goarch}"
+[ -x "$bin" ] || exit 0
+exec "$bin" --recall
