@@ -3,6 +3,7 @@ package cortexdb
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"sort"
 
@@ -17,6 +18,23 @@ type TextSearchOptions struct {
 	Threshold        float64
 	Keywords         []string
 	AlternateQueries []string
+
+	// Authorize, when set, is a retrieval-layer security gate: it is applied to
+	// every candidate and only authorized rows count toward TopK. The search
+	// over-fetches internally so the caller still receives up to TopK authorized
+	// results. This pushes access control (RBAC/ABAC) into the retrieval boundary
+	// instead of leaving it to post-filtering in application code.
+	Authorize func(core.ScoredEmbedding) bool
+
+	// Reranker, when set, re-scores and reorders the authorized candidate set
+	// (typically a cross-encoder or LLM) before MinScore filtering and TopK
+	// truncation — the standard recall→precision second stage.
+	Reranker core.Reranker
+
+	// MinScore, when > 0, drops candidates whose (possibly reranked) Score is
+	// below the threshold — a relevance floor that prevents weak tail matches
+	// from being surfaced.
+	MinScore float64
 }
 
 // InsertText inserts text with automatic embedding generation.
@@ -184,6 +202,71 @@ func (db *DB) HybridSearchText(ctx context.Context, query string, topK int) ([]c
 	})
 }
 
+// HybridSearchTextWithOptions is the full retrieval pipeline for production RAG:
+// hybrid recall (vector + BM25 when an embedder is set, BM25-only otherwise),
+// then the optional retrieval-layer stages in order:
+//
+//	recall(over-fetch) → Authorize(RBAC/ABAC) → Reranker → MinScore → TopK
+//
+// Keeping these stages inside the retrieval call makes access control and the
+// relevance floor non-bypassable by callers.
+func (db *DB) HybridSearchTextWithOptions(ctx context.Context, query string, opts TextSearchOptions) ([]core.ScoredEmbedding, error) {
+	if query == "" {
+		return nil, ErrEmptyText
+	}
+	wantK := opts.TopK
+	if wantK <= 0 {
+		wantK = 10
+	}
+
+	// Over-fetch so enough survive Authorize/Reranker to still fill TopK.
+	fetchK := wantK
+	if opts.Authorize != nil || opts.Reranker != nil {
+		fetchK = overfetchK(wantK)
+	}
+	candidates, err := db.HybridSearchText(ctx, query, fetchK)
+	if err != nil {
+		return nil, err
+	}
+
+	// 1) Authorization gate.
+	if opts.Authorize != nil {
+		kept := candidates[:0]
+		for _, c := range candidates {
+			if opts.Authorize(c) {
+				kept = append(kept, c)
+			}
+		}
+		candidates = kept
+	}
+
+	// 2) Rerank (cross-encoder / LLM second stage).
+	if opts.Reranker != nil && len(candidates) > 0 {
+		reranked, rerr := opts.Reranker.Rerank(ctx, query, candidates)
+		if rerr != nil {
+			return nil, fmt.Errorf("rerank: %w", rerr)
+		}
+		candidates = reranked
+	}
+
+	// 3) Relevance floor.
+	if opts.MinScore > 0 {
+		kept := candidates[:0]
+		for _, c := range candidates {
+			if c.Score >= opts.MinScore {
+				kept = append(kept, c)
+			}
+		}
+		candidates = kept
+	}
+
+	// 4) Final TopK.
+	if len(candidates) > wantK {
+		candidates = candidates[:wantK]
+	}
+	return candidates, nil
+}
+
 // SearchTextOnly performs pure FTS5 full-text search without embeddings.
 func (db *DB) SearchTextOnly(ctx context.Context, query string, opts TextSearchOptions) ([]core.ScoredEmbedding, error) {
 	if query == "" {
@@ -191,6 +274,31 @@ func (db *DB) SearchTextOnly(ctx context.Context, query string, opts TextSearchO
 	}
 	if opts.TopK <= 0 {
 		opts.TopK = 10
+	}
+
+	// Retrieval-layer authorization: over-fetch, apply the gate, then return up
+	// to TopK authorized rows. Keeping this here (rather than in the caller)
+	// makes the security predicate a non-bypassable part of retrieval.
+	if opts.Authorize != nil {
+		authorize := opts.Authorize
+		wantK := opts.TopK
+		inner := opts
+		inner.Authorize = nil
+		inner.TopK = overfetchK(wantK)
+		candidates, err := db.SearchTextOnly(ctx, query, inner)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]core.ScoredEmbedding, 0, wantK)
+		for _, c := range candidates {
+			if authorize(c) {
+				out = append(out, c)
+				if len(out) >= wantK {
+					break
+				}
+			}
+		}
+		return out, nil
 	}
 
 	if len(opts.Keywords) > 0 || len(opts.AlternateQueries) > 0 {
@@ -208,6 +316,16 @@ func (db *DB) SearchTextOnly(ctx context.Context, query string, opts TextSearchO
 		return results, nil
 	}
 	return db.ftsSearch(ctx, query, opts)
+}
+
+// overfetchK returns how many candidates to pull when an Authorize gate is set,
+// so enough rows survive filtering to still fill TopK.
+func overfetchK(wantK int) int {
+	k := wantK * 5
+	if k < 50 {
+		k = 50
+	}
+	return k
 }
 
 func (db *DB) searchTextOnlyExpanded(ctx context.Context, query string, opts TextSearchOptions) ([]core.ScoredEmbedding, error) {
@@ -274,7 +392,7 @@ func (db *DB) searchTextOnlyExpanded(ctx context.Context, query string, opts Tex
 
 func (db *DB) ftsSearch(ctx context.Context, query string, opts TextSearchOptions) ([]core.ScoredEmbedding, error) {
 	rows, err := db.store.GetDB().QueryContext(ctx, `
-		SELECT e.id, e.collection_id, c.name, e.vector, e.content, e.doc_id, e.metadata, bm25(chunks_fts) as score
+		SELECT e.id, e.collection_id, c.name, e.vector, e.content, e.doc_id, e.metadata, e.acl, bm25(chunks_fts) as score
 		FROM chunks_fts
 		JOIN embeddings e ON chunks_fts.rowid = e.rowid
 		LEFT JOIN collections c ON e.collection_id = c.id
@@ -304,9 +422,10 @@ func (db *DB) ftsSearch(ctx context.Context, query string, opts TextSearchOption
 		var collectionName, docID sql.NullString
 		var vectorBytes []byte
 		var metadataJSON string
+		var aclJSON sql.NullString
 		var score float64
 
-		if err := rows.Scan(&id, &collectionID, &collectionName, &vectorBytes, &content, &docID, &metadataJSON, &score); err != nil {
+		if err := rows.Scan(&id, &collectionID, &collectionName, &vectorBytes, &content, &docID, &metadataJSON, &aclJSON, &score); err != nil {
 			continue
 		}
 		normalizedScore := 1.0 / (1.0 + (-score))
@@ -314,6 +433,10 @@ func (db *DB) ftsSearch(ctx context.Context, query string, opts TextSearchOption
 			continue
 		}
 		metadata, _ := encoding.DecodeMetadata(metadataJSON)
+		var acl []string
+		if aclJSON.Valid && aclJSON.String != "" {
+			_ = json.Unmarshal([]byte(aclJSON.String), &acl)
+		}
 		results = append(results, core.ScoredEmbedding{
 			Embedding: core.Embedding{
 				ID:         id,
@@ -321,6 +444,7 @@ func (db *DB) ftsSearch(ctx context.Context, query string, opts TextSearchOption
 				Content:    content,
 				DocID:      docID.String,
 				Metadata:   metadata,
+				ACL:        acl,
 			},
 			Score: normalizedScore,
 		})
