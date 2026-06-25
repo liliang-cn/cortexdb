@@ -42,6 +42,21 @@ jobs:
       - name: Verify library can be imported
         run: go list -m github.com/liliang-cn/cortexdb/v2
 
+      - name: Check version consistency
+        run: |
+          extract() { sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1" | head -n1; }
+          go_ver=$(sed -n 's/.*Version = "\([^"]*\)".*/\1/p' version.go)
+          claude_ver=$(extract plugins/cortexdb/.claude-plugin/plugin.json)
+          codex_ver=$(extract plugins/cortexdb/.codex-plugin/plugin.json)
+          market_ver=$(extract .claude-plugin/marketplace.json)
+          echo "version.go=$go_ver claude=$claude_ver codex=$codex_ver marketplace=$market_ver"
+          for v in "$claude_ver" "$codex_ver" "$market_ver"; do
+            if [ "$v" != "$go_ver" ]; then
+              echo "::error::Version mismatch: version.go ($go_ver) must match all plugin manifests. The MCP launcher pins its binary download to the plugin version, so a stale manifest ships a stale server."
+              exit 1
+            fi
+          done
+
       - name: Check examples compile (without running)
         run: |
           for dir in examples/*/; do

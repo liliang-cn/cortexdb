@@ -58,9 +58,21 @@ fi
 os="$(uname -s)"; arch="$(uname -m)"
 case "$os" in Darwin) goos=darwin ;; Linux) goos=linux ;; *) exit 0 ;; esac
 case "$arch" in x86_64|amd64) goarch=amd64 ;; arm64|aarch64) goarch=arm64 ;; *) exit 0 ;; esac
+asset="cortexdb-mcp-${goos}-${goarch}"
 
-# Use the binary the MCP launcher already fetched. Don't download from inside a
-# per-prompt hook; if it isn't cached yet, just stay quiet until it is.
-bin="${cache_root}/bin/cortexdb-mcp-${goos}-${goarch}"
-[ -x "$bin" ] || exit 0
+# Match the MCP launcher's cache layout: version-pinned and CLAUDE_PLUGIN_DATA-aware.
+bin_cache_dir="${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-$HOME/.cache}/cortexdb}/bin"
+plugin_root="${CLAUDE_PLUGIN_ROOT:-$(dirname "$self")/..}"
+version="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+  "${plugin_root}/.claude-plugin/plugin.json" 2>/dev/null | head -n1)"
+
+# Use the binary the MCP launcher already fetched (versioned first, then legacy).
+# Don't download from inside a per-prompt hook; stay quiet until it's cached.
+bin=""
+if [ -n "$version" ] && [ -x "${bin_cache_dir}/${asset}-${version}" ]; then
+  bin="${bin_cache_dir}/${asset}-${version}"
+elif [ -x "${bin_cache_dir}/${asset}" ]; then
+  bin="${bin_cache_dir}/${asset}"
+fi
+[ -n "$bin" ] || exit 0
 exec "$bin" --recall
