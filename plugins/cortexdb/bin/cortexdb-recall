@@ -11,7 +11,7 @@
 #   cortexdb-recall --enable   turn auto-recall on  (writes the global sentinel)
 #   cortexdb-recall --disable  turn auto-recall off
 #
-# DB path:   $CORTEXDB_PATH, else .cortexdb/cortexdb.db (skipped if absent).
+# DB path:   $CORTEXDB_PATH, else the global ~/.cortexdb/cortexdb.db (skipped if absent).
 # Override the server binary with $CORTEXDB_MCP_BIN.
 set -eu
 
@@ -27,13 +27,9 @@ case "${1:-}" in
   --disable) mkdir -p "$cache_root"; printf 'off\n' > "$sentinel"; echo "CortexDB auto-recall disabled."; exit 0 ;;
 esac
 
-# No DB in this project -> nothing to recall. Never create one here.
-# Prefer the new .cortexdb/ location; fall back to the legacy root path.
-db="${CORTEXDB_PATH:-}"
-if [ -z "$db" ]; then
-  if [ -f ".cortexdb/cortexdb.db" ]; then db=".cortexdb/cortexdb.db"
-  else db="cortexdb.db"; fi
-fi
+# Resolve the DB the same way the server does: explicit CORTEXDB_PATH, else the
+# global ~/.cortexdb/cortexdb.db. Never create one here — recall is read-only.
+db="${CORTEXDB_PATH:-$HOME/.cortexdb/cortexdb.db}"
 [ -f "$db" ] || exit 0
 # Pin the recall binary to the exact file we validated above.
 export CORTEXDB_PATH="$db"

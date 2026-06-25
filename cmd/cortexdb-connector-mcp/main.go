@@ -9,8 +9,8 @@
 //
 // Environment:
 //
-//	CORTEXDB_PATH          knowledge DB file (default: .cortexdb/cortexdb.db)
-//	CONNECTOR_VAULT_PATH   token vault file  (default: .cortexdb/cortexdb.vault.db)
+//	CORTEXDB_PATH          knowledge DB file (default: ~/.cortexdb/cortexdb.db)
+//	CONNECTOR_VAULT_PATH   token vault file  (default: <db dir>/cortexdb.vault.db)
 //	CONNECTOR_TENANT       tenant id         (default: default)
 //	CONNECTOR_KEY_FILE     path to a 32-byte (or 64-hex) key file, OR
 //	CONNECTOR_KEY_ENV_PREFIX  env prefix for per-tenant keys (default: CONNECTOR_KEY_)
@@ -23,6 +23,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/connector"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
@@ -36,8 +37,8 @@ func getenv(key, def string) string {
 }
 
 func main() {
-	dbPath := getenv("CORTEXDB_PATH", ".cortexdb/cortexdb.db")
-	vaultPath := getenv("CONNECTOR_VAULT_PATH", ".cortexdb/cortexdb.vault.db")
+	dbPath := getenv("CORTEXDB_PATH", cortexdb.DefaultDBPath())
+	vaultPath := getenv("CONNECTOR_VAULT_PATH", filepath.Join(filepath.Dir(dbPath), "cortexdb.vault.db"))
 	tenant := getenv("CONNECTOR_TENANT", "default")
 
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))

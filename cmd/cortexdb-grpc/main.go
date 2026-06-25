@@ -2,7 +2,7 @@
 //
 // Configuration (flags override env; .env is loaded when present):
 //
-//	CORTEXDB_PATH        SQLite file path (default .cortexdb/cortexdb.db)
+//	CORTEXDB_PATH        SQLite file path (default ~/.cortexdb/cortexdb.db)
 //	CORTEXDB_GRPC_ADDR   listen address (default 127.0.0.1:47821)
 //	CORTEXDB_GRPC_TOKEN  bearer token; empty disables auth
 //	OPENAI_BASE_URL      OpenAI-compatible base URL enabling embeddings
@@ -38,7 +38,7 @@ func main() {
 	_ = godotenv.Load()
 
 	var (
-		dbPath = flag.String("db", envOr("CORTEXDB_PATH", ".cortexdb/cortexdb.db"), "SQLite database path")
+		dbPath = flag.String("db", envOr("CORTEXDB_PATH", cortexdb.DefaultDBPath()), "SQLite database path")
 		addr   = flag.String("addr", envOr("CORTEXDB_GRPC_ADDR", "127.0.0.1:47821"), "listen address")
 		token  = flag.String("token", os.Getenv("CORTEXDB_GRPC_TOKEN"), "bearer token (empty disables auth)")
 	)

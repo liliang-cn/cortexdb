@@ -49,7 +49,7 @@ ${CLAUDE_PLUGIN_ROOT}/bin/cortexdb-mcp.cmd
 
 | Env var | Default | Purpose |
 | --- | --- | --- |
-| `CORTEXDB_PATH` | `.cortexdb/cortexdb.db` | Path to the SQLite database file the MCP server opens (the `.cortexdb/` directory is created automatically). Export it in your environment to use a different file — it is inherited by the launched server. |
+| `CORTEXDB_PATH` | `~/.cortexdb/cortexdb.db` | Path to the SQLite database file the MCP server opens. Defaults to a single **global** store shared by every project on the machine (the directory is created automatically; SQLite WAL makes concurrent sessions safe). Export it — e.g. to a project-local `.cortexdb/cortexdb.db` — to use a different file; it is inherited by the launched server. |
 | `CORTEXDB_MCP_BIN` | _(unset)_ | Path to a local MCP server binary to run instead of downloading (e.g. a dev build). |
 | `CORTEXDB_RECALL_TOPK` | `3` | How many matched memories the auto-recall hook injects per prompt (see below). |
 
@@ -61,7 +61,7 @@ The plugin ships a `UserPromptSubmit` hook (`hooks/hooks.json` → `bin/cortexdb
 
 It is built to stay out of the way:
 
-- **Scoped to real databases.** It looks for `$CORTEXDB_PATH` (else `.cortexdb/cortexdb.db`, falling back to the legacy `./cortexdb.db`). If no database exists in the project, the hook does nothing — zero overhead, and it never creates a database.
+- **Scoped to real databases.** It looks for `$CORTEXDB_PATH` (else the global `~/.cortexdb/cortexdb.db`). If no database exists yet, the hook does nothing — zero overhead, and it never creates a database.
 - **Asked once.** The first time it runs on a machine with a database present, it asks (via Claude) whether you want auto-recall, and remembers your answer in `${XDG_CACHE_HOME:-~/.cache}/cortexdb/autorecall`.
 - **Never blocks.** Any error — missing binary, query failure, no matches — exits silently so your prompt is never delayed.
 - **Bounded.** Injects at most `CORTEXDB_RECALL_TOPK` (default 3) snippets.

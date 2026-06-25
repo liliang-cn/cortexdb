@@ -5,6 +5,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
@@ -37,6 +40,23 @@ func DefaultConfig(path string) Config {
 		SimilarityFn: core.CosineSimilarity,
 		IndexType:    core.IndexTypeHNSW, // Default to HNSW
 	}
+}
+
+// DefaultDBPath returns the default database path for the CortexDB tools and
+// plugin: a single global store at ~/.cortexdb/cortexdb.db, so every session on
+// a machine shares one memory/knowledge brain instead of a separate per-project
+// file. Multiple processes may open this file concurrently — SQLite runs in WAL
+// mode, so concurrent readers plus a serialized writer are safe on local disk.
+//
+// If the user home directory cannot be resolved, it falls back to a relative
+// .cortexdb/cortexdb.db in the current directory. Callers should still honor an
+// explicit CORTEXDB_PATH override before using this default.
+func DefaultDBPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return filepath.Join(".cortexdb", "cortexdb.db")
+	}
+	return filepath.Join(home, ".cortexdb", "cortexdb.db")
 }
 
 // Option is a functional option for configuring the DB.

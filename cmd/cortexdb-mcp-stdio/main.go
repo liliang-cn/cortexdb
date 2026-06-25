@@ -19,7 +19,7 @@ func main() {
 
 	dbPath := os.Getenv("CORTEXDB_PATH")
 	if dbPath == "" {
-		dbPath = ".cortexdb/cortexdb.db"
+		dbPath = cortexdb.DefaultDBPath()
 	}
 
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))
