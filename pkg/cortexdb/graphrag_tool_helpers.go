@@ -140,6 +140,26 @@ func normalizeToolToken(token string) string {
 	return strings.Trim(token, " \t\r\n.,!?;:\"'()[]{}<>")
 }
 
+// sanitizeFTSQuery turns arbitrary user text into a safe FTS5 MATCH expression.
+// Each whitespace-separated token is wrapped in a double-quoted string literal,
+// so FTS5 operators in the raw text (':' column filter, '*', '-', '^', 'OR',
+// 'NEAR', parentheses, …) are treated as literal terms rather than query
+// syntax. Embedded double quotes are escaped by doubling. Tokens containing no
+// letter or digit are dropped; the result is "" when nothing usable remains.
+func sanitizeFTSQuery(query string) string {
+	fields := strings.Fields(query)
+	terms := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if !strings.ContainsFunc(field, func(r rune) bool {
+			return unicode.IsLetter(r) || unicode.IsDigit(r)
+		}) {
+			continue
+		}
+		terms = append(terms, `"`+strings.ReplaceAll(field, `"`, `""`)+`"`)
+	}
+	return strings.Join(terms, " ")
+}
+
 func lexicalSearchQueries(query string, keywords []string, alternateQueries []string) []string {
 	trimmed := strings.TrimSpace(query)
 
@@ -157,12 +177,16 @@ func lexicalSearchQueries(query string, keywords []string, alternateQueries []st
 		queries = append(queries, value)
 	}
 
+	// Raw query / alternate-query text is natural language that may contain
+	// FTS5-significant punctuation (notably ':' which FTS5 reads as a column
+	// filter, e.g. "user:" -> "no such column: user"). Quote each token so the
+	// text matches as literal terms instead of being parsed as query syntax.
 	if trimmed != "" {
-		addQuery(trimmed)
+		addQuery(sanitizeFTSQuery(trimmed))
 	}
 
 	for _, alternateQuery := range alternateQueries {
-		addQuery(alternateQuery)
+		addQuery(sanitizeFTSQuery(alternateQuery))
 	}
 
 	plannedKeywords := lexicalQueryKeywords(strings.Join(keywords, " "))
