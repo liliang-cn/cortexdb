@@ -70,16 +70,29 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 
 Tool groups: GraphRAG (`ingest_document`, `search_text`, `build_context`), knowledge/memory (`knowledge_save`, `memory_search`, …), KG (`knowledge_graph_query`, `_shacl_validate`), KnowledgeMemory (`knowledge_memory_recall`, `_reflect`). `memoryflow`/`graphflow`/`importflow`/`connector` expose their own toolboxes too.
 
-Install as a Claude Code / Codex plugin (bundles skill + MCP server, lexical mode, no API key):
+## Claude Code plugin
 
-```bash
-# Claude Code — run each as a slash command:
+Give Claude Code (and Codex) durable memory + a knowledge graph as a plugin. It bundles the `cortexdb` skill plus a live MCP server, runs in no-embedder **lexical mode** by default (no API key, no Go toolchain — the server binary is fetched from the matching release), and stores everything in one **global** SQLite file shared by every project.
+
+**Install** — in Claude Code, run each as a slash command:
+
+```text
 /plugin marketplace add liliang-cn/cortexdb
 /plugin install cortexdb@cortexdb
-
-# Codex:
-codex plugin marketplace add liliang-cn/cortexdb && codex plugin install cortexdb@cortexdb
+/reload-plugins
 ```
+
+For Codex: `codex plugin marketplace add liliang-cn/cortexdb && codex plugin install cortexdb@cortexdb`.
+
+**Use** — just talk to Claude; it calls the MCP tools for you ("remember that I prefer …", "what do you know about X?"). Or invoke the skill directly with `/cortexdb`. Key tools: `memory_save` / `memory_search`, `knowledge_save` / `knowledge_search`, `knowledge_graph_query`, and the unified `knowledge_memory_recall`. An optional `UserPromptSubmit` auto-recall hook (it asks once, per machine) injects matching memories into every prompt.
+
+**Where data lives** — `~/.cortexdb/cortexdb.db` by default, so memory follows you across projects (multiple sessions share it safely via SQLite WAL). Override per project:
+
+```bash
+export CORTEXDB_PATH=.cortexdb/cortexdb.db   # inherited by the launched server
+```
+
+To upgrade: `/plugin update cortexdb` then `/reload-plugins` — the server binary auto-refreshes (version-pinned cache). See `plugins/cortexdb/README.md` for all env vars.
 
 ## Other languages (gRPC sidecar)
 
