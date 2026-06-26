@@ -3,7 +3,6 @@ package cortexdb
 import (
 	"context"
 	"fmt"
-	"math"
 	"regexp"
 	"sort"
 	"strings"
@@ -211,38 +210,34 @@ func buildGraphRAGContext(chunks []GraphRAGChunkResult) string {
 	return strings.Join(lines, "\n")
 }
 
+// rerankGraphRAGChunks reorders GraphRAG chunks via the public Rerank API, so the
+// chunk path and the generic API share one implementation. Chunks map to
+// RerankItems (Content→Text, DocumentID→GroupKey for near-duplicate suppression);
+// the blend weights and MMR diversity are Rerank's defaults.
 func rerankGraphRAGChunks(query string, chunks []GraphRAGChunkResult, opts GraphRAGQueryOptions) []GraphRAGChunkResult {
 	if len(chunks) == 0 {
 		return nil
 	}
-
-	queryTerms := tokenSet(query)
-	queryEntities := tokenSet(strings.Join(extractEntityNames(extractTitleEntities(query)), " "))
-
-	normalizedBase := normalizeChunkScores(chunks)
+	byID := make(map[string]*GraphRAGChunkResult, len(chunks))
+	items := make([]RerankItem, len(chunks))
 	for i := range chunks {
-		termOverlap := overlapScore(queryTerms, tokenSet(chunks[i].Content))
-		entityOverlap := overlapScore(queryEntities, tokenSet(strings.Join(chunks[i].Entities, " ")))
-		chunks[i].RerankScore = normalizedBase[i]*0.6 + termOverlap*0.25 + entityOverlap*0.15
-	}
-
-	selected := make([]GraphRAGChunkResult, 0, len(chunks))
-	remaining := append([]GraphRAGChunkResult(nil), chunks...)
-	for len(remaining) > 0 && len(selected) < opts.MaxContextChunks {
-		bestIdx := 0
-		bestScore := -math.MaxFloat64
-		for i := range remaining {
-			redundancy := maxRedundancy(remaining[i], selected)
-			score := opts.DiversityLambda*remaining[i].RerankScore - (1-opts.DiversityLambda)*redundancy
-			if score > bestScore {
-				bestScore = score
-				bestIdx = i
-			}
+		byID[chunks[i].ID] = &chunks[i]
+		items[i] = RerankItem{
+			ID:       chunks[i].ID,
+			Text:     chunks[i].Content,
+			Score:    chunks[i].Score,
+			Entities: chunks[i].Entities,
+			GroupKey: chunks[i].DocumentID,
 		}
-		selected = append(selected, remaining[bestIdx])
-		remaining = append(remaining[:bestIdx], remaining[bestIdx+1:]...)
 	}
+	ranked := Rerank(query, items, RerankOptions{TopN: opts.MaxContextChunks, DiversityLambda: opts.DiversityLambda})
 
+	selected := make([]GraphRAGChunkResult, 0, len(ranked))
+	for _, it := range ranked {
+		c := byID[it.ID]
+		c.RerankScore = it.RerankScore
+		selected = append(selected, *c)
+	}
 	return selected
 }
 
@@ -279,47 +274,6 @@ func packGraphRAGContext(chunks []GraphRAGChunkResult, opts GraphRAGQueryOptions
 		return chunks[:1]
 	}
 	return packed
-}
-
-func normalizeChunkScores(chunks []GraphRAGChunkResult) []float64 {
-	result := make([]float64, len(chunks))
-	minScore, maxScore := chunks[0].Score, chunks[0].Score
-	for _, chunk := range chunks[1:] {
-		if chunk.Score < minScore {
-			minScore = chunk.Score
-		}
-		if chunk.Score > maxScore {
-			maxScore = chunk.Score
-		}
-	}
-	if maxScore-minScore < 1e-9 {
-		for i := range result {
-			result[i] = 1
-		}
-		return result
-	}
-	for i, chunk := range chunks {
-		result[i] = (chunk.Score - minScore) / (maxScore - minScore)
-	}
-	return result
-}
-
-func maxRedundancy(candidate GraphRAGChunkResult, selected []GraphRAGChunkResult) float64 {
-	if len(selected) == 0 {
-		return 0
-	}
-	candidateTerms := tokenSet(candidate.Content)
-	maxScore := 0.0
-	for _, existing := range selected {
-		score := overlapScore(candidateTerms, tokenSet(existing.Content))
-		if candidate.DocumentID != "" && candidate.DocumentID == existing.DocumentID {
-			score = max(score, 0.85)
-		}
-		if score > maxScore {
-			maxScore = score
-		}
-	}
-	return maxScore
 }
 
 func overlapScore(a, b map[string]struct{}) float64 {
