@@ -55,6 +55,18 @@ ${CLAUDE_PLUGIN_ROOT}/bin/cortexdb-mcp.cmd
 
 The server runs in **no-embedder (lexical) mode** by default — no API key required. RAG, knowledge graph, and memory tools all work without an embedder via lexical retrieval.
 
+## Slash commands
+
+| Command | What it does |
+| --- | --- |
+| `/remember <text>` | Save a fact / preference / decision to the brain (`memory_save`, or `knowledge_save` for reference knowledge). |
+| `/recall <query>` | Search the brain for relevant memories + knowledge (`knowledge_memory_recall`) and summarize. |
+| `/cortexdb-graph` | Render the brain's knowledge graph (entities, relations, documents) to an interactive HTML page and open it. Exports to `~/.cortexdb/graph/`; backed by `cortexdb-mcp --graph-html`. |
+
+## Proactive memory (SessionStart)
+
+When auto-recall is enabled, a `SessionStart` hook injects a short standing directive each session so the assistant uses the brain **proactively** — recall relevant context before answering, and save durable preferences/decisions/facts without being asked. It respects the same on/off switch as auto-recall, so it stays silent on machines where you declined.
+
 ## Auto-recall (Claude Code only)
 
 The plugin ships a `UserPromptSubmit` hook (`hooks/hooks.json` → `bin/cortexdb-recall`) that, on every prompt, searches the project's CortexDB for memories relevant to what you just typed and injects the top matches into context — so stored knowledge is used automatically, not only when a tool is called explicitly.

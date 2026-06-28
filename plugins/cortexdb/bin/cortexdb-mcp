@@ -18,7 +18,7 @@ set -eu
 REPO="liliang-cn/cortexdb"
 
 if [ -n "${CORTEXDB_MCP_BIN:-}" ] && [ -x "${CORTEXDB_MCP_BIN}" ]; then
-  exec "${CORTEXDB_MCP_BIN}"
+  exec "${CORTEXDB_MCP_BIN}" "$@"
 fi
 
 os="$(uname -s)"
@@ -61,7 +61,7 @@ if [ ! -x "$bin" ]; then
     wget -qO "$tmp" "$url"
   else
     if command -v go >/dev/null 2>&1; then
-      exec go run "github.com/${REPO}/v2/cmd/cortexdb-mcp-stdio@latest"
+      exec go run "github.com/${REPO}/v2/cmd/cortexdb-mcp-stdio@latest" "$@"
     fi
     echo "cortexdb-mcp: need curl or wget (or a Go toolchain) to obtain the server" >&2
     exit 1
@@ -78,4 +78,4 @@ if [ ! -x "$bin" ]; then
   done
 fi
 
-exec "$bin"
+exec "$bin" "$@"

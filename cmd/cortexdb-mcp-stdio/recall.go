@@ -93,6 +93,9 @@ func runRecall() {
 	if !wrote {
 		return
 	}
+	// Nudge the save side too: recall keeps the brain useful only if new durable
+	// facts also get written back.
+	b.WriteString("(If this exchange states a durable preference, decision, or fact, save it with memory_save / knowledge_save.)")
 
 	out := hookOutput{HookSpecificOutput: hookSpecificOutput{
 		HookEventName:     "UserPromptSubmit",

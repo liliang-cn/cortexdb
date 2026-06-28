@@ -1,5 +1,18 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/cortexdb-session-start",
+            "timeout": 10,
+            "async": false
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [

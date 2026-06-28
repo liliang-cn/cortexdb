@@ -84,7 +84,7 @@ Give Claude Code (and Codex) durable memory + a knowledge graph as a plugin. It 
 
 For Codex: `codex plugin marketplace add liliang-cn/cortexdb && codex plugin install cortexdb@cortexdb`.
 
-**Use** — just talk to Claude; it calls the MCP tools for you ("remember that I prefer …", "what do you know about X?"). Or invoke the skill directly with `/cortexdb`. Key tools: `memory_save` / `memory_search`, `knowledge_save` / `knowledge_search`, `knowledge_graph_query`, and the unified `knowledge_memory_recall`. An optional `UserPromptSubmit` auto-recall hook (it asks once, per machine) injects matching memories into every prompt.
+**Use** — just talk to Claude; it calls the MCP tools for you ("remember that I prefer …", "what do you know about X?"). Or use the slash commands: `/remember <text>`, `/recall <query>`, `/cortexdb-graph` (interactive knowledge-graph view), or `/cortexdb` for the skill. Key tools: `memory_save` / `memory_search`, `knowledge_save` / `knowledge_search`, `knowledge_graph_query`, and the unified `knowledge_memory_recall`. When enabled, a `SessionStart` directive + `UserPromptSubmit` auto-recall hook make Claude recall and save proactively (it asks once, per machine).
 
 **Where data lives** — `~/.cortexdb/cortexdb.db` by default, so memory follows you across projects (multiple sessions share it safely via SQLite WAL). Override per project:
 

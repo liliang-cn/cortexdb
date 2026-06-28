@@ -1,0 +1,28 @@
+#!/bin/sh
+# CortexDB SessionStart hook.
+#
+# Injects a short standing directive so the assistant uses the CortexDB brain
+# proactively (recall before answering, save durable facts) every session —
+# turning memory use from "if it remembers to" into default behavior.
+#
+# Opt-in: it only injects when auto-recall is enabled (the same on/off switch
+# the UserPromptSubmit hook records), so it never adds noise on machines where
+# the user declined CortexDB.
+set -eu
+
+cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/cortexdb"
+sentinel="${cache_root}/autorecall"
+
+# Stay silent unless the user has explicitly enabled auto-recall.
+[ -f "$sentinel" ] || exit 0
+case "$(cat "$sentinel" 2>/dev/null || true)" in
+  on*) : ;;
+  *)   exit 0 ;;
+esac
+
+# No embedded double quotes in the directive, so no JSON escaping is needed;
+# \n stays literal (single-quoted) and the JSON parser turns it into newlines.
+directive='<important>You have a persistent CortexDB memory: a global brain at ~/.cortexdb shared across every project, reachable via the mcp__plugin_cortexdb_cortexdb__* tools. Use it proactively, without being asked.\n- Recall first: before answering from assumption or starting a task, call knowledge_memory_recall (or memory_search) for relevant prior context.\n- Save durable facts: when the user states a lasting preference, decision, project constraint, or fact, store it via memory_save (personal/agent memory) or knowledge_save (reference knowledge). Pick a stable id and concise content.\n- Prefer searching the brain over guessing.</important>'
+
+printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$directive"
+exit 0

@@ -17,6 +17,18 @@ func main() {
 		return
 	}
 
+	// `--graph-html [out]` is a one-shot mode that renders the brain's knowledge
+	// graph to a self-contained, interactive HTML file and prints its path. Used
+	// by the /cortexdb-graph command to give the memory a viewable graph.
+	if len(os.Args) > 1 && os.Args[1] == "--graph-html" {
+		out := ""
+		if len(os.Args) > 2 {
+			out = os.Args[2]
+		}
+		runGraphHTML(out)
+		return
+	}
+
 	dbPath := os.Getenv("CORTEXDB_PATH")
 	if dbPath == "" {
 		dbPath = cortexdb.DefaultDBPath()

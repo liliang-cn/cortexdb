@@ -84,7 +84,7 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 
 Codex：`codex plugin marketplace add liliang-cn/cortexdb && codex plugin install cortexdb@cortexdb`。
 
-**使用** —— 直接跟 Claude 说话即可，它会替你调 MCP 工具（“记住我偏好……”、“你知道关于 X 的什么？”）；也可以用 `/cortexdb` 直接唤起 skill。核心工具：`memory_save` / `memory_search`、`knowledge_save` / `knowledge_search`、`knowledge_graph_query`,以及统一的 `knowledge_memory_recall`。可选的 `UserPromptSubmit` 自动召回 hook（每台机器只问一次）会把匹配到的记忆注入到每条 prompt。
+**使用** —— 直接跟 Claude 说话即可，它会替你调 MCP 工具（“记住我偏好……”、“你知道关于 X 的什么？”）；也可以用 slash 命令：`/remember <内容>`、`/recall <查询>`、`/cortexdb-graph`（交互式知识图谱查看），或 `/cortexdb` 唤起 skill。核心工具：`memory_save` / `memory_search`、`knowledge_save` / `knowledge_search`、`knowledge_graph_query`,以及统一的 `knowledge_memory_recall`。开启后，`SessionStart` 常驻指令 + `UserPromptSubmit` 自动召回 hook 会让 Claude 主动召回与保存（每台机器只问一次）。
 
 **数据存哪** —— 默认 `~/.cortexdb/cortexdb.db`，记忆跨项目跟着你走（多会话共用,SQLite WAL 保证安全）。想按项目隔离就覆盖：
 
