@@ -35,7 +35,7 @@ codex plugin add cortexdb@cortexdb
 
 ## Requirements
 
-None to install — the launcher fetches a static, prebuilt binary (no CGO, no external services; storage is a single SQLite file). It needs `curl` or `wget` on macOS/Linux (both ship by default) and PowerShell on Windows (built in). If a download is impossible and a Go toolchain is present, the launcher falls back to `go run`.
+**No Go toolchain — ever.** Both the Claude Code and Codex configs invoke the same launcher (`bin/cortexdb-mcp`), which fetches a static, prebuilt binary from the GitHub release (no CGO, no external services; storage is a single SQLite file). It needs only `curl` or `wget` on macOS/Linux (both ship by default) and PowerShell on Windows (built in). If neither is present, it prints the exact manual-download command and exits — it never requires or invokes Go.
 
 ### Windows
 

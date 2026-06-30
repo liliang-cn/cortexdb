@@ -12,7 +12,8 @@
 # works, it just can't auto-refresh on upgrade).
 #
 # Override the download with a local binary by setting CORTEXDB_MCP_BIN.
-# Falls back to `go run` only if the download fails and Go is installed.
+# No Go toolchain involved — only a prebuilt binary from the GitHub release.
+# Shared by both the Claude Code and Codex plugin configs.
 set -eu
 
 REPO="liliang-cn/cortexdb"
@@ -60,10 +61,9 @@ if [ ! -x "$bin" ]; then
   elif command -v wget >/dev/null 2>&1; then
     wget -qO "$tmp" "$url"
   else
-    if command -v go >/dev/null 2>&1; then
-      exec go run "github.com/${REPO}/v2/cmd/cortexdb-mcp-stdio@latest" "$@"
-    fi
-    echo "cortexdb-mcp: need curl or wget (or a Go toolchain) to obtain the server" >&2
+    echo "cortexdb-mcp: need curl or wget to download the prebuilt server binary." >&2
+    echo "cortexdb-mcp: or download it manually:" >&2
+    echo "  curl -fsSL '$url' -o '$bin' && chmod +x '$bin'" >&2
     exit 1
   fi
   chmod +x "$tmp"
