@@ -99,7 +99,11 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 	}
 
 	resp.Entities = KnowledgeMemoryCollectEntities(req.EntityNames, resp.Memories, resp.Knowledge, resp.Chunks)
-	resp.ContextPack = buildKnowledgeMemoryContextPack(query, resp.Memories, knowledgeResp, resp.Entities, req.MaxMemoryItems, req.MaxMemoryChars)
+	// Fold edge-accurate graph traversal into recall so relational questions are
+	// answered from graph edges, not just lexical chunk text.
+	graphSeeds := append(append([]string{}, req.EntityNames...), resp.Entities...)
+	resp.GraphFacts = b.collectGraphFacts(ctx, query, graphSeeds)
+	resp.ContextPack = buildKnowledgeMemoryContextPack(query, resp.Memories, knowledgeResp, resp.Entities, resp.GraphFacts, req.MaxMemoryItems, req.MaxMemoryChars)
 	if len(resp.Entities) == 0 {
 		resp.Entities = resp.ContextPack.Entities
 	}
@@ -452,11 +456,21 @@ func resolveKnowledgeMemoryQuery(query string, plan *RetrievalPlan, entityNames 
 	return ""
 }
 
-func buildKnowledgeMemoryContextPack(query string, memories []MemorySearchHit, knowledgeResp *KnowledgeSearchResponse, entities []string, maxMemoryItems, maxMemoryChars int) KnowledgeMemoryContextPack {
-	sections := make([]KnowledgeMemoryContextSection, 0, 3)
+func buildKnowledgeMemoryContextPack(query string, memories []MemorySearchHit, knowledgeResp *KnowledgeSearchResponse, entities []string, graphFacts []KnowledgeMemoryGraphFact, maxMemoryItems, maxMemoryChars int) KnowledgeMemoryContextPack {
+	sections := make([]KnowledgeMemoryContextSection, 0, 4)
 	memoryIDs := make([]string, 0, len(memories))
 	knowledgeIDs := make([]string, 0)
 	chunkIDs := make([]string, 0)
+
+	// Graph facts go first: when present they are usually the precise, edge-
+	// accurate answer to a relational question.
+	if gf := renderGraphFacts(graphFacts); gf != "" {
+		sections = append(sections, KnowledgeMemoryContextSection{
+			Kind:  "graph_facts",
+			Title: "Graph facts",
+			Text:  gf,
+		})
+	}
 
 	memoryText := buildKnowledgeMemoryMemoryContext(memories, maxMemoryItems, maxMemoryChars)
 	for _, hit := range memories {

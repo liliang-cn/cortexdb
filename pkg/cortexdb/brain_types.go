@@ -73,7 +73,21 @@ type KnowledgeMemoryRecallResponse struct {
 	Knowledge         []KnowledgeSearchHit       `json:"knowledge,omitempty"`
 	Chunks            []GraphRAGChunkResult      `json:"chunks,omitempty"`
 	Entities          []string                   `json:"entities,omitempty"`
+	GraphFacts        []KnowledgeMemoryGraphFact `json:"graph_facts,omitempty"`
 	ContextPack       KnowledgeMemoryContextPack `json:"context_pack"`
+}
+
+// KnowledgeMemoryGraphFact is a single entity↔entity relation surfaced from the
+// knowledge graph during recall, e.g. {Subject: "Alice", Predicate: "uses",
+// Object: "Apollo"}. These come from graph edges (edge-accurate) rather than
+// lexical chunk matching, so relational questions are answered reliably even
+// without an embedder.
+type KnowledgeMemoryGraphFact struct {
+	Subject   string `json:"subject"`
+	Predicate string `json:"predicate"`
+	Object    string `json:"object"`
+	SubjectID string `json:"subject_id,omitempty"`
+	ObjectID  string `json:"object_id,omitempty"`
 }
 
 // KnowledgeMemoryBuildContextPackRequest retrieves and assembles a context pack from the KnowledgeMemory.

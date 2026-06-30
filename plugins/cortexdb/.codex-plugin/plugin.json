@@ -1,6 +1,6 @@
 {
   "name": "cortexdb",
-  "version": "2.38.0",
+  "version": "2.39.0",
   "description": "Local-first AI memory and knowledge graph for Codex: vector search, RAG, GraphRAG, RDF/SPARQL/RDFS/SHACL, scoped agent memory, and corpus-to-graph workflows — bundled as a skill plus live MCP tools.",
   "author": {
     "name": "Liang Li",
