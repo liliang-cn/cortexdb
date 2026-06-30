@@ -82,7 +82,7 @@ or in Codex:
 
 ```bash
 codex plugin marketplace add liliang-cn/cortexdb
-codex plugin install cortexdb@cortexdb
+codex plugin add cortexdb@cortexdb
 ```
 
 ## Reddit: r/LocalLLaMA

@@ -30,7 +30,7 @@ The repo also ships a Codex marketplace at `.agents/plugins/marketplace.json`:
 
 ```bash
 codex plugin marketplace add liliang-cn/cortexdb
-codex plugin install cortexdb@cortexdb
+codex plugin add cortexdb@cortexdb
 ```
 
 ## Requirements
@@ -54,6 +54,12 @@ ${CLAUDE_PLUGIN_ROOT}/bin/cortexdb-mcp.cmd
 | `CORTEXDB_RECALL_TOPK` | `3` | How many matched memories the auto-recall hook injects per prompt (see below). |
 
 The server runs in **no-embedder (lexical) mode** by default — no API key required. RAG, knowledge graph, and memory tools all work without an embedder via lexical retrieval.
+
+To make the global store explicit in a shell or MCP config, use:
+
+```bash
+export CORTEXDB_PATH="$HOME/.cortexdb/cortexdb.db"
+```
 
 ## Slash commands
 

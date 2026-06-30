@@ -70,11 +70,11 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 
 Tool groups: GraphRAG (`ingest_document`, `search_text`, `build_context`), knowledge/memory (`knowledge_save`, `memory_search`, …), KG (`knowledge_graph_query`, `_shacl_validate`), KnowledgeMemory (`knowledge_memory_recall`, `_reflect`). `memoryflow`/`graphflow`/`importflow`/`connector` expose their own toolboxes too.
 
-## Claude Code plugin
+## Claude Code and Codex plugin
 
 Give Claude Code (and Codex) durable memory + a knowledge graph as a plugin. It bundles the `cortexdb` skill plus a live MCP server, runs in no-embedder **lexical mode** by default (no API key, no Go toolchain — the server binary is fetched from the matching release), and stores everything in one **global** SQLite file shared by every project.
 
-**Install** — in Claude Code, run each as a slash command:
+**Install — Claude Code** — run each as a slash command:
 
 ```text
 /plugin marketplace add liliang-cn/cortexdb
@@ -82,7 +82,14 @@ Give Claude Code (and Codex) durable memory + a knowledge graph as a plugin. It 
 /reload-plugins
 ```
 
-For Codex: `codex plugin marketplace add liliang-cn/cortexdb && codex plugin install cortexdb@cortexdb`.
+**Install — Codex** — run in your shell:
+
+```bash
+codex plugin marketplace add liliang-cn/cortexdb
+codex plugin add cortexdb@cortexdb
+```
+
+Codex uses the same default global brain at `~/.cortexdb/cortexdb.db`.
 
 **Use** — just talk to Claude; it calls the MCP tools for you ("remember that I prefer …", "what do you know about X?"). Or use the slash commands: `/remember <text>`, `/recall <query>`, `/cortexdb-graph` (interactive knowledge-graph view), or `/cortexdb` for the skill. Key tools: `memory_save` / `memory_search`, `knowledge_save` / `knowledge_search`, `knowledge_graph_query`, and the unified `knowledge_memory_recall`. When enabled, a `SessionStart` directive + `UserPromptSubmit` auto-recall hook make Claude recall and save proactively (it asks once, per machine).
 
@@ -90,6 +97,12 @@ For Codex: `codex plugin marketplace add liliang-cn/cortexdb && codex plugin ins
 
 ```bash
 export CORTEXDB_PATH=.cortexdb/cortexdb.db   # inherited by the launched server
+```
+
+To force the same global brain explicitly, set:
+
+```bash
+export CORTEXDB_PATH="$HOME/.cortexdb/cortexdb.db"
 ```
 
 To upgrade: `/plugin update cortexdb` then `/reload-plugins` — the server binary auto-refreshes (version-pinned cache). See `plugins/cortexdb/README.md` for all env vars.

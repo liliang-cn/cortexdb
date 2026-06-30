@@ -70,11 +70,11 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 
 工具分组：GraphRAG（`ingest_document`、`search_text`、`build_context`）、knowledge/memory（`knowledge_save`、`memory_search` …）、KG（`knowledge_graph_query`、`_shacl_validate`）、KnowledgeMemory（`knowledge_memory_recall`、`_reflect`）。`memoryflow`/`graphflow`/`importflow`/`connector` 各自也暴露自己的 toolbox。
 
-## Claude Code 插件
+## Claude Code 和 Codex 插件
 
 把持久记忆 + 知识图谱作为插件装进 Claude Code（和 Codex）。它打包了 `cortexdb` skill 和一个常驻 MCP server，默认跑无 embedder 的 **lexical 模式**（无需 API key、无需 Go 工具链——server 二进制从对应 release 自动下载），所有数据存在一个**全局** SQLite 文件里、被所有项目共用。
 
-**安装** —— 在 Claude Code 里逐条作为 slash 命令运行：
+**安装 — Claude Code** —— 在 Claude Code 里逐条作为 slash 命令运行：
 
 ```text
 /plugin marketplace add liliang-cn/cortexdb
@@ -82,7 +82,14 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 /reload-plugins
 ```
 
-Codex：`codex plugin marketplace add liliang-cn/cortexdb && codex plugin install cortexdb@cortexdb`。
+**安装 — Codex** —— 在 shell 里运行：
+
+```bash
+codex plugin marketplace add liliang-cn/cortexdb
+codex plugin add cortexdb@cortexdb
+```
+
+Codex 使用同一个默认全局大脑：`~/.cortexdb/cortexdb.db`。
 
 **使用** —— 直接跟 Claude 说话即可，它会替你调 MCP 工具（“记住我偏好……”、“你知道关于 X 的什么？”）；也可以用 slash 命令：`/remember <内容>`、`/recall <查询>`、`/cortexdb-graph`（交互式知识图谱查看），或 `/cortexdb` 唤起 skill。核心工具：`memory_save` / `memory_search`、`knowledge_save` / `knowledge_search`、`knowledge_graph_query`,以及统一的 `knowledge_memory_recall`。开启后，`SessionStart` 常驻指令 + `UserPromptSubmit` 自动召回 hook 会让 Claude 主动召回与保存（每台机器只问一次）。
 
@@ -90,6 +97,12 @@ Codex：`codex plugin marketplace add liliang-cn/cortexdb && codex plugin instal
 
 ```bash
 export CORTEXDB_PATH=.cortexdb/cortexdb.db   # 会被启动的 server 继承
+```
+
+如果想显式指定同一个全局大脑：
+
+```bash
+export CORTEXDB_PATH="$HOME/.cortexdb/cortexdb.db"
 ```
 
 升级：`/plugin update cortexdb` 然后 `/reload-plugins`——server 二进制会自动刷新（按版本号缓存）。全部环境变量见 `plugins/cortexdb/README.md`。
