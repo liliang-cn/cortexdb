@@ -2,7 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/liliang-cn/cortexdb/v2.svg)](https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-纯 Go、单文件的 AI memory 和知识图谱库。SQLite 为存储内核——一个文件即承载向量、lexical/RAG 检索、分作用域的 agent memory、RDF/SPARQL/RDFS/SHACL 知识图谱，以及 MCP tools。为需要长期记忆的 local-first agent 而生，无需额外部署向量库、图数据库或 MCP 服务栈。支持无 embedder（lexical 模式）或任意 OpenAI 兼容的 embeddings 端点。
+纯 Go、单文件的 AI memory 和知识图谱库与插件。你可以把 CortexDB 嵌入自己的 Go agent 项目，作为 memory/KG 层；也可以把它装进 Claude Code 和 Codex，作为跨项目共享的记忆大脑。SQLite 为存储内核——一个文件即承载向量、lexical/RAG 检索、分作用域的 agent memory、RDF/SPARQL/RDFS/SHACL 知识图谱，以及 MCP tools。支持无 embedder（lexical 模式）或任意 OpenAI 兼容的 embeddings 端点。
 
 ## 为什么选 CortexDB？
 
