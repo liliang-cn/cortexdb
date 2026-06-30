@@ -1,8 +1,8 @@
 ---
-description: Build and open an interactive knowledge-graph view of the CortexDB brain
+description: Organize the CortexDB brain into a knowledge graph and open an interactive view
 ---
 
-Render the CortexDB brain's knowledge graph (entities, relations, documents) to an interactive HTML page and open it in the browser. Run this in a shell:
+First **organize** the brain — extract entities and co-occurrence relations from stored memories and knowledge into the graph (deterministic, no LLM) — then render it to an interactive HTML page and open it. So free-text memories that were never tagged still show up as a navigable entity graph. Run this in a shell:
 
 ```bash
 bin=$(ls -t ~/.claude/plugins/data/cortexdb-cortexdb/bin/cortexdb-mcp-* 2>/dev/null | head -1)

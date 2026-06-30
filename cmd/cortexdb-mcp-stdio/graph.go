@@ -37,6 +37,20 @@ func runGraphHTML(outDir string) {
 	}
 
 	ctx := context.Background()
+
+	// Organize first: extract entities + co-occurrence relations from the
+	// brain's memories and knowledge into the graph, so the view reflects an
+	// organized brain rather than only whatever was explicitly tagged.
+	if rep, oerr := graphflow.OrganizeFromBrain(ctx, db, graphflow.OrganizeOptions{
+		IncludeMemories:  true,
+		IncludeKnowledge: true,
+	}); oerr != nil {
+		fmt.Fprintf(os.Stderr, "cortexdb: organize graph: %v\n", oerr)
+	} else if rep != nil {
+		fmt.Fprintf(os.Stderr, "cortexdb: organized %d texts -> %d entities, %d relations\n",
+			rep.DocumentsScanned, rep.EntityCount, rep.RelationCount)
+	}
+
 	analysis, err := graphflow.Analyze(ctx, db, graphflow.AnalyzeRequest{TopN: 25})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cortexdb: analyze graph: %v\n", err)
