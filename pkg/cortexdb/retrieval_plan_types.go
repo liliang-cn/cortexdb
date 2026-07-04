@@ -42,6 +42,11 @@ type retrievalPlanInput struct {
 	EmptyQueryUsesGraph      bool
 	UnsupportedEffectiveMode string
 	UnsupportedReason        string
+	// PreferSemantic keeps auto mode on a non-lexical (vector) path when the
+	// query has no strong graph/entity signal — set it when an embedder is
+	// available so semantic retrieval is actually used instead of silently
+	// falling back to lexical.
+	PreferSemantic bool
 }
 
 type retrievalPlanResolution struct {

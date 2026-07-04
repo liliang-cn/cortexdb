@@ -380,6 +380,9 @@ func (db *DB) SearchGraphRAG(ctx context.Context, query string, opts GraphRAGQue
 		Filters:             &RetrievalFilters{Collection: opts.Collection},
 		SupportsGraph:       true,
 		EmptyQueryUsesGraph: false,
+		// This path always has an embedder, so auto should report/behave as
+		// semantic rather than falling back to lexical.
+		PreferSemantic: true,
 	})
 	query = resolution.Plan.Query
 	if strings.TrimSpace(query) == "" {

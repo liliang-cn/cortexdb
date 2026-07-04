@@ -30,6 +30,7 @@ func resolveRetrievalPlan(input retrievalPlanInput) retrievalPlanResolution {
 		input.EmptyQueryUsesGraph,
 		input.UnsupportedEffectiveMode,
 		input.UnsupportedReason,
+		input.PreferSemantic,
 	)
 
 	return retrievalPlanResolution{
@@ -51,7 +52,7 @@ func normalizeRetrievalMode(mode string) string {
 	}
 }
 
-func resolveRetrievalDecision(mode string, disableGraph bool, query string, entityNames []string, supportsGraph bool, emptyQueryUsesGraph bool, unsupportedEffectiveMode string, unsupportedReason string) RetrievalDecision {
+func resolveRetrievalDecision(mode string, disableGraph bool, query string, entityNames []string, supportsGraph bool, emptyQueryUsesGraph bool, unsupportedEffectiveMode string, unsupportedReason string, preferSemantic bool) RetrievalDecision {
 	requested := normalizeRetrievalMode(mode)
 	decision := RetrievalDecision{
 		RequestedMode: requested,
@@ -116,19 +117,27 @@ func resolveRetrievalDecision(mode string, disableGraph bool, query string, enti
 			decision.Reason = "auto mode detected entity-like terms in the query"
 			return decision
 		}
-		decision.EffectiveMode = RetrievalModeLexical
-		decision.Reason = "auto mode stayed lexical because no entity signal was found"
+		if preferSemantic {
+			// Keep a non-lexical effective mode so the caller routes to vector
+			// (semantic) retrieval; auto silently falling back to lexical made a
+			// configured embedder useless on the knowledge path.
+			decision.EffectiveMode = RetrievalModeAuto
+			decision.Reason = "auto mode used semantic vector search because an embedder is available"
+		} else {
+			decision.EffectiveMode = RetrievalModeLexical
+			decision.Reason = "auto mode stayed lexical because no entity signal was found"
+		}
 	}
 
 	return decision
 }
 
 func shouldUseGraphRetrieval(mode string, disableGraph bool, query string, entityNames []string) bool {
-	return resolveRetrievalDecision(mode, disableGraph, query, entityNames, true, false, RetrievalModeLexical, "").UseGraph
+	return resolveRetrievalDecision(mode, disableGraph, query, entityNames, true, false, RetrievalModeLexical, "", false).UseGraph
 }
 
 func shouldLoadChunkEntities(mode string, disableGraph bool, query string) bool {
-	return resolveRetrievalDecision(mode, disableGraph, query, nil, true, true, RetrievalModeLexical, "").UseGraph
+	return resolveRetrievalDecision(mode, disableGraph, query, nil, true, true, RetrievalModeLexical, "", false).UseGraph
 }
 
 func mergeRetrievalFilters(base, override *RetrievalFilters) *RetrievalFilters {

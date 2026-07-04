@@ -222,6 +222,7 @@ func (db *DB) SearchKnowledge(ctx context.Context, req KnowledgeSearchRequest) (
 		Filters:             &RetrievalFilters{Collection: req.Collection},
 		SupportsGraph:       true,
 		EmptyQueryUsesGraph: false,
+		PreferSemantic:      db.HasEmbedder(),
 	})
 	if strings.TrimSpace(resolution.Plan.Query) == "" {
 		return nil, ErrEmptyText
