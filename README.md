@@ -117,6 +117,10 @@ CORTEXDB_PATH=my.db CORTEXDB_GRPC_TOKEN=s3cret cortexdb-grpc   # 127.0.0.1:47821
 cargo add cortexdb-client   # pip install cortexdb-client   # npm install cortexdb-client
 ```
 
+## Quality
+
+Retrieval quality is measured, not assumed: `pkg/eval` runs a labeled query set through the real retrieval path and reports recall@k / precision@k / MRR / nDCG, with regression floors in CI (`go test ./pkg/eval -run TestLexicalRetrievalQuality -v`). Parser/search surfaces (FTS5, SPARQL, SQL-dump import) have Go fuzz tests (`go test ./... -run Fuzz`); their saved corpora are permanent regression seeds.
+
 ## Examples & Status
 
 `examples/01_core` … `15_cortex_query` are small and architecture-oriented (`go run ./examples/01_core`); 01-07/09/15 run standalone, others need an LLM/embeddings/live DB — see [examples/README.md](examples/README.md).

@@ -144,9 +144,18 @@ func normalizeToolToken(token string) string {
 // Each whitespace-separated token is wrapped in a double-quoted string literal,
 // so FTS5 operators in the raw text (':' column filter, '*', '-', '^', 'OR',
 // 'NEAR', parentheses, …) are treated as literal terms rather than query
-// syntax. Embedded double quotes are escaped by doubling. Tokens containing no
-// letter or digit are dropped; the result is "" when nothing usable remains.
+// syntax. Embedded double quotes are escaped by doubling. Control characters —
+// notably NUL, which SQLite treats as a C string terminator and which would
+// otherwise truncate the quoted expression ("unterminated string") — are
+// replaced with spaces. Tokens containing no letter or digit are dropped; the
+// result is "" when nothing usable remains.
 func sanitizeFTSQuery(query string) string {
+	query = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, query)
 	fields := strings.Fields(query)
 	terms := make([]string, 0, len(fields))
 	for _, field := range fields {

@@ -117,6 +117,10 @@ CORTEXDB_PATH=my.db CORTEXDB_GRPC_TOKEN=s3cret cortexdb-grpc   # 127.0.0.1:47821
 cargo add cortexdb-client   # pip install cortexdb-client   # npm install cortexdb-client
 ```
 
+## 质量
+
+检索质量是**被测量**的,不是假设的:`pkg/eval` 用标注查询集跑真实检索路径,报告 recall@k / precision@k / MRR / nDCG,并在 CI 里设回归下限(`go test ./pkg/eval -run TestLexicalRetrievalQuality -v`)。解析/检索面(FTS5、SPARQL、SQL dump 导入)有 Go fuzz 测试(`go test ./... -run Fuzz`),其保存的语料是永久回归种子。
+
 ## 示例与状态
 
 `examples/01_core` … `15_cortex_query` 短小、面向架构（`go run ./examples/01_core`）；01-07/09/15 可独立运行，其余需要 LLM/embeddings/线上 DB——见 [examples/README.md](examples/README.md)。
