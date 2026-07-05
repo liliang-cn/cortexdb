@@ -249,30 +249,34 @@ func (db *DB) SearchKnowledge(ctx context.Context, req KnowledgeSearchRequest) (
 	}
 	applyGraphRAGQueryDefaults(&opts)
 
+	lexReq := ToolSearchGraphRAGLexicalRequest{
+		Query:               resolution.Plan.Query,
+		Collection:          opts.Collection,
+		TopK:                req.TopK,
+		MaxHops:             req.MaxHops,
+		MaxRelatedChunks:    req.MaxRelatedChunks,
+		MaxContextChunks:    req.MaxContextChunks,
+		MaxContextChars:     req.MaxContextChars,
+		PerDocumentLimit:    req.PerDocumentLimit,
+		DiversityLambda:     req.DiversityLambda,
+		DisableRerank:       req.DisableRerank,
+		RetrievalMode:       resolution.Plan.RetrievalMode,
+		DisableGraph:        req.DisableGraph,
+		GraphLight:          req.GraphLight,
+		MaxExpansionSeeds:   req.MaxExpansionSeeds,
+		MaxTraversalNodes:   req.MaxTraversalNodes,
+		MaxEntitiesPerChunk: req.MaxEntitiesPerChunk,
+		Plan:                &resolution.Plan,
+	}
+
 	var result *GraphRAGQueryResult
 	var err error
 	if db.HasEmbedder() && resolution.Decision.EffectiveMode != RetrievalModeLexical {
-		result, err = db.SearchGraphRAG(ctx, resolution.Plan.Query, opts)
+		// Fuse vector + lexical: semantic-only silently dropped exact-keyword
+		// matches, so hybrid keeps both.
+		result, err = db.searchKnowledgeHybrid(ctx, resolution.Plan.Query, opts, lexReq)
 	} else {
-		result, err = db.GraphRAGTools().SearchGraphRAGLexical(ctx, ToolSearchGraphRAGLexicalRequest{
-			Query:               resolution.Plan.Query,
-			Collection:          opts.Collection,
-			TopK:                req.TopK,
-			MaxHops:             req.MaxHops,
-			MaxRelatedChunks:    req.MaxRelatedChunks,
-			MaxContextChunks:    req.MaxContextChunks,
-			MaxContextChars:     req.MaxContextChars,
-			PerDocumentLimit:    req.PerDocumentLimit,
-			DiversityLambda:     req.DiversityLambda,
-			DisableRerank:       req.DisableRerank,
-			RetrievalMode:       resolution.Plan.RetrievalMode,
-			DisableGraph:        req.DisableGraph,
-			GraphLight:          req.GraphLight,
-			MaxExpansionSeeds:   req.MaxExpansionSeeds,
-			MaxTraversalNodes:   req.MaxTraversalNodes,
-			MaxEntitiesPerChunk: req.MaxEntitiesPerChunk,
-			Plan:                &resolution.Plan,
-		})
+		result, err = db.GraphRAGTools().SearchGraphRAGLexical(ctx, lexReq)
 	}
 	if err != nil {
 		return nil, err

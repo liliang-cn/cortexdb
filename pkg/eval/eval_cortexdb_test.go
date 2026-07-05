@@ -67,10 +67,10 @@ func TestLexicalRetrievalQuality(t *testing.T) {
 
 	// Regression floors. Deliberately conservative — tighten as retrieval
 	// improves; a drop below these means a real regression.
-	if rep.RecallAtK[10] < 0.70 {
-		t.Errorf("recall@10 = %.3f, below floor 0.70", rep.RecallAtK[10])
+	if rep.RecallAtK[10] < 0.85 {
+		t.Errorf("recall@10 = %.3f, below floor 0.85", rep.RecallAtK[10])
 	}
-	if rep.MRR < 0.55 {
-		t.Errorf("MRR = %.3f, below floor 0.55", rep.MRR)
+	if rep.MRR < 0.80 {
+		t.Errorf("MRR = %.3f, below floor 0.80", rep.MRR)
 	}
 }

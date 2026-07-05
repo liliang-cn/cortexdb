@@ -25,12 +25,12 @@ func TestGraphRAGGraphCostControls(t *testing.T) {
 		{
 			ID:      "doc-a",
 			Title:   "Alice at Acme",
-			Content: "Alice works at Acme research.\n\nRoadmap alpha milestone.",
+			Content: "Alice works at Acme research. Alice leads the alpha roadmap. The alpha roadmap has a milestone. Bob reviews the milestone with Alice.",
 		},
 		{
 			ID:      "doc-b",
 			Title:   "Alice at Beta Labs",
-			Content: "Alice works at Beta Labs research.\n\nRoadmap beta milestone.",
+			Content: "Alice works at Beta Labs research. Beta Labs funds the beta roadmap. The beta roadmap milestone ships soon. Carol tracks the milestone with Alice.",
 		},
 	}
 

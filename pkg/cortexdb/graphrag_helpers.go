@@ -116,6 +116,12 @@ func (db *DB) upsertGraphRAGDocumentRecord(ctx context.Context, doc *core.Docume
 // commands — merged with their surrounding context instead of becoming tiny
 // standalone chunks, which produce semantically thin embeddings and poor
 // retrieval ranking.
+// splitGraphRAGText splits text into chunks of at most chunkSize words. It is
+// sentence/paragraph-aware: whole sentences are packed into a chunk up to the
+// word budget and are never cut mid-sentence, so chunks stay coherent retrieval
+// units. Consecutive chunks share up to chunkOverlap words of trailing
+// sentences for context continuity. A single sentence longer than chunkSize
+// falls back to a word window.
 func splitGraphRAGText(text string, chunkSize, chunkOverlap int) []string {
 	if chunkSize <= 0 {
 		chunkSize = 120
@@ -123,7 +129,6 @@ func splitGraphRAGText(text string, chunkSize, chunkOverlap int) []string {
 	if chunkOverlap < 0 || chunkOverlap >= chunkSize {
 		chunkOverlap = 0
 	}
-
 	words := strings.Fields(text)
 	if len(words) == 0 {
 		return nil
@@ -132,11 +137,98 @@ func splitGraphRAGText(text string, chunkSize, chunkOverlap int) []string {
 		return []string{strings.Join(words, " ")}
 	}
 
+	sentences := splitChunkSentences(text)
+	if len(sentences) <= 1 {
+		return wordWindowChunks(text, chunkSize, chunkOverlap)
+	}
+
+	var chunks []string
+	var cur []string
+	curWords := 0
+	flush := func() {
+		if len(cur) > 0 {
+			chunks = append(chunks, strings.Join(cur, " "))
+		}
+	}
+	for _, sent := range sentences {
+		sw := len(strings.Fields(sent))
+		if sw > chunkSize {
+			// Oversized single sentence: flush, then word-window it.
+			flush()
+			cur, curWords = nil, 0
+			chunks = append(chunks, wordWindowChunks(sent, chunkSize, chunkOverlap)...)
+			continue
+		}
+		if curWords+sw > chunkSize && len(cur) > 0 {
+			flush()
+			cur, curWords = overlapTailSentences(cur, chunkOverlap)
+		}
+		cur = append(cur, sent)
+		curWords += sw
+	}
+	flush()
+	return chunks
+}
+
+// splitChunkSentences breaks text into sentences on ASCII and CJK terminators,
+// treating newlines as hard (paragraph) boundaries. Terminators stay attached.
+func splitChunkSentences(text string) []string {
+	var out []string
+	var b strings.Builder
+	flush := func() {
+		if s := strings.TrimSpace(b.String()); s != "" {
+			out = append(out, s)
+		}
+		b.Reset()
+	}
+	for _, r := range text {
+		if r == '\n' {
+			flush()
+			continue
+		}
+		b.WriteRune(r)
+		switch r {
+		case '.', '!', '?', '。', '！', '？', '；', ';':
+			flush()
+		}
+	}
+	flush()
+	return out
+}
+
+// overlapTailSentences returns the trailing sentences whose combined word count
+// fits within overlapWords, plus that word count — used to seed the next chunk.
+func overlapTailSentences(cur []string, overlapWords int) ([]string, int) {
+	if overlapWords <= 0 || len(cur) == 0 {
+		return nil, 0
+	}
+	total := 0
+	start := len(cur)
+	for i := len(cur) - 1; i >= 0; i-- {
+		w := len(strings.Fields(cur[i]))
+		if total+w > overlapWords {
+			break
+		}
+		total += w
+		start = i
+	}
+	return append([]string(nil), cur[start:]...), total
+}
+
+// wordWindowChunks is the fallback sliding word window for text with no usable
+// sentence structure (or a single oversized sentence).
+func wordWindowChunks(text string, chunkSize, chunkOverlap int) []string {
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return nil
+	}
+	if len(words) <= chunkSize {
+		return []string{strings.Join(words, " ")}
+	}
 	step := chunkSize - chunkOverlap
 	if step <= 0 {
 		step = chunkSize
 	}
-
 	var chunks []string
 	for start := 0; start < len(words); start += step {
 		end := start + chunkSize
@@ -148,7 +240,6 @@ func splitGraphRAGText(text string, chunkSize, chunkOverlap int) []string {
 			break
 		}
 	}
-
 	return chunks
 }
 

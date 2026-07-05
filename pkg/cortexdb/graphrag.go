@@ -19,6 +19,10 @@ const (
 	RetrievalModeLexical = "lexical"
 	// RetrievalModeGraph always enables graph expansion and entity enrichment.
 	RetrievalModeGraph = "graph"
+	// RetrievalModeHybrid fuses vector and lexical retrieval with reciprocal
+	// rank fusion. It is what SearchKnowledge uses under auto when an embedder is
+	// available, so exact-keyword and semantic matches are combined.
+	RetrievalModeHybrid = "hybrid"
 )
 
 // GraphRAGDocument is the source unit ingested into the GraphRAG workflow.
