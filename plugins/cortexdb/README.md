@@ -56,6 +56,9 @@ ${CLAUDE_PLUGIN_ROOT}/bin/cortexdb-mcp.cmd
 | `CORTEXDB_EMBED_MODEL` | `text-embedding-3-small` | Embedding model name (e.g. `embeddinggemma` for a local Ollama). |
 | `CORTEXDB_EMBED_DIM` | `1536` | Embedding dimension — must match the model (e.g. `768` for `embeddinggemma`). |
 | `CORTEXDB_EMBED_API_KEY` | _(unset)_ | API key for the embeddings endpoint (Ollama accepts any value). `OPENAI_API_KEY` is accepted as a fallback. |
+| `CORTEXDB_LLM_BASE_URL` | _(unset)_ | Chat endpoint for **LLM graph distillation**. When set, `/cortexdb-graph` and `/cortexdb-import-memory` use an LLM to extract clean, typed entities and only explicitly-stated relations, instead of the deterministic heuristic (which can surface noisy candidates). A bare Ollama host (`http://localhost:11434`) uses the native `/api/chat` with `think:false` — fast and well-formed for reasoning models like `qwen3.5`; a `/v1` base uses OpenAI-compatible `/chat/completions`. |
+| `CORTEXDB_LLM_MODEL` | `qwen3.5` | Chat model for graph distillation. |
+| `CORTEXDB_LLM_API_KEY` | _(unset)_ | Bearer token for the OpenAI-compatible chat path (Ollama needs none). |
 
 The server runs in **no-embedder (lexical) mode** by default — no API key required. RAG, knowledge graph, and memory tools all work without an embedder via lexical retrieval. Set `CORTEXDB_EMBED_BASE_URL` (plus model/dim) to enable semantic hybrid retrieval — e.g. against a local Ollama:
 
@@ -64,6 +67,13 @@ export CORTEXDB_EMBED_BASE_URL="http://localhost:11434/v1"
 export CORTEXDB_EMBED_MODEL="embeddinggemma"
 export CORTEXDB_EMBED_DIM="768"
 export CORTEXDB_EMBED_API_KEY="ollama"   # any placeholder
+```
+
+Add an LLM to distill a **clean, typed knowledge graph** (used by `/cortexdb-graph` and `/cortexdb-import-memory`) instead of the deterministic extractor — e.g. `qwen3.5` on a local Ollama:
+
+```bash
+export CORTEXDB_LLM_BASE_URL="http://localhost:11434"   # native /api/chat, think:false
+export CORTEXDB_LLM_MODEL="qwen3.5"
 ```
 
 To make the global store explicit in a shell or MCP config, use:

@@ -46,11 +46,17 @@ func runImportAgentMemory(extraRoots []string) {
 		rep.Imported, rep.FilesScanned, rep.Skipped, dbPath)
 
 	// Organize the imported memory into the knowledge graph (entities +
-	// co-occurrence relations) so it is graph-queryable, not just lexically
-	// searchable. Deterministic — no LLM. Non-fatal.
+	// relations) so it is graph-queryable, not just lexically searchable. With
+	// CORTEXDB_LLM_* set, an LLM distills clean, typed entities and relations;
+	// otherwise it is deterministic (no LLM). Non-fatal.
+	llm := newOrganizeLLM()
+	if llm != nil {
+		fmt.Fprintln(os.Stderr, "cortexdb: organizing imported memory with LLM distillation (CORTEXDB_LLM_*)")
+	}
 	if org, oerr := graphflow.OrganizeFromBrain(ctx, db, graphflow.OrganizeOptions{
 		IncludeMemories:  true,
 		IncludeKnowledge: true,
+		LLM:              llm,
 	}); oerr != nil {
 		fmt.Fprintf(os.Stderr, "cortexdb: organize into graph: %v\n", oerr)
 	} else if org != nil {

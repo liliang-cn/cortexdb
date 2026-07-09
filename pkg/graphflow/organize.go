@@ -19,6 +19,12 @@ type OrganizeOptions struct {
 	IncludeKnowledge bool
 	// MaxDocuments caps the number of texts scanned (0 = no cap).
 	MaxDocuments int
+	// LLM, when set, replaces the deterministic candidate extractor with an LLM
+	// that distills clean, typed entities and only explicitly-stated relations.
+	// When nil, extraction stays fully deterministic (no LLM, no embedder) — the
+	// default. Results are written through the same GraphRAG upsert path either
+	// way, so the graph view and GraphRAG retrieval read them identically.
+	LLM JSONGenerator
 }
 
 // OrganizeReport summarizes an organize pass.
@@ -92,6 +98,15 @@ func OrganizeFromBrain(ctx context.Context, db *cortexdb.DB, opts OrganizeOption
 	}
 
 	report := &OrganizeReport{DocumentsScanned: len(texts)}
+
+	// LLM-backed distillation: clean, typed entities and only explicitly-stated
+	// relations, replacing the deterministic candidate heuristics below.
+	if opts.LLM != nil {
+		if err := organizeWithLLM(ctx, db, texts, opts.LLM, report); err != nil {
+			return nil, err
+		}
+		return report, nil
+	}
 
 	// Pass 1: candidate frequency (distinct texts) + display form + co-occurrence pairs.
 	freq := make(map[string]int)

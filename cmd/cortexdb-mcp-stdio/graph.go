@@ -42,12 +42,18 @@ func runGraphHTML(outDir string) {
 	}
 	ctx := context.Background()
 
-	// Organize first: extract entities + co-occurrence relations from the brain's
-	// memories and knowledge into the graph, so the view reflects an organized
-	// brain rather than only whatever was explicitly tagged.
+	// Organize first: extract entities + relations from the brain's memories and
+	// knowledge into the graph, so the view reflects an organized brain rather
+	// than only whatever was explicitly tagged. With CORTEXDB_LLM_* set, an LLM
+	// distills clean, typed entities and relations; otherwise it is deterministic.
+	llm := newOrganizeLLM()
+	if llm != nil {
+		fmt.Fprintln(os.Stderr, "cortexdb: organizing graph with LLM distillation (CORTEXDB_LLM_*)")
+	}
 	if rep, oerr := graphflow.OrganizeFromBrain(ctx, db, graphflow.OrganizeOptions{
 		IncludeMemories:  true,
 		IncludeKnowledge: true,
+		LLM:              llm,
 	}); oerr != nil {
 		fmt.Fprintf(os.Stderr, "cortexdb: organize graph: %v\n", oerr)
 	} else if rep != nil {
