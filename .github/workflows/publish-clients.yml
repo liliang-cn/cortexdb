@@ -1,0 +1,108 @@
+name: Publish clients
+
+# Publishes the Rust (crates.io), Python (PyPI), and Node (npm) clients.
+# Trigger by pushing a tag like `client-v0.1.0` (the version after `client-v`
+# is used), or run manually. Each job:
+#   - skips gracefully if its registry token secret is not set,
+#   - is idempotent: skips if that version is already published,
+# so it is safe to re-run and to release only the clients whose tokens exist.
+#
+# Required repo secrets (set the ones you use): CARGO_REGISTRY_TOKEN,
+# PYPI_API_TOKEN, NPM_TOKEN.
+
+on:
+  push:
+    tags:
+      - "client-v*"
+  workflow_dispatch:
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Publish cortexdb-client to crates.io
+        working-directory: clients/rust/cortexdb-client
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CARGO_REGISTRY_TOKEN}" ]; then
+            echo "CARGO_REGISTRY_TOKEN not set — skipping crates.io publish"; exit 0
+          fi
+          if [ "${EVENT_NAME}" = "push" ]; then
+            V="${REF_NAME#client-v}"
+            sed -i "0,/^version = .*/s//version = \"${V}\"/" Cargo.toml
+          fi
+          V=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          echo "cortexdb-client version: ${V}"
+          if curl -fsS "https://crates.io/api/v1/crates/cortexdb-client/${V}" >/dev/null 2>&1; then
+            echo "cortexdb-client@${V} already on crates.io — skipping"; exit 0
+          fi
+          cargo publish --token "${CARGO_REGISTRY_TOKEN}" --allow-dirty
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Publish cortexdb-client to PyPI
+        working-directory: clients/python
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PYPI_API_TOKEN}" ]; then
+            echo "PYPI_API_TOKEN not set — skipping PyPI publish"; exit 0
+          fi
+          if [ "${EVENT_NAME}" = "push" ]; then
+            V="${REF_NAME#client-v}"
+            sed -i "0,/^version = .*/s//version = \"${V}\"/" pyproject.toml
+          fi
+          V=$(grep -m1 '^version' pyproject.toml | sed 's/.*"\(.*\)".*/\1/')
+          echo "cortexdb-client version: ${V}"
+          if curl -fsS "https://pypi.org/pypi/cortexdb-client/${V}/json" >/dev/null 2>&1; then
+            echo "cortexdb-client==${V} already on PyPI — skipping"; exit 0
+          fi
+          python -m pip install --upgrade build twine
+          python -m build
+          python -m twine upload dist/* -u __token__ -p "${PYPI_API_TOKEN}" --non-interactive
+
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - name: Publish cortexdb-client to npm
+        working-directory: clients/node
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "NPM_TOKEN not set — skipping npm publish"; exit 0
+          fi
+          if [ "${EVENT_NAME}" = "push" ]; then
+            V="${REF_NAME#client-v}"
+            npm version "${V}" --no-git-tag-version --allow-same-version
+          fi
+          V=$(node -p "require('./package.json').version")
+          echo "cortexdb-client version: ${V}"
+          if npm view "cortexdb-client@${V}" version >/dev/null 2>&1; then
+            echo "cortexdb-client@${V} already on npm — skipping"; exit 0
+          fi
+          npm publish --access public
