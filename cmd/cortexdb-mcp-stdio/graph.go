@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
@@ -88,21 +89,52 @@ type graphEdgeView struct {
 	Label  string `json:"label"`
 }
 
-// loadBrainGraph reads meaningful nodes/edges from the live GraphRAG graph:
-// everything except chunk nodes, and edges excluding structural has_chunk/next,
-// limited to edges whose endpoints are both shown.
+// loadBrainGraph reads meaningful nodes/edges from the live GraphRAG graph
+// (everything except chunk nodes; edges excluding structural has_chunk/next).
+// For large graphs it keeps the most-connected core: nodes are ranked by degree
+// and capped, so the view shows the densely-linked hub instead of an arbitrary
+// truncation with dangling edges.
 func loadBrainGraph(ctx context.Context, sqlDB *sql.DB) ([]graphNodeView, []graphEdgeView, error) {
-	const maxNodes = 800
+	const (
+		maxNodes = 600
+		maxScan  = 50000
+	)
 
+	// 1. Meaningful edges, and degree per node.
+	edgeRows, err := sqlDB.QueryContext(ctx,
+		`SELECT from_node_id, COALESCE(edge_type,''), to_node_id FROM graph_edges WHERE edge_type NOT IN ('has_chunk','next')`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = edgeRows.Close() }()
+	type rawEdge struct{ from, etype, to string }
+	rawEdges := make([]rawEdge, 0)
+	degree := make(map[string]int)
+	for edgeRows.Next() {
+		var e rawEdge
+		if err := edgeRows.Scan(&e.from, &e.etype, &e.to); err != nil {
+			return nil, nil, err
+		}
+		rawEdges = append(rawEdges, e)
+		degree[e.from]++
+		degree[e.to]++
+	}
+	if err := edgeRows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	// 2. All non-chunk nodes (bounded), tagged with degree.
 	nodeRows, err := sqlDB.QueryContext(ctx,
-		`SELECT id, COALESCE(content,''), COALESCE(node_type,'') FROM graph_nodes WHERE node_type != 'chunk' LIMIT ?`, maxNodes)
+		`SELECT id, COALESCE(content,''), COALESCE(node_type,'') FROM graph_nodes WHERE node_type != 'chunk' LIMIT ?`, maxScan)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer func() { _ = nodeRows.Close() }()
-
-	nodes := make([]graphNodeView, 0)
-	shown := make(map[string]struct{})
+	type rawNode struct {
+		view graphNodeView
+		deg  int
+	}
+	all := make([]rawNode, 0)
 	for nodeRows.Next() {
 		var id, content, ntype string
 		if err := nodeRows.Scan(&id, &content, &ntype); err != nil {
@@ -115,35 +147,41 @@ func loadBrainGraph(ctx context.Context, sqlDB *sql.DB) ([]graphNodeView, []grap
 		if r := []rune(label); len(r) > 48 {
 			label = string(r[:48]) + "…"
 		}
-		nodes = append(nodes, graphNodeView{ID: id, Label: label, Type: ntype})
-		shown[id] = struct{}{}
+		all = append(all, rawNode{view: graphNodeView{ID: id, Label: label, Type: ntype}, deg: degree[id]})
 	}
 	if err := nodeRows.Err(); err != nil {
 		return nil, nil, err
 	}
 
-	edgeRows, err := sqlDB.QueryContext(ctx,
-		`SELECT from_node_id, COALESCE(edge_type,''), to_node_id FROM graph_edges WHERE edge_type NOT IN ('has_chunk','next')`)
-	if err != nil {
-		return nil, nil, err
+	// 3. Keep the most-connected nodes.
+	sort.SliceStable(all, func(i, j int) bool {
+		if all[i].deg != all[j].deg {
+			return all[i].deg > all[j].deg
+		}
+		return all[i].view.ID < all[j].view.ID
+	})
+	if len(all) > maxNodes {
+		all = all[:maxNodes]
 	}
-	defer func() { _ = edgeRows.Close() }()
+	shown := make(map[string]struct{}, len(all))
+	nodes := make([]graphNodeView, 0, len(all))
+	for _, n := range all {
+		shown[n.view.ID] = struct{}{}
+		nodes = append(nodes, n.view)
+	}
 
+	// 4. Edges among the shown nodes.
 	edges := make([]graphEdgeView, 0)
-	for edgeRows.Next() {
-		var from, etype, to string
-		if err := edgeRows.Scan(&from, &etype, &to); err != nil {
-			return nil, nil, err
-		}
-		if _, ok := shown[from]; !ok {
+	for _, e := range rawEdges {
+		if _, ok := shown[e.from]; !ok {
 			continue
 		}
-		if _, ok := shown[to]; !ok {
+		if _, ok := shown[e.to]; !ok {
 			continue
 		}
-		edges = append(edges, graphEdgeView{Source: from, Target: to, Label: etype})
+		edges = append(edges, graphEdgeView{Source: e.from, Target: e.to, Label: e.etype})
 	}
-	return nodes, edges, edgeRows.Err()
+	return nodes, edges, nil
 }
 
 func trimNodePrefix(id string) string {
