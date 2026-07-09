@@ -41,10 +41,17 @@ jobs:
           fi
           V=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
           echo "cortexdb-client version: ${V}"
-          if curl -fsS "https://crates.io/api/v1/crates/cortexdb-client/${V}" >/dev/null 2>&1; then
+          # crates.io rejects requests without a User-Agent; include one.
+          if curl -fsS -H "User-Agent: cortexdb-ci" "https://crates.io/api/v1/crates/cortexdb-client/${V}" >/dev/null 2>&1; then
             echo "cortexdb-client@${V} already on crates.io — skipping"; exit 0
           fi
-          cargo publish --token "${CARGO_REGISTRY_TOKEN}" --allow-dirty
+          # Tolerate a race where the version already exists.
+          if ! cargo publish --token "${CARGO_REGISTRY_TOKEN}" --allow-dirty 2> publish.err; then
+            if grep -q "already exists" publish.err; then
+              echo "cortexdb-client@${V} already published — ok"; exit 0
+            fi
+            cat publish.err; exit 1
+          fi
 
   python:
     runs-on: ubuntu-latest
