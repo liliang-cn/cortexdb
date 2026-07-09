@@ -29,6 +29,13 @@ func main() {
 		return
 	}
 
+	// `--import-agent-memory [roots...]` imports Claude Code / Codex memory into
+	// the brain. Used by /cortexdb-import-memory.
+	if len(os.Args) > 1 && os.Args[1] == "--import-agent-memory" {
+		runImportAgentMemory(os.Args[2:])
+		return
+	}
+
 	dbPath := os.Getenv("CORTEXDB_PATH")
 	if dbPath == "" {
 		dbPath = cortexdb.DefaultDBPath()
