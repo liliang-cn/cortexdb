@@ -41,7 +41,7 @@ func main() {
 		dbPath = cortexdb.DefaultDBPath()
 	}
 
-	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))
+	db, err := openBrainDB(dbPath)
 	if err != nil {
 		log.Fatalf("open cortexdb: %v", err)
 	}

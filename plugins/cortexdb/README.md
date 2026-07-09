@@ -52,8 +52,19 @@ ${CLAUDE_PLUGIN_ROOT}/bin/cortexdb-mcp.cmd
 | `CORTEXDB_PATH` | `~/.cortexdb/cortexdb.db` | Path to the SQLite database file the MCP server opens. Defaults to a single **global** store shared by every project on the machine (the directory is created automatically; SQLite WAL makes concurrent sessions safe). Export it — e.g. to a project-local `.cortexdb/cortexdb.db` — to use a different file; it is inherited by the launched server. |
 | `CORTEXDB_MCP_BIN` | _(unset)_ | Path to a local MCP server binary to run instead of downloading (e.g. a dev build). |
 | `CORTEXDB_RECALL_TOPK` | `3` | How many matched memories the auto-recall hook injects per prompt (see below). |
+| `CORTEXDB_EMBED_BASE_URL` | _(unset)_ | OpenAI-compatible `/embeddings` base URL. **Setting it turns on semantic retrieval** (hybrid vector + lexical). Point it at any provider, including a local Ollama: `http://localhost:11434/v1`. `OPENAI_BASE_URL` is accepted as a fallback (parity with `cortexdb-grpc`). |
+| `CORTEXDB_EMBED_MODEL` | `text-embedding-3-small` | Embedding model name (e.g. `embeddinggemma` for a local Ollama). |
+| `CORTEXDB_EMBED_DIM` | `1536` | Embedding dimension — must match the model (e.g. `768` for `embeddinggemma`). |
+| `CORTEXDB_EMBED_API_KEY` | _(unset)_ | API key for the embeddings endpoint (Ollama accepts any value). `OPENAI_API_KEY` is accepted as a fallback. |
 
-The server runs in **no-embedder (lexical) mode** by default — no API key required. RAG, knowledge graph, and memory tools all work without an embedder via lexical retrieval.
+The server runs in **no-embedder (lexical) mode** by default — no API key required. RAG, knowledge graph, and memory tools all work without an embedder via lexical retrieval. Set `CORTEXDB_EMBED_BASE_URL` (plus model/dim) to enable semantic hybrid retrieval — e.g. against a local Ollama:
+
+```bash
+export CORTEXDB_EMBED_BASE_URL="http://localhost:11434/v1"
+export CORTEXDB_EMBED_MODEL="embeddinggemma"
+export CORTEXDB_EMBED_DIM="768"
+export CORTEXDB_EMBED_API_KEY="ollama"   # any placeholder
+```
 
 To make the global store explicit in a shell or MCP config, use:
 

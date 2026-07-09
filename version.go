@@ -1,4 +1,4 @@
 package cortexdb
 
 // Version represents the current version of the cortexdb library.
-const Version = "2.49.0"
+const Version = "2.50.0"

@@ -52,7 +52,7 @@ func runRecall() {
 		return
 	}
 
-	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))
+	db, err := openBrainDB(dbPath)
 	if err != nil {
 		return
 	}

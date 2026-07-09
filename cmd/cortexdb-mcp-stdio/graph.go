@@ -30,7 +30,7 @@ func runGraphHTML(outDir string) {
 		dbPath = cortexdb.DefaultDBPath()
 	}
 
-	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))
+	db, err := openBrainDB(dbPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cortexdb: open %s: %v\n", dbPath, err)
 		os.Exit(1)
