@@ -149,6 +149,16 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *resp, nil
 	})
+	addGraphRAGMCPTool(server, definitions["extract_conversation"], func(ctx context.Context, req ToolExtractConversationRequest) (ToolExtractConversationResponse, error) {
+		resp, err := toolbox.ExtractConversation(ctx, req)
+		if err != nil {
+			return ToolExtractConversationResponse{}, err
+		}
+		if resp == nil {
+			return ToolExtractConversationResponse{}, nil
+		}
+		return *resp, nil
+	})
 	addGraphRAGMCPTool(server, definitions["search_graphrag_lexical"], func(ctx context.Context, req ToolSearchGraphRAGLexicalRequest) (GraphRAGQueryResult, error) {
 		resp, err := toolbox.SearchGraphRAGLexical(ctx, req)
 		if err != nil {

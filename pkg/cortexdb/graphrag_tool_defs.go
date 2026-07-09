@@ -170,6 +170,20 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			),
 		},
 		{
+			Name:        "extract_conversation",
+			Description: "Extract key information from conversation text (or a stored session's messages): a summary, themes, entities, and co-occurrence relations. Deterministic (no LLM). Set persist=true to also write entities/relations into the graph and the summary into knowledge, making the conversation recallable and graph-queryable.",
+			InputSchema: toolObjectSchema(
+				nil,
+				map[string]any{
+					"text":         toolStringSchema("Conversation text to analyze."),
+					"session_id":   toolStringSchema("Load this session's messages when text is empty."),
+					"persist":      toolBooleanSchema("Also write entities/relations to the graph and the summary to knowledge."),
+					"collection":   toolStringSchema("Collection for the persisted summary (default \"conversations\")."),
+					"max_entities": toolIntegerSchema("Cap on extracted entities (default 30)."),
+				},
+			),
+		},
+		{
 			Name:        "search_graphrag_lexical",
 			Description: "Perform lexical GraphRAG retrieval using FTS5 seeds, graph expansion, rerank, and context packing. Prefer sending a structured plan, and first expand the user goal into many keywords, aliases, synonyms, and multilingual variants.",
 			InputSchema: toolObjectSchema(
@@ -274,6 +288,12 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.BuildContext(ctx, req)
+	case "extract_conversation":
+		var req ToolExtractConversationRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.ExtractConversation(ctx, req)
 	case "search_graphrag_lexical":
 		var req ToolSearchGraphRAGLexicalRequest
 		if err := json.Unmarshal(input, &req); err != nil {
