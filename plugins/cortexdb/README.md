@@ -89,6 +89,8 @@ export CORTEXDB_PATH="$HOME/.cortexdb/cortexdb.db"
 | `/remember <text>` | Save a fact / preference / decision to the brain (`memory_save`, or `knowledge_save` for reference knowledge). |
 | `/recall <query>` | Search the brain for relevant memories + knowledge (`knowledge_memory_recall`) and summarize. |
 | `/cortexdb-graph` | Render the brain's knowledge graph (entities, relations, documents) to an interactive HTML page and open it. Exports to `~/.cortexdb/graph/`; backed by `cortexdb-mcp --graph-html`. |
+| `/cortexdb-import-memory` | Import local agent memory (memory files + `CLAUDE.md`/`AGENTS.md`) into the brain and organize it into the graph. Backed by `cortexdb-mcp --import-agent-memory`. |
+| `/cortexdb-import-code` | Turn a codebase (**any language** — you are the extractor) into a code knowledge graph in its own isolated database, then open an interactive view. Answers "who implements X / who calls Y / what depends on Z / any dependency cycle?" as graph queries. Backed by `cortexdb-mcp --import-code-graph`. |
 
 ## Proactive memory (SessionStart)
 

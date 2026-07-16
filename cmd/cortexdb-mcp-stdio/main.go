@@ -36,6 +36,15 @@ func main() {
 		return
 	}
 
+	// `--import-code-graph [file.json]` ingests a language-agnostic code-graph
+	// JSON (from stdin when no path) into the knowledge graph. The extractor is
+	// an LLM/agent (e.g. Claude Code), so it works for any language. Used by
+	// /cortexdb-import-code.
+	if len(os.Args) > 1 && os.Args[1] == "--import-code-graph" {
+		runImportCodeGraph(os.Args[2:])
+		return
+	}
+
 	dbPath := os.Getenv("CORTEXDB_PATH")
 	if dbPath == "" {
 		dbPath = cortexdb.DefaultDBPath()
