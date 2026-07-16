@@ -8,12 +8,24 @@ Build a **code knowledge graph** from a codebase and load it into CortexDB, so s
 
 ### 1. Scan and extract
 
-Find the source files (respect `.gitignore`; skip `node_modules`, `vendor`, `dist`, `.git`, build output, generated code). Read them and extract a **code graph**. Favor architecture over exhaustiveness:
+Find the source files (respect `.gitignore`; skip `node_modules`, `vendor`, `dist`, `.git`, build output, generated code). Extract a **code graph**. Favor architecture over exhaustiveness:
 
 - **Entities** (nodes) — `package`/`module`, `file` (only when useful), `class`/`type`, `interface`, `function`/`method`, `const`. Prefer exported/public and structurally important symbols; don't emit every private one-line helper. Give each a short `summary` and its `file`.
 - **Relations** (edges) — `imports`, `defines`, `has_method`, `implements`, `extends`, `calls`, `references`. Only relations actually present in the code.
 
-For a **large repo, work directory-by-directory** (or dispatch parallel subagents, one per top-level package) and accumulate. Keep entity names stable and unambiguous (e.g. package-qualified) so edges connect. Use precise tooling when it helps and exists (e.g. `go list` for Go import edges) — but the extraction itself is yours.
+**Precise tools first, then read for semantics.** The mechanical edges — package/module `imports` and dependencies — are cheaper and more accurate from the language's own tooling than from reading every file. Get those from a tool, then read source **only** for the semantic layer the tool can't give you (`interface`/`type` entities, `implements`/`extends`/`calls`, and summaries). This keeps large repos fast and low-token.
+
+| Language | Precise dependency/import edges (run if the tool is present) |
+| --- | --- |
+| Go | `go list -deps -f '{{if not .Standard}}{{.ImportPath}}{{range .Imports}} {{.}}{{end}}{{end}}' ./...` then keep lines under the module path → `from imports to` edges |
+| Rust | `cargo tree --prefix none --edges normal` (crate deps); module edges from `mod`/`use` |
+| JS/TS | `npx --no-install madge --json src` if available; else parse `import`/`require` |
+| Python | `pydeps --show-deps --no-output <pkg>` if available; else parse `import`/`from … import` |
+| Java/Kotlin | parse `import` statements (or `jdeps` for compiled jars) |
+
+If no tool is available or the language isn't listed, just read the files — the extraction is still yours. Then, for **every** language, read the relevant source to add the semantic entities/edges (interfaces and what implements them, base classes and what extends them, notable call relationships) and one-line summaries.
+
+For a **large repo, work directory-by-directory** (or dispatch parallel subagents, one per top-level package) and accumulate. Keep entity names stable and unambiguous (e.g. package-qualified) so edges connect.
 
 Write the result to a temp file as JSON in this shape:
 
