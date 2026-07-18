@@ -18,8 +18,9 @@ import (
 type DB struct {
 	store                    *core.SQLiteStore
 	graph                    *graph.GraphStore
-	embedder                 Embedder // Optional embedder for text operations
-	reranker                 Reranker // Optional cross-encoder reranker for retrieval
+	embedder                 Embedder         // Optional embedder for text operations
+	reranker                 Reranker         // Optional cross-encoder reranker for retrieval
+	queryTransformer         QueryTransformer // Optional pre-retrieval query rewriter (rewrite + HyDE)
 	KnowledgeMemoryReflector KnowledgeMemoryReflector
 	ontologySchemaInit       sync.Once
 	ontologySchemaInitErr    error
@@ -80,6 +81,19 @@ func WithEmbedder(e Embedder) Option {
 func WithReranker(r Reranker) Option {
 	return func(db *DB) {
 		db.reranker = r
+	}
+}
+
+// WithQueryTransformer configures the DB with a pre-retrieval query transformer.
+// When set, SearchKnowledge rewrites the raw query before retrieval: the
+// transformer's AlternateQueries and Keywords are fused into the plan (multi-query
+// recall), and when an embedder is present its HypotheticalDocument drives the
+// semantic query vector (HyDE) instead of the literal question. Optional and
+// best-effort: without one — or if the transformer errors — retrieval runs on the
+// raw query unchanged, and the no-embedder lexical path is unaffected.
+func WithQueryTransformer(t QueryTransformer) Option {
+	return func(db *DB) {
+		db.queryTransformer = t
 	}
 }
 

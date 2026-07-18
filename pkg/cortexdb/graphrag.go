@@ -92,6 +92,10 @@ type GraphRAGQueryOptions struct {
 	MaxTraversalNodes   int
 	MaxEntitiesPerChunk int
 	Plan                *RetrievalPlan
+	// EmbedText, when non-empty, is embedded for the vector query instead of the
+	// raw query (HyDE). The raw query still drives lexical and graph scoring;
+	// only the semantic seed vector comes from this hypothetical answer passage.
+	EmbedText string
 }
 
 // GraphRAGChunkResult is a retrieved chunk plus graph context.
@@ -396,7 +400,14 @@ func (db *DB) SearchGraphRAG(ctx context.Context, query string, opts GraphRAGQue
 	opts.Collection = applyRetrievalPlanCollection(opts.Collection, resolution.Plan.Filters)
 	opts.RetrievalMode = resolution.Plan.RetrievalMode
 	applyGraphRAGQueryDefaults(&opts)
-	queryVector, err := db.embedder.Embed(ctx, query)
+	// HyDE: embed a hypothetical answer passage when one was supplied, so the
+	// vector seed search matches passages by semantic content rather than by
+	// question phrasing. The raw query still drives QueryText (lexical) below.
+	embedText := query
+	if strings.TrimSpace(opts.EmbedText) != "" {
+		embedText = opts.EmbedText
+	}
+	queryVector, err := db.embedder.Embed(ctx, embedText)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrEmbeddingFailed, err)
 	}
