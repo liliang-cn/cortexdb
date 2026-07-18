@@ -36,6 +36,14 @@ func main() {
 		return
 	}
 
+	// `--resolve-entities [--dry-run]` merges duplicate/alias entity nodes into
+	// canonical ones (deterministic; LLM acronym/synonym detection when
+	// CORTEXDB_LLM_* is set). Used by /cortexdb-resolve-entities.
+	if len(os.Args) > 1 && os.Args[1] == "--resolve-entities" {
+		runResolveEntities(os.Args[2:])
+		return
+	}
+
 	// `--global-search "<question>"` answers a whole-corpus question via
 	// community detection + summaries + map-reduce (GraphRAG global search).
 	// Used by /cortexdb-global-search.
