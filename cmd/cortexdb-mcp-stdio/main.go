@@ -36,6 +36,14 @@ func main() {
 		return
 	}
 
+	// `--global-search "<question>"` answers a whole-corpus question via
+	// community detection + summaries + map-reduce (GraphRAG global search).
+	// Used by /cortexdb-global-search.
+	if len(os.Args) > 1 && os.Args[1] == "--global-search" {
+		runGlobalSearch(os.Args[2:])
+		return
+	}
+
 	// `--export-memory [outdir]` writes every stored memory to Markdown files
 	// (one per memory + a MEMORY.md index), mirroring Claude Code's memory
 	// layout. Used by /cortexdb-export-memory.

@@ -95,6 +95,7 @@ export CORTEXDB_PATH="$HOME/.cortexdb/cortexdb.db"
 | `/cortexdb-import-memory` | Import local agent memory (memory files + `CLAUDE.md`/`AGENTS.md`) into the brain and organize it into the graph. Backed by `cortexdb-mcp --import-agent-memory`. |
 | `/cortexdb-import-code` | Turn a codebase (**any language** — you are the extractor) into a code knowledge graph in its own isolated database, then open an interactive view. Answers "who implements X / who calls Y / what depends on Z / any dependency cycle?" as graph queries. Backed by `cortexdb-mcp --import-code-graph`. |
 | `/cortexdb-export-memory` | Export all memories to Markdown files (one per memory with frontmatter + a `MEMORY.md` index), mirroring Claude Code's memory layout — human-readable, diffable, backup-friendly. Backed by `cortexdb-mcp --export-memory`. |
+| `/cortexdb-global-search` | Answer whole-corpus / thematic questions ("what are the main themes?") via GraphRAG **global search**: detect entity communities, write an LLM report per community, then map-reduce them into an answer. Needs `CORTEXDB_LLM_*`. Backed by `cortexdb-mcp --global-search`. |
 
 ## Proactive memory (SessionStart)
 
