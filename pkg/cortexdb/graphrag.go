@@ -448,7 +448,7 @@ func (db *DB) SearchGraphRAG(ctx context.Context, query string, opts GraphRAGQue
 		}
 		result.Chunks = append(result.Chunks, seedChunkList...)
 		if opts.Rerank {
-			result.Chunks = rerankGraphRAGChunks(query, result.Chunks, opts)
+			result.Chunks = db.rerankGraphRAGChunks(ctx, query, result.Chunks, opts)
 		} else {
 			sort.Slice(result.Chunks, func(i, j int) bool { return result.Chunks[i].Score > result.Chunks[j].Score })
 			for i := range result.Chunks {
@@ -506,7 +506,7 @@ func (db *DB) SearchGraphRAG(ctx context.Context, query string, opts GraphRAGQue
 	result.Chunks = append(result.Chunks, seedChunkList...)
 	result.Chunks = append(result.Chunks, relatedChunkList...)
 	if opts.Rerank {
-		result.Chunks = rerankGraphRAGChunks(query, result.Chunks, opts)
+		result.Chunks = db.rerankGraphRAGChunks(ctx, query, result.Chunks, opts)
 	} else {
 		sort.Slice(result.Chunks, func(i, j int) bool { return result.Chunks[i].Score > result.Chunks[j].Score })
 		for i := range result.Chunks {

@@ -374,7 +374,7 @@ func (t *GraphRAGToolbox) SearchGraphRAGLexical(ctx context.Context, req ToolSea
 				allChunks = append(allChunks, *chunk)
 			}
 		}
-		allChunks = rerankGraphRAGChunks(resolution.Plan.Query, allChunks, opts)
+		allChunks = t.db.rerankGraphRAGChunks(ctx, resolution.Plan.Query, allChunks, opts)
 		allChunks = packGraphRAGContext(allChunks, opts)
 		result.Chunks = allChunks
 		result.Context = buildGraphRAGContext(allChunks)
@@ -424,7 +424,7 @@ func (t *GraphRAGToolbox) SearchGraphRAGLexical(ctx context.Context, req ToolSea
 	}
 
 	allChunks := append(seedChunks, relatedChunks...)
-	allChunks = rerankGraphRAGChunks(resolution.Plan.Query, allChunks, opts)
+	allChunks = t.db.rerankGraphRAGChunks(ctx, resolution.Plan.Query, allChunks, opts)
 	allChunks = packGraphRAGContext(allChunks, opts)
 
 	result.Chunks = allChunks

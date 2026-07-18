@@ -38,6 +38,9 @@ func openBrainDB(dbPath string) (*cortexdb.DB, error) {
 		apiKey := firstEnv("CORTEXDB_EMBED_API_KEY", "OPENAI_API_KEY")
 		opts = append(opts, cortexdb.WithEmbedder(newOpenAIEmbedder(baseURL, apiKey, model, dim)))
 	}
+	if r := newReranker(); r != nil {
+		opts = append(opts, cortexdb.WithReranker(r))
+	}
 	return cortexdb.Open(cortexdb.DefaultConfig(dbPath), opts...)
 }
 

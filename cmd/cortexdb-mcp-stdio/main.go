@@ -36,6 +36,14 @@ func main() {
 		return
 	}
 
+	// `--export-memory [outdir]` writes every stored memory to Markdown files
+	// (one per memory + a MEMORY.md index), mirroring Claude Code's memory
+	// layout. Used by /cortexdb-export-memory.
+	if len(os.Args) > 1 && os.Args[1] == "--export-memory" {
+		runExportMemory(os.Args[2:])
+		return
+	}
+
 	// `--import-code-graph [file.json]` ingests a language-agnostic code-graph
 	// JSON (from stdin when no path) into the knowledge graph. The extractor is
 	// an LLM/agent (e.g. Claude Code), so it works for any language. Used by

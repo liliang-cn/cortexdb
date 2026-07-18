@@ -304,8 +304,10 @@ func buildGraphRAGContext(chunks []GraphRAGChunkResult) string {
 // rerankGraphRAGChunks reorders GraphRAG chunks via the public Rerank API, so the
 // chunk path and the generic API share one implementation. Chunks map to
 // RerankItems (Content→Text, DocumentID→GroupKey for near-duplicate suppression);
-// the blend weights and MMR diversity are Rerank's defaults.
-func rerankGraphRAGChunks(query string, chunks []GraphRAGChunkResult, opts GraphRAGQueryOptions) []GraphRAGChunkResult {
+// the blend weights and MMR diversity are Rerank's defaults. When a semantic
+// reranker is configured, its query-document relevance replaces the base score
+// before the heuristic blend + MMR, so the ordering is cross-encoder driven.
+func (db *DB) rerankGraphRAGChunks(ctx context.Context, query string, chunks []GraphRAGChunkResult, opts GraphRAGQueryOptions) []GraphRAGChunkResult {
 	if len(chunks) == 0 {
 		return nil
 	}
@@ -321,6 +323,7 @@ func rerankGraphRAGChunks(query string, chunks []GraphRAGChunkResult, opts Graph
 			GroupKey: chunks[i].DocumentID,
 		}
 	}
+	db.applySemanticRerank(ctx, query, items)
 	ranked := Rerank(query, items, RerankOptions{TopN: opts.MaxContextChunks, DiversityLambda: opts.DiversityLambda})
 
 	selected := make([]GraphRAGChunkResult, 0, len(ranked))

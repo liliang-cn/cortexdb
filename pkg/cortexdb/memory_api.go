@@ -220,6 +220,59 @@ func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*Memor
 	}, nil
 }
 
+// ListAllMemories returns every stored memory record across all scopes,
+// newest first, skipping expired ones. It scans the memory buckets only
+// (session ids under the `memory:` prefix), not arbitrary chat history.
+// Intended for export/backup — see the --export-memory tool.
+func (db *DB) ListAllMemories(ctx context.Context) ([]MemoryRecord, error) {
+	rows, err := db.store.GetDB().QueryContext(ctx, `
+		SELECT m.id, m.session_id, s.user_id, m.role, m.content, m.metadata, m.created_at
+		FROM messages m
+		JOIN sessions s ON s.id = m.session_id
+		WHERE m.session_id LIKE 'memory:%'
+		ORDER BY m.created_at DESC, m.id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list memories: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []MemoryRecord
+	for rows.Next() {
+		var record MemoryRecord
+		var metadataJSON []byte
+		var createdAt time.Time
+		if err := rows.Scan(&record.ID, &record.SessionID, &record.UserID, &record.Role, &record.Content, &metadataJSON, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan memory: %w", err)
+		}
+		record.CreatedAt = createdAt
+		if len(metadataJSON) > 0 {
+			if err := json.Unmarshal(metadataJSON, &record.Metadata); err != nil {
+				return nil, fmt.Errorf("decode memory metadata: %w", err)
+			}
+		}
+		applyMemoryMetadata(&record)
+		if memoryExpired(record) {
+			continue
+		}
+		// Derive scope from the bucket id when metadata did not carry it.
+		if record.Scope == "" {
+			record.Scope = scopeFromBucketID(record.SessionID)
+		}
+		out = append(out, record)
+	}
+	return out, rows.Err()
+}
+
+// scopeFromBucketID pulls the scope segment out of a `memory:<scope>:…` id.
+func scopeFromBucketID(bucketID string) string {
+	parts := strings.SplitN(bucketID, ":", 3)
+	if len(parts) >= 2 && parts[0] == "memory" {
+		return parts[1]
+	}
+	return ""
+}
+
 // DeleteMemory removes a memory record by ID.
 func (db *DB) DeleteMemory(ctx context.Context, req MemoryDeleteRequest) (*MemoryDeleteResponse, error) {
 	if req.MemoryID == "" {

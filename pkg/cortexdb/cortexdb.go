@@ -19,6 +19,7 @@ type DB struct {
 	store                    *core.SQLiteStore
 	graph                    *graph.GraphStore
 	embedder                 Embedder // Optional embedder for text operations
+	reranker                 Reranker // Optional cross-encoder reranker for retrieval
 	KnowledgeMemoryReflector KnowledgeMemoryReflector
 	ontologySchemaInit       sync.Once
 	ontologySchemaInitErr    error
@@ -67,6 +68,18 @@ type Option func(*DB)
 func WithEmbedder(e Embedder) Option {
 	return func(db *DB) {
 		db.embedder = e
+	}
+}
+
+// WithReranker configures the DB with a cross-encoder reranker. When set, the
+// retrieval path (SearchKnowledge, GraphRAG, hybrid) uses the reranker's
+// query-document relevance scores as the base relevance signal before the
+// built-in MMR diversity/dedup pass — upgrading the default lexical-overlap
+// rerank to a semantic cross-encoder. Optional: without it, the dependency-free
+// heuristic rerank is used unchanged.
+func WithReranker(r Reranker) Option {
+	return func(db *DB) {
+		db.reranker = r
 	}
 }
 

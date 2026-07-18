@@ -59,6 +59,9 @@ ${CLAUDE_PLUGIN_ROOT}/bin/cortexdb-mcp.cmd
 | `CORTEXDB_LLM_BASE_URL` | _(unset)_ | Chat endpoint for **LLM graph distillation**. When set, `/cortexdb-graph` and `/cortexdb-import-memory` use an LLM to extract clean, typed entities and only explicitly-stated relations, instead of the deterministic heuristic (which can surface noisy candidates). A bare Ollama host (`http://localhost:11434`) uses the native `/api/chat` with `think:false` — fast and well-formed for reasoning models like `qwen3.5`; a `/v1` base uses OpenAI-compatible `/chat/completions`. |
 | `CORTEXDB_LLM_MODEL` | `qwen3.5` | Chat model for graph distillation. |
 | `CORTEXDB_LLM_API_KEY` | _(unset)_ | Bearer token for the OpenAI-compatible chat path (Ollama needs none). |
+| `CORTEXDB_RERANK_BASE_URL` | _(unset)_ | Cross-encoder **reranker** endpoint. When set, retrieval (SearchKnowledge / GraphRAG / hybrid) reorders candidates with a real cross-encoder before the built-in MMR diversity pass — a semantic upgrade to the default lexical-overlap rerank. Calls the `/rerank` shape shared by Cohere, Jina, vLLM, and Hugging Face TEI, so a local `bge-reranker` via TEI (`http://localhost:8080`) or a hosted reranker both work. |
+| `CORTEXDB_RERANK_MODEL` | _(unset)_ | Reranker model name (sent when set; TEI ignores it). |
+| `CORTEXDB_RERANK_API_KEY` | _(unset)_ | Bearer token for the reranker endpoint (local TEI needs none). |
 
 The server runs in **no-embedder (lexical) mode** by default — no API key required. RAG, knowledge graph, and memory tools all work without an embedder via lexical retrieval. Set `CORTEXDB_EMBED_BASE_URL` (plus model/dim) to enable semantic hybrid retrieval — e.g. against a local Ollama:
 
@@ -91,6 +94,7 @@ export CORTEXDB_PATH="$HOME/.cortexdb/cortexdb.db"
 | `/cortexdb-graph` | Render the brain's knowledge graph (entities, relations, documents) to an interactive HTML page and open it. Exports to `~/.cortexdb/graph/`; backed by `cortexdb-mcp --graph-html`. |
 | `/cortexdb-import-memory` | Import local agent memory (memory files + `CLAUDE.md`/`AGENTS.md`) into the brain and organize it into the graph. Backed by `cortexdb-mcp --import-agent-memory`. |
 | `/cortexdb-import-code` | Turn a codebase (**any language** — you are the extractor) into a code knowledge graph in its own isolated database, then open an interactive view. Answers "who implements X / who calls Y / what depends on Z / any dependency cycle?" as graph queries. Backed by `cortexdb-mcp --import-code-graph`. |
+| `/cortexdb-export-memory` | Export all memories to Markdown files (one per memory with frontmatter + a `MEMORY.md` index), mirroring Claude Code's memory layout — human-readable, diffable, backup-friendly. Backed by `cortexdb-mcp --export-memory`. |
 
 ## Proactive memory (SessionStart)
 
