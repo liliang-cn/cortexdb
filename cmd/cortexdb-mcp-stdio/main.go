@@ -36,6 +36,22 @@ func main() {
 		return
 	}
 
+	// `--multi-hop "<question>"` answers a complex, multi-step question via
+	// iterative agentic retrieval (retrieve → reason → retrieve). Requires an
+	// LLM (CORTEXDB_LLM_*). Used by /cortexdb-multi-hop.
+	if len(os.Args) > 1 && os.Args[1] == "--multi-hop" {
+		runMultiHop(os.Args[2:])
+		return
+	}
+
+	// `--facts-as-of [RFC3339] [--from NAME] [--type TYPE]` prints the temporal
+	// facts valid at an instant (default now) — an as-of view of the bitemporal
+	// knowledge graph. Used by /cortexdb-facts-asof.
+	if len(os.Args) > 1 && os.Args[1] == "--facts-as-of" {
+		runFactsAsOf(os.Args[2:])
+		return
+	}
+
 	// `--resolve-entities [--dry-run]` merges duplicate/alias entity nodes into
 	// canonical ones (deterministic; LLM acronym/synonym detection when
 	// CORTEXDB_LLM_* is set). Used by /cortexdb-resolve-entities.

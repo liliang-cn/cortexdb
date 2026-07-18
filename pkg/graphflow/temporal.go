@@ -165,6 +165,11 @@ func QueryFactsAsOf(ctx context.Context, db *cortexdb.DB, at time.Time, filter T
 	if db == nil {
 		return nil, fmt.Errorf("graphflow: temporal: nil db")
 	}
+	// Ensure the graph tables exist: querying facts on a brand-new brain that
+	// never wrote a graph would otherwise hit "no such table: graph_edges".
+	if err := db.Graph().InitGraphSchema(ctx); err != nil {
+		return nil, fmt.Errorf("graphflow: temporal: init graph schema: %w", err)
+	}
 	names := loadEntityDisplayNames(ctx, db)
 
 	query := `SELECT from_node_id, to_node_id, COALESCE(edge_type, ''),

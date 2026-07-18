@@ -62,6 +62,7 @@ ${CLAUDE_PLUGIN_ROOT}/bin/cortexdb-mcp.cmd
 | `CORTEXDB_RERANK_BASE_URL` | _(unset)_ | Cross-encoder **reranker** endpoint. When set, retrieval (SearchKnowledge / GraphRAG / hybrid) reorders candidates with a real cross-encoder before the built-in MMR diversity pass — a semantic upgrade to the default lexical-overlap rerank. Calls the `/rerank` shape shared by Cohere, Jina, vLLM, and Hugging Face TEI, so a local `bge-reranker` via TEI (`http://localhost:8080`) or a hosted reranker both work. |
 | `CORTEXDB_RERANK_MODEL` | _(unset)_ | Reranker model name (sent when set; TEI ignores it). |
 | `CORTEXDB_RERANK_API_KEY` | _(unset)_ | Bearer token for the reranker endpoint (local TEI needs none). |
+| `CORTEXDB_QUERY_REWRITE` | _(unset)_ | Set to `1`/`true` to enable **pre-retrieval query transformation** (multi-query rewrite + HyDE). When on **and** a chat LLM is configured (`CORTEXDB_LLM_BASE_URL`), `SearchKnowledge` expands the raw query into alternate phrasings and keywords (fused into lexical + graph recall) plus a hypothetical answer passage; with an embedder set, the semantic query vector is derived from that passage (HyDE) instead of the literal question. Best-effort: an LLM error silently falls back to the raw query. |
 
 The server runs in **no-embedder (lexical) mode** by default — no API key required. RAG, knowledge graph, and memory tools all work without an embedder via lexical retrieval. Set `CORTEXDB_EMBED_BASE_URL` (plus model/dim) to enable semantic hybrid retrieval — e.g. against a local Ollama:
 
@@ -97,6 +98,8 @@ export CORTEXDB_PATH="$HOME/.cortexdb/cortexdb.db"
 | `/cortexdb-export-memory` | Export all memories to Markdown files (one per memory with frontmatter + a `MEMORY.md` index), mirroring Claude Code's memory layout — human-readable, diffable, backup-friendly. Backed by `cortexdb-mcp --export-memory`. |
 | `/cortexdb-global-search` | Answer whole-corpus / thematic questions ("what are the main themes?") via GraphRAG **global search**: detect entity communities, write an LLM report per community, then map-reduce them into an answer. Needs `CORTEXDB_LLM_*`. Backed by `cortexdb-mcp --global-search`. |
 | `/cortexdb-resolve-entities` | Merge duplicate/alias entities into canonical nodes (case/spacing/punctuation variants deterministically; acronyms/synonyms with `CORTEXDB_LLM_*`). Use `--dry-run` to preview. Backed by `cortexdb-mcp --resolve-entities`. |
+| `/cortexdb-multi-hop` | Answer complex, multi-step questions that need chaining evidence ("who leads the team that owns X?") via **multi-hop retrieval**: retrieve → reason → retrieve, where the LLM decides each hop whether it has enough or issues a focused follow-up query. Needs `CORTEXDB_LLM_*`. Backed by `cortexdb-mcp --multi-hop`. |
+| `/cortexdb-facts-asof` | Query the temporal knowledge graph "as of" a point in time: shows relation facts whose validity interval (`valid_from`..`valid_to`) contains the given RFC3339 instant (default now), optionally scoped by `--from` subject / `--type` predicate. Superseded/expired facts drop out. Backed by `cortexdb-mcp --facts-as-of`. |
 
 ## Proactive memory (SessionStart)
 
