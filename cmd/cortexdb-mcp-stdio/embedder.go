@@ -41,6 +41,9 @@ func openBrainDB(dbPath string) (*cortexdb.DB, error) {
 	if r := newReranker(); r != nil {
 		opts = append(opts, cortexdb.WithReranker(r))
 	}
+	if qt := newQueryTransformer(); qt != nil {
+		opts = append(opts, cortexdb.WithQueryTransformer(qt))
+	}
 	return cortexdb.Open(cortexdb.DefaultConfig(dbPath), opts...)
 }
 

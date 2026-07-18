@@ -211,6 +211,12 @@ func (db *DB) GetKnowledge(ctx context.Context, req KnowledgeGetRequest) (*Knowl
 
 // SearchKnowledge searches durable knowledge and groups chunk results by knowledge document.
 func (db *DB) SearchKnowledge(ctx context.Context, req KnowledgeSearchRequest) (*KnowledgeSearchResponse, error) {
+	// Pre-retrieval query transformation (rewrite + HyDE): fold any transformer
+	// AlternateQueries/Keywords into the request before planning, and capture the
+	// hypothetical document to steer the semantic query vector below. Best-effort:
+	// hydeDoc is "" when no transformer is set or it declined/errored.
+	hydeDoc := db.applyQueryTransform(ctx, &req)
+
 	resolution := resolveRetrievalPlan(retrievalPlanInput{
 		Query:               req.Query,
 		Plan:                req.Plan,
@@ -273,7 +279,10 @@ func (db *DB) SearchKnowledge(ctx context.Context, req KnowledgeSearchRequest) (
 	var err error
 	if db.HasEmbedder() && resolution.Decision.EffectiveMode != RetrievalModeLexical {
 		// Fuse vector + lexical: semantic-only silently dropped exact-keyword
-		// matches, so hybrid keeps both.
+		// matches, so hybrid keeps both. When a HyDE document was produced, the
+		// vector path embeds it instead of the raw query; the lexical path keeps
+		// the raw query untouched.
+		opts.EmbedText = hydeDoc
 		result, err = db.searchKnowledgeHybrid(ctx, resolution.Plan.Query, opts, lexReq)
 	} else {
 		result, err = db.GraphRAGTools().SearchGraphRAGLexical(ctx, lexReq)
