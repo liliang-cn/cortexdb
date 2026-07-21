@@ -29,6 +29,18 @@ func main() {
 		return
 	}
 
+	// `--memory-html [out]` renders every stored memory to a self-contained,
+	// interactive HTML dashboard (cards grouped by scope, live search) and prints
+	// its path. Used by /cortexdb-memory-view.
+	if len(os.Args) > 1 && os.Args[1] == "--memory-html" {
+		out := ""
+		if len(os.Args) > 2 {
+			out = os.Args[2]
+		}
+		runMemoryHTML(out)
+		return
+	}
+
 	// `--import-agent-memory [roots...]` imports Claude Code / Codex memory into
 	// the brain. Used by /cortexdb-import-memory.
 	if len(os.Args) > 1 && os.Args[1] == "--import-agent-memory" {
