@@ -120,7 +120,7 @@ lifecycle API. Both use the existing gRPC sidecar and unified
 
 ```bash
 # OpenClaw
-openclaw plugins install npm:cortexdb-openclaw-memory@2.57.0
+openclaw plugins install npm:cortexdb-openclaw-memory@2.57.1
 openclaw config set plugins.slots.memory cortexdb-memory
 openclaw gateway restart
 

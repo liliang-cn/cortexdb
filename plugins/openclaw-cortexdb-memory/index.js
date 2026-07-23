@@ -17,6 +17,19 @@ export default definePluginEntry({
     const db = createCortexDB(api.pluginConfig);
     const resultCache = new Map();
 
+    api.registerService({
+      id: "cortexdb-grpc-sidecar",
+      async start() {
+        try {
+          await db.ready();
+          api.logger.info(`CortexDB memory connected at ${db.config.endpoint}`);
+        } catch (error) {
+          api.logger.error(String(error));
+        }
+      },
+      async stop() { await db.close(); },
+    });
+
     api.registerMemoryCapability({
       promptBuilder({ availableTools }) {
         if (!availableTools.has("cortexdb_memory_search")) return [];
@@ -51,7 +64,15 @@ export default definePluginEntry({
                   provider: "cortexdb",
                   dirty: false,
                   sources: ["memory"],
-                  custom: { endpoint: db.config.endpoint, namespace: db.config.namespace },
+                  custom: {
+                    endpoint: db.config.endpoint,
+                    namespace: db.config.namespace,
+                    connected: db.sidecar.state.connected,
+                    managedSidecar: db.sidecar.state.managed,
+                    error: db.sidecar.state.error || undefined,
+                    dbPath: db.sidecar.state.info?.dbPath,
+                    version: db.sidecar.state.info?.version,
+                  },
                 };
               },
               async probeEmbeddingAvailability() {
@@ -111,6 +132,5 @@ export default definePluginEntry({
       async execute(_id, params) { return textResult(await db.forget(params.memoryId)); },
     }, { optional: true });
 
-    api.on("gateway_stop", () => db.close());
   },
 });

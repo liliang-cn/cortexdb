@@ -1,5 +1,8 @@
 import clientPackage from "cortexdb-client";
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
+import { homedir } from "node:os";
+import { createSidecar } from "./sidecar.js";
 
 const { CortexClient } = clientPackage;
 
@@ -18,14 +21,29 @@ export function resolveConfig(config = {}, env = process.env) {
     topKMemories: integer(config.topKMemories, 8, 1),
     topKKnowledge: integer(config.topKKnowledge, 5, 0),
     maxContextChars: integer(config.maxContextChars, 12000, 256),
+    autoStart: config.autoStart !== false,
+    binaryPath: config.binaryPath || env.CORTEXDB_GRPC_BIN || "",
+    dbPath: config.dbPath || env.CORTEXDB_PATH || join(homedir(), ".cortexdb", "cortexdb.db"),
+    dataDir: config.dataDir || "",
   };
 }
 
-export function createCortexDB(config = {}, connect = CortexClient.connect) {
+export function createCortexDB(config = {}, connect = CortexClient.connect, sidecarFactory = createSidecar) {
   const resolved = resolveConfig(config);
   const client = connect(resolved.endpoint, resolved.token ? { token: resolved.token } : {});
+  const sidecar = sidecarFactory(resolved);
+  let readyPromise = null;
+
+  async function ready() {
+    readyPromise ||= sidecar.start(client).catch((error) => {
+      readyPromise = null;
+      throw new Error(`CortexDB memory backend unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    });
+    return readyPromise;
+  }
 
   async function call(name, args) {
+    await ready();
     const response = await client.tools.CallTool({ name, argsJson: JSON.stringify(args) });
     return JSON.parse(response.resultJson || "{}");
   }
@@ -62,7 +80,12 @@ export function createCortexDB(config = {}, connect = CortexClient.connect) {
     return call("memory_delete", { memory_id: memoryId });
   }
 
-  return { client, config: resolved, call, recall, remember, forget, close: () => client.close() };
+  async function close() {
+    await sidecar.stop();
+    client.close();
+  }
+
+  return { client, config: resolved, sidecar, ready, call, recall, remember, forget, close };
 }
 
 export function recallHits(response) {

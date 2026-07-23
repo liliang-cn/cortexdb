@@ -1,6 +1,6 @@
 {
   "name": "cortexdb-openclaw-memory",
-  "version": "2.57.0",
+  "version": "2.57.1",
   "description": "CortexDB native memory capability for OpenClaw",
   "type": "module",
   "main": "./index.js",

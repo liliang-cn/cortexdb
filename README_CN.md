@@ -119,7 +119,7 @@ gRPC sidecar 与统一的 `knowledge_memory_recall`，不会建立平行的存�
 
 ```bash
 # OpenClaw
-openclaw plugins install npm:cortexdb-openclaw-memory@2.57.0
+openclaw plugins install npm:cortexdb-openclaw-memory@2.57.1
 openclaw config set plugins.slots.memory cortexdb-memory
 openclaw gateway restart
 

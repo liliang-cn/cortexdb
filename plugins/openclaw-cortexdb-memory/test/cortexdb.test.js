@@ -7,6 +7,7 @@ test("resolveConfig applies safe defaults", () => {
   assert.equal(config.endpoint, "127.0.0.1:47821");
   assert.equal(config.namespace, "openclaw");
   assert.equal(config.scope, "user");
+  assert.equal(config.autoStart, true);
 });
 
 test("recall uses unified KnowledgeMemory tool", async () => {
@@ -20,11 +21,17 @@ test("recall uses unified KnowledgeMemory tool", async () => {
     },
     close() {},
   };
-  const db = createCortexDB({ userId: "alice" }, () => fake);
+  const sidecar = {
+    state: { connected: false, managed: false, error: "", info: null },
+    async start() { this.state.connected = true; },
+    async stop() {},
+  };
+  const db = createCortexDB({ userId: "alice" }, () => fake, () => sidecar);
   const result = await db.recall("coffee");
   assert.equal(result.context_pack.text, "remembered");
   assert.equal(calls[0].name, "knowledge_memory_recall");
   assert.equal(JSON.parse(calls[0].argsJson).user_id, "alice");
+  assert.equal(sidecar.state.connected, true);
 });
 
 test("recallHits maps memory and knowledge", () => {
