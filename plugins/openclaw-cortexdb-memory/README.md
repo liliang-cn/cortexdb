@@ -4,13 +4,16 @@ Native OpenClaw `memory` capability backed by the CortexDB gRPC sidecar. It
 registers graph-aware recall, durable memory store/delete tools, prompt guidance,
 and the generic OpenClaw memory search runtime.
 
+Install the public release:
+
 ```bash
-npm install
-openclaw plugins install --link ./plugins/openclaw-cortexdb-memory
+openclaw plugins install git:github.com/liliang-cn/openclaw-cortexdb-memory@v2.57.0
 openclaw config set plugins.slots.memory cortexdb-memory
 openclaw gateway restart
 openclaw plugins inspect cortexdb-memory --runtime --json
 ```
+
+ClawHub package: `@liliang-cn/openclaw-memory` (available after registry scan).
 
 Run the sidecar first:
 

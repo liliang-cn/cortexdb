@@ -4,8 +4,16 @@ Native Hermes `MemoryProvider` backed by the CortexDB gRPC sidecar. It adds
 automatic pre-turn recall, completed-turn capture, explicit memory tools, and
 graph-aware context from `knowledge_memory_recall`.
 
-Install this directory as `$HERMES_HOME/plugins/cortexdb` (normally
-`~/.hermes/plugins/cortexdb`) and configure:
+Install the public release and activate it:
+
+```bash
+hermes plugins install liliang-cn/hermes-cortexdb-memory --enable
+hermes config set memory.provider cortexdb
+hermes gateway restart
+hermes memory status
+```
+
+Equivalent configuration in `~/.hermes/config.yaml`:
 
 ```yaml
 memory:

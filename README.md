@@ -113,13 +113,24 @@ CortexDB also ships native memory-layer adapters for agents that expose a memory
 lifecycle API. Both use the existing gRPC sidecar and unified
 `knowledge_memory_recall`; they do not add a parallel storage path.
 
-- OpenClaw: [`plugins/openclaw-cortexdb-memory`](plugins/openclaw-cortexdb-memory/)
+- OpenClaw: [`liliang-cn/openclaw-cortexdb-memory`](https://github.com/liliang-cn/openclaw-cortexdb-memory)
   registers the exclusive `memory` capability plus recall/store/delete tools.
-- Hermes Agent: [`plugins/hermes-cortexdb-memory`](plugins/hermes-cortexdb-memory/)
-  registers a `MemoryProvider` with automatic pre-turn recall and completed-turn
-  capture.
+- Hermes Agent: [`liliang-cn/hermes-cortexdb-memory`](https://github.com/liliang-cn/hermes-cortexdb-memory)
+  registers a `MemoryProvider` with automatic pre-turn recall and completed-turn capture.
 
-Run `cortexdb-grpc`, then follow each plugin README. The existing
+```bash
+# OpenClaw
+openclaw plugins install git:github.com/liliang-cn/openclaw-cortexdb-memory@v2.57.0
+openclaw config set plugins.slots.memory cortexdb-memory
+openclaw gateway restart
+
+# Hermes Agent
+hermes plugins install liliang-cn/hermes-cortexdb-memory --enable
+hermes config set memory.provider cortexdb
+hermes gateway restart
+```
+
+Run `cortexdb-grpc`, then install the adapter. The existing
 [`skills/`](skills/) remain useful for explicit tool instructions and helper
 functions, but a skill alone does not replace the host agent's native memory
 backend.

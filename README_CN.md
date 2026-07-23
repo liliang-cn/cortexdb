@@ -112,10 +112,22 @@ export CORTEXDB_PATH="$HOME/.cortexdb/cortexdb.db"
 CortexDB 还提供两个会进入宿主记忆生命周期的原生适配器。它们都复用现有
 gRPC sidecar 与统一的 `knowledge_memory_recall`，不会建立平行的存储路径。
 
-- OpenClaw：[`plugins/openclaw-cortexdb-memory`](plugins/openclaw-cortexdb-memory/)
+- OpenClaw：[`liliang-cn/openclaw-cortexdb-memory`](https://github.com/liliang-cn/openclaw-cortexdb-memory)
   注册独占的 `memory` capability，以及召回、保存、删除工具。
-- Hermes Agent：[`plugins/hermes-cortexdb-memory`](plugins/hermes-cortexdb-memory/)
+- Hermes Agent：[`liliang-cn/hermes-cortexdb-memory`](https://github.com/liliang-cn/hermes-cortexdb-memory)
   注册 `MemoryProvider`，自动执行每轮前召回与完成轮次同步。
+
+```bash
+# OpenClaw
+openclaw plugins install git:github.com/liliang-cn/openclaw-cortexdb-memory@v2.57.0
+openclaw config set plugins.slots.memory cortexdb-memory
+openclaw gateway restart
+
+# Hermes Agent
+hermes plugins install liliang-cn/hermes-cortexdb-memory --enable
+hermes config set memory.provider cortexdb
+hermes gateway restart
+```
 
 先运行 `cortexdb-grpc`，再按各插件 README 安装。现有 [`skills/`](skills/)
 仍适合提供显式工具指引与 helper，但 skill 本身不会替换宿主的原生记忆后端。
