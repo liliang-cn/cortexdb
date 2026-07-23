@@ -107,6 +107,23 @@ export CORTEXDB_PATH="$HOME/.cortexdb/cortexdb.db"
 
 To upgrade: `/plugin update cortexdb` then `/reload-plugins` — the server binary auto-refreshes (version-pinned cache). See `plugins/cortexdb/README.md` for all env vars.
 
+## OpenClaw and Hermes memory plugins
+
+CortexDB also ships native memory-layer adapters for agents that expose a memory
+lifecycle API. Both use the existing gRPC sidecar and unified
+`knowledge_memory_recall`; they do not add a parallel storage path.
+
+- OpenClaw: [`plugins/openclaw-cortexdb-memory`](plugins/openclaw-cortexdb-memory/)
+  registers the exclusive `memory` capability plus recall/store/delete tools.
+- Hermes Agent: [`plugins/hermes-cortexdb-memory`](plugins/hermes-cortexdb-memory/)
+  registers a `MemoryProvider` with automatic pre-turn recall and completed-turn
+  capture.
+
+Run `cortexdb-grpc`, then follow each plugin README. The existing
+[`skills/`](skills/) remain useful for explicit tool instructions and helper
+functions, but a skill alone does not replace the host agent's native memory
+backend.
+
 ## Other languages (gRPC sidecar)
 
 `cortexdb-grpc` serves the full facade over gRPC, with typed clients for Rust/Python/Node:

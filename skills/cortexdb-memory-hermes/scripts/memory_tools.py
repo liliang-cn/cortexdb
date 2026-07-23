@@ -15,6 +15,7 @@ CORTEXDB_GRPC_TOKEN.
 from __future__ import annotations
 
 import os
+import json
 import uuid
 from typing import Optional
 
@@ -32,6 +33,14 @@ def _c() -> CortexClient:
     return _client
 
 
+def call_tool(name: str, args: dict) -> dict:
+    """Call one CortexDB generic tool and decode its JSON response."""
+    res = _c().tools.CallTool(proto.CallToolRequest(
+        name=name, args_json=json.dumps(args),
+    ))
+    return json.loads(res.result_json or "{}")
+
+
 def remember(content: str, user_id: str = "default", scope: str = "user",
              importance: float = 0.0) -> str:
     """Store a memory about the user. Returns the memory id."""
@@ -46,10 +55,40 @@ def remember(content: str, user_id: str = "default", scope: str = "user",
 def recall(query: str, user_id: str = "default", scope: str = "user",
            top_k: int = 5) -> list[dict]:
     """Recall memories by meaning. Returns [{content, score}]."""
-    res = _c().memory.SearchMemory(proto.SearchMemoryRequest(
-        query=query, user_id=user_id, scope=scope, top_k=top_k,
-    ))
-    return [{"content": h.memory.content, "score": h.score} for h in res.results]
+    res = recall_context(query, user_id=user_id, scope=scope,
+                         top_k_memories=top_k)
+    return [{"id": h.get("memory", {}).get("id"),
+             "content": h.get("memory", {}).get("content", ""),
+             "score": h.get("score", 0)} for h in res.get("memories", [])]
+
+
+def recall_context(query: str, user_id: str = "default", session_id: str = "",
+                   scope: str = "user", namespace: str = "",
+                   top_k_memories: int = 5, top_k_knowledge: int = 5,
+                   max_context_chars: int = 8000) -> dict:
+    """Recall fused memory, knowledge, graph facts, and prompt-ready context."""
+    return call_tool("knowledge_memory_recall", {
+        "query": query, "user_id": user_id, "session_id": session_id,
+        "scope": scope, "namespace": namespace,
+        "top_k_memories": top_k_memories,
+        "top_k_knowledge": top_k_knowledge,
+        "max_context_chars": max_context_chars,
+    })
+
+
+def remember_context(content: str, memory_id: str = "", user_id: str = "default",
+                     session_id: str = "", scope: str = "user",
+                     namespace: str = "", importance: float = 0.0,
+                     metadata: Optional[dict] = None) -> str:
+    """Store through the unified KnowledgeMemory facade."""
+    mid = memory_id or f"mem-{uuid.uuid4().hex[:12]}"
+    res = call_tool("knowledge_memory_remember", {
+        "memory_id": mid, "user_id": user_id, "session_id": session_id,
+        "scope": scope, "namespace": namespace, "content": content,
+        "importance": importance, "metadata": metadata or {},
+    })
+    memory = res.get("memory", {})
+    return memory.get("id") or memory.get("memory_id") or mid
 
 
 def save_knowledge(content: str, title: str = "", knowledge_id: str = "") -> str:

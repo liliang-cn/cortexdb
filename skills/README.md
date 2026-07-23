@@ -1,10 +1,16 @@
-# CortexDB Agent Skills
+# CortexDB Agent Integrations
 
-Two [agentskills.io](https://agentskills.io)-format skills that wire CortexDB in as the memory + knowledge-graph layer for an AI agent, via the gRPC sidecar and the `cortexdb-client` clients.
+Native memory plugins and [agentskills.io](https://agentskills.io)-format skills
+wire CortexDB into OpenClaw and Hermes Agent through the gRPC sidecar.
 
-| Skill | Target agent | Client | Install |
+| Integration | Target | Behavior | Location |
 |---|---|---|---|
-| [`cortexdb-memory-hermes`](cortexdb-memory-hermes/) | Hermes Agent (Python) | `pip install cortexdb-client` | `hermes skills install <url> --name cortexdb-memory-hermes` |
-| [`cortexdb-memory-openclaw`](cortexdb-memory-openclaw/) | OpenClaw (Node.js) | `npm install cortexdb-client` | `openclaw skills install ./skills/cortexdb-memory-openclaw` |
+| Native memory plugin | OpenClaw | Exclusive `memory` capability, prompt guidance, search/store/delete tools | [`plugins/openclaw-cortexdb-memory`](../plugins/openclaw-cortexdb-memory/) |
+| Native memory provider | Hermes Agent | Automatic prefetch, turn sync, explicit memory tools | [`plugins/hermes-cortexdb-memory`](../plugins/hermes-cortexdb-memory/) |
+| Agent skill | OpenClaw | Instructions and reusable Node helpers | [`cortexdb-memory-openclaw`](cortexdb-memory-openclaw/) |
+| Agent skill | Hermes Agent | Instructions and reusable Python helpers | [`cortexdb-memory-hermes`](cortexdb-memory-hermes/) |
 
-Both follow the same shape: run the `cortexdb-grpc` sidecar (one binary, one SQLite file, zero-key lexical mode by default), then `remember`/`recall` plus a real RDF/SPARQL knowledge graph. Each skill bundles a ready-to-use helper module under `scripts/` (verified end-to-end against a live sidecar).
+Use a native plugin when CortexDB should participate automatically in the agent's
+memory lifecycle. Use a skill when explicit tools and integration instructions are
+enough. Both paths share `knowledge_memory_recall`, one SQLite file, lexical mode
+without an API key, and the RDF/SPARQL knowledge graph.

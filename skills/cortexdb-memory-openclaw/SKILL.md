@@ -104,10 +104,16 @@ console.log(ans.result.count, 'result(s)');
 
 OpenClaw skills teach the agent how and when to call tools. A ready-to-use helper
 module wraps the calls above into `remember`, `recall`, `saveKnowledge`,
-`searchKnowledge`, `relate`, and `askGraph`:
+`searchKnowledge`, `relate`, and `askGraph`. `recallContext` uses the unified
+KnowledgeMemory facade to fuse scoped memory, durable knowledge, and graph facts:
 
 - `scripts/memory-tools.js` — import these and register them as OpenClaw tools,
   or call them directly from a custom skill/plugin.
+
+For automatic OpenClaw memory lifecycle integration, install the native plugin
+at `plugins/openclaw-cortexdb-memory` and select `cortexdb-memory` in
+`plugins.slots.memory`. The native plugin replaces OpenClaw's built-in
+`memory-core` slot; this skill alone does not.
 
 In your skill's instructions, tell the agent: *to remember a durable fact about
 the user, call `remember(text)`; to recall, call `recall(query)`; to record a

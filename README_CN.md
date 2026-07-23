@@ -107,6 +107,19 @@ export CORTEXDB_PATH="$HOME/.cortexdb/cortexdb.db"
 
 升级：`/plugin update cortexdb` 然后 `/reload-plugins`——server 二进制会自动刷新（按版本号缓存）。全部环境变量见 `plugins/cortexdb/README.md`。
 
+## OpenClaw 与 Hermes 原生记忆插件
+
+CortexDB 还提供两个会进入宿主记忆生命周期的原生适配器。它们都复用现有
+gRPC sidecar 与统一的 `knowledge_memory_recall`，不会建立平行的存储路径。
+
+- OpenClaw：[`plugins/openclaw-cortexdb-memory`](plugins/openclaw-cortexdb-memory/)
+  注册独占的 `memory` capability，以及召回、保存、删除工具。
+- Hermes Agent：[`plugins/hermes-cortexdb-memory`](plugins/hermes-cortexdb-memory/)
+  注册 `MemoryProvider`，自动执行每轮前召回与完成轮次同步。
+
+先运行 `cortexdb-grpc`，再按各插件 README 安装。现有 [`skills/`](skills/)
+仍适合提供显式工具指引与 helper，但 skill 本身不会替换宿主的原生记忆后端。
+
 ## 在其他语言中使用（gRPC sidecar）
 
 `cortexdb-grpc` 通过 gRPC 暴露完整 facade，并提供 Rust/Python/Node 的类型化客户端：

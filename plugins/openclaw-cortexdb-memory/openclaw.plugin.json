@@ -1,0 +1,53 @@
+{
+  "id": "cortexdb-memory",
+  "name": "CortexDB Memory",
+  "description": "Local-first scoped memory, RAG, and graph-aware recall for OpenClaw.",
+  "version": "2.57.0",
+  "kind": "memory",
+  "activation": {
+    "onStartup": false
+  },
+  "contracts": {
+    "tools": [
+      "cortexdb_memory_search",
+      "cortexdb_memory_store",
+      "cortexdb_memory_forget"
+    ]
+  },
+  "toolMetadata": {
+    "cortexdb_memory_search": {
+      "replaySafe": true
+    },
+    "cortexdb_memory_forget": {
+      "optional": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "endpoint": { "type": "string" },
+      "token": { "type": "string" },
+      "userId": { "type": "string" },
+      "scope": { "type": "string", "enum": ["global", "user", "session"] },
+      "namespace": { "type": "string" },
+      "topKMemories": { "type": "integer", "minimum": 1, "maximum": 50 },
+      "topKKnowledge": { "type": "integer", "minimum": 0, "maximum": 50 },
+      "maxContextChars": { "type": "integer", "minimum": 256, "maximum": 100000 }
+    }
+  },
+  "uiHints": {
+    "endpoint": {
+      "label": "CortexDB gRPC endpoint",
+      "placeholder": "127.0.0.1:47821"
+    },
+    "token": {
+      "label": "CortexDB bearer token",
+      "sensitive": true
+    },
+    "userId": {
+      "label": "Default memory user",
+      "placeholder": "default"
+    }
+  }
+}

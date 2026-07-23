@@ -1,0 +1,5 @@
+name: cortexdb
+version: 2.57.0
+description: "Local-first CortexDB memory, fused retrieval, and knowledge graph for Hermes Agent."
+pip_dependencies:
+  - cortexdb-client>=0.1.1

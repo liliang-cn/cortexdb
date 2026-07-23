@@ -58,3 +58,5 @@ Thumbs.db
 .claude/
 CLAUDE.md
 clients/target/
+node_modules/
+__pycache__/

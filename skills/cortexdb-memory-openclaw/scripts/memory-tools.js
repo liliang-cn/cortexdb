@@ -27,6 +27,11 @@ function client() {
 
 const rid = (p) => `${p}-${crypto.randomBytes(6).toString('hex')}`;
 
+async function callTool(name, args) {
+  const res = await client().tools.CallTool({ name, argsJson: JSON.stringify(args) });
+  return JSON.parse(res.resultJson || '{}');
+}
+
 /** Store a memory about the user. Returns the memory id. */
 async function remember(content, { userId = 'default', scope = 'user', importance = 0 } = {}) {
   const memoryId = rid('mem');
@@ -36,8 +41,37 @@ async function remember(content, { userId = 'default', scope = 'user', importanc
 
 /** Recall memories by meaning. Returns [{ content, score }]. */
 async function recall(query, { userId = 'default', scope = 'user', topK = 5 } = {}) {
-  const res = await client().memory.SearchMemory({ query, userId, scope, topK });
-  return res.results.map((h) => ({ content: h.memory.content, score: h.score }));
+  const res = await recallContext(query, { userId, scope, topKMemories: topK });
+  return (res.memories || []).map((h) => ({
+    id: h.memory && (h.memory.id || h.memory.memory_id),
+    content: h.memory && h.memory.content,
+    score: h.score,
+  }));
+}
+
+/** Fused recall across memory, knowledge, and graph facts. */
+async function recallContext(query, {
+  userId = 'default', sessionId = '', scope = 'user', namespace = '',
+  topKMemories = 5, topKKnowledge = 5, maxContextChars = 8000,
+} = {}) {
+  return callTool('knowledge_memory_recall', {
+    query, user_id: userId, session_id: sessionId, scope, namespace,
+    top_k_memories: topKMemories, top_k_knowledge: topKKnowledge,
+    max_context_chars: maxContextChars,
+  });
+}
+
+/** Store through the unified KnowledgeMemory facade. */
+async function rememberContext(content, {
+  memoryId = '', userId = 'default', sessionId = '', scope = 'user',
+  namespace = '', importance = 0, metadata = {},
+} = {}) {
+  const id = memoryId || rid('mem');
+  const res = await callTool('knowledge_memory_remember', {
+    memory_id: id, user_id: userId, session_id: sessionId, scope,
+    namespace, content, importance, metadata,
+  });
+  return (res.memory && (res.memory.id || res.memory.memory_id)) || id;
 }
 
 /** Store a durable knowledge document (chunked + indexed). Returns its id. */
@@ -75,7 +109,10 @@ async function askGraph(sparql) {
   return { count: result.count, vars: result.vars, bindings, boolean: result.boolean };
 }
 
-module.exports = { remember, recall, saveKnowledge, searchKnowledge, relate, askGraph, client };
+module.exports = {
+  remember, recall, rememberContext, recallContext,
+  saveKnowledge, searchKnowledge, relate, askGraph, callTool, client,
+};
 
 // tiny smoke run against a lexical-mode sidecar: node memory-tools.js
 if (require.main === module) {

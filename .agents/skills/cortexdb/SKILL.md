@@ -270,6 +270,20 @@ Separate workflow toolboxes:
 - memoryflow: `memoryflow_ingest_transcript`, `memoryflow_recall`, `memoryflow_wake_up_layers`, `memoryflow_prepare_reply`
 - graphflow: `graphflow_build`, `graphflow_analyze`, `graphflow_report`, `graphflow_export`, `graphflow_run`
 
+## OpenClaw and Hermes Plugins
+
+Native host-memory adapters live under `plugins/`:
+
+- `plugins/openclaw-cortexdb-memory` registers OpenClaw's exclusive `memory`
+  capability and CortexDB recall/store/delete tools.
+- `plugins/hermes-cortexdb-memory` registers Hermes Agent's `MemoryProvider`
+  with automatic prefetch and completed-turn synchronization.
+
+Both adapters call the existing gRPC `ToolsService` and prefer
+`knowledge_memory_recall`; do not implement a separate retrieval or storage path
+inside an agent plugin. The `skills/cortexdb-memory-*` directories remain the
+lighter explicit-tool integration.
+
 ## Optional Semantic Router
 
 `pkg/semantic-router` is optional. Use it before CortexDB tools when you need intent routing.

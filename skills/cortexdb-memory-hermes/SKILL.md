@@ -117,8 +117,14 @@ tool functions the agent can call — `remember(text)`, `recall(query)`,
 client. A ready-to-import module is provided:
 
 - `scripts/memory_tools.py` — `remember`, `recall`, `save_knowledge`,
-  `search_knowledge`, `relate`, `ask_graph`, returning plain dicts/strings that
-  drop straight into a tool-calling loop.
+  `search_knowledge`, `relate`, `ask_graph`, plus unified `recall_context` and
+  `remember_context`, returning plain dicts/strings that drop straight into a
+  tool-calling loop.
+
+For automatic pre-turn recall and completed-turn synchronization, install the
+native Hermes `MemoryProvider` at `plugins/hermes-cortexdb-memory` and set
+`memory.provider: cortexdb`. A skill or MCP server exposes tools but does not by
+itself participate in Hermes' native memory lifecycle.
 
 ## Install this skill into Hermes
 

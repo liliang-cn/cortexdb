@@ -475,6 +475,20 @@ Separate workflow toolboxes:
 
 - memoryflow: `memoryflow_ingest_transcript`, `memoryflow_recall`, `memoryflow_wake_up_layers`, `memoryflow_prepare_reply`
 - graphflow: `graphflow_build`, `graphflow_analyze`, `graphflow_report`, `graphflow_export`, `graphflow_run`
+
+## OpenClaw and Hermes Plugins
+
+Native host-memory adapters live under `plugins/`:
+
+- `plugins/openclaw-cortexdb-memory` registers OpenClaw's exclusive `memory`
+  capability and CortexDB recall/store/delete tools.
+- `plugins/hermes-cortexdb-memory` registers Hermes Agent's `MemoryProvider`
+  with automatic prefetch and completed-turn synchronization.
+
+Both adapters call the existing gRPC `ToolsService` and prefer
+`knowledge_memory_recall`; do not implement a separate retrieval or storage path
+inside an agent plugin. The `skills/cortexdb-memory-*` directories remain the
+lighter explicit-tool integration.
 - importflow: `importflow_plan`, `importflow_run`, `importflow_ddl_plan` (deterministic `CREATE TABLE` DDL → reviewable knowledge-graph MappingPlan, no LLM), `importflow_ddl_plan_ai` (LLM-refined DDL→KG plan; returns refined plan + deterministic baseline + `llm_used`; needs an `LLMInferer`) (via `importflow.NewToolbox(im)` or `importflow.NewMCPServer(im, opts)` / `importflow.RunMCPStdio(ctx, im, opts)`)
 - connector: `connector_introspect`, `connector_plan`, `connector_run`, `connector_unmask` — privacy gate over a live DB/source feeding RAG + KG. Wire via `connector.NewMCPServer(tb, opts)` / `connector.RunMCPStdio(ctx, tb, opts)`, `connector.RegisterMCPTools(server, tb)` to ride another server, or run `cmd/cortexdb-connector-mcp`.
 
