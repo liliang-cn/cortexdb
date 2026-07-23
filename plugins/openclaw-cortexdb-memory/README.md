@@ -7,13 +7,17 @@ and the generic OpenClaw memory search runtime.
 Install the public release:
 
 ```bash
-openclaw plugins install git:github.com/liliang-cn/openclaw-cortexdb-memory@v2.57.0
+openclaw plugins install npm:cortexdb-openclaw-memory@2.57.0
 openclaw config set plugins.slots.memory cortexdb-memory
 openclaw gateway restart
 openclaw plugins inspect cortexdb-memory --runtime --json
 ```
 
-ClawHub package: `@liliang-cn/openclaw-memory` (available after registry scan).
+GitHub fallback:
+
+```bash
+openclaw plugins install git:github.com/liliang-cn/openclaw-cortexdb-memory@v2.57.0
+```
 
 Run the sidecar first:
 

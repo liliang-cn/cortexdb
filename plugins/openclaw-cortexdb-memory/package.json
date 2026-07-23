@@ -1,5 +1,5 @@
 {
-  "name": "@liliang-cn/openclaw-memory",
+  "name": "cortexdb-openclaw-memory",
   "version": "2.57.0",
   "description": "CortexDB native memory capability for OpenClaw",
   "type": "module",

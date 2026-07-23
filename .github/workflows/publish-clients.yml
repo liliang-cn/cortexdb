@@ -113,3 +113,29 @@ jobs:
             echo "cortexdb-client@${V} already on npm — skipping"; exit 0
           fi
           npm publish --access public
+
+  openclaw-memory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - name: Publish CortexDB OpenClaw memory plugin to npm
+        working-directory: plugins/openclaw-cortexdb-memory
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "NPM_TOKEN not set — skipping npm publish"; exit 0
+          fi
+          V=$(node -p "require('./package.json').version")
+          echo "cortexdb-openclaw-memory version: ${V}"
+          if npm view "cortexdb-openclaw-memory@${V}" version >/dev/null 2>&1; then
+            echo "cortexdb-openclaw-memory@${V} already on npm — skipping"; exit 0
+          fi
+          npm ci --ignore-scripts
+          npm test
+          npm publish --access public
