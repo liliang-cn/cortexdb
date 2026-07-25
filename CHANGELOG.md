@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.58.1] - 2026-07-25
+
+### Fixed
+
+- **A store holding more than one vector dimensionality no longer crashes the process.**
+  `CosineDistance` iterated one vector while indexing the other, so comparing a 4096-dim
+  vector with a 768-dim one panicked with `index out of range [768] with length 768`.
+  The panic surfaced inside `HNSW.Insert` during `knowledge_save`, killing the server
+  mid-write — a database that had outlived an embedding-model change could not be written
+  to at all. All three distance functions now treat mismatched or empty vectors as
+  incomparable (maximum distance) instead of indexing out of bounds, and `HNSW.Insert`
+  rejects a vector whose dimensionality differs from the graph's with a clear error.
+  Callers already log and skip, so mixed-dimension stores stay writable. (IVF and LSH
+  already checked dimensions; HNSW was the outlier.)
+
 ## [2.58.0] - 2026-07-25
 
 ### Fixed
