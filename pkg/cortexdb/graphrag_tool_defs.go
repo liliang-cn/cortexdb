@@ -212,6 +212,18 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 				},
 			),
 		},
+		{
+			Name:        "vector_dimension_repair",
+			Description: "Report vector-dimension drift and optionally re-embed rows whose vectors came from an older embedding model. Such rows cannot enter the vector index, so they silently stop being retrievable by similarity while lexical search still finds them. Run with dry_run first.",
+			InputSchema: toolObjectSchema(
+				nil,
+				map[string]any{
+					"dry_run":    toolBooleanSchema("Report what would change without writing. Defaults to true."),
+					"limit":      toolIntegerSchema("Maximum rows to re-embed (0 = all)."),
+					"batch_size": toolIntegerSchema("Texts per embedding request (default 16)."),
+				},
+			),
+		},
 	}
 	definitions = append(definitions, inferenceToolDefinitions()...)
 	definitions = append(definitions, ontologyToolDefinitions()...)

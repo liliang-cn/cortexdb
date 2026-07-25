@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.59.0] - 2026-07-25
+
+### Added
+
+- **Vector-dimension drift is now visible and repairable.** A store outlives the
+  embedding model that filled it: change models and the old rows keep their old
+  dimensionality. Those vectors cannot enter the vector index — one graph holds one
+  dimensionality — so they quietly stop being retrievable by similarity while lexical
+  search still finds them, which hides the loss. Nothing reported it.
+
+  `SQLiteStore.DimensionReport` groups stored vectors by collection and size and counts
+  the rows that disagree with their collection. `DB.ReembedMismatchedVectors` repairs
+  them by embedding the stored text again with the configured embedder, in batches, with
+  a dry run. The numbers cannot be salvaged by truncating or padding — vectors from two
+  models occupy unrelated spaces — so re-embedding is the only honest repair.
+
+  Both are exposed as the `vector_dimension_repair` MCP tool, which defaults to
+  `dry_run: true` so an operator can look before writing.
+
 ## [2.58.1] - 2026-07-25
 
 ### Fixed

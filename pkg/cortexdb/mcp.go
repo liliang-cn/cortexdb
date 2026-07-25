@@ -169,6 +169,16 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *resp, nil
 	})
+	addGraphRAGMCPTool(server, definitions["vector_dimension_repair"], func(ctx context.Context, req VectorDimensionRepairRequest) (VectorDimensionRepairResponse, error) {
+		resp, err := db.RepairVectorDimensions(ctx, req)
+		if err != nil {
+			if resp != nil {
+				return *resp, err
+			}
+			return VectorDimensionRepairResponse{}, err
+		}
+		return *resp, nil
+	})
 	addGraphRAGMCPTool(server, definitions["knowledge_save"], func(ctx context.Context, req KnowledgeSaveRequest) (KnowledgeSaveResponse, error) {
 		resp, err := toolbox.SaveKnowledge(ctx, req)
 		if err != nil {
