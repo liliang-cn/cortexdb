@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"sort"
@@ -29,6 +30,8 @@ import (
 //	CORTEXDB_EMBED_API_KEY  / OPENAI_API_KEY   API key (Ollama accepts any)
 //	CORTEXDB_EMBED_MODEL                       model (default text-embedding-3-small)
 //	CORTEXDB_EMBED_DIM                         dimension (default 1536; embeddinggemma=768)
+//	CORTEXDB_EMBED_BATCH_SIZE                  texts per request (default 4)
+//	CORTEXDB_EMBED_TIMEOUT_SECONDS             request timeout (default 300)
 func openBrainDB(dbPath string) (*cortexdb.DB, error) {
 	var opts []cortexdb.Option
 	baseURL := firstEnv("CORTEXDB_EMBED_BASE_URL", "OPENAI_BASE_URL")
@@ -83,12 +86,13 @@ type openAIEmbedder struct {
 }
 
 func newOpenAIEmbedder(baseURL, apiKey, model string, dim int) *openAIEmbedder {
+	timeout := time.Duration(envIntOr("CORTEXDB_EMBED_TIMEOUT_SECONDS", 300)) * time.Second
 	return &openAIEmbedder{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		apiKey:  apiKey,
 		model:   model,
 		dim:     dim,
-		client:  &http.Client{Timeout: 60 * time.Second},
+		client:  &http.Client{Timeout: timeout},
 	}
 }
 
@@ -103,6 +107,66 @@ func (e *openAIEmbedder) Embed(ctx context.Context, text string) ([]float32, err
 }
 
 func (e *openAIEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	batchSize := envIntOr("CORTEXDB_EMBED_BATCH_SIZE", 4)
+	if len(texts) > batchSize {
+		out := make([][]float32, 0, len(texts))
+		for start := 0; start < len(texts); start += batchSize {
+			end := start + batchSize
+			if end > len(texts) {
+				end = len(texts)
+			}
+			batch, err := e.EmbedBatch(ctx, texts[start:end])
+			if err != nil {
+				return nil, fmt.Errorf("embedding batch %d-%d: %w", start, end, err)
+			}
+			out = append(out, batch...)
+		}
+		return out, nil
+	}
+	return e.embedAdaptive(ctx, texts)
+}
+
+func (e *openAIEmbedder) embedAdaptive(ctx context.Context, texts []string) ([][]float32, error) {
+	vecs, err := e.embedRequest(ctx, texts)
+	if err == nil {
+		return vecs, nil
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if len(texts) > 1 {
+		mid := len(texts) / 2
+		left, leftErr := e.embedAdaptive(ctx, texts[:mid])
+		if leftErr != nil {
+			return nil, leftErr
+		}
+		right, rightErr := e.embedAdaptive(ctx, texts[mid:])
+		if rightErr != nil {
+			return nil, rightErr
+		}
+		return append(left, right...), nil
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		if attempt > 1 {
+			timer := time.NewTimer(time.Duration(attempt-1) * time.Second)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil, ctx.Err()
+			case <-timer.C:
+			}
+		}
+		vecs, lastErr = e.embedRequest(ctx, texts)
+		if lastErr == nil {
+			return vecs, nil
+		}
+	}
+	return nil, fmt.Errorf("embedding input failed after 3 attempts (%d chars): %w", len(texts[0]), lastErr)
+}
+
+func (e *openAIEmbedder) embedRequest(ctx context.Context, texts []string) ([][]float32, error) {
 	body, err := json.Marshal(map[string]any{"input": texts, "model": e.model})
 	if err != nil {
 		return nil, err
@@ -121,7 +185,8 @@ func (e *openAIEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]fl
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("embeddings endpoint returned %s", resp.Status)
+		message, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<10))
+		return nil, fmt.Errorf("embeddings endpoint returned %s: %s", resp.Status, strings.TrimSpace(string(message)))
 	}
 	var parsed struct {
 		Data []struct {

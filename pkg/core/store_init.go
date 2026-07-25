@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -163,6 +164,24 @@ func (s *SQLiteStore) createTables(ctx context.Context) error {
 	-- content='messages' keeps a shadow copy synced via triggers below.
 	CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(content, content='messages', content_rowid='rowid');
 
+	-- Companion CJK index. unicode61 (above) does not segment Han/Hiragana/Hangul, so a
+	-- run of CJK characters becomes one token and no Chinese query can ever match. The
+	-- trigram tokenizer indexes substrings instead, which does work for CJK — but it is
+	-- a poor word index for space-separated languages, so it lives beside the unicode61
+	-- index rather than replacing it, and callers route by script (see CJKAwareIndex).
+	CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts_cjk USING fts5(content, content='messages', content_rowid='rowid', tokenize='trigram');
+
+	CREATE TRIGGER IF NOT EXISTS messages_cjk_ai AFTER INSERT ON messages BEGIN
+	  INSERT INTO messages_fts_cjk(rowid, content) VALUES (new.rowid, new.content);
+	END;
+	CREATE TRIGGER IF NOT EXISTS messages_cjk_ad AFTER DELETE ON messages BEGIN
+	  INSERT INTO messages_fts_cjk(messages_fts_cjk, rowid, content) VALUES('delete', old.rowid, old.content);
+	END;
+	CREATE TRIGGER IF NOT EXISTS messages_cjk_au AFTER UPDATE ON messages BEGIN
+	  INSERT INTO messages_fts_cjk(messages_fts_cjk, rowid, content) VALUES('delete', old.rowid, old.content);
+	  INSERT INTO messages_fts_cjk(rowid, content) VALUES (new.rowid, new.content);
+	END;
+
 	-- Triggers to keep messages_fts in sync with messages table
 	CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
 	  INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
@@ -179,6 +198,20 @@ func (s *SQLiteStore) createTables(ctx context.Context) error {
 	-- We use 'content' option to avoid duplicating data, referencing embeddings table
 	-- Note: Triggers are needed to keep FTS index in sync
 	CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(content, content='embeddings', content_rowid='rowid');
+
+	-- Companion CJK index for chunks — see the note on messages_fts_cjk.
+	CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts_cjk USING fts5(content, content='embeddings', content_rowid='rowid', tokenize='trigram');
+
+	CREATE TRIGGER IF NOT EXISTS embeddings_cjk_ai AFTER INSERT ON embeddings BEGIN
+	  INSERT INTO chunks_fts_cjk(rowid, content) VALUES (new.rowid, new.content);
+	END;
+	CREATE TRIGGER IF NOT EXISTS embeddings_cjk_ad AFTER DELETE ON embeddings BEGIN
+	  INSERT INTO chunks_fts_cjk(chunks_fts_cjk, rowid, content) VALUES('delete', old.rowid, old.content);
+	END;
+	CREATE TRIGGER IF NOT EXISTS embeddings_cjk_au AFTER UPDATE ON embeddings BEGIN
+	  INSERT INTO chunks_fts_cjk(chunks_fts_cjk, rowid, content) VALUES('delete', old.rowid, old.content);
+	  INSERT INTO chunks_fts_cjk(rowid, content) VALUES (new.rowid, new.content);
+	END;
 
 	-- Triggers to keep FTS index in sync
 	CREATE TRIGGER IF NOT EXISTS embeddings_ai AFTER INSERT ON embeddings BEGIN
@@ -198,6 +231,10 @@ func (s *SQLiteStore) createTables(ctx context.Context) error {
 		return fmt.Errorf("failed to create tables: %w", err)
 	}
 
+	if err := s.backfillCJKIndexes(ctx); err != nil {
+		return err
+	}
+
 	// Create default collection if it doesn't exist
 	_, err = s.db.ExecContext(ctx, `
 		INSERT OR IGNORE INTO collections (id, name, dimensions, description, created_at, updated_at)
@@ -207,5 +244,53 @@ func (s *SQLiteStore) createTables(ctx context.Context) error {
 		return fmt.Errorf("failed to create default collection: %w", err)
 	}
 
+	return nil
+}
+
+// cjkIndexes pairs each CJK companion index with the table it shadows.
+var cjkIndexes = []struct{ index, source string }{
+	{index: "chunks_fts_cjk", source: "embeddings"},
+	{index: "messages_fts_cjk", source: "messages"},
+}
+
+// schemaVersionCJKIndexes marks the schema revision that introduced the trigram
+// companion indexes. `PRAGMA user_version` is unused elsewhere in CortexDB, so it
+// serves as the bookkeeping for one-time index builds.
+const schemaVersionCJKIndexes = 1
+
+// backfillCJKIndexes populates the trigram companion indexes for a database whose rows
+// predate them. `CREATE VIRTUAL TABLE IF NOT EXISTS` creates an empty index and the
+// triggers only fire on new writes, so without this pass existing content stays
+// invisible to CJK lexical search.
+//
+// Emptiness cannot be detected by counting: on an external-content FTS5 table
+// `count(*)` reads the *source* table and so reports rows the index does not hold.
+// The build therefore runs once, gated on the schema version.
+func (s *SQLiteStore) backfillCJKIndexes(ctx context.Context) error {
+	var version int
+	if err := s.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		return fmt.Errorf("failed to read schema version: %w", err)
+	}
+	if version >= schemaVersionCJKIndexes {
+		return nil
+	}
+	for _, table := range cjkIndexes {
+		var rows int
+		if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM `+table.source).Scan(&rows); err != nil {
+			return fmt.Errorf("failed to measure %s: %w", table.source, err)
+		}
+		if rows == 0 {
+			continue
+		}
+		rebuild := fmt.Sprintf(`INSERT INTO %s(%s) VALUES('rebuild')`, table.index, table.index)
+		if _, err := s.db.ExecContext(ctx, rebuild); err != nil {
+			return fmt.Errorf("failed to build %s: %w", table.index, err)
+		}
+		log.Printf("cortexdb: built %s over %d rows so CJK text is searchable", table.index, rows)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersionCJKIndexes)); err != nil {
+		return fmt.Errorf("failed to record schema version: %w", err)
+	}
 	return nil
 }

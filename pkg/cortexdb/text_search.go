@@ -391,12 +391,14 @@ func (db *DB) searchTextOnlyExpanded(ctx context.Context, query string, opts Tex
 }
 
 func (db *DB) ftsSearch(ctx context.Context, query string, opts TextSearchOptions) ([]core.ScoredEmbedding, error) {
+	// CJK text needs the trigram companion index; see core.CJKAwareIndex.
+	index := core.CJKAwareIndex("chunks_fts", query)
 	rows, err := db.store.GetDB().QueryContext(ctx, `
-		SELECT e.id, e.collection_id, c.name, e.vector, e.content, e.doc_id, e.metadata, e.acl, bm25(chunks_fts) as score
-		FROM chunks_fts
-		JOIN embeddings e ON chunks_fts.rowid = e.rowid
+		SELECT e.id, e.collection_id, c.name, e.vector, e.content, e.doc_id, e.metadata, e.acl, bm25(`+index+`) as score
+		FROM `+index+`
+		JOIN embeddings e ON `+index+`.rowid = e.rowid
 		LEFT JOIN collections c ON e.collection_id = c.id
-		WHERE chunks_fts MATCH ?
+		WHERE `+index+` MATCH ?
 	`+func() string {
 		if opts.Collection == "" {
 			return " ORDER BY score LIMIT ?"

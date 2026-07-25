@@ -412,14 +412,16 @@ func (db *DB) searchMemoryLexical(ctx context.Context, bucketID, query string, k
 	var firstErr error
 
 	for idx, searchQuery := range queries {
+		// CJK text needs the trigram companion index; see core.CJKAwareIndex.
+		index := core.CJKAwareIndex("messages_fts", searchQuery)
 		rows, err := db.store.GetDB().QueryContext(ctx, `
-			SELECT m.id, m.session_id, s.user_id, m.role, m.content, m.metadata, m.created_at, bm25(messages_fts)
-			FROM messages_fts
-			JOIN messages m ON m.rowid = messages_fts.rowid
+			SELECT m.id, m.session_id, s.user_id, m.role, m.content, m.metadata, m.created_at, bm25(`+index+`)
+			FROM `+index+`
+			JOIN messages m ON m.rowid = `+index+`.rowid
 			JOIN sessions s ON s.id = m.session_id
-			WHERE messages_fts MATCH ?
+			WHERE `+index+` MATCH ?
 			  AND m.session_id = ?
-			ORDER BY bm25(messages_fts)
+			ORDER BY bm25(`+index+`)
 			LIMIT ?
 		`, searchQuery, bucketID, topK*4)
 		if err != nil {

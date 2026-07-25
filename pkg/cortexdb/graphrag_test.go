@@ -171,6 +171,19 @@ func TestGraphRAGInsertAndSearch(t *testing.T) {
 	}
 }
 
+func TestSplitGraphRAGTextCapsUnspacedCJKChunks(t *testing.T) {
+	text := strings.Repeat("这是没有空格的中文教材内容。", 800)
+	chunks := splitGraphRAGText(text, 420, 60)
+	if len(chunks) < 2 {
+		t.Fatalf("expected long CJK text to split, got %d chunk", len(chunks))
+	}
+	for index, chunk := range chunks {
+		if size := len([]rune(chunk)); size > 1680 {
+			t.Fatalf("chunk %d has %d characters, want <= 1680", index, size)
+		}
+	}
+}
+
 func TestGraphRAGRequiresEmbedder(t *testing.T) {
 	dbPath := fmt.Sprintf("test_graphrag_no_embedder_%d.db", time.Now().UnixNano())
 	defer func() { _ = os.Remove(dbPath) }()

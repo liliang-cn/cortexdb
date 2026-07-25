@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.58.0] - 2026-07-25
+
+### Fixed
+
+- **Lexical search now works for Chinese, Japanese and Korean text.** FTS5's default
+  `unicode61` tokenizer does not segment CJK: a whole run of Han characters becomes a
+  single token, so no realistic Chinese query could ever match. Lexical search silently
+  returned zero rows for CJK corpora while English worked fine, which also made hybrid
+  search fall back to vectors alone and left `memory_search` unable to find Chinese
+  memories. Each FTS index now has a `_cjk` companion built with the `trigram`
+  tokenizer, and `knowledge_search`, `search_text`, hybrid search, message keyword
+  search and memory recall route to it when the query contains CJK.
+
+  The word indexes keep the `unicode61` tokenizer. Replacing it outright was the obvious
+  one-line fix but it degrades English relevance — trigram is a substring index, not a
+  word index — and it reordered `TestHybridSearch`. Routing by script fixes CJK without
+  touching existing behaviour for space-separated languages.
+
+  Existing databases are upgraded on open: the companion indexes are created and built
+  once over the current corpus, recorded via `PRAGMA user_version`.
+
+  Known limit: the trigram tokenizer matches substrings of three characters or more, so
+  a query of only one or two CJK characters (e.g. `函数`) still matches nothing and has
+  to rely on vector search.
+
+### Added
+
+- `CORTEXDB_LEXICAL_DIM` to set the lexical placeholder vector dimension when no
+  collection dimension is configured.
+- Adaptive embedding batches in `cortexdb-mcp-stdio`: `CORTEXDB_EMBED_BATCH_SIZE` and
+  `CORTEXDB_EMBED_TIMEOUT_SECONDS` are honoured, oversized batches are split, and chunk
+  character limits are enforced before embedding.
+
 ## [2.51.0] - 2026-07-09
 
 ### 🚀 Features

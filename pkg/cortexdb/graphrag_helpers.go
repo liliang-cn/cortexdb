@@ -134,12 +134,12 @@ func splitGraphRAGText(text string, chunkSize, chunkOverlap int) []string {
 		return nil
 	}
 	if len(words) <= chunkSize {
-		return []string{strings.Join(words, " ")}
+		return enforceChunkCharLimit([]string{strings.Join(words, " ")}, chunkSize, chunkOverlap)
 	}
 
 	sentences := splitChunkSentences(text)
 	if len(sentences) <= 1 {
-		return wordWindowChunks(text, chunkSize, chunkOverlap)
+		return enforceChunkCharLimit(wordWindowChunks(text, chunkSize, chunkOverlap), chunkSize, chunkOverlap)
 	}
 
 	var chunks []string
@@ -167,7 +167,43 @@ func splitGraphRAGText(text string, chunkSize, chunkOverlap int) []string {
 		curWords += sw
 	}
 	flush()
-	return chunks
+	return enforceChunkCharLimit(chunks, chunkSize, chunkOverlap)
+}
+
+func enforceChunkCharLimit(chunks []string, chunkSize, chunkOverlap int) []string {
+	maxChars := chunkSize * 4
+	if maxChars < 400 {
+		maxChars = 400
+	}
+	overlapChars := chunkOverlap * 4
+	if overlapChars >= maxChars {
+		overlapChars = maxChars / 4
+	}
+	var limited []string
+	for _, chunk := range chunks {
+		runes := []rune(strings.TrimSpace(chunk))
+		if len(runes) <= maxChars {
+			if len(runes) > 0 {
+				limited = append(limited, string(runes))
+			}
+			continue
+		}
+		step := maxChars - overlapChars
+		if step <= 0 {
+			step = maxChars
+		}
+		for start := 0; start < len(runes); start += step {
+			end := start + maxChars
+			if end > len(runes) {
+				end = len(runes)
+			}
+			limited = append(limited, string(runes[start:end]))
+			if end == len(runes) {
+				break
+			}
+		}
+	}
+	return limited
 }
 
 // splitChunkSentences breaks text into sentences on ASCII and CJK terminators,

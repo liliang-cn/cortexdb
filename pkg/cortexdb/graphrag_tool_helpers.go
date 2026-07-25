@@ -3,7 +3,9 @@ package cortexdb
 import (
 	"context"
 	"hash/fnv"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -19,6 +21,11 @@ func (t *GraphRAGToolbox) lexicalVectorDim(ctx context.Context, collection strin
 	}
 	if dim := t.db.store.Config().VectorDim; dim > 0 {
 		return dim, nil
+	}
+	if value := strings.TrimSpace(os.Getenv("CORTEXDB_LEXICAL_DIM")); value != "" {
+		if dim, err := strconv.Atoi(value); err == nil && dim > 0 {
+			return dim, nil
+		}
 	}
 	return defaultLexicalVectorDim, nil
 }
@@ -141,6 +148,12 @@ func normalizeToolToken(token string) string {
 }
 
 // sanitizeFTSQuery turns arbitrary user text into a safe FTS5 MATCH expression.
+//
+// CJK note: the FTS indexes use the trigram tokenizer (see core.migrateFTSTokenizer),
+// which matches substrings of three characters or more. Chinese text has no spaces, so
+// a phrase arrives here as one quoted token and matches as a substring — but a query
+// that is only one or two CJK characters long (e.g. "函数") produces no trigrams and
+// therefore no rows. Such queries have to lean on vector search.
 // Each whitespace-separated token is wrapped in a double-quoted string literal,
 // so FTS5 operators in the raw text (':' column filter, '*', '-', '^', 'OR',
 // 'NEAR', parentheses, …) are treated as literal terms rather than query

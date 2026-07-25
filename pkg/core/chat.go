@@ -233,15 +233,16 @@ func (s *SQLiteStore) KeywordSearchMessages(ctx context.Context, query, userID, 
 	}
 
 	// FTS5 bm25() returns negative values; ORDER BY rank ASC gives best matches first.
+	index := CJKAwareIndex("messages_fts", query)
 	q := `
 		SELECT m.id, m.session_id, m.role, m.content, m.vector, m.metadata, m.created_at
-		FROM messages_fts
-		JOIN messages m ON m.rowid = messages_fts.rowid
+		FROM ` + index + `
+		JOIN messages m ON m.rowid = ` + index + `.rowid
 		JOIN sessions s ON s.id = m.session_id
-		WHERE messages_fts MATCH ?
+		WHERE ` + index + ` MATCH ?
 		  AND s.user_id = ?
 		  AND (? = '' OR m.session_id != ?)
-		ORDER BY bm25(messages_fts)
+		ORDER BY bm25(` + index + `)
 		LIMIT ?
 	`
 	rows, err := s.db.QueryContext(ctx, q, query, userID, excludeSessionID, excludeSessionID, limit)
