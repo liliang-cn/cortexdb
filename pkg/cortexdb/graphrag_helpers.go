@@ -20,6 +20,34 @@ func (defaultGraphRAGExtractor) Extract(_ context.Context, text string) (*GraphE
 	return &GraphExtraction{Entities: entities}, nil
 }
 
+// textHasCJK reports whether the text holds Han, Hiragana, Katakana or Hangul.
+func textHasCJK(text string) bool {
+	for _, r := range text {
+		if unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hiragana, r) ||
+			unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Hangul, r) {
+			return true
+		}
+	}
+	return false
+}
+
+// plausibleLatinEntity reports whether a Title Case match looks like a real name rather
+// than romanisation debris. Applied only to text that also contains CJK, so bilingual
+// material keeps its genuine Latin entities ("Transformer", "Chain Rule") while syllable
+// fragments ("Gu Dr", "Wng", "Sh", "Qn") are dropped: those are short and, once the PDF
+// text layer has mangled the tone marks, usually vowel-less.
+func plausibleLatinEntity(match string) bool {
+	for _, word := range strings.Fields(match) {
+		if len([]rune(word)) < 3 {
+			return false
+		}
+		if !strings.ContainsAny(strings.ToLower(word), "aeiou") {
+			return false
+		}
+	}
+	return strings.TrimSpace(match) != ""
+}
+
 func applyGraphRAGIngestDefaults(opts *GraphRAGIngestOptions) {
 	if opts.Collection == "" {
 		opts.Collection = defaultGraphRAGCollection
@@ -447,13 +475,26 @@ func extractEntityNames(entities []GraphEntity) []string {
 	return result
 }
 
+// extractTitleEntities finds Title Case Latin names.
+//
+// It cannot find anything in Chinese, Japanese or Korean text — the pattern only sees the
+// Latin alphabet — so on a CJK corpus every match is incidental Latin, and in practice
+// that means romanisation. A scanned textbook is the worst case: its text layer mangles
+// pinyin diacritics into stray capitals ("hSn dAi", "pT Wng", "Gu Dr"), which are
+// perfectly good Title Case and used to fill the graph with syllable debris instead of
+// concepts. Tone marks cannot be tested for, because the mangling destroys them, so the
+// pass is skipped for text that is mostly CJK and left to an LLM extractor.
 func extractTitleEntities(text string) []GraphEntity {
+	requirePlausible := textHasCJK(text)
 	matches := titleEntityPattern.FindAllString(text, -1)
 	seen := make(map[string]struct{})
 	entities := make([]GraphEntity, 0, len(matches))
 	for _, match := range matches {
 		match = strings.TrimSpace(match)
 		if len(match) < 2 {
+			continue
+		}
+		if requirePlausible && !plausibleLatinEntity(match) {
 			continue
 		}
 		if _, exists := seen[match]; exists {

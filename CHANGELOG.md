@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.59.4] - 2026-07-25
+
+### Fixed
+
+- **`knowledge_save` no longer turns romanisation into graph entities.** 2.59.3 guarded the
+  `graphflow` heuristic extractor, but `knowledge_save` uses the GraphRAG Title Case
+  extractor, which was untouched — so a Chinese textbook still produced entities like
+  `entity:wng` and `entity:gu_dr` and no concepts at all. Worse, a scanned book's text
+  layer mangles pinyin tone marks into stray capitals (`hSn dAi`, `pT Wng`, `Gu Dr`), which
+  are valid Title Case, so tone marks cannot be tested for. When the text contains CJK,
+  Latin matches must now be at least three letters per word and contain a vowel: syllable
+  debris is dropped while genuine bilingual entities (`Transformer`, `Chain Rule`) and
+  Latin-only text are untouched.
+
 ## [2.59.3] - 2026-07-25
 
 ### Fixed
