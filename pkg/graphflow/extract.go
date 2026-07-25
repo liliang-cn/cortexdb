@@ -5,12 +5,28 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 var (
 	graphflowEntityPattern   = regexp.MustCompile(`\b[A-Z][A-Za-z0-9_]{1,}\b`)
 	graphflowBacktickPattern = regexp.MustCompile("`([^`]+)`")
+	// Pinyin/romaji syllables: short, no Han characters, carrying a tone mark. A primary
+	// school textbook prints them above every new character, and the capitalised-word
+	// pattern above then reads them as entities.
+	graphflowRomanisationPattern = regexp.MustCompile(`^[A-Za-z]*[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜüńň][A-Za-zāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜüńň]*$`)
 )
+
+// containsCJK reports whether the text holds Han, Hiragana, Katakana or Hangul.
+func containsCJK(text string) bool {
+	for _, r := range text {
+		if unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hiragana, r) ||
+			unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Hangul, r) {
+			return true
+		}
+	}
+	return false
+}
 
 // HeuristicExtractor is a deterministic extractor that emits a basic node/edge graph from text and code.
 type HeuristicExtractor struct{}
@@ -88,11 +104,29 @@ func (HeuristicExtractor) Extract(_ context.Context, doc SourceDocument) (*Extra
 	return result, nil
 }
 
+// isRomanisation reports whether a token looks like a pinyin/romaji syllable rather than
+// a name worth putting in a graph.
+func isRomanisation(token string) bool {
+	if len([]rune(token)) > 6 {
+		return false
+	}
+	return graphflowRomanisationPattern.MatchString(token)
+}
+
 func extractEntities(text string) []string {
 	seen := make(map[string]struct{})
 	out := make([]string, 0)
+	// The capitalised-word pattern only sees the Latin alphabet, so on CJK text it cannot
+	// find real entities — everything it matches is romanisation or stray Latin. Emitting
+	// those filled graphs with syllable fragments ("Wng", "Qn") in place of concepts, so
+	// for predominantly CJK documents the Latin pass is skipped and extraction is left to
+	// an LLM extractor. Backtick spans below are explicit markup and still honoured.
+	cjk := containsCJK(text)
 	for _, match := range graphflowEntityPattern.FindAllString(text, -1) {
 		if _, ok := seen[match]; ok {
+			continue
+		}
+		if cjk || isRomanisation(match) {
 			continue
 		}
 		seen[match] = struct{}{}

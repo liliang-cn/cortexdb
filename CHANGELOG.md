@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.59.3] - 2026-07-25
+
+### Fixed
+
+- **The heuristic extractor no longer fills CJK graphs with romanisation.** Entities were
+  found with a capitalised-Latin-word pattern, which on Chinese, Japanese or Korean text
+  can only match romanisation — a primary-school textbook prints pinyin above every new
+  character, so its graph ended up holding syllable fragments (`entity:wng`, `entity:qn`)
+  and not one real concept. The Latin pass is now skipped for predominantly CJK documents
+  (leaving extraction to an LLM extractor) and tone-marked syllables are rejected
+  everywhere. Explicit backtick spans and Latin-text extraction are unchanged.
+
 ## [2.59.2] - 2026-07-25
 
 ### Fixed
