@@ -161,6 +161,20 @@ func TestReembedMismatchedVectorsRepairsOldModelRows(t *testing.T) {
 		}
 	}
 
+	// The collection's declared dimension is brought in line, otherwise the drift report
+	// would keep flagging rows that are now correct.
+	if got.Reconciled == 0 {
+		t.Error("no collection had its declared dimension reconciled")
+	}
+	if report.Mismatched != 0 {
+		t.Errorf("%d rows still reported as mismatched after repair", report.Mismatched)
+	}
+	for _, entry := range report.Collections {
+		if entry.Declared != 8 {
+			t.Errorf("collection %s still declares %d dimensions", entry.Collection, entry.Declared)
+		}
+	}
+
 	// Content is untouched — only the vector is recomputed.
 	row, err := db.store.GetByID(ctx, "old-1")
 	if err != nil {

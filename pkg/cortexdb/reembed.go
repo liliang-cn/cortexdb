@@ -19,11 +19,13 @@ type ReembedOptions struct {
 
 // ReembedReport is the outcome of a re-embedding pass.
 type ReembedReport struct {
-	TargetDim  int      `json:"targetDim"`
-	Candidates int      `json:"candidates"`
-	Reembedded int      `json:"reembedded"`
-	Failed     int      `json:"failed"`
-	DryRun     bool     `json:"dryRun"`
+	TargetDim  int  `json:"targetDim"`
+	Candidates int  `json:"candidates"`
+	Reembedded int  `json:"reembedded"`
+	Failed     int  `json:"failed"`
+	DryRun     bool `json:"dryRun"`
+	// Collections whose declared dimension was brought in line with their contents.
+	Reconciled int      `json:"reconciled"`
 	Errors     []string `json:"errors,omitempty"`
 }
 
@@ -102,6 +104,16 @@ func (db *DB) ReembedMismatchedVectors(ctx context.Context, opts ReembedOptions)
 			continue
 		}
 		report.Reembedded += len(updates)
+	}
+	// A collection records the dimension it was created with. Leaving it stale would keep
+	// the drift report flagging rows that are now correct.
+	if report.Reembedded > 0 {
+		reconciled, err := db.store.ReconcileCollectionDimensions(ctx, targetDim)
+		if err != nil {
+			report.Errors = append(report.Errors, fmt.Sprintf("reconcile collection dimensions: %v", err))
+		} else {
+			report.Reconciled = reconciled
+		}
 	}
 	return report, nil
 }

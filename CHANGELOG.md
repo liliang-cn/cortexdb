@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.59.1] - 2026-07-25
+
+### Fixed
+
+- **Re-embedding now reconciles the collection's declared dimension.** A collection
+  records the size it was created with, so after `vector_dimension_repair` rewrote the
+  vectors the drift report kept flagging every repaired row — the numbers were right and
+  the metadata was stale. `ReconcileCollectionDimensions` updates a collection once all
+  of its vectors agree on one size, and the repair reports how many it reconciled.
+
 ## [2.59.0] - 2026-07-25
 
 ### Added

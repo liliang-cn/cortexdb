@@ -177,3 +177,35 @@ func vectorDimFromBytes(vectorBytes int) int {
 func vectorBytesFromDim(dim int) int {
 	return dim*4 + vectorHeaderBytes
 }
+
+// ReconcileCollectionDimensions brings each collection's declared dimension in line with
+// what it actually stores, for collections whose vectors are now uniformly dim.
+//
+// Re-embedding rewrites vectors but cannot know whether the collection's recorded
+// dimension was deliberate, so it is left alone until every row agrees. Without this the
+// drift report keeps flagging rows that are in fact correct. Returns the number of
+// collections updated.
+func (s *SQLiteStore) ReconcileCollectionDimensions(ctx context.Context, dim int) (int, error) {
+	if dim <= 0 {
+		return 0, fmt.Errorf("dimension must be positive, got %d", dim)
+	}
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE collections
+		SET dimensions = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE dimensions != ?
+		  AND id IN (
+			SELECT collection_id FROM embeddings
+			WHERE vector IS NOT NULL AND length(vector) > 0
+			GROUP BY collection_id
+			HAVING min(length(vector)) = ? AND max(length(vector)) = ?
+		  )
+	`, dim, dim, vectorBytesFromDim(dim), vectorBytesFromDim(dim))
+	if err != nil {
+		return 0, fmt.Errorf("failed to reconcile collection dimensions: %w", err)
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return 0, nil // driver does not report it; the update still applied
+	}
+	return int(updated), nil
+}
