@@ -58,9 +58,11 @@ func (db *DB) ReembedMismatchedVectors(ctx context.Context, opts ReembedOptions)
 		return nil, err
 	}
 	report := &ReembedReport{TargetDim: targetDim, Candidates: len(stale), DryRun: opts.DryRun}
-	if opts.DryRun || len(stale) == 0 {
+	if opts.DryRun {
 		return report, nil
 	}
+	// Note there is no early return for an empty candidate list: metadata still needs
+	// reconciling below when a previous pass already fixed the vectors.
 
 	for start := 0; start < len(stale); start += batchSize {
 		end := start + batchSize
@@ -106,8 +108,10 @@ func (db *DB) ReembedMismatchedVectors(ctx context.Context, opts ReembedOptions)
 		report.Reembedded += len(updates)
 	}
 	// A collection records the dimension it was created with. Leaving it stale would keep
-	// the drift report flagging rows that are now correct.
-	if report.Reembedded > 0 {
+	// the drift report flagging rows that are now correct. This runs on every real pass,
+	// not only when rows were rewritten: vectors repaired by an earlier pass (or written
+	// directly) leave exactly this state behind.
+	if !opts.DryRun {
 		reconciled, err := db.store.ReconcileCollectionDimensions(ctx, targetDim)
 		if err != nil {
 			report.Errors = append(report.Errors, fmt.Sprintf("reconcile collection dimensions: %v", err))

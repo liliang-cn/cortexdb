@@ -188,6 +188,52 @@ func TestReembedMismatchedVectorsRepairsOldModelRows(t *testing.T) {
 	}
 }
 
+// Vectors repaired by an earlier pass leave correct numbers behind stale metadata; a
+// second real pass has nothing to embed but must still reconcile the collection.
+func TestRepairReconcilesMetadataWithNothingToReembed(t *testing.T) {
+	embedder := &fixedDimEmbedder{dim: 8}
+	db := newReembedDB(t, embedder)
+	ctx := context.Background()
+
+	// A collection declaring 32 whose rows are already the embedder's size.
+	seedRow(t, db, "row-1", "legacy", "已经修好的分块", 32)
+	if _, err := db.store.GetDB().ExecContext(ctx,
+		`UPDATE embeddings SET vector = ? WHERE id = 'row-1'`, mustEncode(t, 8)); err != nil {
+		t.Fatalf("failed to stage repaired vector: %v", err)
+	}
+
+	got, err := db.ReembedMismatchedVectors(ctx, ReembedOptions{})
+	if err != nil {
+		t.Fatalf("repair failed: %v", err)
+	}
+	if got.Candidates != 0 || got.Reembedded != 0 {
+		t.Errorf("expected nothing to re-embed, got candidates=%d reembedded=%d", got.Candidates, got.Reembedded)
+	}
+	if got.Reconciled != 1 {
+		t.Errorf("reconciled %d collections, want 1", got.Reconciled)
+	}
+	report, err := db.DimensionReport(ctx)
+	if err != nil {
+		t.Fatalf("report failed: %v", err)
+	}
+	if report.Mismatched != 0 {
+		t.Errorf("report still flags %d rows after reconciliation", report.Mismatched)
+	}
+}
+
+func mustEncode(t *testing.T, dim int) []byte {
+	t.Helper()
+	vector := make([]float32, dim)
+	for i := range vector {
+		vector[i] = 0.5
+	}
+	blob, err := encoding.EncodeVector(vector)
+	if err != nil {
+		t.Fatalf("failed to encode vector: %v", err)
+	}
+	return blob
+}
+
 func TestReembedWithoutEmbedderIsRefused(t *testing.T) {
 	db, err := Open(DefaultConfig(filepath.Join(t.TempDir(), "no-embedder.db")))
 	if err != nil {

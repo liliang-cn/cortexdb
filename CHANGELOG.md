@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.59.2] - 2026-07-25
+
+### Fixed
+
+- **`vector_dimension_repair` reconciles metadata even when there is nothing to
+  re-embed.** An early return skipped the reconciliation whenever the candidate list was
+  empty, which is exactly the state a previous repair leaves behind: correct vectors,
+  stale declared dimension. The drift report then kept flagging rows that were already
+  fixed.
+
 ## [2.59.1] - 2026-07-25
 
 ### Fixed
