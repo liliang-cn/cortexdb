@@ -390,28 +390,47 @@ func (db *DB) searchTextOnlyExpanded(ctx context.Context, query string, opts Tex
 	return ordered, nil
 }
 
-func (db *DB) ftsSearch(ctx context.Context, query string, opts TextSearchOptions) ([]core.ScoredEmbedding, error) {
+// ftsSearchQuery builds the lexical lookup for one query, returning the same columns either way.
+//
+// Normally that is a MATCH against the FTS index. A CJK query of one or two characters produces no
+// trigram, so MATCH would return nothing however much of the corpus contains the term — those fall
+// back to a substring scan, ordered by rowid since there is no BM25 score to rank by.
+func ftsSearchQuery(query string, opts TextSearchOptions) (string, []any) {
+	columns := `e.id, e.collection_id, c.name, e.vector, e.content, e.doc_id, e.metadata, e.acl`
+	collectionClause := ""
+	var collectionArgs []any
+	if opts.Collection != "" {
+		collectionClause = " AND c.name = ?"
+		collectionArgs = append(collectionArgs, opts.Collection)
+	}
+
+	if core.BelowTrigramFloor(query) {
+		args := append([]any{core.SubstringPattern(query)}, collectionArgs...)
+		return `
+			SELECT ` + columns + `, 0 as score
+			FROM embeddings e
+			LEFT JOIN collections c ON e.collection_id = c.id
+			WHERE e.content LIKE ? ESCAPE '\'` + collectionClause + `
+			ORDER BY e.rowid LIMIT ?
+		`, append(args, opts.TopK)
+	}
+
 	// CJK text needs the trigram companion index; see core.CJKAwareIndex.
 	index := core.CJKAwareIndex("chunks_fts", query)
-	rows, err := db.store.GetDB().QueryContext(ctx, `
-		SELECT e.id, e.collection_id, c.name, e.vector, e.content, e.doc_id, e.metadata, e.acl, bm25(`+index+`) as score
-		FROM `+index+`
-		JOIN embeddings e ON `+index+`.rowid = e.rowid
+	args := append([]any{query}, collectionArgs...)
+	return `
+		SELECT ` + columns + `, bm25(` + index + `) as score
+		FROM ` + index + `
+		JOIN embeddings e ON ` + index + `.rowid = e.rowid
 		LEFT JOIN collections c ON e.collection_id = c.id
-		WHERE `+index+` MATCH ?
-	`+func() string {
-		if opts.Collection == "" {
-			return " ORDER BY score LIMIT ?"
-		}
-		return " AND c.name = ? ORDER BY score LIMIT ?"
-	}(), func() []any {
-		args := []any{query}
-		if opts.Collection != "" {
-			args = append(args, opts.Collection)
-		}
-		args = append(args, opts.TopK)
-		return args
-	}()...)
+		WHERE ` + index + ` MATCH ?` + collectionClause + `
+		ORDER BY score LIMIT ?
+	`, append(args, opts.TopK)
+}
+
+func (db *DB) ftsSearch(ctx context.Context, query string, opts TextSearchOptions) ([]core.ScoredEmbedding, error) {
+	querySQL, args := ftsSearchQuery(query, opts)
+	rows, err := db.store.GetDB().QueryContext(ctx, querySQL, args...)
 	if err != nil {
 		return nil, fmt.Errorf("FTS search failed: %w", err)
 	}

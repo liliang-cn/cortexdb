@@ -75,24 +75,54 @@ func (s *SQLiteStore) HybridSearch(ctx context.Context, vectorQuery []float32, t
 	}
 
 	// 2. Keyword Search (FTS5)
+	//
+	// The FTS index is shared by every collection, so this arm has to be restricted the same way
+	// the vector arm is. Left unrestricted it answers a question about one collection with rows
+	// from another — and with no vector supplied this is the only arm, so the filter the caller
+	// asked for would have no effect at all.
 	ftsRanks := make(map[int64]int)
 	if textQuery != "" {
-		// CJK text needs the trigram companion index; see CJKAwareIndex.
-		index := CJKAwareIndex("chunks_fts", textQuery)
-		ftsQuery := `
-			SELECT rowid, rank
-			FROM ` + index + `
-			WHERE ` + index + ` MATCH ?
-			ORDER BY rank
-			LIMIT ?
-		`
+		collectionClause := ""
+		var collectionArgs []interface{}
+		if opts.Collection != "" {
+			collectionClause = " AND e.collection_id = (SELECT id FROM collections WHERE name = ?)"
+			collectionArgs = append(collectionArgs, opts.Collection)
+		}
+
+		var ftsQuery string
+		ftsArgs := []interface{}{}
+		if BelowTrigramFloor(textQuery) {
+			// Too short for the trigram index to hold a token; scan for the substring instead.
+			ftsQuery = `
+				SELECT e.rowid, 0
+				FROM embeddings e
+				WHERE e.content LIKE ? ESCAPE '\'` + collectionClause + `
+				ORDER BY e.rowid
+				LIMIT ?
+			`
+			ftsArgs = append(ftsArgs, SubstringPattern(textQuery))
+		} else {
+			// CJK text needs the trigram companion index; see CJKAwareIndex.
+			index := CJKAwareIndex("chunks_fts", textQuery)
+			ftsQuery = `
+				SELECT ` + index + `.rowid, rank
+				FROM ` + index + `
+				JOIN embeddings e ON ` + index + `.rowid = e.rowid
+				WHERE ` + index + ` MATCH ?` + collectionClause + `
+				ORDER BY rank
+				LIMIT ?
+			`
+			ftsArgs = append(ftsArgs, textQuery)
+		}
+		ftsArgs = append(ftsArgs, collectionArgs...)
 		// Fetch more than topK to have a better pool for fusion
 		limit := opts.TopK * 3
 		if limit <= 0 {
 			limit = 30
 		}
+		ftsArgs = append(ftsArgs, limit)
 
-		rows, err := s.db.QueryContext(ctx, ftsQuery, textQuery, limit)
+		rows, err := s.db.QueryContext(ctx, ftsQuery, ftsArgs...)
 		if err == nil {
 			defer rows.Close()
 			rank := 1

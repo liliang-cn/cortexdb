@@ -65,9 +65,10 @@ func applyGraphRAGIngestDefaults(opts *GraphRAGIngestOptions) {
 
 func applyGraphRAGQueryDefaults(opts *GraphRAGQueryOptions) {
 	opts.RetrievalMode = normalizeRetrievalMode(opts.RetrievalMode)
-	if opts.Collection == "" {
-		opts.Collection = defaultGraphRAGCollection
-	}
+	// No collection means no restriction, and is left that way. Defaulting it to the collection
+	// ingest happens to write into narrows every unscoped search to that one collection: anything
+	// stored elsewhere — imported agent memory, a per-book collection — becomes unfindable unless
+	// the caller already knows where to look, which is the opposite of what an unscoped search asks.
 	if opts.TopK <= 0 {
 		opts.TopK = 4
 	}

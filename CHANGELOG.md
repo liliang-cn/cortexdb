@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.60.0] - 2026-07-26
+
+### Fixed
+
+- **A named collection no longer leaks other collections' chunks.** Hybrid search runs a vector
+  arm and a keyword arm; only the vector arm applied `opts.Collection`. The keyword arm queried
+  the shared FTS index unrestricted, so asking one collection returned rows from every other one
+  — and with no query vector supplied (`SearchTextOnly`, and therefore `search_text` and every
+  lexical-mode `knowledge_search`) the keyword arm is the *only* arm, so the collection filter
+  had no effect at all. A tutor scoped to one textbook could be handed another book's text, or
+  another user's, as if it came from the book asked for.
+- **An unscoped search no longer means "only the default collection".** Query defaults
+  substituted `graphrag_chunks` whenever a caller named no collection, silently narrowing a
+  search that asked for no narrowing; anything ingested elsewhere — imported agent memory, a
+  per-book collection — was unreachable unless the caller already knew where to look. Empty now
+  means unrestricted, as it does on the vector arm. Ingest still defaults, since content has to
+  land somewhere. This was masked by the leak above: the unrestricted keyword arm happened to
+  return the rows the filter should have excluded.
+- **Two-character Chinese terms are findable again.** The trigram tokenizer cannot produce a
+  token shorter than three characters, so `MATCH` returned nothing for 乘法, 分数, 除法, 周长 and
+  most other Chinese words a lesson is actually about, however many chunks contained them. Such
+  queries now fall back to a substring scan (collection filter and all) instead of reporting an
+  empty corpus.
+
 ## [2.59.4] - 2026-07-25
 
 ### Fixed
