@@ -12,6 +12,16 @@ func resolveRetrievalPlan(input retrievalPlanInput) retrievalPlanResolution {
 		existingPlan = *input.Plan
 	}
 
+	// Folded in before the filters are merged, so everything downstream sees one spelling.
+	if strings.TrimSpace(existingPlan.Collection) != "" {
+		if existingPlan.Filters == nil {
+			existingPlan.Filters = &RetrievalFilters{}
+		}
+		if strings.TrimSpace(existingPlan.Filters.Collection) == "" {
+			existingPlan.Filters.Collection = strings.TrimSpace(existingPlan.Collection)
+		}
+	}
+
 	plan := RetrievalPlan{
 		Query:            firstNonEmpty(input.Query, existingPlan.Query),
 		Keywords:         mergeUniqueStrings(input.Keywords, existingPlan.Keywords),

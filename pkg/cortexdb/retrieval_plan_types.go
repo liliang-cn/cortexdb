@@ -8,7 +8,15 @@ type RetrievalPlan struct {
 	AlternateQueries []string          `json:"alternate_queries,omitempty"`
 	EntityNames      []string          `json:"entity_names,omitempty"`
 	RetrievalMode    string            `json:"retrieval_mode,omitempty"`
-	Filters          *RetrievalFilters `json:"filters,omitempty"`
+	// Collection is shorthand for Filters.Collection.
+	//
+	// `collection` is a top-level parameter of the same call and also lives at
+	// `plan.filters.collection`, so a model reaches for `plan.collection` — and with
+	// additionalProperties:false that was a hard schema rejection, costing a whole model round trip on
+	// every scoped search before it guessed the longer spelling. Accepting it is cheaper than being
+	// right about it. Filters.Collection is the more specific spelling and wins.
+	Collection string            `json:"collection,omitempty"`
+	Filters    *RetrievalFilters `json:"filters,omitempty"`
 }
 
 // RetrievalFilters captures optional structured constraints for search.

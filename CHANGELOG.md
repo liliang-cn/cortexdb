@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.60.1] - 2026-07-27
+
+### Fixed
+
+- **`plan.collection` is accepted as shorthand for `plan.filters.collection`.** `collection` is a
+  top-level parameter of the same call and also lives inside `plan.filters`, so a model reaches for
+  `plan.collection` — and with `additionalProperties: false` that was a hard schema rejection
+  (`unexpected additional properties ["collection"]`), costing a whole model round trip on every
+  scoped search before it guessed the longer spelling. It is now folded into the filters before
+  anything downstream sees the plan. Precedence is unchanged and explicit: the request's own
+  `collection` outranks `plan.filters.collection`, which outranks the shorthand.
+
 ## [2.60.0] - 2026-07-26
 
 ### Fixed
