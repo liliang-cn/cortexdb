@@ -93,6 +93,14 @@ type ToolUpsertRelationsRequest struct {
 // ToolUpsertRelationsResponse summarizes written relation edges.
 type ToolUpsertRelationsResponse struct {
 	EdgeIDs []string `json:"edge_ids"`
+	// Written is how many edges reached the store. It is reported because it is not always
+	// len(EdgeIDs): an edge whose endpoints do not exist as nodes is rejected by the store, and the
+	// batch result carrying that news used to be discarded — a call that wrote nothing returned the
+	// ids of everything it had been asked to write.
+	Written int `json:"written"`
+	// Rejected names the edges the store would not take, so a caller can see which relation had an
+	// endpoint that was never created rather than discovering later that the graph has no edges.
+	Rejected []string `json:"rejected,omitempty"`
 }
 
 // ToolSearchTextRequest performs lexical seed retrieval.

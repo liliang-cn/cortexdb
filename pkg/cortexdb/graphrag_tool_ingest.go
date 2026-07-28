@@ -220,6 +220,72 @@ func (t *GraphRAGToolbox) UpsertEntities(ctx context.Context, req ToolUpsertEnti
 }
 
 // UpsertRelations writes relation edges between entities.
+// relationEdgeID identifies an edge by what it connects and what it means.
+//
+// It used to end in the relation's index within the request, so the identity of an edge depended on
+// where it happened to sit in the array: a caller that re-sent the same graph — a learning trace pushed
+// again each turn, a document re-indexed — wrote a new row every time. One store had 102,855 edges of
+// which 61,197 were distinct, a single edge repeated 292 times, and traversal weighted by however often
+// the caller had happened to repeat itself.
+//
+// The document id stays part of the identity when there is one: a relation read from two sources is one
+// edge per source, so the second does not overwrite the first's provenance. Callers with no document —
+// a learning trace, an inference rule — collapse onto one edge, which is what they meant.
+func relationEdgeID(fromID, toID, edgeType, documentID string) string {
+	if documentID == "" {
+		return fmt.Sprintf("edge:relation:%s:%s:%s", fromID, toID, edgeType)
+	}
+	return fmt.Sprintf("edge:relation:%s:%s:%s:doc:%s", fromID, toID, edgeType, documentID)
+}
+
+// mergeRelationProperties folds a repeat of the same edge into the one already collected: list-valued
+// provenance is unioned, everything else is overlaid.
+func mergeRelationProperties(into, from map[string]interface{}) {
+	for key, value := range from {
+		switch key {
+		case "chunk_ids", "support_edge_ids":
+			into[key] = unionStrings(into[key], value)
+		default:
+			into[key] = value
+		}
+	}
+}
+
+// unionStrings appends the strings of b to those of a, keeping order and dropping repeats.
+func unionStrings(a, b interface{}) []string {
+	merged := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, value := range []interface{}{a, b} {
+		for _, item := range toStringSlice(value) {
+			if _, ok := seen[item]; ok {
+				continue
+			}
+			seen[item] = struct{}{}
+			merged = append(merged, item)
+		}
+	}
+	return merged
+}
+
+func toStringSlice(value interface{}) []string {
+	switch typed := value.(type) {
+	case nil:
+		return nil
+	case []string:
+		return typed
+	case []interface{}:
+		items := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text, ok := item.(string); ok {
+				items = append(items, text)
+			}
+		}
+		return items
+	default:
+		return nil
+	}
+}
+
 func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRelationsRequest) (*ToolUpsertRelationsResponse, error) {
 	if len(req.Relations) == 0 {
 		return &ToolUpsertRelationsResponse{}, nil
@@ -233,14 +299,15 @@ func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRel
 
 	edges := make([]*graph.GraphEdge, 0, len(req.Relations))
 	edgeIDs := make([]string, 0, len(req.Relations))
-	for i, rel := range req.Relations {
+	byID := make(map[string]*graph.GraphEdge, len(req.Relations))
+	for _, rel := range req.Relations {
 		fromID := resolveEntityNodeID("", rel.From)
 		toID := resolveEntityNodeID("", rel.To)
 		if fromID == "" || toID == "" {
 			continue
 		}
 		edgeType := firstNonEmpty(rel.Type, "related_to")
-		edgeID := fmt.Sprintf("edge:relation:%s:%s:%s:%d", fromID, toID, edgeType, i)
+		edgeID := relationEdgeID(fromID, toID, edgeType, req.DocumentID)
 		edgeIDs = append(edgeIDs, edgeID)
 
 		properties := map[string]interface{}{}
@@ -270,21 +337,60 @@ func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRel
 		if weight == 0 {
 			weight = 1.0
 		}
-		edges = append(edges, &graph.GraphEdge{
+		// The same edge twice in one request is one edge. Merged rather than appended, because the
+		// batch writer executes them in order and the second would otherwise overwrite the first's
+		// chunk ids — losing provenance without saying so.
+		if existing, ok := byID[edgeID]; ok {
+			mergeRelationProperties(existing.Properties, properties)
+			existing.Weight = weight
+			continue
+		}
+		edge := &graph.GraphEdge{
 			ID:         edgeID,
 			FromNodeID: fromID,
 			ToNodeID:   toID,
 			EdgeType:   edgeType,
 			Weight:     weight,
 			Properties: properties,
-		})
+		}
+		byID[edgeID] = edge
+		edges = append(edges, edge)
 	}
 
+	response := &ToolUpsertRelationsResponse{EdgeIDs: edgeIDs}
 	if len(edges) > 0 {
-		if _, err := t.db.graph.UpsertEdgesBatch(ctx, edges); err != nil {
+		result, err := t.db.graph.UpsertEdgesBatch(ctx, edges)
+		if err != nil {
 			return nil, fmt.Errorf("upsert relation edges: %w", err)
+		}
+		// The batch result used to be discarded. An edge the store rejects — most often because an
+		// endpoint was never created as a node — was then dropped in silence, and the call returned the
+		// ids of edges that are not in the graph. Nothing downstream could tell an empty graph from a
+		// successful ingest.
+		response.Written = result.SuccessCount
+		if result.FailedCount > 0 {
+			response.Rejected = rejectedEdgeMessages(result.Errors)
+			if result.SuccessCount == 0 {
+				return nil, fmt.Errorf("no relation could be written (%d rejected): %v",
+					result.FailedCount, response.Rejected)
+			}
 		}
 	}
 
-	return &ToolUpsertRelationsResponse{EdgeIDs: edgeIDs}, nil
+	return response, nil
+}
+
+// rejectedEdgeMessages turns the batch's errors into something a caller can read, capped so one broken
+// ingest of a whole book does not answer with ten thousand lines.
+func rejectedEdgeMessages(errs []error) []string {
+	const maxReported = 20
+	messages := make([]string, 0, len(errs))
+	for i, err := range errs {
+		if i == maxReported {
+			messages = append(messages, fmt.Sprintf("... and %d more", len(errs)-maxReported))
+			break
+		}
+		messages = append(messages, err.Error())
+	}
+	return messages
 }
