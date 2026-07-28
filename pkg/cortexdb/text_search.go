@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sort"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
@@ -452,6 +453,9 @@ func (db *DB) ftsSearch(ctx context.Context, query string, opts TextSearchOption
 		var score float64
 
 		if err := rows.Scan(&id, &collectionID, &collectionName, &vectorBytes, &content, &docID, &metadataJSON, &aclJSON, &score); err != nil {
+			// Dropped rows are how a search that matched plenty answers "nothing found": one column that
+			// will not scan — a NULL metadata, a NULL collection_id — silently costs every row it affects.
+			log.Printf("[FTS] skipped a chunk that would not scan: %v", err)
 			continue
 		}
 		normalizedScore := 1.0 / (1.0 + (-score))

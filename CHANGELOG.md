@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.60.3] - 2026-07-28
+
+### Fixed
+
+- **A lexical-only search whose one arm cannot run now fails instead of returning nothing.**
+  `HybridSearch` built the keyword query, handed it to SQLite and ignored the error (`if err == nil`).
+  With no vector supplied that arm is the *only* arm, so a broken or half-migrated FTS index produced an
+  empty result set and a nil error — indistinguishable from a corpus that genuinely contains nothing, and
+  unfalsifiable from outside because every caller sees success. It now returns the error when it is the
+  only arm, and degrades with a log line when a vector arm is still answering (vector-only results look
+  exactly like ordinary ones, so the difference has to be said out loud).
+- **Rows that will not scan are logged instead of silently dropped.** Three `rows.Scan` sites — two in
+  `HybridSearch`, one in `ftsSearch` — did `continue` on error. One column that will not scan (a NULL
+  metadata, a NULL collection_id) silently cost every row it affected, which is how a search that matched
+  plenty answers "nothing found".
+- **`HNSWHybridSearch` no longer truncates an uncapped query to nothing.** `TopK` is optional, and its
+  sibling `HybridSearch` treats zero as "no cap" — but the HNSW path truncated unconditionally, so the
+  same query returned every match without an index and an empty slice with one. An uncapped query now
+  goes down the exhaustive path, because an HNSW search takes a candidate count and cannot answer
+  "everything".
+
+### Known issue
+
+- **`SimpleHNSW` recall is not deterministic and can be poor.** `Add` links each node to the candidates
+  from a *single-candidate* search of the entry point, and with `randomLevel()` deciding the layout, 2
+  runs in 15 of a four-node fixture returned 1 of 4 matches. Real HNSW selects `M` neighbours from an
+  `efConstruction` candidate set; fixing this is a rewrite of the index's construction rather than a
+  guard, so it is recorded rather than patched. Searches that need reliable recall should leave the HNSW
+  index off, where the exhaustive path is exact.
+
 ## [2.60.2] - 2026-07-28
 
 ### Fixed

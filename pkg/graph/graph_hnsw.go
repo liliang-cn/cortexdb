@@ -360,8 +360,12 @@ func (g *GraphStore) HNSWSearch(ctx context.Context, query []float32, k int, thr
 
 // HNSWHybridSearch combines HNSW search with graph proximity
 func (g *GraphStore) HNSWHybridSearch(ctx context.Context, query *HybridQuery) ([]*HybridResult, error) {
-	if g.hnswIndex == nil {
-		// Fall back to regular hybrid search
+	// An unset TopK means "no cap" to HybridSearch, and one call has to mean one thing whether or not an
+	// index happens to exist: an HNSW index cannot answer "everything" (its search takes a candidate
+	// count), so a capless query goes down the exhaustive path rather than being silently truncated to
+	// nothing by the k*3 below. Truncating it was returning an empty result set, with no error, to
+	// callers whose only mistake was not naming a page size.
+	if g.hnswIndex == nil || query.TopK <= 0 {
 		return g.HybridSearch(ctx, query)
 	}
 

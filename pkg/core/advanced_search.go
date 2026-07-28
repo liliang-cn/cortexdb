@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
 	"sort"
@@ -123,16 +124,30 @@ func (s *SQLiteStore) HybridSearch(ctx context.Context, vectorQuery []float32, t
 		ftsArgs = append(ftsArgs, limit)
 
 		rows, err := s.db.QueryContext(ctx, ftsQuery, ftsArgs...)
-		if err == nil {
+		switch {
+		case err != nil && len(vectorQuery) == 0:
+			// The keyword arm is the ONLY arm here, so swallowing this returns "nothing matched" for a
+			// query that never ran. That reads as an empty corpus and is unfalsifiable from outside.
+			return nil, fmt.Errorf("keyword search failed: %w", err)
+		case err != nil:
+			// A vector arm is still going to answer, so degrade rather than fail the whole search — but
+			// say so, because silently vector-only results look like ordinary results.
+			log.Printf("[HYBRID] keyword arm failed, continuing with vector results only: %v", err)
+		default:
 			defer rows.Close()
 			rank := 1
 			for rows.Next() {
 				var rowid int64
 				var score float64
-				if err := rows.Scan(&rowid, &score); err == nil {
-					ftsRanks[rowid] = rank
-					rank++
+				if err := rows.Scan(&rowid, &score); err != nil {
+					log.Printf("[HYBRID] skipped an FTS row that would not scan: %v", err)
+					continue
 				}
+				ftsRanks[rowid] = rank
+				rank++
+			}
+			if err := rows.Err(); err != nil {
+				log.Printf("[HYBRID] FTS rows ended early: %v", err)
 			}
 		}
 	}
@@ -179,6 +194,11 @@ func (s *SQLiteStore) HybridSearch(ctx context.Context, vectorQuery []float32, t
 		)
 
 		rows, err := s.db.QueryContext(ctx, query, args...)
+		if err != nil {
+			// Every keyword hit is about to be dropped. Whatever the vector arm found still stands, so
+			// this is not fatal — but the caller would otherwise see keyword recall vanish with no cause.
+			log.Printf("[HYBRID] could not load the keyword hits, dropping them: %v", err)
+		}
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
@@ -190,6 +210,9 @@ func (s *SQLiteStore) HybridSearch(ctx context.Context, vectorQuery []float32, t
 				var rowid int64
 
 				if err := rows.Scan(&id, &collectionID, &collectionName, &vectorBytes, &content, &docID, &metadataJSON, &rowid); err != nil {
+					// A NULL metadata column lands here, and dropping every row for it is how a whole
+					// corpus becomes unsearchable while every query still "succeeds".
+					log.Printf("[HYBRID] skipped a chunk that would not scan (id=%q): %v", id, err)
 					continue
 				}
 
