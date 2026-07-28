@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.60.2] - 2026-07-28
+
+### Fixed
+
+- **`search_text` returned nothing when `top_k` was omitted.** `top_k` is optional in the tool
+  schema, so a model calling the tool routinely leaves it out — and the zero was carried all the way
+  into the final `ordered[:TopK]` truncation, cutting the entire result set away. The tool answered
+  `chunks: null` with a plan and a decision that both looked correct, so it read as "this corpus does
+  not contain the term" while the FTS index held dozens of matches; the same query with `top_k: 5`
+  returned five. `SearchTextOnly`'s existing default did not help because it normalises its own copy
+  of the options, not the value the caller's merge truncates by. Normalised once at the top of the
+  candidate merge, against a new package-level `defaultSearchTopK`. Every existing search test passed
+  `TopK` explicitly, which is why none of them caught it.
+
 ## [2.60.1] - 2026-07-27
 
 ### Fixed

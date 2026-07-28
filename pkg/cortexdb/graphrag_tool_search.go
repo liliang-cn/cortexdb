@@ -42,6 +42,12 @@ func (t *GraphRAGToolbox) SearchText(ctx context.Context, req ToolSearchTextRequ
 }
 
 func (t *GraphRAGToolbox) searchTextCandidates(ctx context.Context, req ToolSearchTextRequest, resolution retrievalPlanResolution) ([]core.ScoredEmbedding, error) {
+	// top_k is optional for the caller, so normalise it here rather than relying on the default
+	// SearchTextOnly applies to its own copy: the merge below truncates to this value, and a zero
+	// left in place cuts the entire result set away instead of returning the default page of it.
+	if req.TopK <= 0 {
+		req.TopK = defaultSearchTopK
+	}
 	searchOpts := TextSearchOptions{
 		Collection: applyRetrievalPlanCollection(req.Collection, resolution.Plan.Filters),
 		TopK:       req.TopK,
@@ -111,7 +117,7 @@ func (t *GraphRAGToolbox) SearchChunksByEntities(ctx context.Context, req ToolSe
 		return &ToolSearchChunksByEntitiesResponse{}, nil
 	}
 	if req.TopK <= 0 {
-		req.TopK = 10
+		req.TopK = defaultSearchTopK
 	}
 	if req.MaxHops <= 0 {
 		req.MaxHops = 1

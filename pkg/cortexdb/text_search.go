@@ -11,6 +11,11 @@ import (
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
+// defaultSearchTopK is the page size used when a caller names none. top_k is optional throughout the
+// tool surface, so every path that truncates by it has to settle on this first — a zero carried into a
+// truncation returns an empty result set rather than the default page.
+const defaultSearchTopK = 10
+
 // TextSearchOptions defines options for text-only search.
 type TextSearchOptions struct {
 	Collection       string
@@ -273,7 +278,7 @@ func (db *DB) SearchTextOnly(ctx context.Context, query string, opts TextSearchO
 		return nil, ErrEmptyText
 	}
 	if opts.TopK <= 0 {
-		opts.TopK = 10
+		opts.TopK = defaultSearchTopK
 	}
 
 	// Retrieval-layer authorization: over-fetch, apply the gate, then return up
