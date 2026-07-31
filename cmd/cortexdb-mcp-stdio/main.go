@@ -48,6 +48,36 @@ func main() {
 		return
 	}
 
+	// Learning-graph modes: study material as a prerequisite graph.
+	// `--import-learning-graph [file.json]` ingests concepts + prerequisites;
+	// `--learn-path "<concept>"` prints an ordered study plan;
+	// `--learn-next [limit]` prints what is ready to study now;
+	// `--learn-mastered <concept>...` records mastery.
+	if len(os.Args) > 1 && os.Args[1] == "--import-learning-graph" {
+		runImportLearningGraph(os.Args[2:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "--learn-path" {
+		runLearnPath(os.Args[2:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "--learn-next" {
+		runLearnNext(os.Args[2:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "--learn-mastered" {
+		runLearnMastered(os.Args[2:])
+		return
+	}
+
+	// `--graph-update [file] [--dry-run] [--allow-delete]` reconciles new text
+	// against the existing graph with an LLM, applying add/update/DELETE edits.
+	// Needs only CORTEXDB_LLM_* (no embedder). Used by /cortexdb-graph-update.
+	if len(os.Args) > 1 && os.Args[1] == "--graph-update" {
+		runGraphUpdate(os.Args[2:])
+		return
+	}
+
 	// `--multi-hop "<question>"` answers a complex, multi-step question via
 	// iterative agentic retrieval (retrieve → reason → retrieve). Requires an
 	// LLM (CORTEXDB_LLM_*). Used by /cortexdb-multi-hop.
