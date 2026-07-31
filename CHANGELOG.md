@@ -30,9 +30,15 @@ All notable changes to this project will be documented in this file.
 
   Found from outside: a tutoring application built a study-path planner on these edges and got
   nothing on every query against a real database, because 957 of its 1017 prerequisite edges hung
-  off IDs whose scheme it had guessed wrong. Worse, ID-only entry cannot work across wordings at
-  all. A graph built from mixed-language material holds "Left-Hand Limit" beside 含绝对值的极限, and
-  a reader asking for 左极限 hashed to nothing and was told the material did not cover it.
+  off IDs whose scheme it had guessed wrong. Deriving an ID also needs every input the writer used —
+  for that application, which textbook a concept came from — and 953 of its 1030 sessions do not have
+  one, so 92% of the time there was nothing to derive from and the walk had no seeds at all. A name
+  needs none of that.
+
+  It matches strings, not meanings. Measured against that database: `two phase commit` reaches
+  `Two-Phase Commit`, 泰勒级数 reaches 泰勒级数 — but 左极限 does not reach "Left-Hand Limit", and is
+  not meant to. Translation is a different problem and this is not a step towards it. An earlier
+  draft of this entry used that example as though it worked; it does not.
 
   Three passes, weakest last — exact, case-and-punctuation folded, containment — and every match
   says which it was, because a caller acting on a containment hit should be able to decline. Shorter
