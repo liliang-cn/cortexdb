@@ -162,6 +162,31 @@ type ToolGetNodesResponse struct {
 	Nodes []*graph.GraphNode `json:"nodes"`
 }
 
+// ToolFindNodesRequest looks graph nodes up by what they are called.
+type ToolFindNodesRequest struct {
+	Names []string `json:"names"`
+	// Optional filter, e.g. []string{"Concept"}. Empty means any type.
+	NodeTypes []string `json:"node_types,omitempty"`
+	// Per-name cap. Zero means the default.
+	Limit int `json:"limit,omitempty"`
+}
+
+// ToolFindNodesResponse returns what each requested name resolved to.
+type ToolFindNodesResponse struct {
+	Matches []ToolNodeNameMatch `json:"matches"`
+}
+
+// ToolNodeNameMatch is one requested name and the nodes it found, best first.
+type ToolNodeNameMatch struct {
+	Name  string             `json:"name"`
+	Nodes []*graph.GraphNode `json:"nodes"`
+	// How the best node was found: "exact", "fold" (case/space/punctuation
+	// collapsed) or "contains". Reported because the three carry very different
+	// confidence, and a caller acting on a "contains" hit should be able to
+	// choose not to.
+	Match string `json:"match,omitempty"`
+}
+
 // ToolGetChunksRequest fetches chunk records by chunk ID.
 type ToolGetChunksRequest struct {
 	ChunkIDs            []string `json:"chunk_ids"`

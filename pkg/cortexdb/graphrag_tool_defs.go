@@ -139,6 +139,18 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			),
 		},
 		{
+			Name:        "find_nodes",
+			Description: "Resolve names to graph node IDs, so a caller holding a name can enter the graph. Matches exactly, then ignoring case and punctuation, then by containment; each match says which. Use before expand_graph when you have a name rather than an ID.",
+			InputSchema: toolObjectSchema(
+				[]string{"names"},
+				map[string]any{
+					"names":      toolStringArraySchema("Names to look up. Batch them: one scan serves all."),
+					"node_types": toolStringArraySchema("Optional node type filter, e.g. Concept."),
+					"limit":      toolIntegerSchema("Optional cap on nodes returned per name."),
+				},
+			),
+		},
+		{
 			Name:        "get_chunks",
 			Description: "Fetch chunk records by chunk ID.",
 			InputSchema: toolObjectSchema(
@@ -288,6 +300,12 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.GetNodes(ctx, req)
+	case "find_nodes":
+		var req ToolFindNodesRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.FindNodes(ctx, req)
 	case "get_chunks":
 		var req ToolGetChunksRequest
 		if err := json.Unmarshal(input, &req); err != nil {
