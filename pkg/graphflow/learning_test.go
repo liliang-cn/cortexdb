@@ -210,6 +210,78 @@ func TestLearningPathBreaksCycle(t *testing.T) {
 	}
 }
 
+// TestLearningPathReportsOnlyConceptsActuallyInACycle covers what
+// TestLearningPathBreaksCycle structurally cannot: a graph that is not entirely
+// one cycle. There, everything the sort was left holding when it stalled *was*
+// the cycle, so reading the cycle off the stall looked correct. Here two
+// disjoint cycles sit under a target that requires both, and the target — which
+// nothing requires, so it cannot be on any cycle — was named as being in one,
+// twice, along with a duplicate of the second cycle.
+func TestLearningPathReportsOnlyConceptsActuallyInACycle(t *testing.T) {
+	db, ctx := openLearningTestDB(t)
+	lg := LearningGraph{
+		Subject: "physics",
+		Concepts: []LearningConcept{
+			{Name: "A", Difficulty: 1}, {Name: "B", Difficulty: 2}, {Name: "C", Difficulty: 3},
+			{Name: "X", Difficulty: 4}, {Name: "Y", Difficulty: 5}, {Name: "Z", Difficulty: 6},
+			{Name: "T", Difficulty: 9},
+		},
+		Relations: []LearningRelation{
+			{From: "A", To: "B", Type: "requires"},
+			{From: "B", To: "C", Type: "requires"},
+			{From: "C", To: "A", Type: "requires"},
+			{From: "X", To: "Y", Type: "requires"},
+			{From: "Y", To: "Z", Type: "requires"},
+			{From: "Z", To: "X", Type: "requires"},
+			// T is downstream of both cycles and on neither: nothing requires it.
+			{From: "T", To: "A", Type: "requires"},
+			{From: "T", To: "X", Type: "requires"},
+		},
+	}
+	if _, err := ImportLearningGraph(ctx, db, lg); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+
+	done := make(chan *LearningPathResult, 1)
+	go func() {
+		p, err := LearningPath(ctx, db, "T", []string{})
+		if err != nil {
+			done <- nil
+			return
+		}
+		done <- p
+	}()
+	select {
+	case p := <-done:
+		if p == nil {
+			t.Fatalf("cyclic path returned an error")
+		}
+		if len(p.Steps) != 7 {
+			t.Fatalf("expected all 7 concepts emitted, got %v", names(p.Steps))
+		}
+		seen := map[string]int{}
+		for _, c := range p.Cycles {
+			seen[c]++
+			if seen[c] > 1 {
+				t.Fatalf("%q reported as cyclic %d times: %v", c, seen[c], p.Cycles)
+			}
+		}
+		if _, wrong := seen["T"]; wrong {
+			t.Fatalf("T has no incoming prerequisite edge and cannot be in a cycle: %v", p.Cycles)
+		}
+		for _, want := range []string{"A", "B", "C", "X", "Y", "Z"} {
+			if _, ok := seen[want]; !ok {
+				t.Fatalf("%q is on a cycle and was not reported: %v", want, p.Cycles)
+			}
+		}
+		if len(p.Cycles) != 6 {
+			t.Fatalf("expected exactly the six concepts on the two cycles, got %v", p.Cycles)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("LearningPath hung on a graph with two disjoint cycles")
+	}
+}
+
 // TestLearningPathMissingTarget verifies an unknown target is reported, not an error.
 func TestLearningPathMissingTarget(t *testing.T) {
 	db, ctx := openLearningTestDB(t)

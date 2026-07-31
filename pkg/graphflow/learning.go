@@ -172,7 +172,9 @@ type LearningPathResult struct {
 	Target string            `json:"target"`
 	Steps  []LearningConcept `json:"steps"`   // prerequisites first, target last
 	Known  []string          `json:"known"`   // already-mastered concepts that were skipped
-	Cycles []string          `json:"cycles"`  // concepts involved in a prerequisite cycle, if any
+	// Concepts that genuinely lie on a prerequisite cycle — not merely the ones
+	// waiting behind one. Each appears once. See cyclicConcepts.
+	Cycles []string          `json:"cycles"`
 	Missing bool             `json:"missing"` // target not present in the graph
 }
 
@@ -272,11 +274,28 @@ func LearningPath(ctx context.Context, db *cortexdb.DB, target string, known []s
 	}
 	g.sortKeys(ready)
 
+	// Which concepts actually lie on a cycle, worked out from the graph rather
+	// than from what the sort below is left holding when it stalls. The two are
+	// not the same set, and the difference is every concept downstream of a
+	// cycle: those stall too, through no fault of their own.
+	cyclic := cyclicConcepts(pending, g.requires)
+	inCycle := make([]string, 0, len(cyclic))
+	for k := range cyclic {
+		inCycle = append(inCycle, k)
+	}
+	g.sortKeys(inCycle)
+	for _, k := range inCycle {
+		result.Cycles = append(result.Cycles, g.concepts[k].Name)
+	}
+
 	emitted := make(map[string]struct{}, len(pending))
 	for len(emitted) < len(pending) {
 		if len(ready) == 0 {
-			// Cycle: nothing is dependency-free. Break it deterministically by
-			// releasing the easiest remaining concept, and report the cycle.
+			// Stalled: everything left has an unmet prerequisite, which happens
+			// when a cycle — or anything waiting behind one — is all that
+			// remains. Break it by releasing the easiest, and carry on. What is
+			// reported as cyclic was settled above; being stuck here is not
+			// evidence of being in a cycle.
 			stuck := make([]string, 0)
 			for k := range pending {
 				if _, done := emitted[k]; !done {
@@ -284,9 +303,6 @@ func LearningPath(ctx context.Context, db *cortexdb.DB, target string, known []s
 				}
 			}
 			g.sortKeys(stuck)
-			for _, k := range stuck {
-				result.Cycles = append(result.Cycles, g.concepts[k].Name)
-			}
 			ready = append(ready, stuck[0])
 			remainingDeps[stuck[0]] = 0
 		}
@@ -438,6 +454,85 @@ func (g *learningGraph) resolve(name string) (string, bool) {
 
 // sortKeys orders concept keys by difficulty then name, so output is stable and
 // easier material comes first among equally-ready concepts.
+// cyclicConcepts returns those of `pending` that lie on a prerequisite cycle,
+// by Tarjan over the prerequisite edges between pending concepts.
+//
+// Worth the algorithm rather than reading it off a stalled topological sort,
+// which is what this replaced: a sort stalls on everything that still has an
+// unmet prerequisite, and that set includes every concept sitting *behind* a
+// cycle as well as the cycle itself. A concept with no prerequisites of its own
+// pointing at it cannot be in a cycle at all, yet was named as being in one —
+// and a learner told "动量守恒 is in a prerequisite loop" will go looking for a
+// loop that does not exist. Two disjoint cycles made it worse still, reporting
+// the second one's concepts twice, once per stall.
+//
+// A component of one is never a cycle here. It would be if a concept could
+// require itself, and an LLM will certainly propose that — but both write paths
+// drop such an edge before it lands (ImportLearningGraph and the add branch of
+// applyGraphEdits, each on `strings.EqualFold(from, to)`), so the graph cannot
+// hold one. Checking for it here would be a branch no input can reach.
+func cyclicConcepts(pending map[string]struct{}, requires map[string][]string) map[string]struct{} {
+	index := make(map[string]int, len(pending))
+	lowLink := make(map[string]int, len(pending))
+	onStack := make(map[string]bool, len(pending))
+	stack := make([]string, 0, len(pending))
+	inCycle := make(map[string]struct{})
+	next := 0
+
+	var visit func(v string)
+	visit = func(v string) {
+		index[v] = next
+		lowLink[v] = next
+		next++
+		stack = append(stack, v)
+		onStack[v] = true
+
+		for _, w := range requires[v] {
+			if _, isPending := pending[w]; !isPending {
+				// Mastered, or outside the target's closure. It cannot close a
+				// cycle within the plan, because it is not in the plan.
+				continue
+			}
+			if _, seen := index[w]; !seen {
+				visit(w)
+				if lowLink[w] < lowLink[v] {
+					lowLink[v] = lowLink[w]
+				}
+			} else if onStack[w] {
+				if index[w] < lowLink[v] {
+					lowLink[v] = index[w]
+				}
+			}
+		}
+
+		if lowLink[v] != index[v] {
+			return
+		}
+		component := make([]string, 0, 1)
+		for {
+			w := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			onStack[w] = false
+			component = append(component, w)
+			if w == v {
+				break
+			}
+		}
+		if len(component) > 1 {
+			for _, w := range component {
+				inCycle[w] = struct{}{}
+			}
+		}
+	}
+
+	for k := range pending {
+		if _, seen := index[k]; !seen {
+			visit(k)
+		}
+	}
+	return inCycle
+}
+
 func (g *learningGraph) sortKeys(keys []string) {
 	sort.SliceStable(keys, func(i, j int) bool {
 		a, b := g.concepts[keys[i]], g.concepts[keys[j]]
