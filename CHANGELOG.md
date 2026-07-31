@@ -2,6 +2,65 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.62.0] - 2026-07-31
+
+### Added
+
+- **`find_nodes` — enter the property graph by name.** `expand_graph` and `get_nodes` both take node
+  IDs and nothing else, and nothing turned a name into one. A caller holding a name had to *derive*
+  the ID its writer would have produced: re-implement someone else's hashing, guess the entity type,
+  and hope. A wrong derivation returned an empty subgraph — the same answer the graph gives for
+  something it has genuinely never heard of — so the failure was silent and read as missing data.
+
+  Found from outside: a tutoring application built a study-path planner on these edges and got
+  nothing on every query against a real database, because 957 of its 1017 prerequisite edges hung
+  off IDs whose scheme it had guessed wrong. Worse, ID-only entry cannot work across wordings at
+  all. A graph built from mixed-language material holds "Left-Hand Limit" beside 含绝对值的极限, and
+  a reader asking for 左极限 hashed to nothing and was told the material did not cover it.
+
+  Three passes, weakest last — exact, case-and-punctuation folded, containment — and every match
+  says which it was, because a caller acting on a containment hit should be able to decline. Shorter
+  names win among equals: extra words narrow a concept, so a bare "Limit" wants `Limit` and not
+  `Infinite Limit`. `node_types` keeps places in a book ("Chapter 4") out of an answer about things
+  to learn.
+
+  The fold keeps letters and digits by Unicode class rather than by ASCII. Without that every CJK
+  name folds to `""` and they all match each other — proven by breaking it deliberately, which
+  resolved 量子色动力学, absent from the graph, confidently onto an unrelated Chinese concept.
+
+### Fixed
+
+- **`LearningPath` no longer reports a concept as cyclic for being stuck behind a cycle.** `Cycles`
+  was read off the topological sort: whatever Kahn's algorithm was still holding when it stalled got
+  named. That set is "has an unmet prerequisite" — the cycle *plus* everything queued behind it —
+  and the two coincide only when the whole graph is one cycle, which is what the test built. On two
+  disjoint cycles under a target requiring both, seven concepts produced eleven entries: the second
+  cycle twice, and the target itself, which nothing requires and so cannot lie on any cycle. Now
+  computed with Tarjan before the sort runs, so each concept appears once and only if it is
+  genuinely on a cycle. The stall still breaks the deadlock the same deterministic way; it just no
+  longer draws conclusions from being stuck.
+
+## [2.61.0] - 2026-07-31
+
+Not logged when released. Recorded here from the release commit.
+
+### Added
+
+- **Learning prerequisite graphs (`pkg/graphflow/learning.go`).** Study material as concepts linked
+  by prerequisite edges. `LearningPath` returns the prerequisite closure of a target, topologically
+  sorted, minus what is mastered — the question retrieval cannot answer: what must I learn, and in
+  what order, before X. `NextConcepts` gives the learnable frontier, `MissingPrerequisites` explains
+  being stuck, `MarkMastered` persists mastery on the graph.
+- **LLM-driven graph CRUD (`pkg/graphflow/graph_edit.go`).** Ingestion only ever added, so wrong
+  facts accumulated with no way to retract them. `UpdateGraphFromText` shows an LLM the relevant
+  existing subgraph alongside new text and applies the resulting add/update/delete edits.
+  Deliberately embedder-free — relevant entities are found by lexical mention, writes use lexical
+  vectors — so the whole surface works with only a chat model. Deletes are opt-in (`AllowDelete`),
+  capped per run, and previewable with `DryRun`.
+
+  Reachable from `cortexdb-mcp --graph-update` only; it is not registered as an MCP tool, so a host
+  that speaks MCP rather than the CLI cannot use it.
+
 ## [2.60.3] - 2026-07-28
 
 ### Fixed
