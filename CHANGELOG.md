@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.62.1] - 2026-07-31
+
+### Fixed
+
+- **`find_nodes` was defined but not reachable over MCP.** It shipped in 2.62.0 with a schema, a
+  dispatcher entry, tests and a changelog entry — and was absent from every host that speaks MCP
+  rather than the Go API, because `NewMCPServer` registers each tool by hand and that list is
+  separate from `Definitions()`. Nothing about the symptom points at the cause: a host asks for a
+  tool and is told it does not exist, by a server whose release notes say it does. Found within the
+  hour by the application it was built for.
+
+- **The two lists now have to agree.** A test connects a client to the server over an in-memory
+  transport, asks it what it exposes the way a host does, and fails naming any defined tool that is
+  missing. `LearningPath`, `NextConcepts`, `MissingPrerequisites` and `UpdateGraphFromText` are not
+  caught by it — they are not in `Definitions()` at all, and remain CLI-only.
+
 ## [2.62.0] - 2026-07-31
 
 ### Added

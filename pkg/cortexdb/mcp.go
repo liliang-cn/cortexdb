@@ -129,6 +129,16 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *resp, nil
 	})
+	addGraphRAGMCPTool(server, definitions["find_nodes"], func(ctx context.Context, req ToolFindNodesRequest) (ToolFindNodesResponse, error) {
+		resp, err := toolbox.FindNodes(ctx, req)
+		if err != nil {
+			return ToolFindNodesResponse{}, err
+		}
+		if resp == nil {
+			return ToolFindNodesResponse{}, nil
+		}
+		return *resp, nil
+	})
 	addGraphRAGMCPTool(server, definitions["get_chunks"], func(ctx context.Context, req ToolGetChunksRequest) (ToolGetChunksResponse, error) {
 		resp, err := toolbox.GetChunks(ctx, req)
 		if err != nil {
