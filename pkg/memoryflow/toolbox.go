@@ -172,12 +172,64 @@ func (t *Toolbox) Definitions() []cortexdb.ToolDefinition {
 				},
 			),
 		},
+		{
+			Name: "memoryflow_apply_memory_edits",
+			Description: "Apply memory edits you have already decided on: add new memories, update wording, " +
+				"or supersede a memory the conversation has just made untrue. Superseding keeps the old " +
+				"memory and links it forward, so it is reversible; it must be enabled with allow_supersede " +
+				"and is capped. Use dry_run first to see what a plan would do.",
+			InputSchema: mfObjectSchema(
+				[]string{"edits"},
+				map[string]any{
+					"edits": map[string]any{
+						"type": "array",
+						"items": map[string]any{
+							"type":     "object",
+							"required": []string{"op"},
+							"properties": map[string]any{
+								"op":        map[string]any{"type": "string", "enum": []string{"add", "update", "supersede"}},
+								"memory_id": map[string]any{"type": "string", "description": "target of update/supersede"},
+								"content":   map[string]any{"type": "string"},
+								"reason":    map[string]any{"type": "string", "description": "why; stored on a superseded memory"},
+							},
+						},
+					},
+					"allow_supersede": map[string]any{"type": "boolean"},
+					"max_supersedes":  map[string]any{"type": "integer"},
+					"dry_run":         map[string]any{"type": "boolean"},
+					"scope":           map[string]any{"type": "string"},
+					"user_id":         map[string]any{"type": "string"},
+					"namespace":       map[string]any{"type": "string"},
+				},
+			),
+		},
 	}
 }
 
 // Call dispatches a tool call into the workflow service.
 func (t *Toolbox) Call(ctx context.Context, name string, input json.RawMessage) (any, error) {
 	switch name {
+	case "memoryflow_apply_memory_edits":
+		var req struct {
+			Edits          []MemoryEdit `json:"edits"`
+			AllowSupersede bool         `json:"allow_supersede"`
+			MaxSupersedes  int          `json:"max_supersedes"`
+			DryRun         bool         `json:"dry_run"`
+			Scope          string       `json:"scope"`
+			UserID         string       `json:"user_id"`
+			Namespace      string       `json:"namespace"`
+		}
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return ApplyMemoryEdits(ctx, t.service.db, MemoryEditPlan{Edits: req.Edits}, MemoryEditOptions{
+			AllowSupersede: req.AllowSupersede,
+			MaxSupersedes:  req.MaxSupersedes,
+			DryRun:         req.DryRun,
+			Scope:          req.Scope,
+			UserID:         req.UserID,
+			Namespace:      req.Namespace,
+		})
 	case "memoryflow_resolve_taxonomy":
 		var req struct {
 			Taxonomy Taxonomy   `json:"taxonomy"`

@@ -47,6 +47,39 @@ func (s *Service) NewMCPServer(opts MCPServerOptions) (*mcp.Server, error) {
 		definitions[definition.Name] = definition
 	}
 
+	// Every tool in Definitions() must be registered here; the two lists are
+	// hand-kept and a coverage test now fails when they drift apart.
+	addMemoryflowMCPTool(server, definitions["memoryflow_apply_memory_edits"], func(ctx context.Context, req applyMemoryEditsInput) (MemoryEditReport, error) {
+		rep, err := ApplyMemoryEdits(ctx, s.db, MemoryEditPlan{Edits: req.Edits}, MemoryEditOptions{
+			AllowSupersede: req.AllowSupersede,
+			MaxSupersedes:  req.MaxSupersedes,
+			DryRun:         req.DryRun,
+			Scope:          req.Scope,
+			UserID:         req.UserID,
+			Namespace:      req.Namespace,
+		})
+		if err != nil || rep == nil {
+			return MemoryEditReport{}, err
+		}
+		return *rep, nil
+	})
+	addMemoryflowMCPTool(server, definitions["memoryflow_resolve_taxonomy"], func(_ context.Context, req resolveTaxonomyInput) (Taxonomy, error) {
+		return s.ResolveTaxonomy(req.Taxonomy, req.Hint), nil
+	})
+	addMemoryflowMCPTool(server, definitions["memoryflow_list_episodes"], func(ctx context.Context, req ListEpisodesRequest) (ListEpisodesResponse, error) {
+		resp, err := s.ListEpisodes(ctx, req)
+		if err != nil || resp == nil {
+			return ListEpisodesResponse{}, err
+		}
+		return *resp, nil
+	})
+	addMemoryflowMCPTool(server, definitions["memoryflow_get_transcript"], func(ctx context.Context, req GetTranscriptRequest) (GetTranscriptResponse, error) {
+		resp, err := s.GetTranscript(ctx, req)
+		if err != nil || resp == nil {
+			return GetTranscriptResponse{}, err
+		}
+		return *resp, nil
+	})
 	addMemoryflowMCPTool(server, definitions["memoryflow_ingest_transcript"], func(ctx context.Context, req IngestTranscriptRequest) (IngestTranscriptResponse, error) {
 		resp, err := s.IngestTranscript(ctx, req)
 		if err != nil {
@@ -134,4 +167,21 @@ func addMemoryflowMCPTool[In, Out any](server *mcp.Server, definition cortexdb.T
 		}
 		return &mcp.CallToolResult{}, output, nil
 	})
+}
+
+// applyMemoryEditsInput mirrors the tool's input schema.
+type applyMemoryEditsInput struct {
+	Edits          []MemoryEdit `json:"edits"`
+	AllowSupersede bool         `json:"allow_supersede"`
+	MaxSupersedes  int          `json:"max_supersedes"`
+	DryRun         bool         `json:"dry_run"`
+	Scope          string       `json:"scope"`
+	UserID         string       `json:"user_id"`
+	Namespace      string       `json:"namespace"`
+}
+
+// resolveTaxonomyInput mirrors memoryflow_resolve_taxonomy's input schema.
+type resolveTaxonomyInput struct {
+	Taxonomy Taxonomy   `json:"taxonomy"`
+	Hint     SourceHint `json:"hint"`
 }
