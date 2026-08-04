@@ -51,6 +51,8 @@ ${CLAUDE_PLUGIN_ROOT}/bin/cortexdb-mcp.cmd
 | --- | --- | --- |
 | `CORTEXDB_PATH` | `~/.cortexdb/cortexdb.db` | Path to the SQLite database file the MCP server opens. Defaults to a single **global** store shared by every project on the machine (the directory is created automatically; SQLite WAL makes concurrent sessions safe). Export it — e.g. to a project-local `.cortexdb/cortexdb.db` — to use a different file; it is inherited by the launched server. |
 | `CORTEXDB_MCP_BIN` | _(unset)_ | Path to a local MCP server binary to run instead of downloading (e.g. a dev build). |
+| `CORTEXDB_REMOTE` | _(unset)_ | `host:port` of a central `cortexdb-grpc`. **Setting it switches the MCP server into shared-brain client mode**: it opens no local database and forwards every tool call to that one server, so Claude Code, Codex, VMs and other machines all use the same brain. See [Shared brain](#shared-brain-one-cortexdb-many-agents-and-machines). |
+| `CORTEXDB_GRPC_TOKEN` | _(unset)_ | Bearer token for `CORTEXDB_REMOTE`; must match the token the server was started with. |
 | `CORTEXDB_RECALL_TOPK` | `3` | How many matched memories the auto-recall hook injects per prompt (see below). |
 | `CORTEXDB_EMBED_BASE_URL` | _(unset)_ | OpenAI-compatible `/embeddings` base URL. **Setting it turns on semantic retrieval** (hybrid vector + lexical). Point it at any provider, including a local Ollama: `http://localhost:11434/v1`. `OPENAI_BASE_URL` is accepted as a fallback (parity with `cortexdb-grpc`). |
 | `CORTEXDB_EMBED_MODEL` | `text-embedding-3-small` | Embedding model name (e.g. `embeddinggemma` for a local Ollama). |
@@ -85,6 +87,47 @@ To make the global store explicit in a shell or MCP config, use:
 ```bash
 export CORTEXDB_PATH="$HOME/.cortexdb/cortexdb.db"
 ```
+
+## Shared brain — one CortexDB, many agents and machines
+
+By default the MCP server opens a **local SQLite file**. Several processes on *one* machine (Claude Code + Codex + a script) share that file safely — SQLite runs in WAL mode. That does **not** extend across machines: a SQLite file on a network mount (NFS/SMB/virtiofs) is a corruption hazard, not a shared brain.
+
+To give **Claude Code, Codex, a Lima VM, and agents in other VMs one shared brain**, run the database in exactly one place and let everyone else talk to it:
+
+```
+        ┌──────────────────────────────────────────────┐
+        │  host that owns the file (e.g. your Mac)      │
+        │  cortexdb-grpc  ──►  ~/.cortexdb/cortexdb.db  │
+        └───────────────────────┬──────────────────────┘
+                    gRPC (bearer token, over Tailscale/LAN/loopback)
+        ┌───────────┬───────────┼───────────┬─────────────┐
+   Claude Code    Codex     Lima VM    VM on Proxmox   any client
+   (mcp --remote) (--remote) (--remote)  (OpenClaw)    (Rust/Py/Node)
+```
+
+**1. On the host that owns the database**, start the server (bind to a private address — loopback, LAN, or a Tailscale IP; never a public one):
+
+```bash
+export CORTEXDB_PATH="$HOME/.cortexdb/cortexdb.db"
+export CORTEXDB_GRPC_ADDR="100.x.y.z:47821"   # Tailscale IP, or 127.0.0.1 for same-host only
+export CORTEXDB_GRPC_TOKEN="$(openssl rand -hex 32)"   # keep this; every client needs it
+cortexdb-grpc
+```
+
+**2. On every agent/machine**, point the MCP server at it instead of a local file:
+
+```bash
+export CORTEXDB_REMOTE="100.x.y.z:47821"
+export CORTEXDB_GRPC_TOKEN="…the same token…"
+```
+
+That is the whole change — no other config. In this mode the MCP server opens no local database; it discovers the tool surface from the server at startup and proxies every call, so **all tools (current and future) work identically**, and every agent reads and writes the same memory and knowledge graph.
+
+Notes:
+- **Transport is plaintext**, so run it over loopback, a trusted LAN, or Tailscale — the token is what stops others on that network from reading the brain. Anyone with the token has full read/write access.
+- **Embedder/LLM config lives on the server**, not the clients: set `CORTEXDB_EMBED_*` / `CORTEXDB_LLM_*` where `cortexdb-grpc` runs.
+- The one-shot modes (`--graph-html`, `--export-memory`, `--learn-path`, …) still act on a **local** database; run them on the host that owns the file, or point `CORTEXDB_PATH` at it there.
+- Other languages can join the same brain directly with the Rust/Python/Node `cortexdb-client` packages.
 
 ## Slash commands
 

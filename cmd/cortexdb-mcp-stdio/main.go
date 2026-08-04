@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"strings"
 
 	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
@@ -124,6 +125,17 @@ func main() {
 	// /cortexdb-import-code.
 	if len(os.Args) > 1 && os.Args[1] == "--import-code-graph" {
 		runImportCodeGraph(os.Args[2:])
+		return
+	}
+
+	// Shared-brain client mode: with CORTEXDB_REMOTE set, serve MCP on stdio but
+	// forward every tool call to one central cortexdb-grpc instead of opening a
+	// local file — so several machines share a single brain. Checked before the
+	// local open, since in this mode there is no local database at all.
+	if remote := strings.TrimSpace(os.Getenv("CORTEXDB_REMOTE")); remote != "" {
+		if err := runRemoteMCPStdio(context.Background(), remote, os.Getenv("CORTEXDB_GRPC_TOKEN")); err != nil {
+			log.Fatalf("run remote mcp stdio server: %v", err)
+		}
 		return
 	}
 
