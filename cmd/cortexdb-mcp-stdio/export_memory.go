@@ -34,21 +34,9 @@ func runExportMemory(args []string) {
 		}
 	}
 
-	db, err := openBrainDB(dbPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "cortexdb: open %s: %v\n", dbPath, err)
-		os.Exit(1)
-	}
-	defer func() { _ = db.Close() }()
-
-	ctx := context.Background()
-	memories, err := db.ListAllMemories(ctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "cortexdb: list memories: %v\n", err)
-		os.Exit(1)
-	}
+	memories, source := loadAllMemories(context.Background())
 	if len(memories) == 0 {
-		fmt.Printf("no memories to export in %s\n", dbPath)
+		fmt.Printf("no memories to export in %s\n", source)
 		return
 	}
 

@@ -3,11 +3,11 @@ package cortexdb
 // RetrievalPlan is the structured search plan that an external LLM can produce
 // before calling CortexDB search APIs or MCP tools.
 type RetrievalPlan struct {
-	Query            string            `json:"query,omitempty"`
-	Keywords         []string          `json:"keywords,omitempty"`
-	AlternateQueries []string          `json:"alternate_queries,omitempty"`
-	EntityNames      []string          `json:"entity_names,omitempty"`
-	RetrievalMode    string            `json:"retrieval_mode,omitempty"`
+	Query            string   `json:"query,omitempty"`
+	Keywords         []string `json:"keywords,omitempty"`
+	AlternateQueries []string `json:"alternate_queries,omitempty"`
+	EntityNames      []string `json:"entity_names,omitempty"`
+	RetrievalMode    string   `json:"retrieval_mode,omitempty"`
 	// Collection is shorthand for Filters.Collection.
 	//
 	// `collection` is a top-level parameter of the same call and also lives at

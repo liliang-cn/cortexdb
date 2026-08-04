@@ -127,7 +127,8 @@ Notes:
 - **Transport is plaintext**, so run it over loopback, a trusted LAN, or Tailscale — the token is what stops others on that network from reading the brain. Anyone with the token has full read/write access.
 - **Embedder/LLM config lives on the server**, not the clients: set `CORTEXDB_EMBED_*` / `CORTEXDB_LLM_*` where `cortexdb-grpc` runs.
 - **Auto-recall follows the shared brain.** The `UserPromptSubmit` hook (`--recall`) queries the remote when `CORTEXDB_REMOTE` is set, so injected memories come from the same brain the tools write to. Before this it always opened the local file — a silent failure that looks like working software: memories are injected, they are just frozen at whenever the machine switched over.
-- The remaining one-shot modes (`--graph-html`, `--export-memory`, `--learn-path`, …) still act on a **local** database; run them on the host that owns the file, or point `CORTEXDB_PATH` at it there.
+- **`--memory-html` and `--export-memory` follow the shared brain too** — they fetch every record over gRPC, so the dashboard and the Markdown export show what the tools actually write.
+- The remaining one-shot modes (`--graph-html`, `--learn-path`, …) still act on a **local** database; run them on the host that owns the file, or point `CORTEXDB_PATH` at it there.
 - Other languages can join the same brain directly with the Rust/Python/Node `cortexdb-client` packages.
 
 ## Slash commands

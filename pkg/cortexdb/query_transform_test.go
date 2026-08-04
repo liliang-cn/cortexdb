@@ -38,7 +38,7 @@ func TestApplyQueryTransformMerges(t *testing.T) {
 
 	req := &KnowledgeSearchRequest{
 		Query:            "Who owns Apollo?",
-		Keywords:         []string{"Apollo"},          // caller value must survive and stay first
+		Keywords:         []string{"Apollo"},           // caller value must survive and stay first
 		AlternateQueries: []string{"Apollo ownership"}, // caller value must survive and stay first
 	}
 

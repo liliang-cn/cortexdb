@@ -446,6 +446,12 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.UpdateMemory(ctx, req)
+	case "memory_list_all":
+		var req MemoryListAllRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.db.ListAllMemoriesPaged(ctx, req)
 	case "memory_get":
 		var req MemoryGetRequest
 		if err := json.Unmarshal(input, &req); err != nil {

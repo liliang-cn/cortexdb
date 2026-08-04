@@ -255,6 +255,16 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
+			Name:        "memory_list_all",
+			Description: "List every stored memory. For dashboards and exports that need the whole set rather than a search result; use memory_search to find specific memories.",
+			InputSchema: toolObjectSchema(
+				nil,
+				map[string]any{
+					"limit": map[string]any{"type": "integer", "description": "Maximum records to return (default 5000). The response says whether it was truncated."},
+				},
+			),
+		},
+		{
 			Name:        "memory_get",
 			Description: "Fetch one memory item by ID.",
 			InputSchema: toolObjectSchema(

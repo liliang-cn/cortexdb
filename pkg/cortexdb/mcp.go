@@ -389,6 +389,13 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *resp, nil
 	})
+	addGraphRAGMCPTool(server, definitions["memory_list_all"], func(ctx context.Context, req MemoryListAllRequest) (MemoryListAllResponse, error) {
+		resp, err := db.ListAllMemoriesPaged(ctx, req)
+		if err != nil || resp == nil {
+			return MemoryListAllResponse{}, err
+		}
+		return *resp, nil
+	})
 	addGraphRAGMCPTool(server, definitions["memory_get"], func(ctx context.Context, req MemoryGetRequest) (MemoryGetResponse, error) {
 		resp, err := toolbox.GetMemory(ctx, req)
 		if err != nil {

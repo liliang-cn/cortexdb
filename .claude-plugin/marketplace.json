@@ -9,7 +9,7 @@
       "name": "cortexdb",
       "source": "./plugins/cortexdb",
       "description": "Local-first AI memory and knowledge graph for Claude Code: vector search, RAG, GraphRAG, RDF/SPARQL/RDFS/SHACL, scoped agent memory, and corpus-to-graph workflows — bundled as a skill plus live MCP tools.",
-      "version": "2.63.1",
+      "version": "2.63.2",
       "author": {
         "name": "Liang Li"
       }

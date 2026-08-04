@@ -129,7 +129,8 @@ export CORTEXDB_GRPC_TOKEN="<同一个 token>"
 
 改动就这些。MCP 服务器随后不再打开本地数据库：它在启动时向服务端查询工具清单并
 转发每次调用，所以**现有的和将来新增的工具都自动可用**。`UserPromptSubmit`
-自动召回 hook 走同一个远端，因此注入的记忆和工具写入的是同一个大脑。
+自动召回 hook 走同一个远端，因此注入的记忆和工具写入的是同一个大脑；
+`--memory-html` 和 `--export-memory` 同样如此。
 
 传输是明文的，这是设计使然 —— 只能跑在环回、可信 LAN 或 Tailscale 上。
 **token 就是全部的访问控制**：拿到它就有完整读写权。embedder 和 LLM 配置在

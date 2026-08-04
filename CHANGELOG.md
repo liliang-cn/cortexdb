@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.63.2] - 2026-08-04
+
+### Added
+
+- **`memory_list_all`** — bulk listing for the views that need every record rather than a search
+  result. It reports `truncated` when a limit cut the listing short, because an export that silently
+  dropped records would look complete and not be.
+- **`memoryflow_apply_memory_edits`** — apply memory edits an agent has already decided on: add,
+  update, or supersede. The apply path is exposed rather than the propose path on purpose: whoever
+  calls the tool is a model that has just read the conversation, so having it decide the edits is
+  better informed and cheaper than a second LLM round-trip inside the server. Superseding is opt-in,
+  capped, and reversible — the old memory is kept and linked forward.
+- **LLM-driven memory maintenance in `pkg/memoryflow`** (`ProposeMemoryEdits`, `ApplyMemoryEdits`,
+  `UpdateMemoryFromText`) — the memory-side equivalent of `UpdateGraphFromText`, deliberately
+  without its delete. A graph fact removed in error is re-derivable; a memory is often the only
+  record that something was said.
+
+### Fixed
+
+- **Three memoryflow tools were defined but never reachable over MCP** —
+  `memoryflow_resolve_taxonomy`, `memoryflow_list_episodes` and `memoryflow_get_transcript` were in
+  `Definitions()` and absent from `NewMCPServer`, so they worked through the Go API and were
+  invisible to every MCP host. Same gap `find_nodes` shipped with in 2.62.0; `pkg/cortexdb` grew a
+  coverage test then, and `memoryflow` — which has the identical two-list shape — never did. It does
+  now, and the test found all three on its first run.
+- **`--memory-html` and `--export-memory` ignored the shared brain**, rendering a local file that
+  nothing writes to on a machine using a remote. They now fetch every record over gRPC.
+
 ## [2.63.1] - 2026-08-04
 
 ### Fixed

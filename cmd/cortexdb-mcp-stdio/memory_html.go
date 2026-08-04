@@ -20,27 +20,10 @@ import (
 // Unlike --graph-html (which visualizes the entity graph derived from memory),
 // this visualizes the memory *records* themselves.
 func runMemoryHTML(outDir string) {
-	dbPath := os.Getenv("CORTEXDB_PATH")
-	if dbPath == "" {
-		dbPath = cortexdb.DefaultDBPath()
-	}
-
-	db, err := openBrainDB(dbPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "cortexdb: open %s: %v\n", dbPath, err)
-		os.Exit(1)
-	}
-	defer func() { _ = db.Close() }()
-
-	ctx := context.Background()
-	memories, err := db.ListAllMemories(ctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "cortexdb: list memories: %v\n", err)
-		os.Exit(1)
-	}
+	memories, source := loadAllMemories(context.Background())
 
 	if outDir == "" {
-		outDir = filepath.Join(filepath.Dir(dbPath), "memory-view")
+		outDir = defaultViewDir("memory-view")
 	}
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "cortexdb: create %s: %v\n", outDir, err)
@@ -54,6 +37,7 @@ func runMemoryHTML(outDir string) {
 	if abs, aerr := filepath.Abs(htmlPath); aerr == nil {
 		htmlPath = abs
 	}
+	fmt.Fprintf(os.Stderr, "cortexdb: read from %s\n", source)
 	fmt.Fprintf(os.Stderr, "cortexdb: %d memories rendered\n", len(memories))
 	fmt.Println(htmlPath)
 }

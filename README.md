@@ -132,7 +132,7 @@ That is the whole change. The MCP server then opens no local database: it
 discovers the tool surface from the server at startup and proxies every call, so
 all tools — current and future — work identically. The `UserPromptSubmit`
 auto-recall hook follows the same remote, so injected memories come from the
-same brain the tools write to.
+same brain the tools write to, as do `--memory-html` and `--export-memory`.
 
 Transport is plaintext by design — run it over loopback, a trusted LAN, or
 Tailscale. **The token is the access control**: anyone holding it has full
