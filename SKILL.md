@@ -476,6 +476,39 @@ Separate workflow toolboxes:
 - memoryflow: `memoryflow_ingest_transcript`, `memoryflow_recall`, `memoryflow_wake_up_layers`, `memoryflow_prepare_reply`
 - graphflow: `graphflow_build`, `graphflow_analyze`, `graphflow_report`, `graphflow_export`, `graphflow_run`
 
+### Shared brain — one CortexDB, many agents and machines
+
+By default every agent opens its own SQLite file. Point them at one central
+`cortexdb-grpc` instead and Claude Code, Codex, OpenClaw and agents in other VMs
+read and write the **same** memory and knowledge graph.
+
+On the host that owns the database:
+
+```bash
+CORTEXDB_PATH=$HOME/.cortexdb/cortexdb.db \
+CORTEXDB_GRPC_ADDR=10.0.0.5:47821 \
+CORTEXDB_GRPC_TOKEN=<token> cortexdb-grpc
+```
+
+On every client:
+
+```bash
+export CORTEXDB_REMOTE="10.0.0.5:47821"
+export CORTEXDB_GRPC_TOKEN="<the same token>"
+```
+
+That is the whole change. The MCP server then opens no local database: it
+discovers the tool surface from the server at startup and proxies every call, so
+all tools — current and future — work identically. The `UserPromptSubmit`
+auto-recall hook follows the same remote, so injected memories come from the
+same brain the tools write to.
+
+Transport is plaintext by design — run it over loopback, a trusted LAN, or
+Tailscale. **The token is the access control**: anyone holding it has full
+read/write access. Embedder and LLM settings live on the server, not the
+clients. The remaining one-shot modes (`--graph-html`, `--export-memory`,
+`--learn-path`) still act on a local database.
+
 ## OpenClaw and Hermes Plugins
 
 Native host-memory adapters live under `plugins/`:

@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.63.1] - 2026-08-04
+
+### Fixed
+
+- **Auto-recall ignored the shared brain.** `--recall` returned from `main` before the
+  `CORTEXDB_REMOTE` branch was ever reached, so a machine configured for a shared brain still
+  answered the `UserPromptSubmit` hook from its own local database file. The failure is silent and
+  reads as working software: memories are injected on every prompt, they are simply the wrong ones —
+  frozen at whenever that machine switched over. Found on a host whose local file had been read-only
+  for hours while every write went to the shared brain; the hook kept surfacing month-old entries and
+  never once surfaced anything written that afternoon. The hook now calls `knowledge_search` over
+  gRPC when `CORTEXDB_REMOTE` is set, and both paths render hits through one formatter so the text an
+  agent sees never depends on where the brain lives. Silent on every failure as before: a bad token,
+  an unreachable server, or an unexpected response shape all inject nothing rather than blocking the
+  prompt.
+- The other one-shot modes (`--graph-html`, `--export-memory`, `--learn-path`) still act on a local
+  database; the docs now say which is which.
+
 ## [2.62.1] - 2026-07-31
 
 ### Fixed

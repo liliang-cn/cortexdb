@@ -107,6 +107,35 @@ export CORTEXDB_PATH="$HOME/.cortexdb/cortexdb.db"
 
 升级：`/plugin update cortexdb` 然后 `/reload-plugins`——server 二进制会自动刷新（按版本号缓存）。全部环境变量见 `plugins/cortexdb/README.md`。
 
+### 共享大脑 —— 一个 CortexDB，多个 agent 和机器
+
+默认每个 agent 各开一个 SQLite 文件。改成都指向同一个 `cortexdb-grpc`，
+Claude Code、Codex、OpenClaw 以及其他 VM 里的 agent 就读写**同一份**记忆和知识图谱。
+
+在持有数据库的那台机器上：
+
+```bash
+CORTEXDB_PATH=$HOME/.cortexdb/cortexdb.db \
+CORTEXDB_GRPC_ADDR=10.0.0.5:47821 \
+CORTEXDB_GRPC_TOKEN=<token> cortexdb-grpc
+```
+
+在每个客户端上：
+
+```bash
+export CORTEXDB_REMOTE="10.0.0.5:47821"
+export CORTEXDB_GRPC_TOKEN="<同一个 token>"
+```
+
+改动就这些。MCP 服务器随后不再打开本地数据库：它在启动时向服务端查询工具清单并
+转发每次调用，所以**现有的和将来新增的工具都自动可用**。`UserPromptSubmit`
+自动召回 hook 走同一个远端，因此注入的记忆和工具写入的是同一个大脑。
+
+传输是明文的，这是设计使然 —— 只能跑在环回、可信 LAN 或 Tailscale 上。
+**token 就是全部的访问控制**：拿到它就有完整读写权。embedder 和 LLM 配置在
+服务端，不在客户端。其余一次性模式（`--graph-html`、`--export-memory`、
+`--learn-path`）仍作用于本地数据库。
+
 ## OpenClaw 与 Hermes 原生记忆插件
 
 CortexDB 还提供两个会进入宿主记忆生命周期的原生适配器。它们都复用现有
