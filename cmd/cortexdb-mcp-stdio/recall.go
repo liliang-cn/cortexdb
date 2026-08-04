@@ -42,6 +42,17 @@ func runRecall() {
 		return
 	}
 
+	topK := envInt("CORTEXDB_RECALL_TOPK", 3)
+
+	// Shared-brain mode: answer from the one central database, not this
+	// machine's local file. Without this branch --recall returns from main
+	// before the CORTEXDB_REMOTE check ever runs, and a machine on a shared
+	// brain keeps injecting memories from a file nothing writes to any more.
+	if remote := strings.TrimSpace(os.Getenv("CORTEXDB_REMOTE")); remote != "" {
+		emitRecall(runRecallRemote(remote, os.Getenv("CORTEXDB_GRPC_TOKEN"), prompt, topK))
+		return
+	}
+
 	dbPath := os.Getenv("CORTEXDB_PATH")
 	if dbPath == "" {
 		dbPath = cortexdb.DefaultDBPath()
@@ -58,8 +69,6 @@ func runRecall() {
 	}
 	defer func() { _ = db.Close() }()
 
-	topK := envInt("CORTEXDB_RECALL_TOPK", 3)
-
 	resp, err := db.SearchKnowledge(context.Background(), cortexdb.KnowledgeSearchRequest{
 		Query:         prompt,
 		Keywords:      keywordsFromPrompt(prompt),
@@ -71,35 +80,26 @@ func runRecall() {
 		return
 	}
 
-	var b strings.Builder
-	b.WriteString("Relevant CortexDB memories for this prompt (retrieved automatically — verify before relying on them):\n")
-	wrote := false
+	hits := make([]recallHit, 0, len(resp.Results))
 	for _, hit := range resp.Results {
-		snippet := strings.TrimSpace(hit.Snippet)
-		if snippet == "" {
-			continue
-		}
-		title := hit.Title
-		if title == "" {
-			title = hit.KnowledgeID
-		}
-		b.WriteString("- ")
-		b.WriteString(title)
-		b.WriteString(": ")
-		b.WriteString(snippet)
-		b.WriteString("\n")
-		wrote = true
+		hits = append(hits, recallHit{
+			KnowledgeID: hit.KnowledgeID,
+			Title:       hit.Title,
+			Snippet:     hit.Snippet,
+		})
 	}
-	if !wrote {
+	emitRecall(formatRecallHits(hits))
+}
+
+// emitRecall prints the additionalContext block, or nothing at all when there
+// is nothing worth injecting.
+func emitRecall(context string) {
+	if context == "" {
 		return
 	}
-	// Nudge the save side too: recall keeps the brain useful only if new durable
-	// facts also get written back.
-	b.WriteString("(If this exchange states a durable preference, decision, or fact, save it with memory_save / knowledge_save.)")
-
 	out := hookOutput{HookSpecificOutput: hookSpecificOutput{
 		HookEventName:     "UserPromptSubmit",
-		AdditionalContext: strings.TrimRight(b.String(), "\n"),
+		AdditionalContext: strings.TrimRight(context, "\n"),
 	}}
 	_ = json.NewEncoder(os.Stdout).Encode(out)
 }
