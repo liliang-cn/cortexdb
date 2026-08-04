@@ -60,3 +60,17 @@ CLAUDE.md
 clients/target/
 node_modules/
 __pycache__/
+
+# Compiled Go binaries (extensionless on Unix, so the *.exe rules above miss them).
+# These were committed by accident and purged from history — do not let them back.
+/cortexdb-mcp-stdio
+/cortexdb-grpc
+/cortexdb-connector-mcp
+# Example binaries: `go build` inside examples/<name>/ produces ./<name>.
+# Compiled Go binaries have no extension, source/data files do — so ignore only
+# extensionless files one level under examples/.
+/examples/*/*
+!/examples/*/*.*
+!/examples/*/*/
+# Release staging
+/dist/
