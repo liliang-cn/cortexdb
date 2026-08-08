@@ -99,26 +99,26 @@ func writeMemoryHTML(path string, memories []cortexdb.MemoryRecord) error {
 var memoryTemplate = template.Must(template.New("memory").Parse(`<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><title>CortexDB memories</title>
 <style>
-  :root{--bg:#0d1424;--card:#151d33;--line:#243049;--fg:#e2e8f0;--dim:#94a3b8;--accent:#7dd3fc}
-  html,body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,sans-serif}
-  header{position:sticky;top:0;background:rgba(13,20,36,.95);border-bottom:1px solid var(--line);padding:14px 20px;backdrop-filter:blur(4px)}
+  :root{--bg:#f8fafc;--card:#ffffff;--line:#e2e8f0;--fg:#0f172a;--dim:#64748b;--accent:#2563eb}
+  html,body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,-apple-system,sans-serif}
+  header{position:sticky;top:0;background:rgba(248,250,252,.95);border-bottom:1px solid var(--line);padding:14px 20px;backdrop-filter:blur(4px)}
   h1{margin:0 0 8px;font-size:16px}h1 b{color:var(--accent)}
   #q{width:100%;max-width:520px;padding:8px 12px;background:var(--card);border:1px solid var(--line);border-radius:8px;color:var(--fg);font-size:14px}
   #stats{color:var(--dim);margin-top:6px;font-size:12px}
   main{padding:16px 20px 60px;max-width:900px;margin:0 auto}
   h2{margin:22px 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent)}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:8px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:8px 0;box-shadow:0 1px 2px rgba(15,23,42,.04)}
   .content{white-space:pre-wrap;word-break:break-word}
   .meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:12px;color:var(--dim);align-items:center}
   .imp{height:6px;width:60px;background:var(--line);border-radius:3px;overflow:hidden}
   .imp>span{display:block;height:100%;background:var(--accent)}
   .badge{padding:1px 8px;border:1px solid var(--line);border-radius:20px}
-  .exp{color:#fb7185}
+  .exp{color:#dc2626}
   .empty{color:var(--dim);padding:40px;text-align:center}
 </style></head>
 <body>
 <header>
-  <h1>CortexDB memories — <b>{{.Count}}</b> total <span style="color:#64748b;font-weight:400">· {{.Generated}}</span></h1>
+  <h1>CortexDB memories — <b>{{.Count}}</b> total <span style="color:#94a3b8;font-weight:400">· {{.Generated}}</span></h1>
   <input id="q" placeholder="Search memories…" autofocus>
   <div id="stats"></div>
 </header>

@@ -106,3 +106,54 @@ func defaultViewDir(name string) string {
 	}
 	return filepath.Join(".", name)
 }
+
+// fetchGraphRemote pulls the whole entity graph from the shared brain.
+func fetchGraphRemote(ctx context.Context, addr, token string, limit int) ([]graphNodeView, []graphEdgeView, error) {
+	conn, err := dialCortexDB(addr, token)
+	if err != nil {
+		return nil, nil, fmt.Errorf("connect to %s: %w", addr, err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	args, err := json.Marshal(cortexdb.GraphListAllRequest{Limit: limit})
+	if err != nil {
+		return nil, nil, err
+	}
+	callCtx, cancel := context.WithTimeout(ctx, remoteDialTimeout)
+	defer cancel()
+
+	resp, err := rpcv1.NewToolsServiceClient(conn).CallTool(callCtx, &rpcv1.CallToolRequest{
+		Name:     "graph_list_all",
+		ArgsJson: string(args),
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("graph_list_all on %s: %w (is the server new enough?)", addr, err)
+	}
+
+	var out cortexdb.GraphListAllResponse
+	if err := json.Unmarshal([]byte(resp.GetResultJson()), &out); err != nil {
+		return nil, nil, fmt.Errorf("decode graph_list_all: %w", err)
+	}
+	if out.Truncated {
+		fmt.Fprintf(os.Stderr, "cortexdb: note: showing the %d most-connected of %d nodes; pass a higher limit for more\n",
+			len(out.Nodes), out.TotalNodes)
+	}
+
+	nodes := make([]graphNodeView, 0, len(out.Nodes))
+	for _, n := range out.Nodes {
+		nodes = append(nodes, graphNodeView{ID: n.ID, Label: clipLabel(n.Label), Type: n.Type})
+	}
+	edges := make([]graphEdgeView, 0, len(out.Edges))
+	for _, e := range out.Edges {
+		edges = append(edges, graphEdgeView{Source: e.From, Target: e.To, Label: e.Type})
+	}
+	return nodes, edges, nil
+}
+
+// clipLabel shortens a node label for display, matching the local renderer.
+func clipLabel(s string) string {
+	if r := []rune(s); len(r) > 48 {
+		return string(r[:48]) + "…"
+	}
+	return s
+}

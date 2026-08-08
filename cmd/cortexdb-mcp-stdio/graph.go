@@ -25,46 +25,67 @@ import (
 // Chunk nodes and structural edges (has_chunk/next) are filtered out for a clean
 // entity graph.
 func runGraphHTML(outDir string) {
-	dbPath := os.Getenv("CORTEXDB_PATH")
-	if dbPath == "" {
-		dbPath = cortexdb.DefaultDBPath()
-	}
-
-	db, err := openBrainDB(dbPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "cortexdb: open %s: %v\n", dbPath, err)
-		os.Exit(1)
-	}
-	defer func() { _ = db.Close() }()
-
-	if outDir == "" {
-		outDir = filepath.Join(filepath.Dir(dbPath), "graph")
-	}
 	ctx := context.Background()
+	var (
+		nodes  []graphNodeView
+		edges  []graphEdgeView
+		source string
+	)
 
-	// Organize first: extract entities + relations from the brain's memories and
-	// knowledge into the graph, so the view reflects an organized brain rather
-	// than only whatever was explicitly tagged. With CORTEXDB_LLM_* set, an LLM
-	// distills clean, typed entities and relations; otherwise it is deterministic.
-	llm := newOrganizeLLM()
-	if llm != nil {
-		fmt.Fprintln(os.Stderr, "cortexdb: organizing graph with LLM distillation (CORTEXDB_LLM_*)")
-	}
-	if rep, oerr := graphflow.OrganizeFromBrain(ctx, db, graphflow.OrganizeOptions{
-		IncludeMemories:  true,
-		IncludeKnowledge: true,
-		LLM:              llm,
-	}); oerr != nil {
-		fmt.Fprintf(os.Stderr, "cortexdb: organize graph: %v\n", oerr)
-	} else if rep != nil {
-		fmt.Fprintf(os.Stderr, "cortexdb: organized %d texts -> %d new entities, %d relations (kept %d/%d candidates)\n",
-			rep.DocumentsScanned, rep.EntityCount, rep.RelationCount, rep.CandidatesKept, rep.CandidatesSeen)
-	}
+	if addr, token, ok := remoteConfigured(); ok {
+		// Shared brain: read the graph over gRPC. Organizing is deliberately
+		// skipped — it rewrites the graph, and a read-only view of someone
+		// else's brain should not mutate it from whichever machine rendered it.
+		var err error
+		nodes, edges, err = fetchGraphRemote(ctx, addr, token, 0)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cortexdb: %v\n", err)
+			os.Exit(1)
+		}
+		source = "shared brain " + addr
+		if outDir == "" {
+			outDir = defaultViewDir("graph")
+		}
+	} else {
+		dbPath := os.Getenv("CORTEXDB_PATH")
+		if dbPath == "" {
+			dbPath = cortexdb.DefaultDBPath()
+		}
+		db, err := openBrainDB(dbPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cortexdb: open %s: %v\n", dbPath, err)
+			os.Exit(1)
+		}
+		defer func() { _ = db.Close() }()
+		source = dbPath
+		if outDir == "" {
+			outDir = filepath.Join(filepath.Dir(dbPath), "graph")
+		}
 
-	nodes, edges, err := loadBrainGraph(ctx, db.SQL())
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "cortexdb: read graph: %v\n", err)
-		os.Exit(1)
+		// Organize first: extract entities + relations from the brain's memories and
+		// knowledge into the graph, so the view reflects an organized brain rather
+		// than only whatever was explicitly tagged. With CORTEXDB_LLM_* set, an LLM
+		// distills clean, typed entities and relations; otherwise it is deterministic.
+		llm := newOrganizeLLM()
+		if llm != nil {
+			fmt.Fprintln(os.Stderr, "cortexdb: organizing graph with LLM distillation (CORTEXDB_LLM_*)")
+		}
+		if rep, oerr := graphflow.OrganizeFromBrain(ctx, db, graphflow.OrganizeOptions{
+			IncludeMemories:  true,
+			IncludeKnowledge: true,
+			LLM:              llm,
+		}); oerr != nil {
+			fmt.Fprintf(os.Stderr, "cortexdb: organize graph: %v\n", oerr)
+		} else if rep != nil {
+			fmt.Fprintf(os.Stderr, "cortexdb: organized %d texts -> %d new entities, %d relations (kept %d/%d candidates)\n",
+				rep.DocumentsScanned, rep.EntityCount, rep.RelationCount, rep.CandidatesKept, rep.CandidatesSeen)
+		}
+
+		nodes, edges, err = loadBrainGraph(ctx, db.SQL())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cortexdb: read graph: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
@@ -79,6 +100,7 @@ func runGraphHTML(outDir string) {
 	if abs, aerr := filepath.Abs(htmlPath); aerr == nil {
 		htmlPath = abs
 	}
+	fmt.Fprintf(os.Stderr, "cortexdb: read from %s\n", source)
 	fmt.Fprintf(os.Stderr, "cortexdb: graph has %d nodes, %d edges\n", len(nodes), len(edges))
 	fmt.Println(htmlPath)
 }
@@ -223,10 +245,10 @@ var brainGraphTemplate = template.Must(template.New("graph").Parse(`<!DOCTYPE ht
 <html lang="en"><head><meta charset="utf-8"><title>CortexDB knowledge graph</title>
 <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <style>
-  html,body{margin:0;height:100%;background:#0d1424;color:#e2e8f0;font:14px system-ui,sans-serif}
+  html,body{margin:0;height:100%;background:#ffffff;color:#0f172a;font:14px system-ui,-apple-system,sans-serif}
   #net{width:100%;height:100vh}
-  #hud{position:fixed;top:10px;left:12px;background:rgba(13,20,36,.85);padding:8px 12px;border:1px solid #334155;border-radius:8px}
-  #hud b{color:#7dd3fc}
+  #hud{position:fixed;top:10px;left:12px;background:rgba(255,255,255,.94);padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 1px 3px rgba(15,23,42,.08)}
+  #hud b{color:#2563eb}
 </style></head>
 <body>
 <div id="hud">CortexDB knowledge graph — <b id="ncount">0</b> nodes · <b id="ecount">0</b> edges. Drag to pan, scroll to zoom.</div>
@@ -234,11 +256,11 @@ var brainGraphTemplate = template.Must(template.New("graph").Parse(`<!DOCTYPE ht
 <script>
   var rawNodes = {{.Nodes}};
   var rawEdges = {{.Edges}};
-  var palette = {project:"#38bdf8",entity:"#a78bfa",document:"#f59e0b",person:"#34d399",workspace:"#fb7185",binary:"#94a3b8",component:"#22d3ee",resource:"#facc15"};
-  var nodes = rawNodes.map(function(n){return {id:n.id,label:n.label,group:n.type,color:palette[n.type]||"#64748b",
-     font:{color:"#e2e8f0",size:13},shape:"dot",size:14};});
+  var palette = {project:"#2563eb",entity:"#7c3aed",document:"#d97706",person:"#059669",workspace:"#e11d48",binary:"#64748b",component:"#0891b2",resource:"#ca8a04"};
+  var nodes = rawNodes.map(function(n){return {id:n.id,label:n.label,group:n.type,color:palette[n.type]||"#475569",
+     font:{color:"#0f172a",size:13},shape:"dot",size:14};});
   var edges = rawEdges.map(function(e){return {from:e.source,to:e.target,label:e.label,
-     font:{color:"#94a3b8",size:10,strokeWidth:0},color:{color:"#475569",opacity:.6},arrows:"to",smooth:{type:"continuous"}};});
+     font:{color:"#64748b",size:10,strokeWidth:3,strokeColor:"#ffffff"},color:{color:"#cbd5e1",opacity:.9},arrows:"to",smooth:{type:"continuous"}};});
   document.getElementById("ncount").textContent = nodes.length;
   document.getElementById("ecount").textContent = edges.length;
   new vis.Network(document.getElementById("net"),

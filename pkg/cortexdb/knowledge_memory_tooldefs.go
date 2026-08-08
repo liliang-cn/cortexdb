@@ -265,6 +265,16 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
+			Name:        "graph_list_all",
+			Description: "List the whole entity knowledge graph — every non-chunk node and the edges between them. For rendering or analyzing the graph as a whole; use expand_graph or find_nodes when you already know where to start.",
+			InputSchema: toolObjectSchema(
+				nil,
+				map[string]any{
+					"limit": map[string]any{"type": "integer", "description": "Maximum nodes to return (default 2000). When it truncates it keeps the most-connected core and says so."},
+				},
+			),
+		},
+		{
 			Name:        "memory_get",
 			Description: "Fetch one memory item by ID.",
 			InputSchema: toolObjectSchema(
