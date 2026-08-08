@@ -249,10 +249,23 @@ var brainGraphTemplate = template.Must(template.New("graph").Parse(`<!DOCTYPE ht
   #net{width:100%;height:100vh}
   #hud{position:fixed;top:10px;left:12px;background:rgba(255,255,255,.94);padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 1px 3px rgba(15,23,42,.08)}
   #hud b{color:#2563eb}
+  #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:#ffffff;z-index:10;transition:opacity .3s;flex-direction:column;gap:14px}
+  #loading.done{opacity:0;pointer-events:none}
+  .spin{width:28px;height:28px;border:3px solid #e2e8f0;border-top-color:#2563eb;border-radius:50%;animation:sp .8s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  #ltext{color:#64748b;font-size:13px}
+  #lbar{width:220px;height:4px;background:#e2e8f0;border-radius:2px;overflow:hidden}
+  #lbar>span{display:block;height:100%;width:0;background:#2563eb;transition:width .2s}
 </style></head>
 <body>
 <div id="hud">CortexDB knowledge graph — <b id="ncount">0</b> nodes · <b id="ecount">0</b> edges. Drag to pan, scroll to zoom.</div>
 <div id="net"></div>
+<div id="loading">
+  <div class="spin"></div>
+  <div id="ltext">Loading graph…</div>
+  <div id="lbar"><span id="lfill"></span></div>
+</div>
 <script>
   var rawNodes = {{.Nodes}};
   var rawEdges = {{.Edges}};
@@ -263,9 +276,23 @@ var brainGraphTemplate = template.Must(template.New("graph").Parse(`<!DOCTYPE ht
      font:{color:"#64748b",size:10,strokeWidth:3,strokeColor:"#ffffff"},color:{color:"#cbd5e1",opacity:.9},arrows:"to",smooth:{type:"continuous"}};});
   document.getElementById("ncount").textContent = nodes.length;
   document.getElementById("ecount").textContent = edges.length;
-  new vis.Network(document.getElementById("net"),
+  var loadingEl=document.getElementById("loading"), fillEl=document.getElementById("lfill"), textEl=document.getElementById("ltext");
+  textEl.textContent = "Laying out "+nodes.length+" nodes…";
+  function doneLoading(){ loadingEl.classList.add("done"); setTimeout(function(){loadingEl.style.display="none";},350); }
+
+  var network = new vis.Network(document.getElementById("net"),
     {nodes:new vis.DataSet(nodes),edges:new vis.DataSet(edges)},
     {physics:{stabilization:true,barnesHut:{gravitationalConstant:-8000,springLength:120}},
      interaction:{hover:true,tooltipDelay:120}});
+
+  // Physics stabilization is the slow part on a large graph, and it reports
+  // real progress — show it rather than a blank canvas.
+  network.on("stabilizationProgress", function(p){
+    if(!p || !p.total) return;
+    fillEl.style.width = Math.round(p.iterations/p.total*100)+"%";
+  });
+  network.once("stabilizationIterationsDone", function(){ fillEl.style.width="100%"; doneLoading(); });
+  // Safety net: never leave the overlay up if the event never arrives.
+  setTimeout(doneLoading, 20000);
 </script>
 </body></html>`))

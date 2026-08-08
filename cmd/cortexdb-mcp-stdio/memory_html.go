@@ -115,6 +115,9 @@ var memoryTemplate = template.Must(template.New("memory").Parse(`<!DOCTYPE html>
   .badge{padding:1px 8px;border:1px solid var(--line);border-radius:20px}
   .exp{color:#dc2626}
   .empty{color:var(--dim);padding:40px;text-align:center}
+  #loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:60px 20px;color:var(--dim)}
+  .spin{width:22px;height:22px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
 </style></head>
 <body>
 <header>
@@ -123,6 +126,7 @@ var memoryTemplate = template.Must(template.New("memory").Parse(`<!DOCTYPE html>
   <div id="stats"></div>
 </header>
 <main id="list"></main>
+<div id="loading"><div class="spin"></div><span>Loading memories…</span></div>
 <script>
   var mem = {{.Memories}};
   var listEl = document.getElementById('list'), statsEl = document.getElementById('stats');
@@ -136,8 +140,9 @@ var memoryTemplate = template.Must(template.New("memory").Parse(`<!DOCTYPE html>
     });
     listEl.innerHTML='';
     if(shown===0){listEl.innerHTML='<div class="empty">No memories match.</div>';statsEl.textContent='0 / '+mem.length;return;}
+    var frag=document.createDocumentFragment();
     order.forEach(function(scope){
-      var h=document.createElement('h2');h.textContent=scope+' ('+groups[scope].length+')';listEl.appendChild(h);
+      var h=document.createElement('h2');h.textContent=scope+' ('+groups[scope].length+')';frag.appendChild(h);
       groups[scope].forEach(function(m){
         var imp=Math.max(0,Math.min(1,m.importance||0));
         var parts=['<div class="content">'+esc(m.content)+'</div>','<div class="meta">'];
@@ -147,12 +152,18 @@ var memoryTemplate = template.Must(template.New("memory").Parse(`<!DOCTYPE html>
         if(imp>0) parts.push('<span title="importance '+imp.toFixed(2)+'" class="imp"><span style="width:'+(imp*100)+'%"></span></span>');
         if(m.expires) parts.push('<span class="exp">expires '+esc(m.expires)+'</span>');
         parts.push('</div>');
-        var c=document.createElement('div');c.className='card';c.innerHTML=parts.join('');listEl.appendChild(c);
+        var c=document.createElement('div');c.className='card';c.innerHTML=parts.join('');frag.appendChild(c);
       });
     });
+    listEl.appendChild(frag);
     statsEl.textContent=shown+' / '+mem.length+' memories';
   }
   document.getElementById('q').addEventListener('input',function(e){render(e.target.value);});
-  render('');
+  // Paint the spinner first, then build the list: on a large brain that is
+  // thousands of DOM nodes, and doing it inline leaves the page blank meanwhile.
+  requestAnimationFrame(function(){
+    render('');
+    var l=document.getElementById('loading'); if(l) l.remove();
+  });
 </script>
 </body></html>`))
