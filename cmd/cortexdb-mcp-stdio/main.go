@@ -23,10 +23,15 @@ func main() {
 	// by the /cortexdb-graph command to give the memory a viewable graph.
 	if len(os.Args) > 1 && os.Args[1] == "--graph-html" {
 		out := ""
-		if len(os.Args) > 2 {
-			out = os.Args[2]
+		organize := false
+		for _, a := range os.Args[2:] {
+			if a == "--organize" {
+				organize = true
+			} else if out == "" && !strings.HasPrefix(a, "-") {
+				out = a
+			}
 		}
-		runGraphHTML(out)
+		runGraphHTML(out, organize)
 		return
 	}
 

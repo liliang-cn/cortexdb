@@ -164,6 +164,12 @@ type MemorySaveRequest struct {
 	Metadata   map[string]any `json:"metadata,omitempty"`
 	Importance float64        `json:"importance,omitempty"`
 	TTLSeconds int            `json:"ttl_seconds,omitempty"`
+	// Entities and Relations let a caller record what this memory is ABOUT in
+	// the same call that stores it, the way SaveKnowledge already can. Without
+	// them the graph could only be filled by a separate extraction pass, which
+	// is what made agent-written memories arrive with no graph presence.
+	Entities  []ToolEntityInput   `json:"entities,omitempty"`
+	Relations []ToolRelationInput `json:"relations,omitempty"`
 }
 
 // MemorySaveResponse returns the stored memory.

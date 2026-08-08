@@ -223,7 +223,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "memory_save",
-			Description: "Store a memory item in a dedicated memory bucket. Use scope=user/session/global to control where the memory lives.",
+			Description: "Store a memory item in a dedicated memory bucket. Use scope=user/session/global to control where the memory lives. Pass entities and relations to record what the memory is about in the same call, so it lands in the knowledge graph too.",
 			InputSchema: toolObjectSchema(
 				[]string{"memory_id", "content"},
 				map[string]any{
@@ -237,6 +237,8 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 					"metadata":    toolMapSchema("Optional metadata."),
 					"importance":  toolNumberSchema("Optional importance score."),
 					"ttl_seconds": toolIntegerSchema("Optional TTL in seconds."),
+					"entities":    toolEntityArraySchema(),
+					"relations":   toolRelationArraySchema(),
 				},
 			),
 		},

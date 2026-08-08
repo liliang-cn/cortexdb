@@ -24,7 +24,7 @@ import (
 // graphflow's separate analysis namespace — so the view reflects the real brain.
 // Chunk nodes and structural edges (has_chunk/next) are filtered out for a clean
 // entity graph.
-func runGraphHTML(outDir string) {
+func runGraphHTML(outDir string, organize bool) {
 	ctx := context.Background()
 	var (
 		nodes  []graphNodeView
@@ -62,23 +62,26 @@ func runGraphHTML(outDir string) {
 			outDir = filepath.Join(filepath.Dir(dbPath), "graph")
 		}
 
-		// Organize first: extract entities + relations from the brain's memories and
-		// knowledge into the graph, so the view reflects an organized brain rather
-		// than only whatever was explicitly tagged. With CORTEXDB_LLM_* set, an LLM
-		// distills clean, typed entities and relations; otherwise it is deterministic.
-		llm := newOrganizeLLM()
-		if llm != nil {
-			fmt.Fprintln(os.Stderr, "cortexdb: organizing graph with LLM distillation (CORTEXDB_LLM_*)")
-		}
-		if rep, oerr := graphflow.OrganizeFromBrain(ctx, db, graphflow.OrganizeOptions{
-			IncludeMemories:  true,
-			IncludeKnowledge: true,
-			LLM:              llm,
-		}); oerr != nil {
-			fmt.Fprintf(os.Stderr, "cortexdb: organize graph: %v\n", oerr)
-		} else if rep != nil {
-			fmt.Fprintf(os.Stderr, "cortexdb: organized %d texts -> %d new entities, %d relations (kept %d/%d candidates)\n",
-				rep.DocumentsScanned, rep.EntityCount, rep.RelationCount, rep.CandidatesKept, rep.CandidatesSeen)
+		// Organizing writes to the graph, so rendering a view no longer does it by
+		// default: the deterministic extractor types everything it finds as a
+		// generic "entity", and running it on every view slowly filled the graph
+		// with capitalized words lifted out of prose. Ask for it with --organize,
+		// or let an agent write typed entities through memory_save/knowledge_save.
+		if organize {
+			llm := newOrganizeLLM()
+			if llm != nil {
+				fmt.Fprintln(os.Stderr, "cortexdb: organizing graph with LLM distillation (CORTEXDB_LLM_*)")
+			}
+			if rep, oerr := graphflow.OrganizeFromBrain(ctx, db, graphflow.OrganizeOptions{
+				IncludeMemories:  true,
+				IncludeKnowledge: true,
+				LLM:              llm,
+			}); oerr != nil {
+				fmt.Fprintf(os.Stderr, "cortexdb: organize graph: %v\n", oerr)
+			} else if rep != nil {
+				fmt.Fprintf(os.Stderr, "cortexdb: organized %d texts -> %d new entities, %d relations (kept %d/%d candidates)\n",
+					rep.DocumentsScanned, rep.EntityCount, rep.RelationCount, rep.CandidatesKept, rep.CandidatesSeen)
+			}
 		}
 
 		nodes, edges, err = loadBrainGraph(ctx, db.SQL())

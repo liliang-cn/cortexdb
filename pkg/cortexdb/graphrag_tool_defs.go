@@ -50,6 +50,17 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			),
 		},
 		{
+			Name:        "delete_entities",
+			Description: "Delete entity nodes and every edge touching them. The counterpart to upsert_entities, for removing wrong or junk entities; use dry_run to see what would go first. Not reversible.",
+			InputSchema: toolObjectSchema(
+				[]string{"names"},
+				map[string]any{
+					"names":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Entity names or full node ids to delete."},
+					"dry_run": map[string]any{"type": "boolean", "description": "Report what would be deleted without deleting it."},
+				},
+			),
+		},
+		{
 			Name:        "upsert_relations",
 			Description: "Create relation edges between entity nodes.",
 			InputSchema: toolObjectSchema(
@@ -264,6 +275,12 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.UpsertEntities(ctx, req)
+	case "delete_entities":
+		var req ToolDeleteEntitiesRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.DeleteEntities(ctx, req)
 	case "upsert_relations":
 		var req ToolUpsertRelationsRequest
 		if err := json.Unmarshal(input, &req); err != nil {

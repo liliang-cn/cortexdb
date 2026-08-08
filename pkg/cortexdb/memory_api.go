@@ -66,6 +66,9 @@ func (db *DB) SaveMemory(ctx context.Context, req MemorySaveRequest) (*MemorySav
 	if err != nil {
 		return nil, err
 	}
+	if err := db.saveMemoryGraph(ctx, req); err != nil {
+		return nil, err
+	}
 	return &MemorySaveResponse{Memory: row.record}, nil
 }
 
@@ -594,4 +597,25 @@ func memoryExpired(record MemoryRecord) bool {
 		return false
 	}
 	return record.ExpiresAt.Before(time.Now().UTC())
+}
+
+// saveMemoryGraph writes the entities and relations a caller attached to a
+// memory. Best-effort ordering: entities first so relation endpoints exist,
+// though UpsertRelations backfills either way.
+func (db *DB) saveMemoryGraph(ctx context.Context, req MemorySaveRequest) error {
+	if len(req.Entities) == 0 && len(req.Relations) == 0 {
+		return nil
+	}
+	tools := db.GraphRAGTools()
+	if len(req.Entities) > 0 {
+		if _, err := tools.UpsertEntities(ctx, ToolUpsertEntitiesRequest{Entities: req.Entities}); err != nil {
+			return fmt.Errorf("save memory entities: %w", err)
+		}
+	}
+	if len(req.Relations) > 0 {
+		if _, err := tools.UpsertRelations(ctx, ToolUpsertRelationsRequest{Relations: req.Relations}); err != nil {
+			return fmt.Errorf("save memory relations: %w", err)
+		}
+	}
+	return nil
 }
