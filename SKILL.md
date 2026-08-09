@@ -506,8 +506,15 @@ same brain the tools write to, as do `--memory-html` and `--export-memory`.
 Transport is plaintext by design — run it over loopback, a trusted LAN, or
 Tailscale. **The token is the access control**: anyone holding it has full
 read/write access. Embedder and LLM settings live on the server, not the
-clients. The remaining one-shot modes (`--graph-html`, `--export-memory`,
-`--learn-path`) still act on a local database.
+clients. `--graph-html` reads the shared brain too; the remaining one-shot modes
+(`--export-memory`, `--learn-path`) still act on a local database.
+
+The graph view is also an MCP tool, `render_graph_html`. It is the one tool that
+is **not** proxied to the shared brain: the graph is read remotely, but the HTML
+is rendered and written where the MCP server runs, because the caller needs the
+file on its own filesystem to open or attach it — a server-side render would
+land it on the brain's host, out of reach of whatever asked. Set
+`CORTEXDB_VIEW_DIR` to choose where renders go.
 
 ## OpenClaw and Hermes Plugins
 

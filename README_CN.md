@@ -134,8 +134,13 @@ export CORTEXDB_GRPC_TOKEN="<同一个 token>"
 
 传输是明文的，这是设计使然 —— 只能跑在环回、可信 LAN 或 Tailscale 上。
 **token 就是全部的访问控制**：拿到它就有完整读写权。embedder 和 LLM 配置在
-服务端，不在客户端。其余一次性模式（`--graph-html`、`--export-memory`、
-`--learn-path`）仍作用于本地数据库。
+服务端，不在客户端。`--graph-html` 同样读共享大脑；其余一次性模式
+（`--export-memory`、`--learn-path`）仍作用于本地数据库。
+
+图谱视图也是一个 MCP 工具 `render_graph_html`。它是唯一**不**代理到共享大脑的
+工具：图谱数据从远端读，但 HTML 在 MCP 服务所在的机器上渲染和落盘 —— 调用方需要
+文件在自己的文件系统上才能打开或作为附件发出，服务端渲染会把文件留在大脑主机上，
+请求它的一方根本够不到。用 `CORTEXDB_VIEW_DIR` 指定输出目录。
 
 ## OpenClaw 与 Hermes 原生记忆插件
 

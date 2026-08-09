@@ -67,6 +67,10 @@ func runRemoteMCPStdio(ctx context.Context, addr, token string) error {
 	for _, def := range list.GetTools() {
 		addRemoteTool(server, client, def)
 	}
+	// Registered after the proxied ones and handled here rather than forwarded:
+	// the caller wants the rendered file on its own filesystem. See
+	// graph_html_tool.go.
+	addRenderGraphHTMLTool(server)
 	return server.Run(ctx, &mcp.StdioTransport{})
 }
 

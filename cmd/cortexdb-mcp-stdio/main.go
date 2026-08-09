@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
@@ -159,7 +161,12 @@ func main() {
 		}
 	}()
 
-	if err := db.RunMCPStdio(context.Background(), cortexdb.MCPServerOptions{}); err != nil {
+	// Built rather than run directly so the local renderer can be registered
+	// alongside the facade's tools — the same surface the shared-brain path
+	// offers, so an agent sees one contract in both modes.
+	server := db.NewMCPServer(cortexdb.MCPServerOptions{})
+	addRenderGraphHTMLTool(server)
+	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("run mcp stdio server: %v", err)
 	}
 }

@@ -24,8 +24,21 @@ import (
 // graphflow's separate analysis namespace — so the view reflects the real brain.
 // Chunk nodes and structural edges (has_chunk/next) are filtered out for a clean
 // entity graph.
-func runGraphHTML(outDir string, organize bool) {
-	ctx := context.Background()
+// graphHTMLResult is what a render produced: where it landed, and how much of
+// the brain it shows.
+type graphHTMLResult struct {
+	Path   string `json:"path"`
+	Nodes  int    `json:"nodes"`
+	Edges  int    `json:"edges"`
+	Source string `json:"source"`
+}
+
+// renderGraphHTML builds the view and returns where it wrote it.
+//
+// Errors are returned rather than fatal so the same code can serve both the
+// one-shot CLI and the render_graph_html MCP tool; an agent asking for a view
+// must get a message it can act on, not a dead process.
+func renderGraphHTML(ctx context.Context, outDir string, organize bool) (*graphHTMLResult, error) {
 	var (
 		nodes  []graphNodeView
 		edges  []graphEdgeView
@@ -39,12 +52,11 @@ func runGraphHTML(outDir string, organize bool) {
 		var err error
 		nodes, edges, err = fetchGraphRemote(ctx, addr, token, 0)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "cortexdb: %v\n", err)
-			os.Exit(1)
+			return nil, err
 		}
 		source = "shared brain " + addr
 		if outDir == "" {
-			outDir = defaultViewDir("graph")
+			outDir = graphViewDir()
 		}
 	} else {
 		dbPath := os.Getenv("CORTEXDB_PATH")
@@ -53,8 +65,7 @@ func runGraphHTML(outDir string, organize bool) {
 		}
 		db, err := openBrainDB(dbPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "cortexdb: open %s: %v\n", dbPath, err)
-			os.Exit(1)
+			return nil, fmt.Errorf("open %s: %w", dbPath, err)
 		}
 		defer func() { _ = db.Close() }()
 		source = dbPath
@@ -86,26 +97,41 @@ func runGraphHTML(outDir string, organize bool) {
 
 		nodes, edges, err = loadBrainGraph(ctx, db.SQL())
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "cortexdb: read graph: %v\n", err)
-			os.Exit(1)
+			return nil, fmt.Errorf("read graph: %w", err)
 		}
 	}
 
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		fmt.Fprintf(os.Stderr, "cortexdb: create %s: %v\n", outDir, err)
-		os.Exit(1)
+		return nil, fmt.Errorf("create %s: %w", outDir, err)
 	}
 	htmlPath := filepath.Join(outDir, "graph.html")
 	if err := writeBrainGraphHTML(htmlPath, nodes, edges); err != nil {
-		fmt.Fprintf(os.Stderr, "cortexdb: write html: %v\n", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("write html: %w", err)
 	}
 	if abs, aerr := filepath.Abs(htmlPath); aerr == nil {
 		htmlPath = abs
 	}
-	fmt.Fprintf(os.Stderr, "cortexdb: read from %s\n", source)
-	fmt.Fprintf(os.Stderr, "cortexdb: graph has %d nodes, %d edges\n", len(nodes), len(edges))
-	fmt.Println(htmlPath)
+	return &graphHTMLResult{Path: htmlPath, Nodes: len(nodes), Edges: len(edges), Source: source}, nil
+}
+
+// runGraphHTML organizes the brain (extract entities/relations from memories +
+// knowledge) and renders the resulting knowledge graph to a self-contained,
+// interactive HTML file, printing its path. One-shot mode behind `--graph-html`,
+// used by /cortexdb-graph.
+//
+// The renderer reads the actual GraphRAG graph (graph_nodes / graph_edges) — not
+// graphflow's separate analysis namespace — so the view reflects the real brain.
+// Chunk nodes and structural edges (has_chunk/next) are filtered out for a clean
+// entity graph.
+func runGraphHTML(outDir string, organize bool) {
+	res, err := renderGraphHTML(context.Background(), outDir, organize)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cortexdb: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Fprintf(os.Stderr, "cortexdb: read from %s\n", res.Source)
+	fmt.Fprintf(os.Stderr, "cortexdb: graph has %d nodes, %d edges\n", res.Nodes, res.Edges)
+	fmt.Println(res.Path)
 }
 
 type graphNodeView struct {
