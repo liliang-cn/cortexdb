@@ -129,7 +129,11 @@ func TestMCPServerToolFlow(t *testing.T) {
 	ontologySaveResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "ontology_save",
 		Arguments: map[string]any{
-			"activate": true,
+			// Saved but not activated: this test covers the MCP tool surface,
+			// and the free-form entities it writes further down deliberately do
+			// not conform to this schema. Activation is exercised where it
+			// belongs, in the ontology storage and write-validation tests.
+			"activate": false,
 			"schema": map[string]any{
 				"schema_id": "mcp-ontology",
 				"object_types": []map[string]any{

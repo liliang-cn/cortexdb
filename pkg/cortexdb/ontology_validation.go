@@ -4,15 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
-// ErrInvalidOntology marks every rejection from schema validation. Callers at
-// a protocol boundary need to tell "you sent a bad schema" apart from "the
-// server broke"; matching on it is reliable in a way that sniffing the message
-// text is not.
+// ErrInvalidOntology marks every ontology rejection: a schema that does not
+// hold together, and a write that does not conform to the active schema.
+// Callers at a protocol boundary need to tell "you sent something bad" apart
+// from "the server broke"; matching on it is reliable in a way that sniffing
+// the message text is not.
 var ErrInvalidOntology = errors.New("invalid ontology schema")
 
 // validateOntologySchema checks a schema for internal consistency before it
@@ -241,17 +243,96 @@ func validateOntologyLinkSide(linkTypeName string, side OntologyLinkSide, object
 		linkTypeName, side.APIName, side.ForeignKeyProperty, objectType.APIName)
 }
 
-// The write-path admission checks below are deliberately pass-through for
-// phase 1. Phase 1 only teaches CortexDB to store a v2 schema; the v1 checks
-// they replace were built on entity/relation types that no longer exist, and
-// enforcing v2 needs primary-key identity and cardinality counting that land
-// in phase 2 (plan tasks 6-9). Keeping the call sites live and inert means
-// phase 2 changes one function body each instead of re-threading the callers.
+// validateEntityInputs enforces the active ontology against entity writes.
+// With no active schema every write is allowed, which is what keeps
+// ontology-free deployments working unchanged.
+func (db *DB) validateEntityInputs(ctx context.Context, entities []ToolEntityInput) error {
+	compiled, err := db.activeCompiledOntology(ctx)
+	if err != nil || compiled == nil {
+		return err
+	}
+	for _, entity := range entities {
+		if err := validateOntologyEntity(compiled, entity); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidOntology, err)
+		}
+	}
+	return nil
+}
 
-// TODO(phase2): replace with the v2 entity admission check (plan task 7):
-// unknown object type, missing required property, and per-property data type
-// parsing via parseOntologyPropertyValue.
-func (db *DB) validateEntityInputs(_ context.Context, _ []ToolEntityInput) error { return nil }
+// activeCompiledOntology returns the compiled active schema, or nil when
+// there is nothing to enforce. A schema that declares no types is treated as
+// nothing rather than as "reject everything".
+func (db *DB) activeCompiledOntology(ctx context.Context) (*compiledOntology, error) {
+	schema, err := db.loadActiveOntologySchema(ctx)
+	if err != nil || schema == nil {
+		return nil, err
+	}
+	compiled := compileOntology(*schema)
+	if compiled.isEmpty() {
+		return nil, nil
+	}
+	return compiled, nil
+}
+
+func validateOntologyEntity(compiled *compiledOntology, entity ToolEntityInput) error {
+	// The write path drops entities with neither a name nor an ID, so
+	// rejecting one here would fail a write that was never going to happen.
+	if strings.TrimSpace(entity.Name) == "" && strings.TrimSpace(entity.ID) == "" {
+		return nil
+	}
+
+	objectTypeName := firstNonEmpty(entity.Type, "entity")
+	objectType, ok := compiled.objectType(objectTypeName)
+	if !ok {
+		return fmt.Errorf("ontology does not define object type %q", objectTypeName)
+	}
+
+	if _, err := resolveOntologyPrimaryKeyValue(compiled, objectType.APIName, entity); err != nil {
+		return err
+	}
+
+	supplied := make(map[string]string, len(entity.Metadata))
+	suppliedNames := make([]string, 0, len(entity.Metadata))
+	for key, value := range entity.Metadata {
+		supplied[ontologyAPIKey(key)] = value
+		suppliedNames = append(suppliedNames, key)
+	}
+	// Sorted so that an entity breaking two rules always names the same one;
+	// map order would otherwise make the error flap between runs.
+	sort.Strings(suppliedNames)
+
+	for _, name := range suppliedNames {
+		property, ok := compiled.property(objectType.APIName, name)
+		if !ok {
+			// Reported with the caller's spelling, not the lookup key, so the
+			// name in the error can be found in the payload that was sent.
+			return fmt.Errorf("object type %q has no property %q", objectType.APIName, name)
+		}
+		if err := parseOntologyPropertyValue(property.DataType, entity.Metadata[name]); err != nil {
+			return fmt.Errorf("object type %q property %q: %w", objectType.APIName, property.APIName, err)
+		}
+	}
+
+	for _, property := range objectType.Properties {
+		if !property.Required {
+			continue
+		}
+		if ontologyAPIKey(property.APIName) == ontologyAPIKey(objectType.PrimaryKey) {
+			// Already resolved above, and may legitimately arrive as the name.
+			continue
+		}
+		if _, ok := supplied[ontologyAPIKey(property.APIName)]; !ok {
+			return fmt.Errorf("object type %q is missing required property %q", objectType.APIName, property.APIName)
+		}
+	}
+	return nil
+}
+
+// The relation admission checks below are still pass-through for phase 1.
+
+// TODO(phase2): replace with the v2 relation admission check (plan task 8):
+// unknown link type, endpoint object types matched via compiledOntology.orientLink,
+// and ONE-side cardinality enforcement.
 
 // TODO(phase2): replace with the v2 relation admission check (plan task 8):
 // unknown link type, endpoint object types matched via compiledOntology.orientLink,
