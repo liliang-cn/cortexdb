@@ -28,6 +28,10 @@ type DB struct {
 	// disable ontology storage for the rest of this DB's lifetime.
 	ontologySchemaMu    sync.Mutex
 	ontologySchemaReady bool
+	// Guards one-time creation of the action audit table, latching on success
+	// only for the same reason as above.
+	actionAuditMu    sync.Mutex
+	actionAuditReady bool
 }
 
 // Config represents database configuration
