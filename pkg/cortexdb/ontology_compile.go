@@ -132,6 +132,35 @@ func (c *compiledOntology) property(objectTypeAPIName string, propertyAPIName st
 	return property, ok
 }
 
+// ontologyLinkTraversal is one hop: the link type to follow, the side a
+// traversal starts from, and the side it lands on.
+type ontologyLinkTraversal struct {
+	linkType OntologyLinkType
+	near     OntologyLinkSide
+	far      OntologyLinkSide
+}
+
+// linkTraversalsBySide finds every hop a traversal side name could denote.
+// Side names are unique per object type but not globally — two link types may
+// each expose an "origin" from different object types — so every match is
+// returned and the caller walks them together, letting the object types on the
+// far end sort out which one applies.
+func (c *compiledOntology) linkTraversalsBySide(sideAPIName string) []ontologyLinkTraversal {
+	key := ontologyAPIKey(sideAPIName)
+	// Over the declared slice rather than the lookup map, so two schemas that
+	// differ only in declaration order do not resolve hops in different orders.
+	traversals := make([]ontologyLinkTraversal, 0, 1)
+	for _, linkType := range c.schema.LinkTypes {
+		switch key {
+		case ontologyAPIKey(linkType.A.APIName):
+			traversals = append(traversals, ontologyLinkTraversal{linkType, linkType.A, linkType.B})
+		case ontologyAPIKey(linkType.B.APIName):
+			traversals = append(traversals, ontologyLinkTraversal{linkType, linkType.B, linkType.A})
+		}
+	}
+	return traversals
+}
+
 // orientLink decides which side of a link type a concrete edge runs from and
 // to, given the object types of its endpoints. A link type is bidirectional,
 // so the endpoint types are what fix the direction.

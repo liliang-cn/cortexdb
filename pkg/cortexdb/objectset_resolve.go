@@ -340,6 +340,99 @@ func (db *DB) applyObjectSetVectorPredicate(_ context.Context, _ objectSetResult
 	return nil, fmt.Errorf("predicate %q is not implemented", predicate.Op)
 }
 
-func (db *DB) searchAround(_ context.Context, _ *compiledOntology, _ objectSetResult, sideAPIName string) (objectSetResult, error) {
-	return nil, fmt.Errorf("search_around %q is not implemented", sideAPIName)
+// searchAround traverses one link side from every object in the source set.
+// The side name fixes both which link type to follow and which direction, so
+// "departures" and "origin" walk the same edges opposite ways.
+func (db *DB) searchAround(ctx context.Context, compiled *compiledOntology, source objectSetResult, sideAPIName string) (objectSetResult, error) {
+	if compiled == nil {
+		return nil, fmt.Errorf("%w: search_around object sets need an active ontology", ErrInvalidOntology)
+	}
+	traversals := compiled.linkTraversalsBySide(sideAPIName)
+	if len(traversals) == 0 {
+		return nil, fmt.Errorf("%w: ontology defines no link side %q", ErrInvalidOntology, sideAPIName)
+	}
+
+	result := objectSetResult{}
+	if len(source) == 0 {
+		return result, nil
+	}
+	// Sorted so the query arguments — and so the query plan and any logged
+	// statement — do not depend on Go's map iteration order.
+	nodeIDs := sortedKeysFromSet(source)
+
+	for _, traversal := range traversals {
+		reached, err := db.linkedNodeIDs(ctx, traversal.linkType.APIName, nodeIDs)
+		if err != nil {
+			return nil, err
+		}
+		// A link type is bidirectional and the edge is stored in whichever
+		// direction it was asserted, so the query above reaches both ends.
+		// Keeping only objects of the far side's type is what makes the side
+		// name — not just the link type — decide the direction.
+		if err := db.addNodesOfObjectType(ctx, result, reached, traversal.far.ObjectTypeAPIName); err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
+// linkedNodeIDs returns every node joined to one of nodeIDs by an edge of the
+// link type, from either end.
+//
+// The edge type is matched case-insensitively for the same reason the
+// cardinality check does it: api names resolve that way everywhere else.
+func (db *DB) linkedNodeIDs(ctx context.Context, linkTypeAPIName string, nodeIDs []string) ([]string, error) {
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(nodeIDs)), ",")
+	// One argument list for the two halves of the union, in the order the
+	// statement reads them: link type, node ids, link type, node ids.
+	args := make([]any, 0, 2*len(nodeIDs)+2)
+	args = append(args, linkTypeAPIName)
+	for _, id := range nodeIDs {
+		args = append(args, id)
+	}
+	args = append(args, linkTypeAPIName)
+	for _, id := range nodeIDs {
+		args = append(args, id)
+	}
+
+	rows, err := db.store.GetDB().QueryContext(ctx, `
+		SELECT to_node_id AS other FROM graph_edges
+		WHERE edge_type = ? COLLATE NOCASE AND from_node_id IN (`+placeholders+`)
+		UNION
+		SELECT from_node_id AS other FROM graph_edges
+		WHERE edge_type = ? COLLATE NOCASE AND to_node_id IN (`+placeholders+`)
+	`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search around: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	reached := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan search around row: %w", err)
+		}
+		reached = append(reached, id)
+	}
+	return reached, rows.Err()
+}
+
+// addNodesOfObjectType adds the nodes of one object type to a result set,
+// leaving the rest out.
+func (db *DB) addNodesOfObjectType(ctx context.Context, result objectSetResult, nodeIDs []string, objectTypeAPIName string) error {
+	if len(nodeIDs) == 0 {
+		return nil
+	}
+	nodes, err := db.graph.GetNodesBatch(ctx, nodeIDs)
+	if err != nil {
+		return fmt.Errorf("filter search around results: %w", err)
+	}
+	target := ontologyAPIKey(objectTypeAPIName)
+	for _, node := range nodes {
+		if node != nil && ontologyAPIKey(node.NodeType) == target {
+			result[node.ID] = struct{}{}
+		}
+	}
+	return nil
 }
