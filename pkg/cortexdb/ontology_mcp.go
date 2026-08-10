@@ -37,6 +37,19 @@ func addOntologyMCPTools(server *mcp.Server, definitions map[string]ToolDefiniti
 		}
 		return *resp, nil
 	})
+	// Through addOntologyMCPTool, not addGraphRAGMCPTool: ObjectSet refers to
+	// itself through Source and Operands, and the SDK's schema inference
+	// panics on a recursive type rather than returning an error.
+	addOntologyMCPTool(server, definitions["object_set_resolve"], func(ctx context.Context, req ObjectSetResolveRequest) (ObjectSetResolveResponse, error) {
+		resp, err := toolbox.ResolveObjectSet(ctx, req)
+		if err != nil {
+			return ObjectSetResolveResponse{}, err
+		}
+		if resp == nil {
+			return ObjectSetResolveResponse{}, nil
+		}
+		return *resp, nil
+	})
 	addOntologyMCPTool(server, definitions["ontology_delete"], func(ctx context.Context, req OntologyDeleteRequest) (OntologyDeleteResponse, error) {
 		resp, err := toolbox.DeleteOntologySchema(ctx, req)
 		if err != nil {

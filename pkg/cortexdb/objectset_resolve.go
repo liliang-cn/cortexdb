@@ -5,7 +5,14 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
+
+// defaultNearestNeighborsK is the neighbourhood a nearest_neighbors predicate
+// searches when the caller does not bound it.
+const defaultNearestNeighborsK = 10
 
 // objectSetResult is the working representation of an object set: the node
 // IDs it contains. Keeping it as a set makes union/intersect/subtract cheap
@@ -332,12 +339,103 @@ func (db *DB) loadNodePropertyValues(ctx context.Context, source objectSetResult
 	return values, nil
 }
 
-func (db *DB) applyObjectSetTextPredicate(_ context.Context, _ objectSetResult, predicate ObjectSetPredicate) (objectSetResult, error) {
-	return nil, fmt.Errorf("predicate %q is not implemented", predicate.Op)
+// applyObjectSetTextPredicate matches whole terms, which is what separates it
+// from `contains`: "and" is inside "Sunderland" but is not a term of it.
+//
+// The matching is done in memory over the candidate set rather than by handing
+// the query to FTS5. The candidates are already narrowed by the enclosing
+// object set, and going through the index would tie the result to that index's
+// tokenizer — which is trigram or unicode61 depending on the SQLite build.
+func (db *DB) applyObjectSetTextPredicate(ctx context.Context, source objectSetResult, predicate ObjectSetPredicate) (objectSetResult, error) {
+	values, err := db.loadNodePropertyValues(ctx, source, predicate.Property)
+	if err != nil {
+		return nil, err
+	}
+	terms := textPredicateTerms(predicate.Value)
+	result := objectSetResult{}
+	// A query that tokenizes to nothing selects nothing. Reading "all of no
+	// terms" as vacuously true would turn a punctuation-only query into a
+	// request for the entire source set.
+	if len(terms) == 0 {
+		return result, nil
+	}
+
+	for id := range source {
+		haystack := make(map[string]struct{})
+		for _, term := range textPredicateTerms(values[id]) {
+			haystack[term] = struct{}{}
+		}
+
+		matched := predicate.Op == PredicateContainsAllTerms
+		for _, term := range terms {
+			_, contains := haystack[term]
+			if predicate.Op == PredicateContainsAllTerms && !contains {
+				matched = false
+				break
+			}
+			if predicate.Op == PredicateContainsAnyTerm && contains {
+				matched = true
+				break
+			}
+		}
+		if matched {
+			result[id] = struct{}{}
+		}
+	}
+	return result, nil
 }
 
-func (db *DB) applyObjectSetVectorPredicate(_ context.Context, _ objectSetResult, predicate ObjectSetPredicate) (objectSetResult, error) {
-	return nil, fmt.Errorf("predicate %q is not implemented", predicate.Op)
+// textPredicateTerms splits on everything that is not a letter or a digit, so
+// punctuation in a name or a query never becomes part of a term.
+func textPredicateTerms(text string) []string {
+	return strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+}
+
+// applyObjectSetVectorPredicate intersects a k-nearest-neighbour search with
+// the candidate set, which is what makes vector search an operator inside the
+// algebra rather than a separate API.
+//
+// CortexDB keeps one embedding per object, so Property records which
+// vectorized property the caller means while the search itself runs over that
+// embedding.
+func (db *DB) applyObjectSetVectorPredicate(ctx context.Context, source objectSetResult, predicate ObjectSetPredicate) (objectSetResult, error) {
+	queryVector := predicate.Vector
+	if len(queryVector) == 0 {
+		// Said plainly rather than returning an empty set: "no embedder" and
+		// "no similar objects" are answers a caller must be able to tell apart.
+		if db.embedder == nil {
+			return nil, fmt.Errorf("predicate %q needs either an explicit vector or a configured embedder", predicate.Op)
+		}
+		embedded, err := db.embedder.Embed(ctx, predicate.Value)
+		if err != nil {
+			return nil, fmt.Errorf("embed nearest_neighbors query: %w", err)
+		}
+		queryVector = embedded
+	}
+
+	k := predicate.K
+	if k <= 0 {
+		k = defaultNearestNeighborsK
+	}
+	// HybridSearch with no start node is a pure vector search over graph
+	// nodes; it uses the HNSW index when one is enabled and scans otherwise.
+	neighbours, err := db.graph.HybridSearch(ctx, &graph.HybridQuery{Vector: queryVector, TopK: k})
+	if err != nil {
+		return nil, fmt.Errorf("nearest neighbours: %w", err)
+	}
+
+	result := objectSetResult{}
+	for _, neighbour := range neighbours {
+		if neighbour == nil || neighbour.Node == nil {
+			continue
+		}
+		if _, ok := source[neighbour.Node.ID]; ok {
+			result[neighbour.Node.ID] = struct{}{}
+		}
+	}
+	return result, nil
 }
 
 // searchAround traverses one link side from every object in the source set.

@@ -31,6 +31,13 @@ func (t *GraphRAGToolbox) callOntologyTool(ctx context.Context, name string, inp
 		}
 		resp, err := t.ListOntologySchemas(ctx, req)
 		return resp, true, err
+	case "object_set_resolve":
+		var req ObjectSetResolveRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, true, fmt.Errorf("decode %s: %w", name, err)
+		}
+		resp, err := t.ResolveObjectSet(ctx, req)
+		return resp, true, err
 	case "ontology_delete":
 		var req OntologyDeleteRequest
 		if err := json.Unmarshal(input, &req); err != nil {
