@@ -216,3 +216,25 @@ func validateObjectSetPredicateOperands(operands []ObjectSetPredicate) error {
 	}
 	return nil
 }
+
+// validateOntologyObjectSets checks the object sets saved on a schema. Only
+// their structure is checked, not the types they name: a saved set is
+// evaluated against the graph later, and a set naming a type nobody has
+// written to yet legitimately resolves to nothing rather than to an error.
+func validateOntologyObjectSets(schema OntologySchema) error {
+	seen := make(map[string]struct{}, len(schema.ObjectSets))
+	for _, named := range schema.ObjectSets {
+		if err := validateOntologyAPIName("object set", named.APIName); err != nil {
+			return err
+		}
+		key := ontologyAPIKey(named.APIName)
+		if _, exists := seen[key]; exists {
+			return fmt.Errorf("duplicate object set %q", named.APIName)
+		}
+		seen[key] = struct{}{}
+		if err := validateObjectSet(named.Definition, 0); err != nil {
+			return fmt.Errorf("object set %q: %w", named.APIName, err)
+		}
+	}
+	return nil
+}

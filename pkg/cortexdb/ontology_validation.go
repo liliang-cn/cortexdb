@@ -127,10 +127,19 @@ func validateOntologySchemaRules(schema OntologySchema) error {
 		}
 	}
 
-	// Last, because it is the only rule that needs the whole schema resolved
+	// Last, because these are the rules that need the whole schema resolved
 	// into its lookup form. The name checks above run first so a misspelled
 	// interface is reported as such rather than as an unsatisfied contract.
-	return validateOntologyInterfaces(schema, compileOntology(schema))
+	compiled := compileOntology(schema)
+	if err := validateOntologyInterfaces(schema, compiled); err != nil {
+		return err
+	}
+	// Actions and object sets are checked after the types they reference, so a
+	// rule pointing at a broken object type reports the broken type first.
+	if err := validateOntologyActionTypes(schema, compiled); err != nil {
+		return err
+	}
+	return validateOntologyObjectSets(schema)
 }
 
 func validateOntologyObjectType(objectType OntologyObjectType) error {
