@@ -328,28 +328,181 @@ func validateOntologyEntity(compiled *compiledOntology, entity ToolEntityInput) 
 	return nil
 }
 
-// The relation admission checks below are still pass-through for phase 1.
+// ontologyTypeResolver maps a node ID to its object type API name. It is a
+// parameter rather than a fixed graph lookup so callers can answer for nodes
+// that are only planned, not yet written.
+type ontologyTypeResolver func(context.Context, []string) (map[string]string, error)
 
-// TODO(phase2): replace with the v2 relation admission check (plan task 8):
-// unknown link type, endpoint object types matched via compiledOntology.orientLink,
-// and ONE-side cardinality enforcement.
+func (db *DB) validateRelationInputs(ctx context.Context, relations []ToolRelationInput) error {
+	return db.validateRelationInputsWithResolver(ctx, relations, db.loadOntologyNodeTypes)
+}
 
-// TODO(phase2): replace with the v2 relation admission check (plan task 8):
-// unknown link type, endpoint object types matched via compiledOntology.orientLink,
-// and ONE-side cardinality enforcement.
-func (db *DB) validateRelationInputs(_ context.Context, _ []ToolRelationInput) error { return nil }
+func (db *DB) validateRelationInputsWithResolver(ctx context.Context, relations []ToolRelationInput, resolve ontologyTypeResolver) error {
+	compiled, err := db.activeCompiledOntology(ctx)
+	if err != nil || compiled == nil {
+		return err
+	}
 
-// TODO(phase2): replace alongside validateRelationInputs (plan task 8). The
-// resolver argument exists so callers can supply entity types for nodes that
-// are only planned, not yet written; keep that shape.
-func (db *DB) validateRelationInputsWithResolver(_ context.Context, _ []ToolRelationInput, _ func(context.Context, []string) (map[string]string, error)) error {
+	nodeIDSet := make(map[string]struct{}, len(relations)*2)
+	for _, relation := range relations {
+		for _, endpoint := range []string{relation.From, relation.To} {
+			if nodeID := resolveEntityNodeID("", endpoint); nodeID != "" {
+				nodeIDSet[nodeID] = struct{}{}
+			}
+		}
+	}
+	nodeTypes, err := resolve(ctx, sortedKeysFromSet(nodeIDSet))
+	if err != nil {
+		return err
+	}
+
+	for _, relation := range relations {
+		if err := db.validateOntologyRelation(ctx, compiled, relation, nodeTypes); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidOntology, err)
+		}
+	}
 	return nil
 }
 
-// TODO(phase2): replace with the v2 extracted-graph check (plan task 8), which
-// validates entities and relationships from an extractor before they are written.
-func (db *DB) validateExtractedGraphData(_ context.Context, _ map[string]GraphEntity, _ map[string]graph.GraphEdge) error {
+func (db *DB) validateOntologyRelation(ctx context.Context, compiled *compiledOntology, relation ToolRelationInput, nodeTypes map[string]string) error {
+	linkTypeName := firstNonEmpty(relation.Type, "related_to")
+	linkType, ok := compiled.linkType(linkTypeName)
+	if !ok {
+		return fmt.Errorf("ontology does not define link type %q", linkTypeName)
+	}
+
+	fromID := resolveEntityNodeID("", relation.From)
+	toID := resolveEntityNodeID("", relation.To)
+	if fromID == "" || toID == "" {
+		return fmt.Errorf("relation endpoints are required")
+	}
+
+	fromType, ok := nodeTypes[fromID]
+	if !ok {
+		return fmt.Errorf("ontology validation could not resolve source entity %s", relation.From)
+	}
+	toType, ok := nodeTypes[toID]
+	if !ok {
+		return fmt.Errorf("ontology validation could not resolve target entity %s", relation.To)
+	}
+
+	fromSide, toSide, err := compiled.orientLink(linkType, fromType, toType)
+	if err != nil {
+		return err
+	}
+	return db.checkOntologyCardinality(ctx, linkType, fromID, fromSide, toID, toSide)
+}
+
+// checkOntologyCardinality refuses a second edge into a side declared ONE.
+// The check runs against edges already in the graph; a batch that violates
+// cardinality within itself is caught on the second relation.
+func (db *DB) checkOntologyCardinality(ctx context.Context, linkType OntologyLinkType, fromID string, fromSide OntologyLinkSide, toID string, toSide OntologyLinkSide) error {
+	// An edge from A to B occupies one slot on B's side as seen from A, and
+	// vice versa. A ONE side means the *other* endpoint may hold at most one
+	// edge of this link type.
+	if toSide.Cardinality == OntologyCardinalityOne {
+		count, err := db.countOntologyLinks(ctx, linkType.APIName, toID, fromID)
+		if err != nil {
+			return err
+		}
+		if count > 0 {
+			return fmt.Errorf("link type %q side %q has cardinality ONE: %s already has a %s link",
+				linkType.APIName, toSide.APIName, toID, linkType.APIName)
+		}
+	}
+	if fromSide.Cardinality == OntologyCardinalityOne {
+		count, err := db.countOntologyLinks(ctx, linkType.APIName, fromID, toID)
+		if err != nil {
+			return err
+		}
+		if count > 0 {
+			return fmt.Errorf("link type %q side %q has cardinality ONE: %s already has a %s link",
+				linkType.APIName, fromSide.APIName, fromID, linkType.APIName)
+		}
+	}
 	return nil
+}
+
+// countOntologyLinks counts edges of a link type touching nodeID, excluding
+// edges to excludeNodeID so that re-asserting the same link is idempotent.
+//
+// The edge type is matched case-insensitively because API names resolve that
+// way everywhere else; an exact match would let a caller spell the link type
+// differently and slip a second edge past a ONE side.
+func (db *DB) countOntologyLinks(ctx context.Context, linkTypeAPIName string, nodeID string, excludeNodeID string) (int, error) {
+	row := db.store.GetDB().QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM graph_edges
+		WHERE edge_type = ? COLLATE NOCASE
+		  AND (from_node_id = ? OR to_node_id = ?)
+		  AND from_node_id <> ? AND to_node_id <> ?
+	`, linkTypeAPIName, nodeID, nodeID, excludeNodeID, excludeNodeID)
+
+	var count int
+	if err := row.Scan(&count); err != nil {
+		return 0, fmt.Errorf("count ontology links: %w", err)
+	}
+	return count, nil
+}
+
+// validateExtractedGraphData admits a whole extraction: the entities and the
+// relationships between them, before any of it is written.
+func (db *DB) validateExtractedGraphData(ctx context.Context, entities map[string]GraphEntity, relationships map[string]graph.GraphEdge) error {
+	if len(entities) == 0 && len(relationships) == 0 {
+		return nil
+	}
+
+	// Sorted so that an extraction breaking several rules always reports the
+	// same one; map order would otherwise make the error flap between runs.
+	entityInputs := make([]ToolEntityInput, 0, len(entities))
+	batchTypes := make(map[string]string, len(entities))
+	for _, entityID := range sortedMapKeys(entities) {
+		entity := entities[entityID]
+		objectType := firstNonEmpty(entity.Type, "entity")
+		entityInputs = append(entityInputs, ToolEntityInput{ID: entityID, Name: entity.Name, Type: objectType})
+		batchTypes[entityID] = objectType
+	}
+	if err := db.validateEntityInputs(ctx, entityInputs); err != nil {
+		return err
+	}
+
+	relationInputs := make([]ToolRelationInput, 0, len(relationships))
+	for _, key := range sortedMapKeys(relationships) {
+		relation := relationships[key]
+		relationInputs = append(relationInputs, ToolRelationInput{
+			From:     relation.FromNodeID,
+			To:       relation.ToNodeID,
+			Type:     relation.EdgeType,
+			Metadata: anyMapToStringMap(relation.Properties),
+		})
+	}
+
+	// Resolve from the graph first, then fall back to types declared in this
+	// same batch. v1 only did the former, so a batch that created both a node
+	// and an edge in one call failed on the edge.
+	return db.validateRelationInputsWithResolver(ctx, relationInputs, func(ctx context.Context, nodeIDs []string) (map[string]string, error) {
+		resolved, err := db.loadOntologyNodeTypes(ctx, nodeIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, nodeID := range nodeIDs {
+			if _, ok := resolved[nodeID]; ok {
+				continue
+			}
+			if objectType, ok := batchTypes[nodeID]; ok {
+				resolved[nodeID] = objectType
+			}
+		}
+		return resolved, nil
+	})
+}
+
+func sortedMapKeys[V any](values map[string]V) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // loadOntologyNodeTypes reads the stored node type of each ID. It survives the

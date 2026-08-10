@@ -47,6 +47,15 @@ func resolveOntologyPrimaryKeyValue(compiled *compiledOntology, objectTypeAPINam
 		}
 	}
 
+	// An entity referenced by its ontology node ID has already stated its
+	// primary key, because that ID is derived from it. Extractors hand nodes
+	// over that way, with no metadata attached.
+	if prefix := ontologyNodeID(objectType.APIName, ""); strings.HasPrefix(entity.ID, prefix) {
+		if value := strings.TrimPrefix(entity.ID, prefix); value != "" {
+			return value, nil
+		}
+	}
+
 	if ontologyPrimaryKeyArrivesAsName(objectType) && strings.TrimSpace(entity.Name) != "" {
 		return entity.Name, nil
 	}

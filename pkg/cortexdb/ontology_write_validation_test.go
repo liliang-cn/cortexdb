@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
 func activateAviationSchema(t *testing.T, db *DB) {
@@ -188,5 +190,308 @@ func TestValidateEntityInputsChecksEveryEntity(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "Spacecraft") {
 		t.Fatalf("expected the second entity to be rejected, got %v", err)
+	}
+}
+
+// initGraphSchemaForTest mirrors what every production caller of the write
+// validators does before reaching them, so a test that validates without
+// writing does not fail on a missing table and hide the real assertion.
+func initGraphSchemaForTest(t *testing.T, db *DB) {
+	t.Helper()
+	if err := db.graph.InitGraphSchema(context.Background()); err != nil {
+		t.Fatalf("init graph schema: %v", err)
+	}
+}
+
+func upsertAviationEntities(t *testing.T, db *DB, entities ...ToolEntityInput) {
+	t.Helper()
+	if _, err := db.GraphRAGTools().UpsertEntities(context.Background(), ToolUpsertEntitiesRequest{Entities: entities}); err != nil {
+		t.Fatalf("upsert entities: %v", err)
+	}
+}
+
+func aviationAirport(name string, iataCode string) ToolEntityInput {
+	return ToolEntityInput{Name: name, Type: "Airport", Metadata: map[string]string{"iataCode": iataCode}}
+}
+
+func aviationFlight(flightNumber string) ToolEntityInput {
+	return ToolEntityInput{Name: flightNumber, Type: "Flight", Metadata: map[string]string{"flightNumber": flightNumber}}
+}
+
+func TestValidateRelationInputsAcceptsConformingRelation(t *testing.T) {
+	db := openOntologyTestDB(t)
+	activateAviationSchema(t, db)
+	ctx := context.Background()
+	upsertAviationEntities(t, db, aviationAirport("London Heathrow", "LHR"), aviationFlight("BA117"))
+
+	err := db.validateRelationInputs(ctx, []ToolRelationInput{
+		{From: "London Heathrow", To: "BA117", Type: "flightDeparture"},
+	})
+	if err != nil {
+		t.Fatalf("expected conforming relation to pass, got %v", err)
+	}
+}
+
+func TestValidateRelationInputsRejectsUnknownLinkType(t *testing.T) {
+	db := openOntologyTestDB(t)
+	activateAviationSchema(t, db)
+	ctx := context.Background()
+	upsertAviationEntities(t, db, aviationAirport("London Heathrow", "LHR"), aviationFlight("BA117"))
+
+	err := db.validateRelationInputs(ctx, []ToolRelationInput{
+		{From: "London Heathrow", To: "BA117", Type: "refuels"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "refuels") {
+		t.Fatalf("expected unknown link type to be rejected, got %v", err)
+	}
+}
+
+func TestValidateRelationInputsRejectsWrongEndpointTypes(t *testing.T) {
+	db := openOntologyTestDB(t)
+	activateAviationSchema(t, db)
+	ctx := context.Background()
+	upsertAviationEntities(t, db, aviationAirport("London Heathrow", "LHR"), aviationAirport("Gatwick", "LGW"))
+
+	err := db.validateRelationInputs(ctx, []ToolRelationInput{
+		{From: "London Heathrow", To: "Gatwick", Type: "flightDeparture"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "connects Airport and Flight") {
+		t.Fatalf("expected Airport->Airport on a flightDeparture link to be rejected, got %v", err)
+	}
+}
+
+func TestValidateRelationInputsEnforcesOneCardinality(t *testing.T) {
+	db := openOntologyTestDB(t)
+	activateAviationSchema(t, db)
+	ctx := context.Background()
+	upsertAviationEntities(t, db,
+		aviationAirport("London Heathrow", "LHR"),
+		aviationAirport("Gatwick", "LGW"),
+		aviationFlight("BA117"))
+
+	if _, err := db.GraphRAGTools().UpsertRelations(ctx, ToolUpsertRelationsRequest{Relations: []ToolRelationInput{
+		{From: "London Heathrow", To: "BA117", Type: "flightDeparture"},
+	}}); err != nil {
+		t.Fatalf("first relation: %v", err)
+	}
+
+	// BA117's origin side has cardinality ONE, so a second origin airport
+	// must be refused rather than silently producing two origins.
+	err := db.validateRelationInputs(ctx, []ToolRelationInput{
+		{From: "Gatwick", To: "BA117", Type: "flightDeparture"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "cardinality") {
+		t.Fatalf("expected a cardinality violation, got %v", err)
+	}
+}
+
+func TestValidateRelationInputsEnforcesOneCardinalityOnTheFromSide(t *testing.T) {
+	db := openOntologyTestDB(t)
+	activateAviationSchema(t, db)
+	ctx := context.Background()
+	upsertAviationEntities(t, db,
+		aviationAirport("London Heathrow", "LHR"),
+		aviationAirport("Gatwick", "LGW"),
+		aviationFlight("BA117"))
+
+	// Written Flight->Airport, so the ONE side is now the relation's source.
+	if _, err := db.GraphRAGTools().UpsertRelations(ctx, ToolUpsertRelationsRequest{Relations: []ToolRelationInput{
+		{From: "BA117", To: "London Heathrow", Type: "flightDeparture"},
+	}}); err != nil {
+		t.Fatalf("first relation: %v", err)
+	}
+
+	err := db.validateRelationInputs(ctx, []ToolRelationInput{
+		{From: "BA117", To: "Gatwick", Type: "flightDeparture"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "cardinality") {
+		t.Fatalf("expected a cardinality violation on the source side, got %v", err)
+	}
+}
+
+func TestValidateRelationInputsCountsOnlyTheLinkTypeBeingChecked(t *testing.T) {
+	db := openOntologyTestDB(t)
+	ctx := context.Background()
+
+	// A second link type that also puts a ONE side on Flight. An edge of one
+	// must not fill the other's slot.
+	schema := validAviationSchema()
+	schema.ObjectTypes = append(schema.ObjectTypes, OntologyObjectType{
+		APIName:    "Airline",
+		PrimaryKey: "airlineCode",
+		Properties: []OntologyProperty{
+			{APIName: "airlineCode", DataType: OntologyDataType{Kind: OntologyDataString}, Required: true},
+		},
+	})
+	schema.LinkTypes = append(schema.LinkTypes, OntologyLinkType{
+		APIName: "flightOperator",
+		A:       OntologyLinkSide{APIName: "operatedFlights", ObjectTypeAPIName: "Airline", Cardinality: OntologyCardinalityMany},
+		B:       OntologyLinkSide{APIName: "operator", ObjectTypeAPIName: "Flight", Cardinality: OntologyCardinalityOne},
+	})
+	if _, err := db.SaveOntologySchema(ctx, OntologySaveRequest{Schema: schema, Activate: true}); err != nil {
+		t.Fatalf("activate: %v", err)
+	}
+
+	upsertAviationEntities(t, db,
+		aviationAirport("London Heathrow", "LHR"),
+		aviationFlight("BA117"),
+		ToolEntityInput{Name: "British Airways", Type: "Airline", Metadata: map[string]string{"airlineCode": "BA"}})
+
+	if _, err := db.GraphRAGTools().UpsertRelations(ctx, ToolUpsertRelationsRequest{Relations: []ToolRelationInput{
+		{From: "British Airways", To: "BA117", Type: "flightOperator"},
+	}}); err != nil {
+		t.Fatalf("operator relation: %v", err)
+	}
+
+	// BA117 now has an operator, but no origin: its flightDeparture slot is free.
+	if err := db.validateRelationInputs(ctx, []ToolRelationInput{
+		{From: "London Heathrow", To: "BA117", Type: "flightDeparture"},
+	}); err != nil {
+		t.Fatalf("an unrelated link type must not fill this one's ONE side, got %v", err)
+	}
+}
+
+func TestValidateRelationInputsRejectsUnresolvableEndpoints(t *testing.T) {
+	db := openOntologyTestDB(t)
+	activateAviationSchema(t, db)
+	ctx := context.Background()
+	upsertAviationEntities(t, db, aviationAirport("London Heathrow", "LHR"), aviationFlight("BA117"))
+
+	// Node IDs are taken at face value, so one that names nothing must be
+	// refused rather than validated against an empty type.
+	err := db.validateRelationInputs(ctx, []ToolRelationInput{
+		{From: "entity:airport:nowhere", To: "BA117", Type: "flightDeparture"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "could not resolve source entity") {
+		t.Fatalf("expected an unresolvable source to be rejected, got %v", err)
+	}
+
+	err = db.validateRelationInputs(ctx, []ToolRelationInput{
+		{From: "London Heathrow", To: "entity:flight:nowhere", Type: "flightDeparture"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "could not resolve target entity") {
+		t.Fatalf("expected an unresolvable target to be rejected, got %v", err)
+	}
+}
+
+func TestValidateRelationInputsAllowsReassertingTheSameLink(t *testing.T) {
+	db := openOntologyTestDB(t)
+	activateAviationSchema(t, db)
+	ctx := context.Background()
+	upsertAviationEntities(t, db, aviationAirport("London Heathrow", "LHR"), aviationFlight("BA117"))
+
+	relations := []ToolRelationInput{{From: "London Heathrow", To: "BA117", Type: "flightDeparture"}}
+	if _, err := db.GraphRAGTools().UpsertRelations(ctx, ToolUpsertRelationsRequest{Relations: relations}); err != nil {
+		t.Fatalf("first relation: %v", err)
+	}
+
+	// Re-ingesting the same document must not trip cardinality on the edge it
+	// wrote last time: a ONE side already filled by this very link is fine.
+	if _, err := db.GraphRAGTools().UpsertRelations(ctx, ToolUpsertRelationsRequest{Relations: relations}); err != nil {
+		t.Fatalf("expected re-asserting the same link to pass, got %v", err)
+	}
+}
+
+func TestValidateRelationInputsIgnoresEdgeTypeCasingWhenCounting(t *testing.T) {
+	db := openOntologyTestDB(t)
+	activateAviationSchema(t, db)
+	ctx := context.Background()
+	upsertAviationEntities(t, db,
+		aviationAirport("London Heathrow", "LHR"),
+		aviationAirport("Gatwick", "LGW"),
+		aviationFlight("BA117"))
+
+	// Written with the link type spelled differently. API names resolve
+	// case-insensitively, so this still occupies BA117's ONE origin slot and
+	// must not let a second origin in through the back door.
+	if _, err := db.GraphRAGTools().UpsertRelations(ctx, ToolUpsertRelationsRequest{Relations: []ToolRelationInput{
+		{From: "London Heathrow", To: "BA117", Type: "flightdeparture"},
+	}}); err != nil {
+		t.Fatalf("first relation: %v", err)
+	}
+
+	err := db.validateRelationInputs(ctx, []ToolRelationInput{
+		{From: "Gatwick", To: "BA117", Type: "flightDeparture"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "cardinality") {
+		t.Fatalf("expected casing not to smuggle a second edge past cardinality, got %v", err)
+	}
+}
+
+func TestValidateRelationInputsNoopWithoutActiveSchema(t *testing.T) {
+	db := openOntologyTestDB(t)
+
+	err := db.validateRelationInputs(context.Background(), []ToolRelationInput{
+		{From: "Anything", To: "Whatever", Type: "madeUp"},
+	})
+	if err != nil {
+		t.Fatalf("with no active schema all writes must pass, got %v", err)
+	}
+}
+
+func TestValidateRelationInputsRejectionsAreInvalidOntologyErrors(t *testing.T) {
+	db := openOntologyTestDB(t)
+	activateAviationSchema(t, db)
+	upsertAviationEntities(t, db, aviationAirport("London Heathrow", "LHR"), aviationFlight("BA117"))
+
+	err := db.validateRelationInputs(context.Background(), []ToolRelationInput{
+		{From: "London Heathrow", To: "BA117", Type: "refuels"},
+	})
+	if !errors.Is(err, ErrInvalidOntology) {
+		t.Fatalf("expected an ErrInvalidOntology chain, got %v", err)
+	}
+}
+
+func TestValidateRelationInputsResolvesEndpointsFromSameBatch(t *testing.T) {
+	db := openOntologyTestDB(t)
+	activateAviationSchema(t, db)
+	initGraphSchemaForTest(t, db)
+	ctx := context.Background()
+
+	// Neither endpoint exists in the graph yet. v1 failed here with
+	// "could not resolve"; v2 must resolve from the batch.
+	err := db.validateExtractedGraphData(ctx,
+		map[string]GraphEntity{
+			"entity:airport:lhr":  {Name: "London Heathrow", Type: "Airport"},
+			"entity:flight:ba117": {Name: "BA117", Type: "Flight"},
+		},
+		map[string]graph.GraphEdge{
+			"e1": {FromNodeID: "entity:airport:lhr", ToNodeID: "entity:flight:ba117", EdgeType: "flightDeparture"},
+		})
+	if err != nil {
+		t.Fatalf("expected same-batch endpoints to resolve, got %v", err)
+	}
+}
+
+func TestValidateExtractedGraphDataStillRejectsMistypedEndpoints(t *testing.T) {
+	db := openOntologyTestDB(t)
+	activateAviationSchema(t, db)
+	initGraphSchemaForTest(t, db)
+	ctx := context.Background()
+
+	// Batch fallback supplies the missing types, it does not excuse them: two
+	// airports on a flightDeparture link is still wrong.
+	err := db.validateExtractedGraphData(ctx,
+		map[string]GraphEntity{
+			"entity:airport:lhr": {Name: "London Heathrow", Type: "Airport"},
+			"entity:airport:lgw": {Name: "Gatwick", Type: "Airport"},
+		},
+		map[string]graph.GraphEdge{
+			"e1": {FromNodeID: "entity:airport:lhr", ToNodeID: "entity:airport:lgw", EdgeType: "flightDeparture"},
+		})
+	if err == nil || !strings.Contains(err.Error(), "connects Airport and Flight") {
+		t.Fatalf("expected Airport->Airport on a flightDeparture link to be rejected, got %v", err)
+	}
+}
+
+func TestValidateExtractedGraphDataValidatesEntitiesToo(t *testing.T) {
+	db := openOntologyTestDB(t)
+	activateAviationSchema(t, db)
+
+	err := db.validateExtractedGraphData(context.Background(),
+		map[string]GraphEntity{"entity:spacecraft:vgr": {Name: "Voyager", Type: "Spacecraft"}},
+		nil)
+	if err == nil || !strings.Contains(err.Error(), "Spacecraft") {
+		t.Fatalf("expected the extracted entity to be validated, got %v", err)
 	}
 }
