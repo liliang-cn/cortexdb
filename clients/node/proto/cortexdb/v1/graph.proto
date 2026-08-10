@@ -164,12 +164,16 @@ message ExplainInferenceMatchRequest {
 }
 message ExplainInferenceMatchResponse { repeated InferenceMatchExplanation matches = 1; }
 
+// Deprecated: the ontology-lite entity/relation type model was replaced by the
+// v2 typed ontology, which is carried as JSON in schema_json. Kept so field
+// numbers stay stable for clients built against the older wire format.
 message OntologyEntityType {
   string name = 1;
   string description = 2;
   repeated string required_properties = 3;
 }
 
+// Deprecated: see OntologyEntityType.
 message OntologyRelationType {
   string name = 1;
   string description = 2;
@@ -185,10 +189,13 @@ message OntologySchema {
   int32 version = 4;
   bool active = 5;
   map<string, string> metadata = 6;
-  repeated OntologyEntityType entity_types = 7;
-  repeated OntologyRelationType relation_types = 8;
+  repeated OntologyEntityType entity_types = 7 [deprecated = true];
+  repeated OntologyRelationType relation_types = 8 [deprecated = true];
   google.protobuf.Timestamp created_at = 9;
   google.protobuf.Timestamp updated_at = 10;
+  // The full v2 ontology schema as JSON. This is the only field that carries
+  // object types, link types, interfaces and shared properties.
+  string schema_json = 11;
 }
 
 message SaveOntologySchemaRequest {
@@ -199,8 +206,10 @@ message SaveOntologySchemaRequest {
   bool activate = 5;
   bool deactivate = 6;
   map<string, string> metadata = 7;
-  repeated OntologyEntityType entity_types = 8;
-  repeated OntologyRelationType relation_types = 9;
+  repeated OntologyEntityType entity_types = 8 [deprecated = true];
+  repeated OntologyRelationType relation_types = 9 [deprecated = true];
+  // The full v2 ontology schema as JSON. Required.
+  string schema_json = 10;
 }
 message SaveOntologySchemaResponse { OntologySchema schema = 1; }
 

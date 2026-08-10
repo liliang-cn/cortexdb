@@ -4,25 +4,22 @@ func ontologyToolDefinitions() []ToolDefinition {
 	return []ToolDefinition{
 		{
 			Name:        "ontology_save",
-			Description: "Store or update an ontology-lite schema that validates entity and relation writes. Mark one schema active to make it the default validator.",
+			Description: "Store or update an ontology schema: object types with typed properties and a mandatory primary key, and link types with per-side cardinality. Mark one schema active to make it the write-time validator.",
 			InputSchema: toolObjectSchema(
-				[]string{"schema_id"},
+				[]string{"schema"},
 				map[string]any{
-					"schema_id":      toolStringSchema("Stable ontology schema ID."),
-					"name":           toolStringSchema("Optional display name."),
-					"description":    toolStringSchema("Optional schema description."),
-					"version":        toolIntegerSchema("Optional explicit schema version. Omit to auto-increment."),
-					"activate":       toolBooleanSchema("Set true to make this the active ontology schema."),
-					"deactivate":     toolBooleanSchema("Set true to deactivate this schema without deleting it."),
-					"metadata":       toolMapSchema("Optional schema metadata."),
-					"entity_types":   toolOntologyEntityTypesSchema(),
-					"relation_types": toolOntologyRelationTypesSchema(),
+					"schema": map[string]any{
+						"type":        "object",
+						"description": "Full ontology schema. Required keys: schema_id. Optional: name, description, version, strict_actions, metadata, object_types, link_types, interface_types, shared_properties. Each object_type needs api_name, primary_key and properties[]; each property needs api_name and data_type.kind (string|integer|long|double|decimal|boolean|date|timestamp|geopoint|geoshape|vector|array|struct|marking). Each link_type needs api_name plus sides a and b, each with api_name, object_type_api_name and cardinality (ONE|MANY).",
+					},
+					"activate":   toolBooleanSchema("Set true to make this the active ontology schema."),
+					"deactivate": toolBooleanSchema("Set true to deactivate this schema without deleting it."),
 				},
 			),
 		},
 		{
 			Name:        "ontology_get",
-			Description: "Fetch one ontology-lite schema by ID.",
+			Description: "Fetch one ontology schema by ID.",
 			InputSchema: toolObjectSchema(
 				[]string{"schema_id"},
 				map[string]any{
@@ -32,7 +29,7 @@ func ontologyToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "ontology_list",
-			Description: "List ontology-lite schemas. Use active_only=true to inspect the current validator.",
+			Description: "List ontology schemas. Use active_only=true to inspect the current validator.",
 			InputSchema: toolObjectSchema(
 				nil,
 				map[string]any{
@@ -42,7 +39,7 @@ func ontologyToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "ontology_delete",
-			Description: "Delete one ontology-lite schema by ID.",
+			Description: "Delete one ontology schema by ID.",
 			InputSchema: toolObjectSchema(
 				[]string{"schema_id"},
 				map[string]any{
@@ -50,35 +47,5 @@ func ontologyToolDefinitions() []ToolDefinition {
 				},
 			),
 		},
-	}
-}
-
-func toolOntologyEntityTypesSchema() map[string]any {
-	return map[string]any{
-		"type": "array",
-		"items": toolObjectSchema(
-			[]string{"name"},
-			map[string]any{
-				"name":                toolStringSchema("Canonical entity type name, such as person or organization."),
-				"description":         toolStringSchema("Optional entity type description."),
-				"required_properties": toolStringArraySchema("Metadata keys that must be present when entities of this type are written."),
-			},
-		),
-	}
-}
-
-func toolOntologyRelationTypesSchema() map[string]any {
-	return map[string]any{
-		"type": "array",
-		"items": toolObjectSchema(
-			[]string{"name"},
-			map[string]any{
-				"name":                toolStringSchema("Canonical relation type name, such as works_at."),
-				"description":         toolStringSchema("Optional relation type description."),
-				"allowed_from_types":  toolStringArraySchema("Optional allowed source entity types."),
-				"allowed_to_types":    toolStringArraySchema("Optional allowed target entity types."),
-				"required_properties": toolStringArraySchema("Metadata keys that must be present when this relation is written."),
-			},
-		),
 	}
 }

@@ -20,23 +20,9 @@ func TestApplyInferenceRulesAndCleanup(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
-	if _, err := db.SaveOntologySchema(ctx, OntologySaveRequest{
-		SchemaID: "inference-schema",
-		Activate: true,
-		EntityTypes: []OntologyEntityType{
-			{Name: "entity"},
-			{Name: "person"},
-			{Name: "organization"},
-			{Name: "city"},
-		},
-		RelationTypes: []OntologyRelationType{
-			{Name: "works_at", AllowedFromTypes: []string{"person"}, AllowedToTypes: []string{"organization"}},
-			{Name: "located_in", AllowedFromTypes: []string{"organization"}, AllowedToTypes: []string{"city"}},
-			{Name: "works_in_city", AllowedFromTypes: []string{"person"}, AllowedToTypes: []string{"city"}},
-		},
-	}); err != nil {
-		t.Fatalf("save ontology schema: %v", err)
-	}
+	// TODO(phase2): a permissive v1 ontology schema was installed here so the
+	// writes below would pass validation. Write-path enforcement is stubbed for
+	// phase 1; restore a v2 equivalent with plan tasks 7-8.
 
 	knowledgeResp, err := db.SaveKnowledge(ctx, KnowledgeSaveRequest{
 		KnowledgeID: "knowledge-inference",
@@ -126,21 +112,9 @@ func TestUpsertRelationsStoresInferenceProvenance(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
-	if _, err := db.SaveOntologySchema(ctx, OntologySaveRequest{
-		SchemaID: "llm-inference-schema",
-		Activate: true,
-		EntityTypes: []OntologyEntityType{
-			{Name: "entity"},
-			{Name: "person"},
-			{Name: "organization"},
-		},
-		RelationTypes: []OntologyRelationType{
-			{Name: "works_at", AllowedFromTypes: []string{"person"}, AllowedToTypes: []string{"organization"}},
-			{Name: "works_for_group", AllowedFromTypes: []string{"person"}, AllowedToTypes: []string{"organization"}},
-		},
-	}); err != nil {
-		t.Fatalf("save ontology schema: %v", err)
-	}
+	// TODO(phase2): a permissive v1 ontology schema was installed here so the
+	// writes below would pass validation. Write-path enforcement is stubbed for
+	// phase 1; restore a v2 equivalent with plan tasks 7-8.
 
 	tools := db.GraphRAGTools()
 	ingestResp, err := tools.IngestDocument(ctx, ToolIngestDocumentRequest{
@@ -218,23 +192,9 @@ func TestApplyInferenceRulesPreservesReservedProvenanceFields(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
-	if _, err := db.SaveOntologySchema(ctx, OntologySaveRequest{
-		SchemaID: "reserved-provenance-schema",
-		Activate: true,
-		EntityTypes: []OntologyEntityType{
-			{Name: "entity"},
-			{Name: "person"},
-			{Name: "organization"},
-			{Name: "city"},
-		},
-		RelationTypes: []OntologyRelationType{
-			{Name: "works_at", AllowedFromTypes: []string{"person"}, AllowedToTypes: []string{"organization"}},
-			{Name: "located_in", AllowedFromTypes: []string{"organization"}, AllowedToTypes: []string{"city"}},
-			{Name: "works_in_city", AllowedFromTypes: []string{"person"}, AllowedToTypes: []string{"city"}},
-		},
-	}); err != nil {
-		t.Fatalf("save ontology schema: %v", err)
-	}
+	// TODO(phase2): a permissive v1 ontology schema was installed here so the
+	// writes below would pass validation. Write-path enforcement is stubbed for
+	// phase 1; restore a v2 equivalent with plan tasks 7-8.
 
 	if _, err := db.SaveKnowledge(ctx, KnowledgeSaveRequest{
 		KnowledgeID: "knowledge-reserved-provenance",

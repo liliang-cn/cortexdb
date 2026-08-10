@@ -22,8 +22,12 @@ type DB struct {
 	reranker                 Reranker         // Optional cross-encoder reranker for retrieval
 	queryTransformer         QueryTransformer // Optional pre-retrieval query rewriter (rewrite + HyDE)
 	KnowledgeMemoryReflector KnowledgeMemoryReflector
-	ontologySchemaInit       sync.Once
-	ontologySchemaInitErr    error
+	// Guards one-time creation of the ontology v2 table. A mutex plus a flag
+	// rather than sync.Once, because Once latches on panic-free completion
+	// even when the work failed: a single cancelled context would otherwise
+	// disable ontology storage for the rest of this DB's lifetime.
+	ontologySchemaMu    sync.Mutex
+	ontologySchemaReady bool
 }
 
 // Config represents database configuration

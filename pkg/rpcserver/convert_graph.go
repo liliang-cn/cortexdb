@@ -1,6 +1,12 @@
 package rpcserver
 
 import (
+	"encoding/json"
+	"strings"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 	rpcv1 "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1"
@@ -116,47 +122,57 @@ func traceToProto(in []graph.RDFSInferenceTraceEntry) []*rpcv1.InferenceTraceEnt
 	return out
 }
 
+// ontologySchemaToProto carries the v2 schema in schema_json. The deprecated
+// entity_types / relation_types fields are left empty: they cannot represent
+// typed properties or a primary key, so populating them would be misleading.
 func ontologySchemaToProto(s cortexdb.OntologySchema) *rpcv1.OntologySchema {
-	entityTypes := make([]*rpcv1.OntologyEntityType, 0, len(s.EntityTypes))
-	for _, e := range s.EntityTypes {
-		entityTypes = append(entityTypes, &rpcv1.OntologyEntityType{
-			Name: e.Name, Description: e.Description, RequiredProperties: e.RequiredProperties,
-		})
-	}
-	relationTypes := make([]*rpcv1.OntologyRelationType, 0, len(s.RelationTypes))
-	for _, r := range s.RelationTypes {
-		relationTypes = append(relationTypes, &rpcv1.OntologyRelationType{
-			Name: r.Name, Description: r.Description,
-			AllowedFromTypes: r.AllowedFromTypes, AllowedToTypes: r.AllowedToTypes,
-			RequiredProperties: r.RequiredProperties,
-		})
+	encoded, err := json.Marshal(s)
+	if err != nil {
+		// Marshalling a plain struct of strings, slices and maps cannot fail;
+		// an empty schema_json is still better than dropping the response.
+		encoded = nil
 	}
 	return &rpcv1.OntologySchema{
 		SchemaId: s.SchemaID, Name: s.Name, Description: s.Description,
 		Version: int32(s.Version), Active: s.Active, Metadata: s.Metadata,
-		EntityTypes: entityTypes, RelationTypes: relationTypes,
-		CreatedAt: tsFromTime(s.CreatedAt), UpdatedAt: tsFromTime(s.UpdatedAt),
+		SchemaJson: string(encoded),
+		CreatedAt:  tsFromTime(s.CreatedAt), UpdatedAt: tsFromTime(s.UpdatedAt),
 	}
 }
 
-func ontologyEntityTypesFromProto(in []*rpcv1.OntologyEntityType) []cortexdb.OntologyEntityType {
-	out := make([]cortexdb.OntologyEntityType, 0, len(in))
-	for _, e := range in {
-		out = append(out, cortexdb.OntologyEntityType{
-			Name: e.GetName(), Description: e.GetDescription(), RequiredProperties: e.GetRequiredProperties(),
-		})
+// ontologySchemaFromProto decodes the v2 schema out of schema_json. A caller
+// that still sends only the deprecated repeated fields is on the pre-v2 API and
+// is told so explicitly rather than having its request silently ignored.
+func ontologySchemaFromProto(req *rpcv1.SaveOntologySchemaRequest) (cortexdb.OntologySchema, error) {
+	raw := strings.TrimSpace(req.GetSchemaJson())
+	if raw == "" {
+		if len(req.GetEntityTypes()) > 0 || len(req.GetRelationTypes()) > 0 {
+			return cortexdb.OntologySchema{}, status.Error(codes.InvalidArgument,
+				"this server uses the v2 ontology and needs schema_json; entity_types and relation_types are from the pre-v2 ontology API and are no longer accepted")
+		}
+		return cortexdb.OntologySchema{}, status.Error(codes.InvalidArgument, "schema_json is required")
 	}
-	return out
-}
 
-func ontologyRelationTypesFromProto(in []*rpcv1.OntologyRelationType) []cortexdb.OntologyRelationType {
-	out := make([]cortexdb.OntologyRelationType, 0, len(in))
-	for _, r := range in {
-		out = append(out, cortexdb.OntologyRelationType{
-			Name: r.GetName(), Description: r.GetDescription(),
-			AllowedFromTypes: r.GetAllowedFromTypes(), AllowedToTypes: r.GetAllowedToTypes(),
-			RequiredProperties: r.GetRequiredProperties(),
-		})
+	var schema cortexdb.OntologySchema
+	if err := json.Unmarshal([]byte(raw), &schema); err != nil {
+		return cortexdb.OntologySchema{}, status.Errorf(codes.InvalidArgument, "decode schema_json: %v", err)
 	}
-	return out
+
+	// The scalar request fields stay authoritative when set, so a caller can
+	// send a bare schema_json body and still steer id, name, version.
+	if id := strings.TrimSpace(req.GetSchemaId()); id != "" {
+		schema.SchemaID = id
+	}
+	if name := strings.TrimSpace(req.GetName()); name != "" {
+		schema.Name = name
+	}
+	if description := strings.TrimSpace(req.GetDescription()); description != "" {
+		schema.Description = description
+	}
+	// version is deliberately not carried over: the store derives it, so
+	// setting it here would be dead weight that reads like a supported knob.
+	if len(req.GetMetadata()) > 0 {
+		schema.Metadata = req.GetMetadata()
+	}
+	return schema, nil
 }

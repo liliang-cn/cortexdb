@@ -129,16 +129,33 @@ func TestMCPServerToolFlow(t *testing.T) {
 	ontologySaveResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "ontology_save",
 		Arguments: map[string]any{
-			"schema_id": "mcp-ontology",
-			"activate":  true,
-			"entity_types": []map[string]any{
-				{"name": "entity"},
-				{"name": "person"},
-				{"name": "organization"},
-			},
-			"relation_types": []map[string]any{
-				{"name": "works_at", "allowed_from_types": []string{"person"}, "allowed_to_types": []string{"organization"}},
-				{"name": "meets", "allowed_from_types": []string{"entity", "person"}, "allowed_to_types": []string{"entity", "organization"}},
+			"activate": true,
+			"schema": map[string]any{
+				"schema_id": "mcp-ontology",
+				"object_types": []map[string]any{
+					{
+						"api_name":    "Person",
+						"primary_key": "email",
+						"properties": []map[string]any{
+							{"api_name": "email", "data_type": map[string]any{"kind": "string"}, "required": true},
+							{"api_name": "fullName", "data_type": map[string]any{"kind": "string"}},
+						},
+					},
+					{
+						"api_name":    "Organization",
+						"primary_key": "orgId",
+						"properties": []map[string]any{
+							{"api_name": "orgId", "data_type": map[string]any{"kind": "string"}, "required": true},
+						},
+					},
+				},
+				"link_types": []map[string]any{
+					{
+						"api_name": "worksAt",
+						"a":        map[string]any{"api_name": "employees", "object_type_api_name": "Organization", "cardinality": "MANY"},
+						"b":        map[string]any{"api_name": "employer", "object_type_api_name": "Person", "cardinality": "ONE"},
+					},
+				},
 			},
 		},
 	})
