@@ -61,6 +61,77 @@ res, _ := db.QueryKnowledgeGraph(ctx, cortexdb.KnowledgeGraphQueryRequest{
     Query: `SELECT ?name WHERE { <https://example.com/alice> <https://schema.org/name> ?name }`})
 ```
 
+## Ontology
+
+CortexDB models a Palantir-style ontology on the same file: typed object types with a mandatory primary key, link types with per-side cardinality, interfaces for polymorphic retrieval, a composable object set algebra, and governed writes through action types. Runnable end to end in [`examples/16_ontology`](examples/16_ontology).
+
+```go
+_, err := db.SaveOntologySchema(ctx, cortexdb.OntologySaveRequest{
+    Schema: cortexdb.OntologySchema{
+        SchemaID: "aviation",
+        InterfaceTypes: []cortexdb.OntologyInterfaceType{{APIName: "Facility"}},
+        ObjectTypes: []cortexdb.OntologyObjectType{{
+            APIName:       "Airport",
+            PrimaryKey:    "iataCode",     // mandatory: it is what gives an object identity
+            TitleProperty: "facilityName",
+            Implements:    []string{"Facility"},
+            Properties: []cortexdb.OntologyProperty{
+                {APIName: "iataCode", DataType: cortexdb.OntologyDataType{Kind: cortexdb.OntologyDataString}, Required: true},
+            },
+        }},
+    },
+    Activate: true,
+})
+```
+
+One schema at a time is **active**, and the active schema validates every write: unknown object types, unknown properties, missing required values and values that do not parse are rejected. Nodes written under it are identified as `entity:<objectType>:<primaryKey>`; with no active schema the older name-derived IDs still apply.
+
+**Object types** carry `api_name`, `display_name`, `plural_display_name`, `description`, `status`, `visibility`, `primary_key` (required), `title_property`, `implements` and typed `properties`. Data types: string, integer, long, double, decimal, boolean, date, timestamp, geopoint, geoshape, vector, array, struct, marking. A property may be marked `searchable` (routed into FTS5) or `vectorized`. `shared_properties` lets one definition be declared once and reused by name across object types and interfaces.
+
+**Link types** are bidirectional, with two sides that each carry their own `api_name` and a `cardinality` of `ONE` or `MANY`. A one-to-many link is one `ONE` side and one `MANY` side; only the `ONE` side may name a `foreign_key_property`.
+
+**Interfaces** give polymorphism: an object set or `find_nodes` query against `Facility` returns every implementing object type. Interfaces may extend other interfaces, an object type may implement several, and inheritance cycles are rejected at save time.
+
+**Object sets** compose retrieval — vector search, full-text search and graph traversal as peers in one expression rather than three APIs:
+
+```go
+resolved, err := db.ResolveObjectSetObjects(ctx, cortexdb.ObjectSetResolveRequest{
+    ObjectSet: cortexdb.ObjectSet{
+        Kind:     cortexdb.ObjectSetIntersect,
+        Operands: []cortexdb.ObjectSet{largeFacilities, airportsNearLondon},
+    },
+})
+```
+
+Kinds: `base`, `interface_base`, `static`, `reference` (a saved set on the schema), `filter`, `search_around`, `union`, `intersect`, `subtract`. Filter predicates: `eq`, `lt`, `lte`, `gt`, `gte`, `in`, `is_null`, `contains`, `starts_with`, `contains_all_terms`, `contains_any_term`, `nearest_neighbors`, and the boolean operators `and`, `or`, `not`. At most three chained `search_around` hops, matching Foundry's limit.
+
+**Action types** are governed, auditable writes: typed parameters, edit rules (`create_object`, `modify_object`, `create_or_modify_object`, `delete_object`, `create_link`, `delete_link`), and submission criteria. Set `validate_only` to check parameters and criteria without writing, or `return_edits` to get the graph edits back — the two are mutually exclusive. Validation never consults the graph, so it cannot report a primary-key collision. Every applied action is recorded in an audit trail. Setting `strict_actions: true` on the schema closes the generic upsert tools, making actions the only write path.
+
+**Typed tools** turn the schema into an agent-callable surface — one tool per action type, optionally one list tool per object type, with real JSON Schema types instead of a free-text blob:
+
+```go
+tools, err := db.GenerateOntologyTools(ctx, cortexdb.OntologyToolGenOptions{IncludeObjectTypes: true})
+```
+
+The result is capped (32 by default) and is deliberately **not** registered with `NewMCPServer`. OSDK 1.x grew generated code with the ontology; here the same growth would land on the agent's context window on every request, so exposing these is the caller's explicit decision.
+
+**Schema diff** answers what applying a new version would invalidate, before it is applied:
+
+```go
+diff, err := db.DiffOntologySchema(ctx, cortexdb.OntologyDiffRequest{SchemaID: "aviation", Candidate: candidate})
+```
+
+Breaking: a removed object or link type, a removed property, a changed property data type, a property that became required, a new required property, a changed primary key, a retargeted link side, and a cardinality tightened from `MANY` to `ONE`. Non-breaking additions and relaxations are reported too, flagged as safe. Both sides are expanded through their shared properties first, so retyping a shared property is visible.
+
+Tools: `ontology_save`, `ontology_get`, `ontology_list`, `ontology_delete`, `ontology_diff`, `ontology_action_list`, `ontology_action_apply`, `object_set_resolve`.
+
+### Current limitations
+
+- **`vectorized` is declarative only.** The flag is stored and validated, but no write path embeds those properties. `upsert_entities` writes a lexical FNV hash vector into the node regardless of whether an embedder is configured, so a `nearest_neighbors` predicate over a *text* query compares across two different vector spaces. Object-set vector predicates are meaningful today only when you pass an explicit query `vector`.
+- **An active ontology constrains `SaveKnowledge`.** It always runs its built-in heuristic extractor, whose entities are untyped, and write-path validation rejects them. If you want both, declare a catch-all `entity` object type (primary key `name`) and a `related_to` link type in the schema.
+- **`modify_object` does not rewrite the node's display title.** Changing the title property through a modify rule updates the property but leaves the stored title, so name-based endpoint resolution still finds the pre-rename name.
+- **Deliberately not modelled:** Foundry's function runtime, branches and proposals, dynamic row-level security, and backing datasources. Those need a platform CortexDB is not trying to be.
+
 ## Tools, MCP & Plugin
 
 ```go
@@ -191,6 +262,6 @@ Retrieval quality is measured, not assumed: `pkg/eval` runs a labeled query set 
 
 ## Examples & Status
 
-`examples/01_core` … `15_cortex_query` are small and architecture-oriented (`go run ./examples/01_core`); 01-07/09/15 run standalone, others need an LLM/embeddings/live DB — see [examples/README.md](examples/README.md).
+`examples/01_core` … `16_ontology` are small and architecture-oriented (`go run ./examples/01_core`); 01-07/09/15/16 run standalone, others need an LLM/embeddings/live DB — see [examples/README.md](examples/README.md).
 
 An embedded local-first AI memory/KG library — not a drop-in replacement for Fuseki/GraphDB/Stardog. One file, Go APIs, tool/MCP surfaces, and enough RDF/SPARQL/RDFS/SHACL to build real memory workflows.
