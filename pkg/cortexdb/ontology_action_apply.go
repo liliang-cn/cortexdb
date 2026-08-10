@@ -42,6 +42,27 @@ type ActionApplyResponse struct {
 	Edits   []ActionEdit `json:"edits,omitempty"`
 }
 
+// ActionListRequest lists the action types on the active ontology.
+type ActionListRequest struct{}
+
+// ActionListResponse returns the callable action types. The full definitions
+// are returned, not just their names: an agent reads this to work out how to
+// call an action, so the parameters and criteria are the useful part.
+type ActionListResponse struct {
+	Actions []OntologyActionType `json:"actions"`
+}
+
+func (db *DB) ListActionTypes(ctx context.Context, _ ActionListRequest) (*ActionListResponse, error) {
+	schema, err := db.loadActiveOntologySchema(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if schema == nil {
+		return &ActionListResponse{Actions: []OntologyActionType{}}, nil
+	}
+	return &ActionListResponse{Actions: schema.ActionTypes}, nil
+}
+
 // ApplyAction runs one governed write.
 //
 // Two failure modes are deliberately different shapes. A request that does not
@@ -239,6 +260,10 @@ func (s *actionScope) value(name string) string {
 // this action are tracked so that a later modify or delete rule targeting
 // them can be refused, matching Foundry's restriction.
 func (db *DB) applyActionRules(ctx context.Context, compiled *compiledOntology, action OntologyActionType, req ActionApplyRequest) ([]ActionEdit, error) {
+	// The rules below write through the same tools strict_actions closes; the
+	// marker is what tells the gate these are the governed writes it exists to
+	// permit rather than the free-form ones it exists to refuse.
+	ctx = withinActionApply(ctx)
 	if err := db.graph.InitGraphSchema(ctx); err != nil {
 		return nil, fmt.Errorf("init graph schema: %w", err)
 	}
@@ -552,6 +577,52 @@ func (db *DB) ensureActionAuditTable(ctx context.Context) error {
 	}
 	db.actionAuditReady = true
 	return nil
+}
+
+// actionApplyContextKey marks a context as belonging to an action's own
+// execution.
+type actionApplyContextKey struct{}
+
+// withinActionApply marks a context as an action's own write path. The
+// strict_actions gate sits on the generic upsert tools, and an action's rules
+// go through those same tools — without the marker the gate would refuse the
+// very writes it exists to permit. It rides on the context rather than on the
+// DB so it scopes to one action's execution, and not to every other caller
+// sharing the store while that action runs.
+func withinActionApply(ctx context.Context) context.Context {
+	return context.WithValue(ctx, actionApplyContextKey{}, true)
+}
+
+func isWithinActionApply(ctx context.Context) bool {
+	value, _ := ctx.Value(actionApplyContextKey{}).(bool)
+	return value
+}
+
+// guardStrictActions closes the generic upsert path when the active schema
+// asks for it. Off by default, so existing callers keep working unchanged, and
+// inert until the schema declares an action — closing the only way in without
+// opening another would just make the store unwritable.
+func (db *DB) guardStrictActions(ctx context.Context) error {
+	if isWithinActionApply(ctx) {
+		return nil
+	}
+	schema, err := db.loadActiveOntologySchema(ctx)
+	if err != nil || schema == nil {
+		return err
+	}
+	if !schema.StrictActions || len(schema.ActionTypes) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w: ontology %q sets strict_actions: write through an action type (see ontology_action_list), not the generic upsert tools",
+		ErrInvalidOntology, schema.SchemaID)
+}
+
+func (t *GraphRAGToolbox) ApplyAction(ctx context.Context, req ActionApplyRequest) (*ActionApplyResponse, error) {
+	return t.db.ApplyAction(ctx, req)
+}
+
+func (t *GraphRAGToolbox) ListActionTypes(ctx context.Context, req ActionListRequest) (*ActionListResponse, error) {
+	return t.db.ListActionTypes(ctx, req)
 }
 
 // recordActionAudit writes what was changed, by whom, with what inputs.

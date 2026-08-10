@@ -52,6 +52,25 @@ func ontologyToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
+			Name:        "ontology_action_list",
+			Description: "List the action types callable on the active ontology, with their parameters, rules and submission criteria. When the schema sets strict_actions, these are the only writes allowed.",
+			InputSchema: toolObjectSchema(nil, map[string]any{}),
+		},
+		{
+			Name:        "ontology_action_apply",
+			Description: "Run one action type. Set validate_only to check parameters and submission criteria without writing, or return_edits to get the graph edits back (the two are mutually exclusive). Every applied action is recorded in an audit trail.",
+			InputSchema: toolObjectSchema(
+				[]string{"action"},
+				map[string]any{
+					"action":        toolStringSchema("Action type api name."),
+					"parameters":    toolMapSchema("Action parameter values, keyed by parameter api name. Values are strings; they are parsed against each parameter's declared data type."),
+					"validate_only": toolBooleanSchema("Validate without writing. Checks parameters and submission criteria only — it never consults the graph, so it does not check primary key uniqueness."),
+					"return_edits":  toolBooleanSchema("Return the graph edits the action made."),
+					"actor":         toolStringSchema("Who is running the action; recorded in the audit trail and resolves current_user value sources."),
+				},
+			),
+		},
+		{
 			Name:        "ontology_delete",
 			Description: "Delete one ontology schema by ID.",
 			InputSchema: toolObjectSchema(

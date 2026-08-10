@@ -146,6 +146,9 @@ func (t *GraphRAGToolbox) UpsertEntities(ctx context.Context, req ToolUpsertEnti
 	if len(req.Entities) == 0 {
 		return &ToolUpsertEntitiesResponse{}, nil
 	}
+	if err := t.db.guardStrictActions(ctx); err != nil {
+		return nil, err
+	}
 	if err := t.db.graph.InitGraphSchema(ctx); err != nil {
 		return nil, fmt.Errorf("init graph schema: %w", err)
 	}
@@ -296,6 +299,9 @@ func toStringSlice(value interface{}) []string {
 func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRelationsRequest) (*ToolUpsertRelationsResponse, error) {
 	if len(req.Relations) == 0 {
 		return &ToolUpsertRelationsResponse{}, nil
+	}
+	if err := t.db.guardStrictActions(ctx); err != nil {
+		return nil, err
 	}
 	if err := t.db.graph.InitGraphSchema(ctx); err != nil {
 		return nil, fmt.Errorf("init graph schema: %w", err)

@@ -50,6 +50,33 @@ func addOntologyMCPTools(server *mcp.Server, definitions map[string]ToolDefiniti
 		}
 		return *resp, nil
 	})
+	// Also through addOntologyMCPTool: ActionListResponse carries whole action
+	// types, whose parameters and rules reach OntologyDataType — the same
+	// recursion that panics the SDK's inference for the schema tools.
+	addOntologyMCPTool(server, definitions["ontology_action_list"], func(ctx context.Context, req ActionListRequest) (ActionListResponse, error) {
+		resp, err := toolbox.ListActionTypes(ctx, req)
+		if err != nil {
+			return ActionListResponse{}, err
+		}
+		if resp == nil {
+			return ActionListResponse{}, nil
+		}
+		return *resp, nil
+	})
+	// ApplyAction's own request and response are flat, but it is registered
+	// the same way so the declared input schema — which documents the
+	// validate_only/return_edits exclusivity — is the one hosts actually see,
+	// rather than one reflected off the Go struct.
+	addOntologyMCPTool(server, definitions["ontology_action_apply"], func(ctx context.Context, req ActionApplyRequest) (ActionApplyResponse, error) {
+		resp, err := toolbox.ApplyAction(ctx, req)
+		if err != nil {
+			return ActionApplyResponse{}, err
+		}
+		if resp == nil {
+			return ActionApplyResponse{}, nil
+		}
+		return *resp, nil
+	})
 	addOntologyMCPTool(server, definitions["ontology_delete"], func(ctx context.Context, req OntologyDeleteRequest) (OntologyDeleteResponse, error) {
 		resp, err := toolbox.DeleteOntologySchema(ctx, req)
 		if err != nil {
