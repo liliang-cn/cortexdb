@@ -191,7 +191,7 @@ func (t *GraphRAGToolbox) UpsertEntities(ctx context.Context, req ToolUpsertEnti
 			ID:         entityID,
 			Vector:     lexicalVectorForText(strings.TrimSpace(entity.Name+" "+entity.Description), vectorDim),
 			Content:    firstNonEmpty(entity.Name, entity.ID),
-			NodeType:   firstNonEmpty(entity.Type, "entity"),
+			NodeType:   ontologyCanonicalNodeType(compiled, firstNonEmpty(entity.Type, "entity")),
 			Properties: properties,
 		})
 

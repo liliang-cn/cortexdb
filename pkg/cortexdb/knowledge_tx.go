@@ -401,7 +401,7 @@ func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowle
 					batchNodeIDsByName[alias] = entityID
 				}
 			}
-			nodeType := firstNonEmpty(entity.Type, "entity")
+			nodeType := ontologyCanonicalNodeType(compiled, firstNonEmpty(entity.Type, "entity"))
 			entityTypes[entityID] = nodeType
 			ingest.entityNodeIDs = append(ingest.entityNodeIDs, entityID)
 

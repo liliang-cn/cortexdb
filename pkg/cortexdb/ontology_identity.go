@@ -86,6 +86,21 @@ func ontologyEntityNodeID(compiled *compiledOntology, entity ToolEntityInput) (s
 	return ontologyNodeID(objectType.APIName, primaryKeyValue), nil
 }
 
+// ontologyCanonicalNodeType returns the spelling an object type should be
+// stored under. Node IDs already fold case, so "airport" and "Airport" are one
+// object whose node_type would otherwise be whichever spelling wrote last —
+// and retrieval, which expands an interface to the *declared* names, would
+// then miss it. Unknown types and ontology-free writes pass through untouched.
+func ontologyCanonicalNodeType(compiled *compiledOntology, typeName string) string {
+	if compiled == nil {
+		return typeName
+	}
+	if objectType, ok := compiled.objectType(typeName); ok {
+		return objectType.APIName
+	}
+	return typeName
+}
+
 // ontologyRelationEndpointNodeID resolves a relation endpoint for a write.
 // Endpoints are referenced by name or ID only, so with an active ontology the
 // node must already exist — its primary key is not recoverable from a name.

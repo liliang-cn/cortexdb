@@ -1,6 +1,7 @@
 package cortexdb
 
 import (
+	"context"
 	"fmt"
 	"sort"
 )
@@ -67,6 +68,34 @@ func (c *compiledOntology) resolveTypeClosure(typeAPIName string) []string {
 		return []string{objectType.APIName}
 	}
 	return []string{typeAPIName}
+}
+
+// expandOntologyTypeFilter rewrites a caller-supplied list of type names into
+// the concrete object types to match on, so a query for an interface hits
+// every implementor. Without an active ontology the list passes through, which
+// is what keeps ontology-free deployments retrieving exactly as before.
+func (db *DB) expandOntologyTypeFilter(ctx context.Context, typeNames []string) ([]string, error) {
+	if len(typeNames) == 0 {
+		return typeNames, nil
+	}
+	compiled, err := db.activeCompiledOntology(ctx)
+	if err != nil || compiled == nil {
+		return typeNames, err
+	}
+
+	seen := make(map[string]struct{}, len(typeNames))
+	expanded := make([]string, 0, len(typeNames))
+	for _, typeName := range typeNames {
+		for _, resolved := range compiled.resolveTypeClosure(typeName) {
+			key := ontologyAPIKey(resolved)
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			expanded = append(expanded, resolved)
+		}
+	}
+	return expanded, nil
 }
 
 // validateOntologyInterfaces checks the interface graph is acyclic and that
