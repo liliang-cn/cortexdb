@@ -126,7 +126,11 @@ func validateOntologySchemaRules(schema OntologySchema) error {
 			return fmt.Errorf("link type %q needs distinct api names on each side", linkType.APIName)
 		}
 	}
-	return nil
+
+	// Last, because it is the only rule that needs the whole schema resolved
+	// into its lookup form. The name checks above run first so a misspelled
+	// interface is reported as such rather than as an unsatisfied contract.
+	return validateOntologyInterfaces(schema, compileOntology(schema))
 }
 
 func validateOntologyObjectType(objectType OntologyObjectType) error {
