@@ -2,6 +2,66 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.67.0] - 2026-08-10
+
+### Added
+
+- **A Palantir-style ontology, replacing ontology-lite.** Object types now carry typed properties
+  and a mandatory primary key, so two spellings of one airport stop becoming two nodes — identity is
+  `objectType + primaryKey` rather than a normalised name. Link types are bidirectional with a
+  cardinality per side, the way Foundry models them: a one-to-many link is one `ONE` side and one
+  `MANY` side, and only the `ONE` side may name a foreign key. 14 property data types, including
+  `vector`, `geopoint`, `array` and `struct`.
+- **Interfaces give polymorphic retrieval.** An object set or `find_nodes` query against `Facility`
+  returns every implementing object type, and a new implementor becomes visible without touching the
+  query. Interfaces may extend several parents; cycles and unsatisfied required properties are
+  rejected at save time rather than surfacing later as a confusing write failure.
+- **`object_set_resolve` — a composable object set algebra.** `base`, `interface_base`, `static`,
+  `reference`, `filter`, `search_around`, `union`, `intersect`, `subtract`, with predicates
+  `eq/lt/lte/gt/gte/in/is_null/contains/starts_with/contains_all_terms/contains_any_term/nearest_neighbors`
+  and `and/or/not`. This is the part worth having: vector KNN, full-text terms and link traversal
+  become peer operators inside one expression instead of three retrieval APIs that cannot be
+  combined. Chained `search_around` is capped at three hops, matching Foundry's own limit.
+- **`ontology_action_apply` / `ontology_action_list` — governed writes.** An action declares typed
+  parameters, declarative rules and submission criteria, and every application is recorded in an
+  audit trail. `validate_only` checks parameters and criteria without writing; `return_edits` reports
+  what changed (the two are mutually exclusive, as in OSDK 2.0). Setting `strict_actions` on a schema
+  closes the generic upsert tools so actions become the only write path — the point being that an
+  agent gets a reviewed, named surface rather than free-form graph access.
+- **`ontology_diff`** — reports what changed between two schema versions and flags the changes that
+  would invalidate data already written: removed types, changed property types, newly required
+  properties, a changed primary key, tightened cardinality.
+- **Typed tool generation from a schema** (`GenerateOntologyTools`) — turns action and object types
+  into tool definitions whose parameter names, types and required-ness the model can see, instead of
+  prose inside a generic upsert. Bounded at 32 by default and deliberately not auto-registered: the
+  cost of a large generated surface lands on the agent's context window.
+- **gRPC `schema_json`** on `SaveOntologySchemaRequest` and `OntologySchema`. The v1 repeated fields
+  cannot express a primary key or a typed property, so they are deprecated (numbers retained) and a
+  request setting only them is refused with a message saying so, rather than silently ignored.
+
+### Fixed
+
+- **Relations whose endpoints were created in the same batch failed validation** with "could not
+  resolve" — the resolver only looked in the graph, never at the entities being written alongside.
+- **Endpoint resolution by name could return a chunk.** `graph_nodes.content` also holds chunk text
+  and document titles, and `chunk:` sorts before `entity:`, so an unqualified lookup preferred them.
+- **Node type casing was whatever the last writer used.** Node IDs already folded case, so
+  `type: "airport"` and `type: "Airport"` were one node with a flapping `node_type` column that
+  leaked into subgraphs, exports and model context. Ontology-validated writes now store the declared
+  casing.
+
+### Known limitations
+
+- `OntologyProperty.Vectorized` is declarative only — no write path embeds those properties yet, and
+  entity vectors are lexical hashes, so `nearest_neighbors` is meaningful only with an explicit query
+  vector.
+- An active ontology constrains `SaveKnowledge`: its built-in extractor emits untyped entities, so
+  the schema needs a catch-all `entity` object type and a `related_to` link type.
+- `modify_object` does not update `graph_nodes.content`, so name-based endpoint resolution still
+  finds the pre-rename title.
+- Foundry's function runtime, branches/proposals, dynamic row-level security and backing datasources
+  are deliberately not modelled.
+
 ## [2.63.2] - 2026-08-04
 
 ### Added
