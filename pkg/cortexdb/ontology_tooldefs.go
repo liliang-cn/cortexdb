@@ -38,6 +38,20 @@ func ontologyToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
+			Name:        "ontology_diff",
+			Description: "Compare a candidate ontology schema against the stored schema of the same ID and report what changed, flagging the changes that would invalidate objects or edges already in the graph: a removed object or link type, a removed property, a changed property data type, a property that became required, a new required property, a changed primary key, a retargeted link side, and a cardinality tightened from MANY to ONE. Run this before ontology_save when a schema is already in use.",
+			InputSchema: toolObjectSchema(
+				[]string{"schema_id", "candidate"},
+				map[string]any{
+					"schema_id": toolStringSchema("ID of the stored schema to compare against. It is the 'before' side."),
+					"candidate": map[string]any{
+						"type":        "object",
+						"description": "The proposed schema, in the same shape ontology_save takes.",
+					},
+				},
+			),
+		},
+		{
 			Name:        "object_set_resolve",
 			Description: "Evaluate an object set and return its members. An object set composes base/interface_base/static sources with filter, search_around (traverse a link side), union, intersect and subtract. Filters support eq/lt/lte/gt/gte/in/is_null/contains/starts_with/contains_all_terms/contains_any_term/nearest_neighbors plus and/or/not. At most 3 chained search_around hops.",
 			InputSchema: toolObjectSchema(

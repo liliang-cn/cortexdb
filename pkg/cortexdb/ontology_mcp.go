@@ -37,6 +37,20 @@ func addOntologyMCPTools(server *mcp.Server, definitions map[string]ToolDefiniti
 		}
 		return *resp, nil
 	})
+	// Through addOntologyMCPTool for the same reason as the schema tools on
+	// either side of it: the request carries a whole OntologySchema and the
+	// response carries data types lifted out of one, both of which reach the
+	// recursive OntologyDataType that panics the SDK's schema inference.
+	addOntologyMCPTool(server, definitions["ontology_diff"], func(ctx context.Context, req OntologyDiffRequest) (OntologyDiffResponse, error) {
+		resp, err := toolbox.DiffOntologySchema(ctx, req)
+		if err != nil {
+			return OntologyDiffResponse{}, err
+		}
+		if resp == nil {
+			return OntologyDiffResponse{}, nil
+		}
+		return *resp, nil
+	})
 	// Through addOntologyMCPTool, not addGraphRAGMCPTool: ObjectSet refers to
 	// itself through Source and Operands, and the SDK's schema inference
 	// panics on a recursive type rather than returning an error.

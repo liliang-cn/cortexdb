@@ -83,6 +83,29 @@ func (db *DB) DeleteOntologySchema(ctx context.Context, req OntologyDeleteReques
 	return &OntologyDeleteResponse{SchemaID: req.SchemaID, Deleted: deleted}, nil
 }
 
+// OntologyDiffRequest compares a candidate schema against a stored one.
+type OntologyDiffRequest struct {
+	SchemaID  string         `json:"schema_id"`
+	Candidate OntologySchema `json:"candidate"`
+}
+
+// OntologyDiffResponse reports the differences and whether any break data.
+type OntologyDiffResponse struct {
+	Diff OntologyDiff `json:"diff"`
+}
+
+// DiffOntologySchema compares a candidate schema against the stored one of
+// the same ID, so a caller can see what applying it would invalidate before
+// it is applied. The stored schema is the `before` side: the question being
+// answered is what happens to the data already written under it.
+func (db *DB) DiffOntologySchema(ctx context.Context, req OntologyDiffRequest) (*OntologyDiffResponse, error) {
+	stored, err := db.loadOntologySchema(ctx, req.SchemaID)
+	if err != nil {
+		return nil, err
+	}
+	return &OntologyDiffResponse{Diff: DiffOntologySchemas(*stored, req.Candidate)}, nil
+}
+
 // ObjectSetResolveRequest evaluates an object set and returns its members.
 type ObjectSetResolveRequest struct {
 	ObjectSet ObjectSet `json:"object_set"`
@@ -181,4 +204,8 @@ func (t *GraphRAGToolbox) ListOntologySchemas(ctx context.Context, req OntologyL
 
 func (t *GraphRAGToolbox) DeleteOntologySchema(ctx context.Context, req OntologyDeleteRequest) (*OntologyDeleteResponse, error) {
 	return t.db.DeleteOntologySchema(ctx, req)
+}
+
+func (t *GraphRAGToolbox) DiffOntologySchema(ctx context.Context, req OntologyDiffRequest) (*OntologyDiffResponse, error) {
+	return t.db.DiffOntologySchema(ctx, req)
 }

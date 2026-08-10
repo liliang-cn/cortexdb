@@ -31,6 +31,13 @@ func (t *GraphRAGToolbox) callOntologyTool(ctx context.Context, name string, inp
 		}
 		resp, err := t.ListOntologySchemas(ctx, req)
 		return resp, true, err
+	case "ontology_diff":
+		var req OntologyDiffRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, true, fmt.Errorf("decode %s: %w", name, err)
+		}
+		resp, err := t.DiffOntologySchema(ctx, req)
+		return resp, true, err
 	case "object_set_resolve":
 		var req ObjectSetResolveRequest
 		if err := json.Unmarshal(input, &req); err != nil {
