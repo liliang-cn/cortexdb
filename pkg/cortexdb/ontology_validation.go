@@ -343,10 +343,22 @@ func (db *DB) validateRelationInputsWithResolver(ctx context.Context, relations 
 		return err
 	}
 
+	// Endpoints are resolved the same way the write path will resolve them, so
+	// validation and the write it guards cannot disagree about which node an
+	// endpoint names.
+	endpointIDs := make(map[string]string, len(relations)*2)
 	nodeIDSet := make(map[string]struct{}, len(relations)*2)
 	for _, relation := range relations {
 		for _, endpoint := range []string{relation.From, relation.To} {
-			if nodeID := resolveEntityNodeID("", endpoint); nodeID != "" {
+			if _, seen := endpointIDs[endpoint]; seen {
+				continue
+			}
+			nodeID, err := db.lookupOntologyRelationEndpointNodeID(ctx, compiled, endpoint)
+			if err != nil {
+				return err
+			}
+			endpointIDs[endpoint] = nodeID
+			if nodeID != "" {
 				nodeIDSet[nodeID] = struct{}{}
 			}
 		}
@@ -357,25 +369,25 @@ func (db *DB) validateRelationInputsWithResolver(ctx context.Context, relations 
 	}
 
 	for _, relation := range relations {
-		if err := db.validateOntologyRelation(ctx, compiled, relation, nodeTypes); err != nil {
+		if err := db.validateOntologyRelation(ctx, compiled, relation, endpointIDs, nodeTypes); err != nil {
 			return fmt.Errorf("%w: %w", ErrInvalidOntology, err)
 		}
 	}
 	return nil
 }
 
-func (db *DB) validateOntologyRelation(ctx context.Context, compiled *compiledOntology, relation ToolRelationInput, nodeTypes map[string]string) error {
+func (db *DB) validateOntologyRelation(ctx context.Context, compiled *compiledOntology, relation ToolRelationInput, endpointIDs map[string]string, nodeTypes map[string]string) error {
 	linkTypeName := firstNonEmpty(relation.Type, "related_to")
 	linkType, ok := compiled.linkType(linkTypeName)
 	if !ok {
 		return fmt.Errorf("ontology does not define link type %q", linkTypeName)
 	}
 
-	fromID := resolveEntityNodeID("", relation.From)
-	toID := resolveEntityNodeID("", relation.To)
-	if fromID == "" || toID == "" {
+	if strings.TrimSpace(relation.From) == "" || strings.TrimSpace(relation.To) == "" {
 		return fmt.Errorf("relation endpoints are required")
 	}
+	fromID := endpointIDs[relation.From]
+	toID := endpointIDs[relation.To]
 
 	fromType, ok := nodeTypes[fromID]
 	if !ok {

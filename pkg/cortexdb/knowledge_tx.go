@@ -366,6 +366,18 @@ func (db *DB) buildExtractedEntityArtifacts(ctx context.Context, entityTexts map
 }
 
 func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowledgeMutationInput, entityNodes map[string]*graph.GraphNode, entityTypes map[string]string, edgeMap map[string]*graph.GraphEdge, ingest *knowledgeIngestResult) error {
+	if len(input.Entities) == 0 && len(input.Relations) == 0 {
+		return nil
+	}
+	compiled, err := db.activeCompiledOntology(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Endpoints of the relations below may name entities this same request is
+	// creating, which are not in the graph yet.
+	batchNodeIDsByName := make(map[string]string, len(input.Entities)*2)
+
 	if len(input.Entities) > 0 {
 		if err := db.validateEntityInputs(ctx, input.Entities); err != nil {
 			return err
@@ -380,7 +392,15 @@ func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowle
 			if strings.TrimSpace(entity.Name) == "" && strings.TrimSpace(entity.ID) == "" {
 				continue
 			}
-			entityID := resolveEntityNodeID(entity.ID, entity.Name)
+			entityID, err := ontologyEntityNodeID(compiled, entity)
+			if err != nil {
+				return err
+			}
+			for _, alias := range []string{entity.Name, entity.ID} {
+				if strings.TrimSpace(alias) != "" {
+					batchNodeIDsByName[alias] = entityID
+				}
+			}
 			nodeType := firstNonEmpty(entity.Type, "entity")
 			entityTypes[entityID] = nodeType
 			ingest.entityNodeIDs = append(ingest.entityNodeIDs, entityID)
@@ -423,13 +443,22 @@ func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowle
 	if len(input.Relations) == 0 {
 		return nil
 	}
-	if err := db.validateKnowledgeRelationInputs(ctx, input.Relations, entityTypes); err != nil {
+	// Rewritten to node IDs up front so validation and the edge write below
+	// cannot disagree about which node an endpoint names.
+	relations := resolveKnowledgeRelationEndpoints(input.Relations, batchNodeIDsByName)
+	if err := db.validateKnowledgeRelationInputs(ctx, relations, entityTypes); err != nil {
 		return err
 	}
 
-	for i, rel := range input.Relations {
-		fromID := resolveEntityNodeID("", rel.From)
-		toID := resolveEntityNodeID("", rel.To)
+	for i, rel := range relations {
+		fromID, err := db.ontologyRelationEndpointNodeID(ctx, compiled, rel.From)
+		if err != nil {
+			return err
+		}
+		toID, err := db.ontologyRelationEndpointNodeID(ctx, compiled, rel.To)
+		if err != nil {
+			return err
+		}
 		if fromID == "" || toID == "" {
 			continue
 		}
@@ -474,6 +503,29 @@ func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowle
 		}
 	}
 	return nil
+}
+
+// resolveKnowledgeRelationEndpoints rewrites endpoints that name an entity
+// being created in this same request to that entity's node ID. Under an
+// active ontology a name alone carries no primary key, so an endpoint left as
+// a name would not resolve to the node the request is about to write.
+// Endpoints naming something outside the request are left alone, to be looked
+// up in the graph.
+func resolveKnowledgeRelationEndpoints(relations []ToolRelationInput, nodeIDsByName map[string]string) []ToolRelationInput {
+	if len(nodeIDsByName) == 0 {
+		return relations
+	}
+	resolved := make([]ToolRelationInput, 0, len(relations))
+	for _, relation := range relations {
+		if nodeID, ok := nodeIDsByName[relation.From]; ok {
+			relation.From = nodeID
+		}
+		if nodeID, ok := nodeIDsByName[relation.To]; ok {
+			relation.To = nodeID
+		}
+		resolved = append(resolved, relation)
+	}
+	return resolved
 }
 
 func (db *DB) validateKnowledgeRelationInputs(ctx context.Context, relations []ToolRelationInput, plannedEntityTypes map[string]string) error {

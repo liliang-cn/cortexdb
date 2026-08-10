@@ -418,6 +418,40 @@ func TestValidateRelationInputsIgnoresEdgeTypeCasingWhenCounting(t *testing.T) {
 	}
 }
 
+func TestValidateRelationInputsRejectsBlankEndpoints(t *testing.T) {
+	db := openOntologyTestDB(t)
+	activateAviationSchema(t, db)
+	ctx := context.Background()
+	upsertAviationEntities(t, db, aviationAirport("London Heathrow", "LHR"), aviationFlight("BA117"))
+
+	err := db.validateRelationInputs(ctx, []ToolRelationInput{
+		{From: "", To: "BA117", Type: "flightDeparture"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "relation endpoints are required") {
+		t.Fatalf("expected a blank endpoint to be rejected as missing, got %v", err)
+	}
+}
+
+func TestValidateExtractedGraphDataReportsTheSameOffenderEveryTime(t *testing.T) {
+	db := openOntologyTestDB(t)
+	activateAviationSchema(t, db)
+	initGraphSchemaForTest(t, db)
+	ctx := context.Background()
+
+	entities := map[string]GraphEntity{
+		"entity:alpha:a": {Name: "A", Type: "Alpha"},
+		"entity:zulu:z":  {Name: "Z", Type: "Zulu"},
+	}
+	// Both are undeclared. Which one is named must not depend on map order,
+	// or the same bad extraction produces a different error each run.
+	for i := 0; i < 20; i++ {
+		err := db.validateExtractedGraphData(ctx, entities, nil)
+		if err == nil || !strings.Contains(err.Error(), "Alpha") {
+			t.Fatalf("run %d: expected the first offender by ID order, got %v", i, err)
+		}
+	}
+}
+
 func TestValidateRelationInputsNoopWithoutActiveSchema(t *testing.T) {
 	db := openOntologyTestDB(t)
 
