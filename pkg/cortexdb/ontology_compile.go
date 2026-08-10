@@ -123,6 +123,19 @@ func (c *compiledOntology) interfaceType(apiName string) (OntologyInterfaceType,
 	return interfaceType, ok
 }
 
+// actionType walks the declared slice rather than a lookup map: action types
+// are few, and a schema that declares none is the common case, so the map
+// would cost every compile to save a scan almost nobody makes.
+func (c *compiledOntology) actionType(apiName string) (OntologyActionType, bool) {
+	key := ontologyAPIKey(apiName)
+	for _, action := range c.schema.ActionTypes {
+		if ontologyAPIKey(action.APIName) == key {
+			return action, true
+		}
+	}
+	return OntologyActionType{}, false
+}
+
 func (c *compiledOntology) property(objectTypeAPIName string, propertyAPIName string) (OntologyProperty, bool) {
 	byName, ok := c.properties[ontologyAPIKey(objectTypeAPIName)]
 	if !ok {
