@@ -96,7 +96,7 @@ func generateActionTool(action OntologyActionType) ToolDefinition {
 func generateObjectTypeListTool(objectType OntologyObjectType) ToolDefinition {
 	description := objectType.Description
 	if description == "" {
-		description = fmt.Sprintf("List %s objects.", firstNonEmpty(objectType.PluralDisplayName, objectType.DisplayName, objectType.APIName))
+		description = "List " + firstNonEmpty(objectType.PluralDisplayName, objectType.APIName+" objects") + "."
 	}
 	return ToolDefinition{
 		Name:        "list_" + toOntologySnakeCase(objectType.APIName),

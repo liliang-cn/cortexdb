@@ -18,6 +18,7 @@ go run ./examples/12_incident_agent
 go run ./examples/13_scale_analytics
 go run ./examples/14_semantic_rag
 go run ./examples/15_cortex_query
+go run ./examples/16_ontology
 ```
 
 ## 01_core
@@ -179,6 +180,19 @@ Composable Cortex Query API.
 
 Use this when an agent needs vector + keyword + graph retrieval without a separate vector database or graph database service.
 
+## 16_ontology
+
+Palantir-style ontology, end to end and fully offline.
+
+- activates a schema with interfaces, typed object types and per-side link cardinality
+- writes through action types with submission criteria, `validate_only` and returned edits
+- composes object sets: interface base, filter, intersect, subtract, `search_around`
+- generates typed MCP tool definitions from the schema (capped, and not auto-registered)
+- diffs a candidate schema and flags the changes that would invalidate stored data
+- closes the generic write path with `strict_actions`
+
+Use this when you want typed, governed, auditable writes rather than free-form entity upserts.
+
 ## Rule of Thumb
 
 ```text
@@ -195,4 +209,5 @@ Need an LLM tool-using graph agent?    -> 12_incident_agent
 Need scale/CDC analytics checks?       -> 13_scale_analytics
 Need real semantic vector retrieval?   -> 14_semantic_rag
 Need vector + lexical + graph fusion?  -> 15_cortex_query
+Need typed, governed, audited writes?   -> 16_ontology
 ```
