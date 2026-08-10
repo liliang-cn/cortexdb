@@ -2,9 +2,14 @@ package rpcserver
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	rpcv1 "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1"
 )
 
@@ -98,10 +103,26 @@ func TestOntologyRoundTrip(t *testing.T) {
 	client := rpcv1.NewKnowledgeGraphServiceClient(conn)
 	ctx := context.Background()
 
+	schemaJSON := `{
+		"schema_id": "s1",
+		"name": "test",
+		"object_types": [{
+			"api_name": "Person",
+			"primary_key": "employeeId",
+			"properties": [
+				{"api_name": "employeeId", "data_type": {"kind": "string"}, "required": true},
+				{"api_name": "fullName", "data_type": {"kind": "string"}}
+			]
+		}],
+		"link_types": [{
+			"api_name": "knows",
+			"a": {"api_name": "knowsFrom", "object_type_api_name": "Person", "cardinality": "MANY"},
+			"b": {"api_name": "knownBy", "object_type_api_name": "Person", "cardinality": "MANY"}
+		}]
+	}`
+
 	saved, err := client.SaveOntologySchema(ctx, &rpcv1.SaveOntologySchemaRequest{
-		SchemaId: "s1", Name: "test", Activate: true,
-		EntityTypes:   []*rpcv1.OntologyEntityType{{Name: "Person"}},
-		RelationTypes: []*rpcv1.OntologyRelationType{{Name: "knows", AllowedFromTypes: []string{"Person"}, AllowedToTypes: []string{"Person"}}},
+		SchemaId: "s1", Name: "test", Activate: true, SchemaJson: schemaJSON,
 	})
 	if err != nil || saved.GetSchema().GetSchemaId() != "s1" {
 		t.Fatalf("save ontology: %v", err)
@@ -110,6 +131,18 @@ func TestOntologyRoundTrip(t *testing.T) {
 	if err != nil || got.GetSchema().GetName() != "test" {
 		t.Fatalf("get ontology: %v", err)
 	}
+
+	// The v2 schema survives the round trip only via schema_json.
+	var decoded cortexdb.OntologySchema
+	if err := json.Unmarshal([]byte(got.GetSchema().GetSchemaJson()), &decoded); err != nil {
+		t.Fatalf("decode schema_json: %v", err)
+	}
+	if len(decoded.ObjectTypes) != 1 || decoded.ObjectTypes[0].PrimaryKey != "employeeId" {
+		t.Fatalf("v2 object type lost over the wire: %+v", decoded.ObjectTypes)
+	}
+	if len(decoded.LinkTypes) != 1 || decoded.LinkTypes[0].A.Cardinality != cortexdb.OntologyCardinalityMany {
+		t.Fatalf("v2 link type lost over the wire: %+v", decoded.LinkTypes)
+	}
 	list, err := client.ListOntologySchemas(ctx, &rpcv1.ListOntologySchemasRequest{})
 	if err != nil || len(list.GetSchemas()) != 1 {
 		t.Fatalf("list ontology: %v", err)
@@ -117,5 +150,50 @@ func TestOntologyRoundTrip(t *testing.T) {
 	del, err := client.DeleteOntologySchema(ctx, &rpcv1.DeleteOntologySchemaRequest{SchemaId: "s1"})
 	if err != nil || !del.GetDeleted() {
 		t.Fatalf("delete ontology: %v", err)
+	}
+}
+
+func TestOntologyRejectsPreV2Request(t *testing.T) {
+	conn := newTestConn(t, false, "")
+	client := rpcv1.NewKnowledgeGraphServiceClient(conn)
+	ctx := context.Background()
+
+	// A client built against the ontology-lite wire format. Its request must
+	// fail loudly rather than be accepted and silently store nothing.
+	_, err := client.SaveOntologySchema(ctx, &rpcv1.SaveOntologySchemaRequest{
+		SchemaId:      "legacy",
+		EntityTypes:   []*rpcv1.OntologyEntityType{{Name: "Person"}},
+		RelationTypes: []*rpcv1.OntologyRelationType{{Name: "knows"}},
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "schema_json") {
+		t.Fatalf("error should point the caller at schema_json, got %v", err)
+	}
+}
+
+func TestOntologyInvalidSchemaIsInvalidArgument(t *testing.T) {
+	conn := newTestConn(t, false, "")
+	client := rpcv1.NewKnowledgeGraphServiceClient(conn)
+	ctx := context.Background()
+
+	// A schema whose object type has no primary key. This is the caller's
+	// mistake, so it must not be reported as an internal server fault.
+	_, err := client.SaveOntologySchema(ctx, &rpcv1.SaveOntologySchemaRequest{
+		SchemaId: "broken",
+		SchemaJson: `{
+			"schema_id": "broken",
+			"object_types": [{
+				"api_name": "Person",
+				"properties": [{"api_name": "name", "data_type": {"kind": "string"}, "required": true}]
+			}]
+		}`,
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument, got code=%s err=%v", status.Code(err), err)
+	}
+	if !strings.Contains(err.Error(), "primary_key") {
+		t.Fatalf("error should keep the validation detail, got %v", err)
 	}
 }

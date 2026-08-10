@@ -203,16 +203,14 @@ func (s *graphService) ExplainInferenceMatch(ctx context.Context, req *rpcv1.Exp
 }
 
 func (s *graphService) SaveOntologySchema(ctx context.Context, req *rpcv1.SaveOntologySchemaRequest) (*rpcv1.SaveOntologySchemaResponse, error) {
+	schema, err := ontologySchemaFromProto(req)
+	if err != nil {
+		return nil, err
+	}
 	resp, err := s.db.SaveOntologySchema(ctx, cortexdb.OntologySaveRequest{
-		SchemaID:      req.GetSchemaId(),
-		Name:          req.GetName(),
-		Description:   req.GetDescription(),
-		Version:       int(req.GetVersion()),
-		Activate:      req.GetActivate(),
-		Deactivate:    req.GetDeactivate(),
-		Metadata:      req.GetMetadata(),
-		EntityTypes:   ontologyEntityTypesFromProto(req.GetEntityTypes()),
-		RelationTypes: ontologyRelationTypesFromProto(req.GetRelationTypes()),
+		Schema:     schema,
+		Activate:   req.GetActivate(),
+		Deactivate: req.GetDeactivate(),
 	})
 	if err != nil {
 		return nil, toStatus(err)

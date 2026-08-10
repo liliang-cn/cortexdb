@@ -1164,6 +1164,9 @@ pub struct ExplainInferenceMatchResponse {
     #[prost(message, repeated, tag = "1")]
     pub matches: ::prost::alloc::vec::Vec<InferenceMatchExplanation>,
 }
+/// Deprecated: the ontology-lite entity/relation type model was replaced by the
+/// v2 typed ontology, which is carried as JSON in schema_json. Kept so field
+/// numbers stay stable for clients built against the older wire format.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct OntologyEntityType {
     #[prost(string, tag = "1")]
@@ -1173,6 +1176,7 @@ pub struct OntologyEntityType {
     #[prost(string, repeated, tag = "3")]
     pub required_properties: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+/// Deprecated: see OntologyEntityType.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct OntologyRelationType {
     #[prost(string, tag = "1")]
@@ -1203,14 +1207,20 @@ pub struct OntologySchema {
         ::prost::alloc::string::String,
         ::prost::alloc::string::String,
     >,
+    #[deprecated]
     #[prost(message, repeated, tag = "7")]
     pub entity_types: ::prost::alloc::vec::Vec<OntologyEntityType>,
+    #[deprecated]
     #[prost(message, repeated, tag = "8")]
     pub relation_types: ::prost::alloc::vec::Vec<OntologyRelationType>,
     #[prost(message, optional, tag = "9")]
     pub created_at: ::core::option::Option<::prost_types::Timestamp>,
     #[prost(message, optional, tag = "10")]
     pub updated_at: ::core::option::Option<::prost_types::Timestamp>,
+    /// The full v2 ontology schema as JSON. This is the only field that carries
+    /// object types, link types, interfaces and shared properties.
+    #[prost(string, tag = "11")]
+    pub schema_json: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SaveOntologySchemaRequest {
@@ -1231,10 +1241,15 @@ pub struct SaveOntologySchemaRequest {
         ::prost::alloc::string::String,
         ::prost::alloc::string::String,
     >,
+    #[deprecated]
     #[prost(message, repeated, tag = "8")]
     pub entity_types: ::prost::alloc::vec::Vec<OntologyEntityType>,
+    #[deprecated]
     #[prost(message, repeated, tag = "9")]
     pub relation_types: ::prost::alloc::vec::Vec<OntologyRelationType>,
+    /// The full v2 ontology schema as JSON. Required.
+    #[prost(string, tag = "10")]
+    pub schema_json: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SaveOntologySchemaResponse {

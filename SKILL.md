@@ -52,6 +52,7 @@ Choose by the job to be done:
 | RDF, SPARQL, RDFS, or SHACL work | Knowledge graph APIs in `pkg/cortexdb` | Standard graph surface for upsert, find, query, import, export, validation, inference, and explanation. |
 | Build a graph from documents, code, or other corpora and analyze it | `pkg/graphflow` | Runs the fixed pipeline `detect -> extract -> build -> analyze -> report -> export`. |
 | Import external CSV or MySQL/PG SQL dumps into RAG + knowledge graph | `pkg/importflow` `New().Run()` / `AutoImport()` | Parses a source into records, routes columns via a `MappingPlan` to RAG content and KG entities/relations, with optional AI mapping inference and triple extraction. |
+| Typed objects, governed writes, or composable object sets | Ontology APIs in `pkg/cortexdb` | Activates a schema that validates every write, then exposes actions, object sets, typed tool generation and schema diffing. |
 | Expose CortexDB to an agent or MCP client | `db.GraphRAGTools()` or `db.NewMCPServer()`; `importflow.NewMCPServer()` for import tools | Wraps the high-level APIs as tool definitions or an MCP server rather than introducing a second implementation path. |
 
 ## How To Choose
@@ -210,6 +211,81 @@ report, _ := db.ValidateKnowledgeGraphSHACL(ctx, cortexdb.KnowledgeGraphSHACLVal
 })
 _ = report
 ```
+
+## Ontology
+
+`pkg/cortexdb` models a Palantir-style ontology on the same file. One schema is
+active at a time and validates every write.
+
+```go
+_, err := db.SaveOntologySchema(ctx, cortexdb.OntologySaveRequest{
+    Schema: cortexdb.OntologySchema{
+        SchemaID: "aviation",
+        InterfaceTypes: []cortexdb.OntologyInterfaceType{{APIName: "Facility"}},
+        ObjectTypes: []cortexdb.OntologyObjectType{{
+            APIName:       "Airport",
+            PrimaryKey:    "iataCode",   // mandatory
+            TitleProperty: "facilityName",
+            Implements:    []string{"Facility"},
+            Properties: []cortexdb.OntologyProperty{
+                {APIName: "iataCode", DataType: cortexdb.OntologyDataType{Kind: cortexdb.OntologyDataString}, Required: true},
+                {APIName: "facilityName", DataType: cortexdb.OntologyDataType{Kind: cortexdb.OntologyDataString}, Required: true, Searchable: true},
+            },
+        }},
+        LinkTypes: []cortexdb.OntologyLinkType{{
+            APIName: "flightDeparture",
+            A: cortexdb.OntologyLinkSide{APIName: "departures", ObjectTypeAPIName: "Airport", Cardinality: cortexdb.OntologyCardinalityMany},
+            B: cortexdb.OntologyLinkSide{APIName: "origin", ObjectTypeAPIName: "Flight", Cardinality: cortexdb.OntologyCardinalityOne, ForeignKeyProperty: "originIata"},
+        }},
+    },
+    Activate: true,
+})
+```
+
+Key points:
+
+- Every object type needs a `primary_key`. Node identity becomes `entity:<objectType>:<primaryKey>`; with no active schema the older name-derived IDs still apply.
+- Link cardinality is per side (`ONE` / `MANY`); only a `ONE` side may carry a `foreign_key_property`.
+- Interfaces give polymorphic retrieval — querying `Facility` returns every implementor. Multiple inheritance is allowed; cycles are rejected.
+- `shared_properties` are declared once and reused by name; storage keeps them unexpanded, so read paths that care about types expand them first.
+
+Object sets compose retrieval (`db.ResolveObjectSetObjects`): kinds `base`,
+`interface_base`, `static`, `reference`, `filter`, `search_around`, `union`,
+`intersect`, `subtract`; predicates `eq`/`lt`/`lte`/`gt`/`gte`/`in`/`is_null`/
+`contains`/`starts_with`/`contains_all_terms`/`contains_any_term`/
+`nearest_neighbors` plus `and`/`or`/`not`. Vector, full-text and graph
+traversal are peers in one expression. At most 3 chained `search_around` hops.
+
+Action types are governed, audited writes (`db.ApplyAction`): typed parameters,
+edit rules, submission criteria, `validate_only` / `return_edits` (mutually
+exclusive). `strict_actions: true` on the schema closes the generic upsert
+tools so actions are the only write path.
+
+Two schema-lifecycle helpers:
+
+```go
+tools, _ := db.GenerateOntologyTools(ctx, cortexdb.OntologyToolGenOptions{IncludeObjectTypes: true})
+diff, _ := db.DiffOntologySchema(ctx, cortexdb.OntologyDiffRequest{SchemaID: "aviation", Candidate: candidate})
+```
+
+`GenerateOntologyTools` emits typed tool definitions from the active schema —
+one per action type, optionally one list tool per object type. The result is
+capped (32 by default) and is **not** registered with `NewMCPServer`: every
+extra tool is paid for in the agent's context window on every request, so
+exposing them is an explicit caller decision.
+
+`DiffOntologySchema` reports what a candidate would change and flags the
+breaking classes: removed object/link type, removed property, changed property
+data type, property became required, new required property, changed primary
+key, retargeted link side, cardinality tightened `MANY` -> `ONE`.
+
+Known limitations: `vectorized` is declarative only (no write path embeds those
+properties, and `upsert_entities` always writes a lexical hash vector), an
+active ontology rejects `SaveKnowledge`'s untyped heuristic entities unless the
+schema declares a catch-all `entity` object type plus a `related_to` link type,
+and `modify_object` does not rewrite a node's stored display title. Foundry's
+function runtime, branches/proposals, dynamic row-level security and backing
+datasources are deliberately not modelled.
 
 ## MemoryFlow
 
@@ -469,7 +545,8 @@ Important tools:
 - Knowledge/memory: `knowledge_save`, `knowledge_search`, `memory_save`, `memory_search`
 - Knowledge graph: `knowledge_graph_upsert`, `knowledge_graph_query`, `knowledge_graph_shacl_validate`, `knowledge_graph_infer_refresh`
 - KnowledgeMemory: `knowledge_memory_recall`, `knowledge_memory_build_context_pack`, `knowledge_memory_reflect`, `knowledge_memory_consolidate`
-- Ontology/inference: `ontology_save`, `apply_inference`
+- Ontology: `ontology_save`, `ontology_get`, `ontology_list`, `ontology_delete`, `ontology_diff`, `ontology_action_list`, `ontology_action_apply`, `object_set_resolve`
+- Inference: `apply_inference`
 
 Separate workflow toolboxes:
 
@@ -591,6 +668,7 @@ go run ./examples/05_graphflow
 go run ./examples/06_tools_mcp
 go run ./examples/07_importflow
 go run ./examples/08_self_knowledge_graph   # docs -> graphflow -> KG of this project; qa_test.go answers from graph edges
+go run ./examples/16_ontology               # typed object types, actions, object sets, typed tools, schema diff
 ```
 
 Use `examples/05_graphflow` to verify OpenAI-compatible LLM graph extraction with structured output.

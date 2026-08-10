@@ -45,8 +45,15 @@ func (t *GraphRAGToolbox) FindNodes(ctx context.Context, req ToolFindNodesReques
 		return response, nil
 	}
 
-	types := make(map[string]struct{}, len(req.NodeTypes))
-	for _, nodeType := range req.NodeTypes {
+	// An interface stands for the object types implementing it, so the filter
+	// has to be widened before it is applied — nothing is stored under the
+	// interface's own name.
+	nodeTypes, err := t.db.expandOntologyTypeFilter(ctx, req.NodeTypes)
+	if err != nil {
+		return nil, err
+	}
+	types := make(map[string]struct{}, len(nodeTypes))
+	for _, nodeType := range nodeTypes {
 		if trimmed := strings.TrimSpace(nodeType); trimmed != "" {
 			types[strings.ToLower(trimmed)] = struct{}{}
 		}

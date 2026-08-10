@@ -146,8 +146,15 @@ func (t *GraphRAGToolbox) UpsertEntities(ctx context.Context, req ToolUpsertEnti
 	if len(req.Entities) == 0 {
 		return &ToolUpsertEntitiesResponse{}, nil
 	}
+	if err := t.db.guardStrictActions(ctx); err != nil {
+		return nil, err
+	}
 	if err := t.db.graph.InitGraphSchema(ctx); err != nil {
 		return nil, fmt.Errorf("init graph schema: %w", err)
+	}
+	compiled, err := t.db.activeCompiledOntology(ctx)
+	if err != nil {
+		return nil, err
 	}
 	if err := t.db.validateEntityInputs(ctx, req.Entities); err != nil {
 		return nil, err
@@ -166,7 +173,10 @@ func (t *GraphRAGToolbox) UpsertEntities(ctx context.Context, req ToolUpsertEnti
 		if strings.TrimSpace(entity.Name) == "" && strings.TrimSpace(entity.ID) == "" {
 			continue
 		}
-		entityID := resolveEntityNodeID(entity.ID, entity.Name)
+		entityID, err := ontologyEntityNodeID(compiled, entity)
+		if err != nil {
+			return nil, err
+		}
 		entityIDs = append(entityIDs, entityID)
 
 		properties := map[string]interface{}{}
@@ -184,7 +194,7 @@ func (t *GraphRAGToolbox) UpsertEntities(ctx context.Context, req ToolUpsertEnti
 			ID:         entityID,
 			Vector:     lexicalVectorForText(strings.TrimSpace(entity.Name+" "+entity.Description), vectorDim),
 			Content:    firstNonEmpty(entity.Name, entity.ID),
-			NodeType:   firstNonEmpty(entity.Type, "entity"),
+			NodeType:   ontologyCanonicalNodeType(compiled, firstNonEmpty(entity.Type, "entity")),
 			Properties: properties,
 		})
 
@@ -290,8 +300,15 @@ func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRel
 	if len(req.Relations) == 0 {
 		return &ToolUpsertRelationsResponse{}, nil
 	}
+	if err := t.db.guardStrictActions(ctx); err != nil {
+		return nil, err
+	}
 	if err := t.db.graph.InitGraphSchema(ctx); err != nil {
 		return nil, fmt.Errorf("init graph schema: %w", err)
+	}
+	compiled, err := t.db.activeCompiledOntology(ctx)
+	if err != nil {
+		return nil, err
 	}
 	if err := t.db.validateRelationInputs(ctx, req.Relations); err != nil {
 		return nil, err
@@ -301,8 +318,17 @@ func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRel
 	edgeIDs := make([]string, 0, len(req.Relations))
 	byID := make(map[string]*graph.GraphEdge, len(req.Relations))
 	for _, rel := range req.Relations {
-		fromID := resolveEntityNodeID("", rel.From)
-		toID := resolveEntityNodeID("", rel.To)
+		if strings.TrimSpace(rel.From) == "" || strings.TrimSpace(rel.To) == "" {
+			continue
+		}
+		fromID, err := t.db.ontologyRelationEndpointNodeID(ctx, compiled, rel.From)
+		if err != nil {
+			return nil, err
+		}
+		toID, err := t.db.ontologyRelationEndpointNodeID(ctx, compiled, rel.To)
+		if err != nil {
+			return nil, err
+		}
 		if fromID == "" || toID == "" {
 			continue
 		}

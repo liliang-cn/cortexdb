@@ -7,7 +7,7 @@ import (
 )
 
 func addOntologyMCPTools(server *mcp.Server, definitions map[string]ToolDefinition, toolbox *GraphRAGToolbox) {
-	addGraphRAGMCPTool(server, definitions["ontology_save"], func(ctx context.Context, req OntologySaveRequest) (OntologySaveResponse, error) {
+	addOntologyMCPTool(server, definitions["ontology_save"], func(ctx context.Context, req OntologySaveRequest) (OntologySaveResponse, error) {
 		resp, err := toolbox.SaveOntologySchema(ctx, req)
 		if err != nil {
 			return OntologySaveResponse{}, err
@@ -17,7 +17,7 @@ func addOntologyMCPTools(server *mcp.Server, definitions map[string]ToolDefiniti
 		}
 		return *resp, nil
 	})
-	addGraphRAGMCPTool(server, definitions["ontology_get"], func(ctx context.Context, req OntologyGetRequest) (OntologyGetResponse, error) {
+	addOntologyMCPTool(server, definitions["ontology_get"], func(ctx context.Context, req OntologyGetRequest) (OntologyGetResponse, error) {
 		resp, err := toolbox.GetOntologySchema(ctx, req)
 		if err != nil {
 			return OntologyGetResponse{}, err
@@ -27,7 +27,7 @@ func addOntologyMCPTools(server *mcp.Server, definitions map[string]ToolDefiniti
 		}
 		return *resp, nil
 	})
-	addGraphRAGMCPTool(server, definitions["ontology_list"], func(ctx context.Context, req OntologyListRequest) (OntologyListResponse, error) {
+	addOntologyMCPTool(server, definitions["ontology_list"], func(ctx context.Context, req OntologyListRequest) (OntologyListResponse, error) {
 		resp, err := toolbox.ListOntologySchemas(ctx, req)
 		if err != nil {
 			return OntologyListResponse{}, err
@@ -37,7 +37,61 @@ func addOntologyMCPTools(server *mcp.Server, definitions map[string]ToolDefiniti
 		}
 		return *resp, nil
 	})
-	addGraphRAGMCPTool(server, definitions["ontology_delete"], func(ctx context.Context, req OntologyDeleteRequest) (OntologyDeleteResponse, error) {
+	// Through addOntologyMCPTool for the same reason as the schema tools on
+	// either side of it: the request carries a whole OntologySchema and the
+	// response carries data types lifted out of one, both of which reach the
+	// recursive OntologyDataType that panics the SDK's schema inference.
+	addOntologyMCPTool(server, definitions["ontology_diff"], func(ctx context.Context, req OntologyDiffRequest) (OntologyDiffResponse, error) {
+		resp, err := toolbox.DiffOntologySchema(ctx, req)
+		if err != nil {
+			return OntologyDiffResponse{}, err
+		}
+		if resp == nil {
+			return OntologyDiffResponse{}, nil
+		}
+		return *resp, nil
+	})
+	// Through addOntologyMCPTool, not addGraphRAGMCPTool: ObjectSet refers to
+	// itself through Source and Operands, and the SDK's schema inference
+	// panics on a recursive type rather than returning an error.
+	addOntologyMCPTool(server, definitions["object_set_resolve"], func(ctx context.Context, req ObjectSetResolveRequest) (ObjectSetResolveResponse, error) {
+		resp, err := toolbox.ResolveObjectSet(ctx, req)
+		if err != nil {
+			return ObjectSetResolveResponse{}, err
+		}
+		if resp == nil {
+			return ObjectSetResolveResponse{}, nil
+		}
+		return *resp, nil
+	})
+	// Also through addOntologyMCPTool: ActionListResponse carries whole action
+	// types, whose parameters and rules reach OntologyDataType — the same
+	// recursion that panics the SDK's inference for the schema tools.
+	addOntologyMCPTool(server, definitions["ontology_action_list"], func(ctx context.Context, req ActionListRequest) (ActionListResponse, error) {
+		resp, err := toolbox.ListActionTypes(ctx, req)
+		if err != nil {
+			return ActionListResponse{}, err
+		}
+		if resp == nil {
+			return ActionListResponse{}, nil
+		}
+		return *resp, nil
+	})
+	// ApplyAction's own request and response are flat, but it is registered
+	// the same way so the declared input schema — which documents the
+	// validate_only/return_edits exclusivity — is the one hosts actually see,
+	// rather than one reflected off the Go struct.
+	addOntologyMCPTool(server, definitions["ontology_action_apply"], func(ctx context.Context, req ActionApplyRequest) (ActionApplyResponse, error) {
+		resp, err := toolbox.ApplyAction(ctx, req)
+		if err != nil {
+			return ActionApplyResponse{}, err
+		}
+		if resp == nil {
+			return ActionApplyResponse{}, nil
+		}
+		return *resp, nil
+	})
+	addOntologyMCPTool(server, definitions["ontology_delete"], func(ctx context.Context, req OntologyDeleteRequest) (OntologyDeleteResponse, error) {
 		resp, err := toolbox.DeleteOntologySchema(ctx, req)
 		if err != nil {
 			return OntologyDeleteResponse{}, err
@@ -46,5 +100,30 @@ func addOntologyMCPTools(server *mcp.Server, definitions map[string]ToolDefiniti
 			return OntologyDeleteResponse{}, nil
 		}
 		return *resp, nil
+	})
+}
+
+// addOntologyMCPTool registers an ontology tool using the schemas declared in
+// ontology_tooldefs.go instead of the ones the MCP SDK infers from Go types.
+// Inference cannot work here: OntologyDataType is recursive — an array nests
+// its item type and a struct nests fields, each of which is a property with a
+// data type — and the SDK's reflection reports that as a cycle and panics.
+// Every ontology response embeds OntologySchema, so the output schema needs the
+// same treatment; it is declared permissively rather than enumerated, because a
+// faithful JSON Schema for a recursive type needs the $ref/$defs that
+// ToolDefinition does not model.
+func addOntologyMCPTool[In, Out any](server *mcp.Server, definition ToolDefinition, handler func(context.Context, In) (Out, error)) {
+	mcp.AddTool(server, &mcp.Tool{
+		Name:         definition.Name,
+		Description:  definition.Description,
+		InputSchema:  definition.InputSchema,
+		OutputSchema: map[string]any{"type": "object"},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
+		output, err := handler(ctx, input)
+		if err != nil {
+			var zero Out
+			return nil, zero, err
+		}
+		return nil, output, nil
 	})
 }

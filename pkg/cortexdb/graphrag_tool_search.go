@@ -166,6 +166,12 @@ func (t *GraphRAGToolbox) ExpandGraph(ctx context.Context, req ToolExpandGraphRe
 	if req.MaxHops <= 0 {
 		req.MaxHops = 1
 	}
+	// Traversal filters on the node type stored on each node, so an interface
+	// has to become its implementors before the hop is taken.
+	nodeTypes, err := t.db.expandOntologyTypeFilter(ctx, req.NodeTypes)
+	if err != nil {
+		return nil, err
+	}
 
 	nodeSet := make(map[string]struct{}, len(req.NodeIDs))
 	for _, nodeID := range req.NodeIDs {
@@ -177,7 +183,7 @@ func (t *GraphRAGToolbox) ExpandGraph(ctx context.Context, req ToolExpandGraphRe
 			MaxDepth:  req.MaxHops,
 			Direction: "both",
 			EdgeTypes: req.EdgeTypes,
-			NodeTypes: req.NodeTypes,
+			NodeTypes: nodeTypes,
 			Limit:     req.Limit,
 		})
 		if err != nil {

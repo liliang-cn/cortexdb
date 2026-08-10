@@ -2154,6 +2154,9 @@ func (x *ExplainInferenceMatchResponse) GetMatches() []*InferenceMatchExplanatio
 	return nil
 }
 
+// Deprecated: the ontology-lite entity/relation type model was replaced by the
+// v2 typed ontology, which is carried as JSON in schema_json. Kept so field
+// numbers stay stable for clients built against the older wire format.
 type OntologyEntityType struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	Name               string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -2214,6 +2217,7 @@ func (x *OntologyEntityType) GetRequiredProperties() []string {
 	return nil
 }
 
+// Deprecated: see OntologyEntityType.
 type OntologyRelationType struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	Name               string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -2291,17 +2295,22 @@ func (x *OntologyRelationType) GetRequiredProperties() []string {
 }
 
 type OntologySchema struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	SchemaId      string                  `protobuf:"bytes,1,opt,name=schema_id,json=schemaId,proto3" json:"schema_id,omitempty"`
-	Name          string                  `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Description   string                  `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
-	Version       int32                   `protobuf:"varint,4,opt,name=version,proto3" json:"version,omitempty"`
-	Active        bool                    `protobuf:"varint,5,opt,name=active,proto3" json:"active,omitempty"`
-	Metadata      map[string]string       `protobuf:"bytes,6,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	EntityTypes   []*OntologyEntityType   `protobuf:"bytes,7,rep,name=entity_types,json=entityTypes,proto3" json:"entity_types,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	SchemaId    string                 `protobuf:"bytes,1,opt,name=schema_id,json=schemaId,proto3" json:"schema_id,omitempty"`
+	Name        string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Description string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	Version     int32                  `protobuf:"varint,4,opt,name=version,proto3" json:"version,omitempty"`
+	Active      bool                   `protobuf:"varint,5,opt,name=active,proto3" json:"active,omitempty"`
+	Metadata    map[string]string      `protobuf:"bytes,6,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Deprecated: Marked as deprecated in cortexdb/v1/graph.proto.
+	EntityTypes []*OntologyEntityType `protobuf:"bytes,7,rep,name=entity_types,json=entityTypes,proto3" json:"entity_types,omitempty"`
+	// Deprecated: Marked as deprecated in cortexdb/v1/graph.proto.
 	RelationTypes []*OntologyRelationType `protobuf:"bytes,8,rep,name=relation_types,json=relationTypes,proto3" json:"relation_types,omitempty"`
 	CreatedAt     *timestamppb.Timestamp  `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp  `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	// The full v2 ontology schema as JSON. This is the only field that carries
+	// object types, link types, interfaces and shared properties.
+	SchemaJson    string `protobuf:"bytes,11,opt,name=schema_json,json=schemaJson,proto3" json:"schema_json,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2378,6 +2387,7 @@ func (x *OntologySchema) GetMetadata() map[string]string {
 	return nil
 }
 
+// Deprecated: Marked as deprecated in cortexdb/v1/graph.proto.
 func (x *OntologySchema) GetEntityTypes() []*OntologyEntityType {
 	if x != nil {
 		return x.EntityTypes
@@ -2385,6 +2395,7 @@ func (x *OntologySchema) GetEntityTypes() []*OntologyEntityType {
 	return nil
 }
 
+// Deprecated: Marked as deprecated in cortexdb/v1/graph.proto.
 func (x *OntologySchema) GetRelationTypes() []*OntologyRelationType {
 	if x != nil {
 		return x.RelationTypes
@@ -2406,17 +2417,28 @@ func (x *OntologySchema) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *OntologySchema) GetSchemaJson() string {
+	if x != nil {
+		return x.SchemaJson
+	}
+	return ""
+}
+
 type SaveOntologySchemaRequest struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	SchemaId      string                  `protobuf:"bytes,1,opt,name=schema_id,json=schemaId,proto3" json:"schema_id,omitempty"`
-	Name          string                  `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Description   string                  `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
-	Version       int32                   `protobuf:"varint,4,opt,name=version,proto3" json:"version,omitempty"`
-	Activate      bool                    `protobuf:"varint,5,opt,name=activate,proto3" json:"activate,omitempty"`
-	Deactivate    bool                    `protobuf:"varint,6,opt,name=deactivate,proto3" json:"deactivate,omitempty"`
-	Metadata      map[string]string       `protobuf:"bytes,7,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	EntityTypes   []*OntologyEntityType   `protobuf:"bytes,8,rep,name=entity_types,json=entityTypes,proto3" json:"entity_types,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	SchemaId    string                 `protobuf:"bytes,1,opt,name=schema_id,json=schemaId,proto3" json:"schema_id,omitempty"`
+	Name        string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Description string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	Version     int32                  `protobuf:"varint,4,opt,name=version,proto3" json:"version,omitempty"`
+	Activate    bool                   `protobuf:"varint,5,opt,name=activate,proto3" json:"activate,omitempty"`
+	Deactivate  bool                   `protobuf:"varint,6,opt,name=deactivate,proto3" json:"deactivate,omitempty"`
+	Metadata    map[string]string      `protobuf:"bytes,7,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Deprecated: Marked as deprecated in cortexdb/v1/graph.proto.
+	EntityTypes []*OntologyEntityType `protobuf:"bytes,8,rep,name=entity_types,json=entityTypes,proto3" json:"entity_types,omitempty"`
+	// Deprecated: Marked as deprecated in cortexdb/v1/graph.proto.
 	RelationTypes []*OntologyRelationType `protobuf:"bytes,9,rep,name=relation_types,json=relationTypes,proto3" json:"relation_types,omitempty"`
+	// The full v2 ontology schema as JSON. Required.
+	SchemaJson    string `protobuf:"bytes,10,opt,name=schema_json,json=schemaJson,proto3" json:"schema_json,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2500,6 +2522,7 @@ func (x *SaveOntologySchemaRequest) GetMetadata() map[string]string {
 	return nil
 }
 
+// Deprecated: Marked as deprecated in cortexdb/v1/graph.proto.
 func (x *SaveOntologySchemaRequest) GetEntityTypes() []*OntologyEntityType {
 	if x != nil {
 		return x.EntityTypes
@@ -2507,11 +2530,19 @@ func (x *SaveOntologySchemaRequest) GetEntityTypes() []*OntologyEntityType {
 	return nil
 }
 
+// Deprecated: Marked as deprecated in cortexdb/v1/graph.proto.
 func (x *SaveOntologySchemaRequest) GetRelationTypes() []*OntologyRelationType {
 	if x != nil {
 		return x.RelationTypes
 	}
 	return nil
+}
+
+func (x *SaveOntologySchemaRequest) GetSchemaJson() string {
+	if x != nil {
+		return x.SchemaJson
+	}
+	return ""
 }
 
 type SaveOntologySchemaResponse struct {
@@ -3001,24 +3032,26 @@ const file_cortexdb_v1_graph_proto_rawDesc = "" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12,\n" +
 	"\x12allowed_from_types\x18\x03 \x03(\tR\x10allowedFromTypes\x12(\n" +
 	"\x10allowed_to_types\x18\x04 \x03(\tR\x0eallowedToTypes\x12/\n" +
-	"\x13required_properties\x18\x05 \x03(\tR\x12requiredProperties\"\x9d\x04\n" +
+	"\x13required_properties\x18\x05 \x03(\tR\x12requiredProperties\"\xc6\x04\n" +
 	"\x0eOntologySchema\x12\x1b\n" +
 	"\tschema_id\x18\x01 \x01(\tR\bschemaId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x18\n" +
 	"\aversion\x18\x04 \x01(\x05R\aversion\x12\x16\n" +
 	"\x06active\x18\x05 \x01(\bR\x06active\x12E\n" +
-	"\bmetadata\x18\x06 \x03(\v2).cortexdb.v1.OntologySchema.MetadataEntryR\bmetadata\x12B\n" +
-	"\fentity_types\x18\a \x03(\v2\x1f.cortexdb.v1.OntologyEntityTypeR\ventityTypes\x12H\n" +
-	"\x0erelation_types\x18\b \x03(\v2!.cortexdb.v1.OntologyRelationTypeR\rrelationTypes\x129\n" +
+	"\bmetadata\x18\x06 \x03(\v2).cortexdb.v1.OntologySchema.MetadataEntryR\bmetadata\x12F\n" +
+	"\fentity_types\x18\a \x03(\v2\x1f.cortexdb.v1.OntologyEntityTypeB\x02\x18\x01R\ventityTypes\x12L\n" +
+	"\x0erelation_types\x18\b \x03(\v2!.cortexdb.v1.OntologyRelationTypeB\x02\x18\x01R\rrelationTypes\x129\n" +
 	"\n" +
 	"created_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18\n" +
-	" \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x1a;\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x1f\n" +
+	"\vschema_json\x18\v \x01(\tR\n" +
+	"schemaJson\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe1\x03\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8a\x04\n" +
 	"\x19SaveOntologySchemaRequest\x12\x1b\n" +
 	"\tschema_id\x18\x01 \x01(\tR\bschemaId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
@@ -3028,9 +3061,12 @@ const file_cortexdb_v1_graph_proto_rawDesc = "" +
 	"\n" +
 	"deactivate\x18\x06 \x01(\bR\n" +
 	"deactivate\x12P\n" +
-	"\bmetadata\x18\a \x03(\v24.cortexdb.v1.SaveOntologySchemaRequest.MetadataEntryR\bmetadata\x12B\n" +
-	"\fentity_types\x18\b \x03(\v2\x1f.cortexdb.v1.OntologyEntityTypeR\ventityTypes\x12H\n" +
-	"\x0erelation_types\x18\t \x03(\v2!.cortexdb.v1.OntologyRelationTypeR\rrelationTypes\x1a;\n" +
+	"\bmetadata\x18\a \x03(\v24.cortexdb.v1.SaveOntologySchemaRequest.MetadataEntryR\bmetadata\x12F\n" +
+	"\fentity_types\x18\b \x03(\v2\x1f.cortexdb.v1.OntologyEntityTypeB\x02\x18\x01R\ventityTypes\x12L\n" +
+	"\x0erelation_types\x18\t \x03(\v2!.cortexdb.v1.OntologyRelationTypeB\x02\x18\x01R\rrelationTypes\x12\x1f\n" +
+	"\vschema_json\x18\n" +
+	" \x01(\tR\n" +
+	"schemaJson\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"Q\n" +

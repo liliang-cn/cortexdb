@@ -280,10 +280,17 @@ func (b *KnowledgeMemory) Neighbors(ctx context.Context, req KnowledgeMemoryNeig
 		return nil, fmt.Errorf("node_id or entity_name is required")
 	}
 
+	// This traverses the graph directly rather than through ExpandGraph, so it
+	// needs its own interface expansion to answer "neighbours of type
+	// Facility" the same way.
+	nodeTypes, err := b.db.expandOntologyTypeFilter(ctx, req.NodeTypes)
+	if err != nil {
+		return nil, err
+	}
 	neighbors, err := b.db.Graph().Neighbors(ctx, nodeID, graph.TraversalOptions{
 		MaxDepth:  req.MaxDepth,
 		EdgeTypes: req.EdgeTypes,
-		NodeTypes: req.NodeTypes,
+		NodeTypes: nodeTypes,
 		Direction: req.Direction,
 		Limit:     req.Limit,
 	})
