@@ -77,10 +77,20 @@ func ontologyEntityNodeID(compiled *compiledOntology, entity ToolEntityInput) (s
 	objectTypeName := firstNonEmpty(entity.Type, "entity")
 	objectType, ok := compiled.objectType(objectTypeName)
 	if !ok {
+		if compiled.vocabularyMode() {
+			return resolveEntityNodeID(entity.ID, entity.Name), nil
+		}
 		return "", fmt.Errorf("%w: ontology does not define object type %q", ErrInvalidOntology, objectTypeName)
 	}
 	primaryKeyValue, err := resolveOntologyPrimaryKeyValue(compiled, objectType.APIName, entity)
 	if err != nil {
+		// A vocabulary schema still hands out typed IDs when it can — an entity
+		// arriving with its primary key keys to the same node either way — but
+		// one that cannot state a key (LLM extraction has none to give) falls
+		// back to the name-derived ID instead of being refused.
+		if compiled.vocabularyMode() {
+			return resolveEntityNodeID(entity.ID, entity.Name), nil
+		}
 		return "", fmt.Errorf("%w: %w", ErrInvalidOntology, err)
 	}
 	return ontologyNodeID(objectType.APIName, primaryKeyValue), nil
@@ -110,6 +120,13 @@ func (db *DB) ontologyRelationEndpointNodeID(ctx context.Context, compiled *comp
 		return "", err
 	}
 	if nodeID == "" {
+		// With a vocabulary schema an unresolved endpoint degrades to the
+		// no-ontology behaviour: derive the ID from the name and let the edge
+		// write succeed or be rejected on the node's existence, loudly, rather
+		// than fail the whole request here.
+		if compiled != nil && compiled.vocabularyMode() {
+			return resolveEntityNodeID("", endpoint), nil
+		}
 		return "", fmt.Errorf("%w: relation endpoint %q does not resolve to an existing object; create it first or reference it by node ID",
 			ErrInvalidOntology, endpoint)
 	}

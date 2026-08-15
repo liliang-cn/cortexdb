@@ -51,6 +51,9 @@ func (db *DB) ensureOntologySchemaTable(ctx context.Context) error {
 // everything structural lives in this blob so adding type kinds needs no
 // migration.
 type ontologySchemaDefinition struct {
+	// Enforcement rides in the blob rather than a column: nothing filters or
+	// sorts on it, and the blob needs no migration.
+	Enforcement      OntologyEnforcement      `json:"enforcement,omitempty"`
 	ObjectTypes      []OntologyObjectType     `json:"object_types,omitempty"`
 	LinkTypes        []OntologyLinkType       `json:"link_types,omitempty"`
 	InterfaceTypes   []OntologyInterfaceType  `json:"interface_types,omitempty"`
@@ -79,6 +82,7 @@ func (db *DB) saveOntologySchemaRecord(ctx context.Context, req OntologySaveRequ
 	// managed centrally, so expanding them at write time would freeze today's
 	// definition and make later edits to it invisible.
 	definitionJSON, err := json.Marshal(ontologySchemaDefinition{
+		Enforcement:      schema.Enforcement,
 		ObjectTypes:      schema.ObjectTypes,
 		LinkTypes:        schema.LinkTypes,
 		InterfaceTypes:   schema.InterfaceTypes,
@@ -291,6 +295,7 @@ func scanOntologySchema(scanner ontologyRowScanner) (*OntologySchema, error) {
 	if err := json.Unmarshal([]byte(definitionRaw), &definition); err != nil {
 		return nil, fmt.Errorf("decode ontology definition: %w", err)
 	}
+	schema.Enforcement = definition.Enforcement
 	schema.ObjectTypes = definition.ObjectTypes
 	schema.LinkTypes = definition.LinkTypes
 	schema.InterfaceTypes = definition.InterfaceTypes

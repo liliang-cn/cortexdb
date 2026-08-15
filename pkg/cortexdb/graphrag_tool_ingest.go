@@ -127,10 +127,21 @@ func (t *GraphRAGToolbox) IngestDocument(ctx context.Context, req ToolIngestDocu
 	if err := t.db.store.UpsertBatch(ctx, embeddings); err != nil {
 		return nil, fmt.Errorf("upsert lexical chunks: %w", err)
 	}
-	if _, err := t.db.graph.UpsertNodesBatch(ctx, chunkNodes); err != nil {
+	// Both batches report rejected rows in their result rather than in err. The
+	// result used to be discarded here, so an ingest whose every edge was rejected
+	// still returned the chunk ids and reported success.
+	chunkNodeResult, err := t.db.graph.UpsertNodesBatch(ctx, chunkNodes)
+	if err != nil {
 		return nil, fmt.Errorf("upsert chunk nodes: %w", err)
 	}
-	if _, err := t.db.graph.UpsertEdgesBatch(ctx, edges); err != nil {
+	if err := chunkNodeResult.Err(); err != nil {
+		return nil, fmt.Errorf("upsert chunk nodes: %w", err)
+	}
+	edgeResult, err := t.db.graph.UpsertEdgesBatch(ctx, edges)
+	if err != nil {
+		return nil, fmt.Errorf("upsert chunk edges: %w", err)
+	}
+	if err := edgeResult.Err(); err != nil {
 		return nil, fmt.Errorf("upsert chunk edges: %w", err)
 	}
 
@@ -212,13 +223,45 @@ func (t *GraphRAGToolbox) UpsertEntities(ctx context.Context, req ToolUpsertEnti
 		}
 	}
 
+	// Provenance, before anything is written. The entity nodes carry the union
+	// of every document that asserted them, and the mention edges get their
+	// chunk endpoints created if the caller never wrote them as graph nodes.
+	// Without the first, no query can answer "where did this entity come from"
+	// and no purge can remove a document's entities without guessing. Without
+	// the second, every mention edge from a caller that embeds its chunks
+	// outside the graph (the normal shape for an external ingest pipeline) is
+	// rejected by the foreign key — for a long time silently, so the graph had
+	// entities but no record of what mentioned them.
+	if req.DocumentID != "" && len(nodes) > 0 {
+		if err := t.mergeEntitySourceDocuments(ctx, nodes, req.DocumentID); err != nil {
+			return nil, err
+		}
+	}
+	stubs, err := t.missingChunkStubs(ctx, edges, req.DocumentID, vectorDim)
+	if err != nil {
+		return nil, err
+	}
+	nodes = append(nodes, stubs...)
+
 	if len(nodes) > 0 {
-		if _, err := t.db.graph.UpsertNodesBatch(ctx, nodes); err != nil {
+		nodeResult, err := t.db.graph.UpsertNodesBatch(ctx, nodes)
+		if err != nil {
+			return nil, fmt.Errorf("upsert entity nodes: %w", err)
+		}
+		if err := nodeResult.Err(); err != nil {
 			return nil, fmt.Errorf("upsert entity nodes: %w", err)
 		}
 	}
 	if len(edges) > 0 {
-		if _, err := t.db.graph.UpsertEdgesBatch(ctx, edges); err != nil {
+		// A mention edge whose chunk was never written as a node is rejected by the
+		// foreign key. Reported, because the alternative — the count of edges the
+		// caller asked for, minus the ones the store kept — was indistinguishable
+		// from a graph that grew.
+		edgeResult, err := t.db.graph.UpsertEdgesBatch(ctx, edges)
+		if err != nil {
+			return nil, fmt.Errorf("upsert mention edges: %w", err)
+		}
+		if err := edgeResult.Err(); err != nil {
 			return nil, fmt.Errorf("upsert mention edges: %w", err)
 		}
 	}
@@ -404,6 +447,94 @@ func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRel
 	}
 
 	return response, nil
+}
+
+// mergeEntitySourceDocuments unions documentID into each entity node's
+// source_document_ids property, keeping what other documents already recorded.
+//
+// A read-merge-write rather than a plain property, because the node upsert
+// replaces properties wholesale: a re-extraction from document B would
+// otherwise erase document A's claim to a shared entity — and with it the only
+// record that lets a purge of A know to leave the entity alone.
+func (t *GraphRAGToolbox) mergeEntitySourceDocuments(ctx context.Context, nodes []*graph.GraphNode, documentID string) error {
+	ids := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		ids = append(ids, node.ID)
+	}
+	existing, err := t.db.graph.GetNodesBatch(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("load entity provenance: %w", err)
+	}
+	prior := make(map[string][]string, len(existing))
+	for _, node := range existing {
+		if node == nil || node.Properties == nil {
+			continue
+		}
+		prior[node.ID] = toStringSlice(node.Properties["source_document_ids"])
+	}
+	for _, node := range nodes {
+		if node.Properties == nil {
+			node.Properties = map[string]interface{}{}
+		}
+		node.Properties["source_document_ids"] = unionStrings(prior[node.ID], []string{documentID})
+	}
+	return nil
+}
+
+// missingChunkStubs returns a stub graph node for every mention-edge chunk that
+// does not exist as a node yet.
+//
+// Callers that ingest through IngestDocument have real chunk nodes and get no
+// stubs. Callers that embed their chunks outside the graph — an external
+// pipeline with its own chunker — reference chunk ids the graph has never seen,
+// and every mention edge they ask for dies on the foreign key. A stub carries
+// no content (the text lives in the caller's embedding store, under the same
+// id); it exists so the edge can, and so a purge by document can find it.
+func (t *GraphRAGToolbox) missingChunkStubs(ctx context.Context, edges []*graph.GraphEdge, documentID string, vectorDim int) ([]*graph.GraphNode, error) {
+	ids := make([]string, 0, len(edges))
+	seen := make(map[string]struct{}, len(edges))
+	for _, edge := range edges {
+		if edge.EdgeType != "mentions" {
+			continue
+		}
+		if _, ok := seen[edge.FromNodeID]; ok {
+			continue
+		}
+		seen[edge.FromNodeID] = struct{}{}
+		ids = append(ids, edge.FromNodeID)
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	existing, err := t.db.graph.GetNodesBatch(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("check chunk nodes: %w", err)
+	}
+	have := make(map[string]struct{}, len(existing))
+	for _, node := range existing {
+		if node != nil {
+			have[node.ID] = struct{}{}
+		}
+	}
+	stubs := make([]*graph.GraphNode, 0)
+	for _, id := range ids {
+		if _, ok := have[id]; ok {
+			continue
+		}
+		properties := map[string]interface{}{"stub": true}
+		if documentID != "" {
+			properties["document_id"] = documentID
+		}
+		stubs = append(stubs, &graph.GraphNode{
+			ID: id,
+			// The store requires a vector; derived from the id so it is
+			// deterministic, and never expected to win a similarity search.
+			Vector:     lexicalVectorForText(id, vectorDim),
+			NodeType:   "chunk",
+			Properties: properties,
+		})
+	}
+	return stubs, nil
 }
 
 // rejectedEdgeMessages turns the batch's errors into something a caller can read, capped so one broken

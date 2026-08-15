@@ -298,7 +298,13 @@ func (db *DB) InsertGraphDocument(ctx context.Context, doc GraphRAGDocument, opt
 	if err := db.store.UpsertBatch(ctx, embeddings); err != nil {
 		return nil, fmt.Errorf("upsert graphrag embeddings: %w", err)
 	}
-	if _, err := db.graph.UpsertNodesBatch(ctx, chunkNodes); err != nil {
+	chunkNodeResult, err := db.graph.UpsertNodesBatch(ctx, chunkNodes)
+	if err != nil {
+		return nil, fmt.Errorf("upsert chunk graph nodes: %w", err)
+	}
+	// A batch reports rejected rows in its result, not in err. Ignoring it is how
+	// an ingest that wrote nothing still answered "ok".
+	if err := chunkNodeResult.Err(); err != nil {
 		return nil, fmt.Errorf("upsert chunk graph nodes: %w", err)
 	}
 
@@ -331,7 +337,11 @@ func (db *DB) InsertGraphDocument(ctx context.Context, doc GraphRAGDocument, opt
 				},
 			})
 		}
-		if _, err := db.graph.UpsertNodesBatch(ctx, entityNodes); err != nil {
+		entityNodeResult, err := db.graph.UpsertNodesBatch(ctx, entityNodes)
+		if err != nil {
+			return nil, fmt.Errorf("upsert entity nodes: %w", err)
+		}
+		if err := entityNodeResult.Err(); err != nil {
 			return nil, fmt.Errorf("upsert entity nodes: %w", err)
 		}
 
@@ -362,7 +372,11 @@ func (db *DB) InsertGraphDocument(ctx context.Context, doc GraphRAGDocument, opt
 	}
 
 	if len(edges) > 0 {
-		if _, err := db.graph.UpsertEdgesBatch(ctx, edges); err != nil {
+		edgeResult, err := db.graph.UpsertEdgesBatch(ctx, edges)
+		if err != nil {
+			return nil, fmt.Errorf("upsert graph edges: %w", err)
+		}
+		if err := edgeResult.Err(); err != nil {
 			return nil, fmt.Errorf("upsert graph edges: %w", err)
 		}
 	}

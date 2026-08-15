@@ -108,6 +108,12 @@ func (c *compiledOntology) isEmpty() bool {
 	return len(c.objectTypes) == 0 && len(c.linkTypes) == 0 && len(c.interfaces) == 0
 }
 
+// vocabularyMode reports whether this schema canonicalizes without gating
+// writes. See OntologyEnforcementVocabulary.
+func (c *compiledOntology) vocabularyMode() bool {
+	return c.schema.Enforcement == OntologyEnforcementVocabulary
+}
+
 func (c *compiledOntology) objectType(apiName string) (OntologyObjectType, bool) {
 	objectType, ok := c.objectTypes[ontologyAPIKey(apiName)]
 	return objectType, ok

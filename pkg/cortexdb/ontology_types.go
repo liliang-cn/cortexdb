@@ -2,6 +2,31 @@ package cortexdb
 
 import "time"
 
+// OntologyEnforcement is what an active schema does to writes that do not
+// conform to it.
+type OntologyEnforcement string
+
+const (
+	// OntologyEnforcementStrict rejects non-conforming writes: unknown object
+	// types, missing primary keys, undeclared properties, undeclared link
+	// types, violated cardinality. This is the default, and the only behaviour
+	// that existed before the field did.
+	OntologyEnforcementStrict OntologyEnforcement = "strict"
+	// OntologyEnforcementVocabulary keeps the schema as a shared vocabulary —
+	// canonical type spellings, interface expansion for retrieval — without
+	// gating writes on it. An entity of a declared type still gets its typed
+	// node ID when its primary key is supplied; one that cannot state a
+	// primary key (the normal case for LLM extraction from prose, which has
+	// no storage identity to offer) falls back to the name-derived ID instead
+	// of being refused. Undeclared types pass through untouched.
+	//
+	// The field exists because the strict default forced a choice on
+	// extraction pipelines: activate the schema and lose every extracted
+	// entity, or leave it inactive and lose canonicalization and interface
+	// retrieval with it.
+	OntologyEnforcementVocabulary OntologyEnforcement = "vocabulary"
+)
+
 // OntologyStatus is the lifecycle stage of a type, mirroring Foundry's release status.
 type OntologyStatus string
 
@@ -135,7 +160,11 @@ type OntologySchema struct {
 	Active      bool   `json:"active"`
 	// StrictActions closes the generic upsert tools once action types are
 	// defined, making actions the only write path. Defaults to false.
-	StrictActions    bool                     `json:"strict_actions,omitempty"`
+	StrictActions bool `json:"strict_actions,omitempty"`
+	// Enforcement chooses between rejecting non-conforming writes ("strict",
+	// the default) and treating the schema as a non-gating vocabulary
+	// ("vocabulary"). See the OntologyEnforcement constants.
+	Enforcement      OntologyEnforcement      `json:"enforcement,omitempty"`
 	Metadata         map[string]string        `json:"metadata,omitempty"`
 	ObjectTypes      []OntologyObjectType     `json:"object_types,omitempty"`
 	LinkTypes        []OntologyLinkType       `json:"link_types,omitempty"`

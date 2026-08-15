@@ -32,6 +32,20 @@ func validateOntologySchemaRules(schema OntologySchema) error {
 		return fmt.Errorf("schema_id is required")
 	}
 
+	switch schema.Enforcement {
+	case "", OntologyEnforcementStrict, OntologyEnforcementVocabulary:
+	default:
+		return fmt.Errorf("enforcement must be %q or %q, got %q",
+			OntologyEnforcementStrict, OntologyEnforcementVocabulary, schema.Enforcement)
+	}
+	// StrictActions makes governed actions the only write path; a vocabulary
+	// schema promises not to gate writes at all. Both at once is a schema that
+	// contradicts itself, and whichever the code happened to honour would look
+	// like a bug to whoever expected the other.
+	if schema.StrictActions && schema.Enforcement == OntologyEnforcementVocabulary {
+		return fmt.Errorf("strict_actions and enforcement=vocabulary are contradictory: one closes the generic write path, the other promises never to")
+	}
+
 	sharedSeen := make(map[string]struct{}, len(schema.SharedProperties))
 	for _, property := range schema.SharedProperties {
 		if err := validateOntologyProperty("shared", property); err != nil {
@@ -264,6 +278,12 @@ func (db *DB) validateEntityInputs(ctx context.Context, entities []ToolEntityInp
 	if err != nil || compiled == nil {
 		return err
 	}
+	// A vocabulary schema does not gate writes. Identity still consults it —
+	// declared types with a primary key get typed node IDs — but an entity
+	// that cannot conform is stored the way it would be with no schema at all.
+	if compiled.vocabularyMode() {
+		return nil
+	}
 	for _, entity := range entities {
 		if err := validateOntologyEntity(compiled, entity); err != nil {
 			return fmt.Errorf("%w: %w", ErrInvalidOntology, err)
@@ -354,6 +374,9 @@ func (db *DB) validateRelationInputsWithResolver(ctx context.Context, relations 
 	compiled, err := db.activeCompiledOntology(ctx)
 	if err != nil || compiled == nil {
 		return err
+	}
+	if compiled.vocabularyMode() {
+		return nil
 	}
 
 	// Endpoints are resolved the same way the write path will resolve them, so

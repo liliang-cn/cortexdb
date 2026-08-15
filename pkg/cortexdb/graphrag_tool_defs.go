@@ -61,6 +61,17 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			),
 		},
 		{
+			Name:        "delete_document_graph",
+			Description: "Delete everything one document put in the graph: its chunk and document nodes, its relation edges, and the entities it alone asserted (entities other documents also assert are detached, not deleted). The counterpart to a document-scoped ingest; use dry_run to see what would go first. Not reversible.",
+			InputSchema: toolObjectSchema(
+				[]string{"document_id"},
+				map[string]any{
+					"document_id": toolStringSchema("Document ID whose graph footprint should be removed."),
+					"dry_run":     map[string]any{"type": "boolean", "description": "Report what would be deleted without deleting it."},
+				},
+			),
+		},
+		{
 			Name:        "upsert_relations",
 			Description: "Create relation edges between entity nodes.",
 			InputSchema: toolObjectSchema(
@@ -281,6 +292,12 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.DeleteEntities(ctx, req)
+	case "delete_document_graph":
+		var req ToolDeleteDocumentGraphRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.DeleteDocumentGraph(ctx, req)
 	case "upsert_relations":
 		var req ToolUpsertRelationsRequest
 		if err := json.Unmarshal(input, &req); err != nil {

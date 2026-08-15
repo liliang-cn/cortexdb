@@ -76,6 +76,13 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *resp, nil
 	})
+	addGraphRAGMCPTool(server, definitions["delete_document_graph"], func(ctx context.Context, req ToolDeleteDocumentGraphRequest) (ToolDeleteDocumentGraphResponse, error) {
+		resp, err := toolbox.DeleteDocumentGraph(ctx, req)
+		if err != nil || resp == nil {
+			return ToolDeleteDocumentGraphResponse{}, err
+		}
+		return *resp, nil
+	})
 
 	addGraphRAGMCPTool(server, definitions["upsert_relations"], func(ctx context.Context, req ToolUpsertRelationsRequest) (ToolUpsertRelationsResponse, error) {
 		resp, err := toolbox.UpsertRelations(ctx, req)

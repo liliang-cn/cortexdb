@@ -8,6 +8,7 @@ import (
 	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -79,6 +80,12 @@ type GraphStore struct {
 	store     *core.SQLiteStore
 	db        *sql.DB
 	hnswIndex *HNSWGraphIndex // HNSW index for fast vector search
+	// Guards one-time creation of the graph schema. A mutex plus a flag rather
+	// than sync.Once, because Once latches on panic-free completion even when
+	// the work failed: a single cancelled context would otherwise leave this
+	// store convinced the tables exist for the rest of its lifetime.
+	schemaMu    sync.Mutex
+	schemaReady bool
 }
 
 // NewGraphStore creates a new graph store from a SQLite store
@@ -89,8 +96,26 @@ func NewGraphStore(s *core.SQLiteStore) *GraphStore {
 	}
 }
 
-// InitGraphSchema creates the graph tables if they don't exist
+// InitGraphSchema creates the graph tables if they don't exist.
+//
+// It is cheap to call repeatedly: after the first success this store remembers
+// that its schema is ready and returns without touching SQLite, so write paths
+// can guard themselves with it instead of trusting the caller to have done so.
 func (g *GraphStore) InitGraphSchema(ctx context.Context) error {
+	g.schemaMu.Lock()
+	defer g.schemaMu.Unlock()
+	if g.schemaReady {
+		return nil
+	}
+	if err := g.createGraphSchema(ctx); err != nil {
+		return err
+	}
+	g.schemaReady = true
+	return nil
+}
+
+// createGraphSchema issues the DDL. Callers must hold schemaMu.
+func (g *GraphStore) createGraphSchema(ctx context.Context) error {
 	schema := `
 	-- Graph nodes table (extends embeddings concept)
 	CREATE TABLE IF NOT EXISTS graph_nodes (
@@ -182,6 +207,10 @@ func (g *GraphStore) UpsertNode(ctx context.Context, node *GraphNode) error {
 
 	if len(node.Vector) == 0 {
 		return fmt.Errorf("invalid node: missing vector")
+	}
+
+	if err := g.InitGraphSchema(ctx); err != nil {
+		return fmt.Errorf("init graph schema: %w", err)
 	}
 
 	// Encode vector
@@ -339,6 +368,10 @@ func (g *GraphStore) UpsertEdge(ctx context.Context, edge *GraphEdge) error {
 
 	if edge.FromNodeID == "" || edge.ToNodeID == "" {
 		return fmt.Errorf("invalid edge: missing node IDs")
+	}
+
+	if err := g.InitGraphSchema(ctx); err != nil {
+		return fmt.Errorf("init graph schema: %w", err)
 	}
 
 	// Set default weight if not specified

@@ -1,11 +1,12 @@
 package graph
 
 import (
-	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 	"strings"
 )
 
@@ -19,11 +20,32 @@ type BatchEdgeOperation struct {
 	Edges []*GraphEdge
 }
 
-// BatchResult contains the results of a batch operation
+// BatchResult contains the results of a batch operation.
+//
+// A batch is partial by design: one rejected row does not roll the others back,
+// so the batch functions report per-row failures here and reserve their error
+// return for failures of the batch itself (transaction, prepare, commit). That
+// makes it easy to lose writes without noticing — a caller that only checks err
+// sees success for a batch in which every row was rejected. Call Err to fold the
+// per-row failures back into a normal error before reporting success upwards.
 type BatchResult struct {
 	SuccessCount int
 	FailedCount  int
 	Errors       []error
+}
+
+// Err returns the per-row failures of a batch joined into a single error, or nil
+// when every row the caller supplied was written.
+//
+// Only rows that actually failed are reported: the delete batches count ids that
+// matched nothing as failed without recording an error, because "not there" is
+// not a failure to delete. The upsert batches record an error for every failure
+// they count.
+func (r *BatchResult) Err() error {
+	if r == nil || len(r.Errors) == 0 {
+		return nil
+	}
+	return errors.Join(r.Errors...)
 }
 
 // UpsertNodesBatch inserts or updates multiple nodes in a single transaction
@@ -31,18 +53,26 @@ func (g *GraphStore) UpsertNodesBatch(ctx context.Context, nodes []*GraphNode) (
 	if len(nodes) == 0 {
 		return &BatchResult{}, nil
 	}
-	
+
 	result := &BatchResult{
 		Errors: make([]error, 0),
 	}
-	
+
+	// The tables have to exist before the first row is written. Callers reached
+	// this through paths that never initialised the schema, and every row then
+	// failed with "no such table: graph_nodes" — recorded per row rather than
+	// returned, so the batch looked successful. Cheap after the first call.
+	if err := g.InitGraphSchema(ctx); err != nil {
+		return nil, fmt.Errorf("init graph schema: %w", err)
+	}
+
 	// Start transaction
 	tx, err := g.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	
+
 	// Prepare statement for batch insert
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO graph_nodes (id, vector, content, node_type, properties, updated_at)
@@ -58,7 +88,7 @@ func (g *GraphStore) UpsertNodesBatch(ctx context.Context, nodes []*GraphNode) (
 		return nil, fmt.Errorf("failed to prepare statement: %w", err)
 	}
 	defer func() { _ = stmt.Close() }()
-	
+
 	// Process each node
 	for _, node := range nodes {
 		if node == nil || node.ID == "" {
@@ -66,13 +96,13 @@ func (g *GraphStore) UpsertNodesBatch(ctx context.Context, nodes []*GraphNode) (
 			result.FailedCount++
 			continue
 		}
-		
+
 		if len(node.Vector) == 0 {
 			result.Errors = append(result.Errors, fmt.Errorf("invalid node %s: missing vector", node.ID))
 			result.FailedCount++
 			continue
 		}
-		
+
 		// Encode vector
 		vectorBytes, err := encoding.EncodeVector(node.Vector)
 		if err != nil {
@@ -80,7 +110,7 @@ func (g *GraphStore) UpsertNodesBatch(ctx context.Context, nodes []*GraphNode) (
 			result.FailedCount++
 			continue
 		}
-		
+
 		// Encode properties
 		var propertiesJSON []byte
 		if node.Properties != nil {
@@ -91,7 +121,7 @@ func (g *GraphStore) UpsertNodesBatch(ctx context.Context, nodes []*GraphNode) (
 				continue
 			}
 		}
-		
+
 		// Execute insert
 		_, err = stmt.ExecContext(ctx,
 			node.ID,
@@ -100,7 +130,7 @@ func (g *GraphStore) UpsertNodesBatch(ctx context.Context, nodes []*GraphNode) (
 			node.NodeType,
 			string(propertiesJSON),
 		)
-		
+
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("failed to insert node %s: %w", node.ID, err))
 			result.FailedCount++
@@ -108,12 +138,12 @@ func (g *GraphStore) UpsertNodesBatch(ctx context.Context, nodes []*GraphNode) (
 			result.SuccessCount++
 		}
 	}
-	
+
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
-	
+
 	return result, nil
 }
 
@@ -122,18 +152,22 @@ func (g *GraphStore) DeleteNodesBatch(ctx context.Context, nodeIDs []string) (*B
 	if len(nodeIDs) == 0 {
 		return &BatchResult{}, nil
 	}
-	
+
 	result := &BatchResult{
 		Errors: make([]error, 0),
 	}
-	
+
+	if err := g.InitGraphSchema(ctx); err != nil {
+		return nil, fmt.Errorf("init graph schema: %w", err)
+	}
+
 	// Start transaction
 	tx, err := g.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	
+
 	// Build batch delete query with placeholders
 	placeholders := make([]string, len(nodeIDs))
 	args := make([]interface{}, len(nodeIDs))
@@ -141,27 +175,27 @@ func (g *GraphStore) DeleteNodesBatch(ctx context.Context, nodeIDs []string) (*B
 		placeholders[i] = "?"
 		args[i] = id
 	}
-	
+
 	query := fmt.Sprintf("DELETE FROM graph_nodes WHERE id IN (%s)", strings.Join(placeholders, ","))
-	
+
 	res, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to delete nodes: %w", err)
 	}
-	
+
 	rowsAffected, err := res.RowsAffected()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rows affected: %w", err)
 	}
-	
+
 	result.SuccessCount = int(rowsAffected)
 	result.FailedCount = len(nodeIDs) - result.SuccessCount
-	
+
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
-	
+
 	return result, nil
 }
 
@@ -170,18 +204,22 @@ func (g *GraphStore) UpsertEdgesBatch(ctx context.Context, edges []*GraphEdge) (
 	if len(edges) == 0 {
 		return &BatchResult{}, nil
 	}
-	
+
 	result := &BatchResult{
 		Errors: make([]error, 0),
 	}
-	
+
+	if err := g.InitGraphSchema(ctx); err != nil {
+		return nil, fmt.Errorf("init graph schema: %w", err)
+	}
+
 	// Start transaction
 	tx, err := g.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	
+
 	// Prepare statement for batch insert
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO graph_edges (id, from_node_id, to_node_id, edge_type, weight, properties, vector)
@@ -198,7 +236,7 @@ func (g *GraphStore) UpsertEdgesBatch(ctx context.Context, edges []*GraphEdge) (
 		return nil, fmt.Errorf("failed to prepare statement: %w", err)
 	}
 	defer func() { _ = stmt.Close() }()
-	
+
 	// Process each edge
 	for _, edge := range edges {
 		if edge == nil || edge.ID == "" {
@@ -206,18 +244,18 @@ func (g *GraphStore) UpsertEdgesBatch(ctx context.Context, edges []*GraphEdge) (
 			result.FailedCount++
 			continue
 		}
-		
+
 		if edge.FromNodeID == "" || edge.ToNodeID == "" {
 			result.Errors = append(result.Errors, fmt.Errorf("invalid edge %s: missing node IDs", edge.ID))
 			result.FailedCount++
 			continue
 		}
-		
+
 		// Set default weight
 		if edge.Weight == 0 {
 			edge.Weight = 1.0
 		}
-		
+
 		// Encode properties
 		var propertiesJSON []byte
 		if edge.Properties != nil {
@@ -228,7 +266,7 @@ func (g *GraphStore) UpsertEdgesBatch(ctx context.Context, edges []*GraphEdge) (
 				continue
 			}
 		}
-		
+
 		// Encode vector if present
 		var vectorBytes []byte
 		if len(edge.Vector) > 0 {
@@ -239,7 +277,7 @@ func (g *GraphStore) UpsertEdgesBatch(ctx context.Context, edges []*GraphEdge) (
 				continue
 			}
 		}
-		
+
 		// Execute insert
 		_, err = stmt.ExecContext(ctx,
 			edge.ID,
@@ -250,7 +288,7 @@ func (g *GraphStore) UpsertEdgesBatch(ctx context.Context, edges []*GraphEdge) (
 			string(propertiesJSON),
 			vectorBytes,
 		)
-		
+
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("failed to insert edge %s: %w", edge.ID, err))
 			result.FailedCount++
@@ -258,12 +296,12 @@ func (g *GraphStore) UpsertEdgesBatch(ctx context.Context, edges []*GraphEdge) (
 			result.SuccessCount++
 		}
 	}
-	
+
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
-	
+
 	return result, nil
 }
 
@@ -272,18 +310,22 @@ func (g *GraphStore) DeleteEdgesBatch(ctx context.Context, edgeIDs []string) (*B
 	if len(edgeIDs) == 0 {
 		return &BatchResult{}, nil
 	}
-	
+
 	result := &BatchResult{
 		Errors: make([]error, 0),
 	}
-	
+
+	if err := g.InitGraphSchema(ctx); err != nil {
+		return nil, fmt.Errorf("init graph schema: %w", err)
+	}
+
 	// Start transaction
 	tx, err := g.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	
+
 	// Build batch delete query
 	placeholders := make([]string, len(edgeIDs))
 	args := make([]interface{}, len(edgeIDs))
@@ -291,27 +333,27 @@ func (g *GraphStore) DeleteEdgesBatch(ctx context.Context, edgeIDs []string) (*B
 		placeholders[i] = "?"
 		args[i] = id
 	}
-	
+
 	query := fmt.Sprintf("DELETE FROM graph_edges WHERE id IN (%s)", strings.Join(placeholders, ","))
-	
+
 	res, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to delete edges: %w", err)
 	}
-	
+
 	rowsAffected, err := res.RowsAffected()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rows affected: %w", err)
 	}
-	
+
 	result.SuccessCount = int(rowsAffected)
 	result.FailedCount = len(edgeIDs) - result.SuccessCount
-	
+
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
-	
+
 	return result, nil
 }
 
@@ -320,7 +362,7 @@ func (g *GraphStore) GetNodesBatch(ctx context.Context, nodeIDs []string) ([]*Gr
 	if len(nodeIDs) == 0 {
 		return []*GraphNode{}, nil
 	}
-	
+
 	// Build query with placeholders
 	placeholders := make([]string, len(nodeIDs))
 	args := make([]interface{}, len(nodeIDs))
@@ -328,25 +370,25 @@ func (g *GraphStore) GetNodesBatch(ctx context.Context, nodeIDs []string) ([]*Gr
 		placeholders[i] = "?"
 		args[i] = id
 	}
-	
+
 	query := fmt.Sprintf(`
 		SELECT id, vector, content, node_type, properties, created_at, updated_at
 		FROM graph_nodes
 		WHERE id IN (%s)
 	`, strings.Join(placeholders, ","))
-	
+
 	rows, err := g.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query nodes: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	
+
 	nodes := make([]*GraphNode, 0, len(nodeIDs))
 	for rows.Next() {
 		var node GraphNode
 		var vectorBytes []byte
 		var propertiesJSON sql.NullString
-		
+
 		err := rows.Scan(
 			&node.ID,
 			&vectorBytes,
@@ -359,13 +401,13 @@ func (g *GraphStore) GetNodesBatch(ctx context.Context, nodeIDs []string) ([]*Gr
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan node: %w", err)
 		}
-		
+
 		// Decode vector
 		node.Vector, err = encoding.DecodeVector(vectorBytes)
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode vector: %w", err)
 		}
-		
+
 		// Decode properties
 		if propertiesJSON.Valid && propertiesJSON.String != "" {
 			err = json.Unmarshal([]byte(propertiesJSON.String), &node.Properties)
@@ -373,10 +415,10 @@ func (g *GraphStore) GetNodesBatch(ctx context.Context, nodeIDs []string) ([]*Gr
 				return nil, fmt.Errorf("failed to decode properties: %w", err)
 			}
 		}
-		
+
 		nodes = append(nodes, &node)
 	}
-	
+
 	return nodes, rows.Err()
 }
 
@@ -385,7 +427,7 @@ func (g *GraphStore) GetEdgesBatch(ctx context.Context, edgeIDs []string) ([]*Gr
 	if len(edgeIDs) == 0 {
 		return []*GraphEdge{}, nil
 	}
-	
+
 	// Build query with placeholders
 	placeholders := make([]string, len(edgeIDs))
 	args := make([]interface{}, len(edgeIDs))
@@ -393,25 +435,25 @@ func (g *GraphStore) GetEdgesBatch(ctx context.Context, edgeIDs []string) ([]*Gr
 		placeholders[i] = "?"
 		args[i] = id
 	}
-	
+
 	query := fmt.Sprintf(`
 		SELECT id, from_node_id, to_node_id, edge_type, weight, properties, vector, created_at
 		FROM graph_edges
 		WHERE id IN (%s)
 	`, strings.Join(placeholders, ","))
-	
+
 	rows, err := g.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query edges: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	
+
 	edges := make([]*GraphEdge, 0, len(edgeIDs))
 	for rows.Next() {
 		var edge GraphEdge
 		var propertiesJSON sql.NullString
 		var vectorBytes []byte
-		
+
 		err := rows.Scan(
 			&edge.ID,
 			&edge.FromNodeID,
@@ -425,7 +467,7 @@ func (g *GraphStore) GetEdgesBatch(ctx context.Context, edgeIDs []string) ([]*Gr
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan edge: %w", err)
 		}
-		
+
 		// Decode properties
 		if propertiesJSON.Valid && propertiesJSON.String != "" {
 			err = json.Unmarshal([]byte(propertiesJSON.String), &edge.Properties)
@@ -433,7 +475,7 @@ func (g *GraphStore) GetEdgesBatch(ctx context.Context, edgeIDs []string) ([]*Gr
 				return nil, fmt.Errorf("failed to decode properties: %w", err)
 			}
 		}
-		
+
 		// Decode vector if present
 		if len(vectorBytes) > 0 {
 			edge.Vector, err = encoding.DecodeVector(vectorBytes)
@@ -441,19 +483,19 @@ func (g *GraphStore) GetEdgesBatch(ctx context.Context, edgeIDs []string) ([]*Gr
 				return nil, fmt.Errorf("failed to decode vector: %w", err)
 			}
 		}
-		
+
 		edges = append(edges, &edge)
 	}
-	
+
 	return edges, rows.Err()
 }
 
 // BatchGraphOperation allows multiple graph operations in a single transaction
 type BatchGraphOperation struct {
-	NodeUpserts   []*GraphNode
-	NodeDeletes   []string
-	EdgeUpserts   []*GraphEdge
-	EdgeDeletes   []string
+	NodeUpserts []*GraphNode
+	NodeDeletes []string
+	EdgeUpserts []*GraphEdge
+	EdgeDeletes []string
 }
 
 // ExecuteBatch executes multiple graph operations in a single transaction
@@ -461,18 +503,22 @@ func (g *GraphStore) ExecuteBatch(ctx context.Context, ops *BatchGraphOperation)
 	if ops == nil {
 		return &BatchResult{}, nil
 	}
-	
+
 	result := &BatchResult{
 		Errors: make([]error, 0),
 	}
-	
+
+	if err := g.InitGraphSchema(ctx); err != nil {
+		return nil, fmt.Errorf("init graph schema: %w", err)
+	}
+
 	// Start transaction
 	tx, err := g.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	
+
 	// Process node upserts
 	if len(ops.NodeUpserts) > 0 {
 		nodeResult, err := g.upsertNodesBatchTx(ctx, tx, ops.NodeUpserts)
@@ -483,7 +529,7 @@ func (g *GraphStore) ExecuteBatch(ctx context.Context, ops *BatchGraphOperation)
 		result.FailedCount += nodeResult.FailedCount
 		result.Errors = append(result.Errors, nodeResult.Errors...)
 	}
-	
+
 	// Process node deletes
 	if len(ops.NodeDeletes) > 0 {
 		deleteResult, err := g.deleteNodesBatchTx(ctx, tx, ops.NodeDeletes)
@@ -493,7 +539,7 @@ func (g *GraphStore) ExecuteBatch(ctx context.Context, ops *BatchGraphOperation)
 		result.SuccessCount += deleteResult.SuccessCount
 		result.FailedCount += deleteResult.FailedCount
 	}
-	
+
 	// Process edge upserts
 	if len(ops.EdgeUpserts) > 0 {
 		edgeResult, err := g.upsertEdgesBatchTx(ctx, tx, ops.EdgeUpserts)
@@ -504,7 +550,7 @@ func (g *GraphStore) ExecuteBatch(ctx context.Context, ops *BatchGraphOperation)
 		result.FailedCount += edgeResult.FailedCount
 		result.Errors = append(result.Errors, edgeResult.Errors...)
 	}
-	
+
 	// Process edge deletes
 	if len(ops.EdgeDeletes) > 0 {
 		deleteResult, err := g.deleteEdgesBatchTx(ctx, tx, ops.EdgeDeletes)
@@ -514,12 +560,12 @@ func (g *GraphStore) ExecuteBatch(ctx context.Context, ops *BatchGraphOperation)
 		result.SuccessCount += deleteResult.SuccessCount
 		result.FailedCount += deleteResult.FailedCount
 	}
-	
+
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
-	
+
 	return result, nil
 }
 
@@ -527,7 +573,7 @@ func (g *GraphStore) ExecuteBatch(ctx context.Context, ops *BatchGraphOperation)
 
 func (g *GraphStore) upsertNodesBatchTx(ctx context.Context, tx *sql.Tx, nodes []*GraphNode) (*BatchResult, error) {
 	result := &BatchResult{Errors: make([]error, 0)}
-	
+
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO graph_nodes (id, vector, content, node_type, properties, updated_at)
 		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -542,19 +588,22 @@ func (g *GraphStore) upsertNodesBatchTx(ctx context.Context, tx *sql.Tx, nodes [
 		return nil, err
 	}
 	defer func() { _ = stmt.Close() }()
-	
+
 	for _, node := range nodes {
 		if node == nil || node.ID == "" || len(node.Vector) == 0 {
+			// Recorded, not just counted: Err folds the per-row failures into an
+			// error for callers, and a silently counted one would be invisible there.
+			result.Errors = append(result.Errors, fmt.Errorf("invalid node: missing ID or vector"))
 			result.FailedCount++
 			continue
 		}
-		
+
 		vectorBytes, _ := encoding.EncodeVector(node.Vector)
 		var propertiesJSON []byte
 		if node.Properties != nil {
 			propertiesJSON, _ = json.Marshal(node.Properties)
 		}
-		
+
 		_, err = stmt.ExecContext(ctx, node.ID, vectorBytes, node.Content, node.NodeType, string(propertiesJSON))
 		if err != nil {
 			result.FailedCount++
@@ -563,40 +612,40 @@ func (g *GraphStore) upsertNodesBatchTx(ctx context.Context, tx *sql.Tx, nodes [
 			result.SuccessCount++
 		}
 	}
-	
+
 	return result, nil
 }
 
 func (g *GraphStore) deleteNodesBatchTx(ctx context.Context, tx *sql.Tx, nodeIDs []string) (*BatchResult, error) {
 	result := &BatchResult{}
-	
+
 	if len(nodeIDs) == 0 {
 		return result, nil
 	}
-	
+
 	placeholders := make([]string, len(nodeIDs))
 	args := make([]interface{}, len(nodeIDs))
 	for i, id := range nodeIDs {
 		placeholders[i] = "?"
 		args[i] = id
 	}
-	
+
 	query := fmt.Sprintf("DELETE FROM graph_nodes WHERE id IN (%s)", strings.Join(placeholders, ","))
 	res, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	rowsAffected, _ := res.RowsAffected()
 	result.SuccessCount = int(rowsAffected)
 	result.FailedCount = len(nodeIDs) - result.SuccessCount
-	
+
 	return result, nil
 }
 
 func (g *GraphStore) upsertEdgesBatchTx(ctx context.Context, tx *sql.Tx, edges []*GraphEdge) (*BatchResult, error) {
 	result := &BatchResult{Errors: make([]error, 0)}
-	
+
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO graph_edges (id, from_node_id, to_node_id, edge_type, weight, properties, vector)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -612,27 +661,28 @@ func (g *GraphStore) upsertEdgesBatchTx(ctx context.Context, tx *sql.Tx, edges [
 		return nil, err
 	}
 	defer func() { _ = stmt.Close() }()
-	
+
 	for _, edge := range edges {
 		if edge == nil || edge.ID == "" || edge.FromNodeID == "" || edge.ToNodeID == "" {
+			result.Errors = append(result.Errors, fmt.Errorf("invalid edge: missing ID or node IDs"))
 			result.FailedCount++
 			continue
 		}
-		
+
 		if edge.Weight == 0 {
 			edge.Weight = 1.0
 		}
-		
+
 		var propertiesJSON []byte
 		if edge.Properties != nil {
 			propertiesJSON, _ = json.Marshal(edge.Properties)
 		}
-		
+
 		var vectorBytes []byte
 		if len(edge.Vector) > 0 {
 			vectorBytes, _ = encoding.EncodeVector(edge.Vector)
 		}
-		
+
 		_, err = stmt.ExecContext(ctx, edge.ID, edge.FromNodeID, edge.ToNodeID, edge.EdgeType, edge.Weight, string(propertiesJSON), vectorBytes)
 		if err != nil {
 			result.FailedCount++
@@ -641,33 +691,33 @@ func (g *GraphStore) upsertEdgesBatchTx(ctx context.Context, tx *sql.Tx, edges [
 			result.SuccessCount++
 		}
 	}
-	
+
 	return result, nil
 }
 
 func (g *GraphStore) deleteEdgesBatchTx(ctx context.Context, tx *sql.Tx, edgeIDs []string) (*BatchResult, error) {
 	result := &BatchResult{}
-	
+
 	if len(edgeIDs) == 0 {
 		return result, nil
 	}
-	
+
 	placeholders := make([]string, len(edgeIDs))
 	args := make([]interface{}, len(edgeIDs))
 	for i, id := range edgeIDs {
 		placeholders[i] = "?"
 		args[i] = id
 	}
-	
+
 	query := fmt.Sprintf("DELETE FROM graph_edges WHERE id IN (%s)", strings.Join(placeholders, ","))
 	res, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	rowsAffected, _ := res.RowsAffected()
 	result.SuccessCount = int(rowsAffected)
 	result.FailedCount = len(edgeIDs) - result.SuccessCount
-	
+
 	return result, nil
 }

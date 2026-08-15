@@ -14,10 +14,10 @@ import (
 
 // GraphMLDocument represents a GraphML document
 type GraphMLDocument struct {
-	XMLName xml.Name       `xml:"graphml"`
-	XMLNS   string         `xml:"xmlns,attr"`
-	Keys    []GraphMLKey   `xml:"key"`
-	Graph   GraphMLGraph   `xml:"graph"`
+	XMLName xml.Name     `xml:"graphml"`
+	XMLNS   string       `xml:"xmlns,attr"`
+	Keys    []GraphMLKey `xml:"key"`
+	Graph   GraphMLGraph `xml:"graph"`
 }
 
 // GraphMLKey represents a GraphML key definition
@@ -30,24 +30,24 @@ type GraphMLKey struct {
 
 // GraphMLGraph represents a GraphML graph
 type GraphMLGraph struct {
-	ID            string         `xml:"id,attr"`
-	EdgeDefault   string         `xml:"edgedefault,attr"`
-	Nodes         []GraphMLNode  `xml:"node"`
-	Edges         []GraphMLEdge  `xml:"edge"`
+	ID          string        `xml:"id,attr"`
+	EdgeDefault string        `xml:"edgedefault,attr"`
+	Nodes       []GraphMLNode `xml:"node"`
+	Edges       []GraphMLEdge `xml:"edge"`
 }
 
 // GraphMLNode represents a GraphML node
 type GraphMLNode struct {
-	ID   string         `xml:"id,attr"`
-	Data []GraphMLData  `xml:"data"`
+	ID   string        `xml:"id,attr"`
+	Data []GraphMLData `xml:"data"`
 }
 
 // GraphMLEdge represents a GraphML edge
 type GraphMLEdge struct {
-	ID     string         `xml:"id,attr"`
-	Source string         `xml:"source,attr"`
-	Target string         `xml:"target,attr"`
-	Data   []GraphMLData  `xml:"data"`
+	ID     string        `xml:"id,attr"`
+	Source string        `xml:"source,attr"`
+	Target string        `xml:"target,attr"`
+	Data   []GraphMLData `xml:"data"`
 }
 
 // GraphMLData represents GraphML data
@@ -63,7 +63,7 @@ func (g *GraphStore) ExportGraphML(ctx context.Context, writer io.Writer) error 
 	if err != nil {
 		return fmt.Errorf("failed to get nodes: %w", err)
 	}
-	
+
 	// Get all edges
 	allEdges := make([]*GraphEdge, 0)
 	for _, node := range nodes {
@@ -73,7 +73,7 @@ func (g *GraphStore) ExportGraphML(ctx context.Context, writer io.Writer) error 
 		}
 		allEdges = append(allEdges, edges...)
 	}
-	
+
 	// Create GraphML document
 	doc := GraphMLDocument{
 		XMLNS: "http://graphml.graphdrawing.org/xmlns",
@@ -93,7 +93,7 @@ func (g *GraphStore) ExportGraphML(ctx context.Context, writer io.Writer) error 
 			Edges:       make([]GraphMLEdge, 0, len(allEdges)),
 		},
 	}
-	
+
 	// Add nodes
 	for _, node := range nodes {
 		gmlNode := GraphMLNode{
@@ -103,22 +103,22 @@ func (g *GraphStore) ExportGraphML(ctx context.Context, writer io.Writer) error 
 				{Key: "d1", Value: node.NodeType},
 			},
 		}
-		
+
 		// Encode vector as JSON
 		if len(node.Vector) > 0 {
 			vectorJSON, _ := json.Marshal(node.Vector)
 			gmlNode.Data = append(gmlNode.Data, GraphMLData{Key: "d2", Value: string(vectorJSON)})
 		}
-		
+
 		// Encode properties as JSON
 		if node.Properties != nil {
 			propsJSON, _ := json.Marshal(node.Properties)
 			gmlNode.Data = append(gmlNode.Data, GraphMLData{Key: "d3", Value: string(propsJSON)})
 		}
-		
+
 		doc.Graph.Nodes = append(doc.Graph.Nodes, gmlNode)
 	}
-	
+
 	// Add edges
 	edgeSet := make(map[string]bool) // To avoid duplicates
 	for _, edge := range allEdges {
@@ -126,7 +126,7 @@ func (g *GraphStore) ExportGraphML(ctx context.Context, writer io.Writer) error 
 			continue
 		}
 		edgeSet[edge.ID] = true
-		
+
 		gmlEdge := GraphMLEdge{
 			ID:     edge.ID,
 			Source: edge.FromNodeID,
@@ -136,46 +136,46 @@ func (g *GraphStore) ExportGraphML(ctx context.Context, writer io.Writer) error 
 				{Key: "d5", Value: fmt.Sprintf("%f", edge.Weight)},
 			},
 		}
-		
+
 		// Encode properties as JSON
 		if edge.Properties != nil {
 			propsJSON, _ := json.Marshal(edge.Properties)
 			gmlEdge.Data = append(gmlEdge.Data, GraphMLData{Key: "d6", Value: string(propsJSON)})
 		}
-		
+
 		doc.Graph.Edges = append(doc.Graph.Edges, gmlEdge)
 	}
-	
+
 	// Write XML
 	encoder := xml.NewEncoder(writer)
 	encoder.Indent("", "  ")
-	
+
 	// Write XML header
 	_, _ = writer.Write([]byte(xml.Header))
-	
+
 	// Encode document
 	if err := encoder.Encode(doc); err != nil {
 		return fmt.Errorf("failed to encode GraphML: %w", err)
 	}
-	
+
 	return nil
 }
 
 // ImportGraphML imports a graph from GraphML format
 func (g *GraphStore) ImportGraphML(ctx context.Context, reader io.Reader) error {
 	decoder := xml.NewDecoder(reader)
-	
+
 	var doc GraphMLDocument
 	if err := decoder.Decode(&doc); err != nil {
 		return fmt.Errorf("failed to decode GraphML: %w", err)
 	}
-	
+
 	// Create key mapping
 	keyMap := make(map[string]string)
 	for _, key := range doc.Keys {
 		keyMap[key.ID] = key.AttrName
 	}
-	
+
 	// Import nodes
 	nodes := make([]*GraphNode, 0, len(doc.Graph.Nodes))
 	for _, gmlNode := range doc.Graph.Nodes {
@@ -183,7 +183,7 @@ func (g *GraphStore) ImportGraphML(ctx context.Context, reader io.Reader) error 
 			ID:         gmlNode.ID,
 			Properties: make(map[string]interface{}),
 		}
-		
+
 		// Parse data fields
 		for _, data := range gmlNode.Data {
 			attrName := keyMap[data.Key]
@@ -201,20 +201,24 @@ func (g *GraphStore) ImportGraphML(ctx context.Context, reader io.Reader) error 
 				_ = json.Unmarshal([]byte(data.Value), &node.Properties)
 			}
 		}
-		
+
 		// Ensure node has a vector
 		if len(node.Vector) == 0 {
 			node.Vector = make([]float32, 3) // Default vector
 		}
-		
+
 		nodes = append(nodes, node)
 	}
-	
+
 	// Batch import nodes
-	if _, err := g.UpsertNodesBatch(ctx, nodes); err != nil {
+	nodeResult, err := g.UpsertNodesBatch(ctx, nodes)
+	if err != nil {
 		return fmt.Errorf("failed to import nodes: %w", err)
 	}
-	
+	if err := nodeResult.Err(); err != nil {
+		return fmt.Errorf("failed to import nodes: %w", err)
+	}
+
 	// Import edges
 	edges := make([]*GraphEdge, 0, len(doc.Graph.Edges))
 	for _, gmlEdge := range doc.Graph.Edges {
@@ -225,7 +229,7 @@ func (g *GraphStore) ImportGraphML(ctx context.Context, reader io.Reader) error 
 			Weight:     1.0,
 			Properties: make(map[string]interface{}),
 		}
-		
+
 		// Parse data fields
 		for _, data := range gmlEdge.Data {
 			attrName := keyMap[data.Key]
@@ -240,15 +244,19 @@ func (g *GraphStore) ImportGraphML(ctx context.Context, reader io.Reader) error 
 				_ = json.Unmarshal([]byte(data.Value), &edge.Properties)
 			}
 		}
-		
+
 		edges = append(edges, edge)
 	}
-	
+
 	// Batch import edges
-	if _, err := g.UpsertEdgesBatch(ctx, edges); err != nil {
+	edgeResult, err := g.UpsertEdgesBatch(ctx, edges)
+	if err != nil {
 		return fmt.Errorf("failed to import edges: %w", err)
 	}
-	
+	if err := edgeResult.Err(); err != nil {
+		return fmt.Errorf("failed to import edges: %w", err)
+	}
+
 	return nil
 }
 
@@ -271,11 +279,11 @@ type GEXFMeta struct {
 
 // GEXFGraph represents a GEXF graph
 type GEXFGraph struct {
-	Mode       string       `xml:"mode,attr"`
-	DefaultEdgeType string  `xml:"defaultedgetype,attr"`
-	Attributes GEXFAttrs    `xml:"attributes"`
-	Nodes      GEXFNodes    `xml:"nodes"`
-	Edges      GEXFEdges    `xml:"edges"`
+	Mode            string    `xml:"mode,attr"`
+	DefaultEdgeType string    `xml:"defaultedgetype,attr"`
+	Attributes      GEXFAttrs `xml:"attributes"`
+	Nodes           GEXFNodes `xml:"nodes"`
+	Edges           GEXFEdges `xml:"edges"`
 }
 
 // GEXFAttrs represents GEXF attributes
@@ -298,8 +306,8 @@ type GEXFNodes struct {
 
 // GEXFNode represents a GEXF node
 type GEXFNode struct {
-	ID    string       `xml:"id,attr"`
-	Label string       `xml:"label,attr"`
+	ID        string         `xml:"id,attr"`
+	Label     string         `xml:"label,attr"`
 	AttValues []GEXFAttValue `xml:"attvalues>attvalue"`
 }
 
@@ -330,7 +338,7 @@ func (g *GraphStore) ExportGEXF(ctx context.Context, writer io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("failed to get nodes: %w", err)
 	}
-	
+
 	// Get all edges
 	allEdges := make([]*GraphEdge, 0)
 	for _, node := range nodes {
@@ -340,7 +348,7 @@ func (g *GraphStore) ExportGEXF(ctx context.Context, writer io.Writer) error {
 		}
 		allEdges = append(allEdges, edges...)
 	}
-	
+
 	// Create GEXF document
 	doc := GEXFDocument{
 		XMLNS:   "http://www.gexf.net/1.3",
@@ -369,7 +377,7 @@ func (g *GraphStore) ExportGEXF(ctx context.Context, writer io.Writer) error {
 			},
 		},
 	}
-	
+
 	// Add nodes
 	for _, node := range nodes {
 		gexfNode := GEXFNode{
@@ -380,22 +388,22 @@ func (g *GraphStore) ExportGEXF(ctx context.Context, writer io.Writer) error {
 				{For: "1", Value: node.NodeType},
 			},
 		}
-		
+
 		// Encode vector as JSON
 		if len(node.Vector) > 0 {
 			vectorJSON, _ := json.Marshal(node.Vector)
 			gexfNode.AttValues = append(gexfNode.AttValues, GEXFAttValue{For: "2", Value: string(vectorJSON)})
 		}
-		
+
 		// Encode properties as JSON
 		if node.Properties != nil {
 			propsJSON, _ := json.Marshal(node.Properties)
 			gexfNode.AttValues = append(gexfNode.AttValues, GEXFAttValue{For: "3", Value: string(propsJSON)})
 		}
-		
+
 		doc.Graph.Nodes.Nodes = append(doc.Graph.Nodes.Nodes, gexfNode)
 	}
-	
+
 	// Add edges
 	edgeSet := make(map[string]bool)
 	for _, edge := range allEdges {
@@ -403,7 +411,7 @@ func (g *GraphStore) ExportGEXF(ctx context.Context, writer io.Writer) error {
 			continue
 		}
 		edgeSet[edge.ID] = true
-		
+
 		gexfEdge := GEXFEdge{
 			ID:     edge.ID,
 			Source: edge.FromNodeID,
@@ -411,40 +419,40 @@ func (g *GraphStore) ExportGEXF(ctx context.Context, writer io.Writer) error {
 			Weight: edge.Weight,
 			Type:   edge.EdgeType,
 		}
-		
+
 		doc.Graph.Edges.Edges = append(doc.Graph.Edges.Edges, gexfEdge)
 	}
-	
+
 	// Write XML
 	encoder := xml.NewEncoder(writer)
 	encoder.Indent("", "  ")
-	
+
 	// Write XML header
 	_, _ = writer.Write([]byte(xml.Header))
-	
+
 	// Encode document
 	if err := encoder.Encode(doc); err != nil {
 		return fmt.Errorf("failed to encode GEXF: %w", err)
 	}
-	
+
 	return nil
 }
 
 // ImportGEXF imports a graph from GEXF format
 func (g *GraphStore) ImportGEXF(ctx context.Context, reader io.Reader) error {
 	decoder := xml.NewDecoder(reader)
-	
+
 	var doc GEXFDocument
 	if err := decoder.Decode(&doc); err != nil {
 		return fmt.Errorf("failed to decode GEXF: %w", err)
 	}
-	
+
 	// Create attribute mapping
 	attrMap := make(map[string]string)
 	for _, attr := range doc.Graph.Attributes.Attrs {
 		attrMap[attr.ID] = attr.Title
 	}
-	
+
 	// Import nodes
 	nodes := make([]*GraphNode, 0, len(doc.Graph.Nodes.Nodes))
 	for _, gexfNode := range doc.Graph.Nodes.Nodes {
@@ -453,7 +461,7 @@ func (g *GraphStore) ImportGEXF(ctx context.Context, reader io.Reader) error {
 			Content:    gexfNode.Label,
 			Properties: make(map[string]interface{}),
 		}
-		
+
 		// Parse attribute values
 		for _, attValue := range gexfNode.AttValues {
 			attrName := attrMap[attValue.For]
@@ -470,20 +478,24 @@ func (g *GraphStore) ImportGEXF(ctx context.Context, reader io.Reader) error {
 				_ = json.Unmarshal([]byte(attValue.Value), &node.Properties)
 			}
 		}
-		
+
 		// Ensure node has a vector
 		if len(node.Vector) == 0 {
 			node.Vector = make([]float32, 3)
 		}
-		
+
 		nodes = append(nodes, node)
 	}
-	
+
 	// Batch import nodes
-	if _, err := g.UpsertNodesBatch(ctx, nodes); err != nil {
+	nodeResult, err := g.UpsertNodesBatch(ctx, nodes)
+	if err != nil {
 		return fmt.Errorf("failed to import nodes: %w", err)
 	}
-	
+	if err := nodeResult.Err(); err != nil {
+		return fmt.Errorf("failed to import nodes: %w", err)
+	}
+
 	// Import edges
 	edges := make([]*GraphEdge, 0, len(doc.Graph.Edges.Edges))
 	for _, gexfEdge := range doc.Graph.Edges.Edges {
@@ -495,19 +507,23 @@ func (g *GraphStore) ImportGEXF(ctx context.Context, reader io.Reader) error {
 			Weight:     gexfEdge.Weight,
 			Properties: make(map[string]interface{}),
 		}
-		
+
 		if edge.Weight == 0 {
 			edge.Weight = 1.0
 		}
-		
+
 		edges = append(edges, edge)
 	}
-	
+
 	// Batch import edges
-	if _, err := g.UpsertEdgesBatch(ctx, edges); err != nil {
+	edgeResult, err := g.UpsertEdgesBatch(ctx, edges)
+	if err != nil {
 		return fmt.Errorf("failed to import edges: %w", err)
 	}
-	
+	if err := edgeResult.Err(); err != nil {
+		return fmt.Errorf("failed to import edges: %w", err)
+	}
+
 	return nil
 }
 
@@ -518,11 +534,11 @@ func (g *GraphStore) ExportJSON(ctx context.Context, writer io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("failed to get nodes: %w", err)
 	}
-	
+
 	// Get all edges
 	allEdges := make([]*GraphEdge, 0)
 	edgeSet := make(map[string]bool)
-	
+
 	for _, node := range nodes {
 		edges, err := g.GetEdges(ctx, node.ID, "out")
 		if err != nil {
@@ -535,7 +551,7 @@ func (g *GraphStore) ExportJSON(ctx context.Context, writer io.Writer) error {
 			}
 		}
 	}
-	
+
 	// Create JSON structure
 	graphData := map[string]interface{}{
 		"nodes": nodes,
@@ -546,15 +562,15 @@ func (g *GraphStore) ExportJSON(ctx context.Context, writer io.Writer) error {
 			"format":     "cortexdb-graph-v1",
 		},
 	}
-	
+
 	// Encode to JSON
 	encoder := json.NewEncoder(writer)
 	encoder.SetIndent("", "  ")
-	
+
 	if err := encoder.Encode(graphData); err != nil {
 		return fmt.Errorf("failed to encode JSON: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -564,26 +580,34 @@ func (g *GraphStore) ImportJSON(ctx context.Context, reader io.Reader) error {
 		Nodes []*GraphNode `json:"nodes"`
 		Edges []*GraphEdge `json:"edges"`
 	}
-	
+
 	decoder := json.NewDecoder(reader)
 	if err := decoder.Decode(&graphData); err != nil {
 		return fmt.Errorf("failed to decode JSON: %w", err)
 	}
-	
+
 	// Batch import nodes
 	if len(graphData.Nodes) > 0 {
-		if _, err := g.UpsertNodesBatch(ctx, graphData.Nodes); err != nil {
+		nodeResult, err := g.UpsertNodesBatch(ctx, graphData.Nodes)
+		if err != nil {
+			return fmt.Errorf("failed to import nodes: %w", err)
+		}
+		if err := nodeResult.Err(); err != nil {
 			return fmt.Errorf("failed to import nodes: %w", err)
 		}
 	}
-	
+
 	// Batch import edges
 	if len(graphData.Edges) > 0 {
-		if _, err := g.UpsertEdgesBatch(ctx, graphData.Edges); err != nil {
+		edgeResult, err := g.UpsertEdgesBatch(ctx, graphData.Edges)
+		if err != nil {
+			return fmt.Errorf("failed to import edges: %w", err)
+		}
+		if err := edgeResult.Err(); err != nil {
 			return fmt.Errorf("failed to import edges: %w", err)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -632,10 +656,10 @@ func DetectFormat(reader io.Reader) (ExportFormat, error) {
 	if err != nil && err != io.EOF {
 		return "", fmt.Errorf("failed to read: %w", err)
 	}
-	
+
 	content := string(buf[:n])
 	content = strings.TrimSpace(content)
-	
+
 	// Check for XML formats
 	if strings.HasPrefix(content, "<?xml") || strings.HasPrefix(content, "<graphml") {
 		if strings.Contains(content, "graphml") {
@@ -645,11 +669,11 @@ func DetectFormat(reader io.Reader) (ExportFormat, error) {
 			return FormatGEXF, nil
 		}
 	}
-	
+
 	// Check for JSON
 	if strings.HasPrefix(content, "{") {
 		return FormatJSON, nil
 	}
-	
+
 	return "", fmt.Errorf("unable to detect format")
 }

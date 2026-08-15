@@ -2,6 +2,50 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.69.0] - 2026-08-15
+
+### Added
+
+- **Entity provenance, and deletion shaped like ingest.** `upsert_entities` now records the union of
+  every `document_id` that asserted an entity in the node's `source_document_ids`, and creates stub
+  chunk nodes for mention edges whose chunks were embedded outside the graph — previously those edges
+  died on the foreign key, for a long time silently, so a store could hold hundreds of entities with
+  no record of what mentioned them and no way to ask "where did this come from". On that provenance
+  sits **`delete_document_graph`** (also `GraphRAGToolbox.DeleteDocumentGraph`): it removes a
+  document's chunk and document nodes, its relation edges, and the entities it alone asserted;
+  entities other documents also assert are detached, not deleted. `dry_run` reports without removing.
+  Stores audited after a few rebuild cycles carried ~20% orphaned entity nodes; this is the missing
+  half of the ingest lifecycle that produced them.
+- **`enforcement: "vocabulary"` on ontology schemas.** The strict default forced extraction
+  pipelines to choose: activate the schema and lose every extracted entity to primary-key validation
+  (LLM extraction from prose has no storage identity to offer), or leave it inactive and lose
+  canonical type spellings and interface retrieval with it. A vocabulary schema canonicalizes
+  without gating: declared types with a supplied primary key still get typed node IDs, keyless and
+  undeclared ones fall back to name-derived IDs, undeclared link types pass through.
+  `strict_actions` and vocabulary enforcement are rejected as contradictory at save time.
+
+### Fixed
+
+- **Batch write failures are no longer silent.** The graph batch writers report per-row rejections
+  in their result rather than their error return, and every ingest-path caller discarded the result:
+  an ingest whose every row was rejected still answered "ok". Callers now fold the result back into
+  an error (`BatchResult.Err`), and the batch writers create the graph schema themselves instead of
+  failing every row with "no such table" when a caller reached them before initialization.
+
+### Notes
+
+- The v1 `graph_ontology_schemas` table is legacy: v2 stores schemas in `ontology_schemas_v2` and
+  neither reads, writes nor drops the old table. An empty `graph_ontology_schemas` in an upgraded
+  store is expected and ignorable.
+
+## [2.68.0] - 2026-08-15
+
+### Fixed
+
+- **A user's query is no longer read as FTS5 syntax.** Hyphenated and punctuated terms
+  (`on-drbd-demote-failure`, `al-extents`) made FTS5 raise a syntax error instead of matching;
+  queries are now sanitized into plain terms before they reach the index.
+
 ## [2.67.0] - 2026-08-10
 
 ### Added

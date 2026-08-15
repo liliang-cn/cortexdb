@@ -84,13 +84,18 @@ _, err := db.SaveOntologySchema(ctx, cortexdb.OntologySaveRequest{
 })
 ```
 
-One schema at a time is **active**, and the active schema validates every write: unknown object types, unknown properties, missing required values and values that do not parse are rejected. Nodes written under it are identified as `entity:<objectType>:<primaryKey>`; with no active schema the older name-derived IDs still apply.
+One schema at a time is **active**. What activation does depends on the schema's `enforcement`:
+
+- `"strict"` (the default) validates every write: unknown object types, unknown properties, missing required values and values that do not parse are rejected. Nodes written under it are identified as `entity:<objectType>:<primaryKey>`; with no active schema the older name-derived IDs still apply.
+- `"vocabulary"` keeps the schema as a shared vocabulary without gating writes: declared type spellings are canonicalized and interfaces expand for retrieval, but an entity that cannot state its primary key — the normal case for LLM extraction from prose — falls back to the name-derived ID instead of being refused, and undeclared types and link types pass through. Use this for extraction pipelines; strict enforcement would force them to choose between activating the schema and keeping their entities.
+
+`strict_actions` and `enforcement: "vocabulary"` are mutually exclusive — one closes the generic write path, the other promises never to.
 
 **Object types** carry `api_name`, `display_name`, `plural_display_name`, `description`, `status`, `visibility`, `primary_key` (required), `title_property`, `implements` and typed `properties`. Data types: string, integer, long, double, decimal, boolean, date, timestamp, geopoint, geoshape, vector, array, struct, marking. A property may be marked `searchable` (routed into FTS5) or `vectorized`. `shared_properties` lets one definition be declared once and reused by name across object types and interfaces.
 
 **Link types** are bidirectional, with two sides that each carry their own `api_name` and a `cardinality` of `ONE` or `MANY`. A one-to-many link is one `ONE` side and one `MANY` side; only the `ONE` side may name a `foreign_key_property`.
 
-**Interfaces** give polymorphism: an object set or `find_nodes` query against `Facility` returns every implementing object type. Interfaces may extend other interfaces, an object type may implement several, and inheritance cycles are rejected at save time.
+**Interfaces** give polymorphism: an object set or `find_nodes` query against `Facility` returns every implementing object type. Interfaces may extend other interfaces, an object type may implement several, and inheritance cycles are rejected at save time. An interface may not share a name with an object type — names resolve case-insensitively in one namespace, so `Gateway` the interface and `Gateway` the object type would be one ambiguous lookup; `SaveOntologySchema` rejects the collision at save time.
 
 **Object sets** compose retrieval — vector search, full-text search and graph traversal as peers in one expression rather than three APIs:
 

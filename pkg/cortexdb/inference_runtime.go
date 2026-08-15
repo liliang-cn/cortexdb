@@ -136,7 +136,13 @@ func (db *DB) applyInferenceRules(ctx context.Context, req ApplyInferenceRequest
 		edges = append(edges, inferredEdges[edgeID])
 		resp.CreatedEdgeIDs = append(resp.CreatedEdgeIDs, edgeID)
 	}
-	if _, err := db.graph.UpsertEdgesBatch(ctx, edges); err != nil {
+	edgeResult, err := db.graph.UpsertEdgesBatch(ctx, edges)
+	if err != nil {
+		return nil, fmt.Errorf("upsert inferred edges: %w", err)
+	}
+	// Rejected rows live in the result, not in err. CreatedEdgeIDs would otherwise
+	// list edges that were never written.
+	if err := edgeResult.Err(); err != nil {
 		return nil, fmt.Errorf("upsert inferred edges: %w", err)
 	}
 	return resp, nil
