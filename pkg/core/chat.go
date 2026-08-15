@@ -232,6 +232,14 @@ func (s *SQLiteStore) KeywordSearchMessages(ctx context.Context, query, userID, 
 		limit = 10
 	}
 
+	// The query is words to find, not an FTS5 expression — see MatchExpression.
+	// Without this, searching your own history for anything hyphenated is a
+	// syntax error rather than a search.
+	match := MatchExpression(query)
+	if match == "" {
+		return nil, nil
+	}
+
 	// FTS5 bm25() returns negative values; ORDER BY rank ASC gives best matches first.
 	index := CJKAwareIndex("messages_fts", query)
 	q := `
@@ -245,7 +253,7 @@ func (s *SQLiteStore) KeywordSearchMessages(ctx context.Context, query, userID, 
 		ORDER BY bm25(` + index + `)
 		LIMIT ?
 	`
-	rows, err := s.db.QueryContext(ctx, q, query, userID, excludeSessionID, excludeSessionID, limit)
+	rows, err := s.db.QueryContext(ctx, q, match, userID, excludeSessionID, excludeSessionID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("keyword search messages: %w", err)
 	}

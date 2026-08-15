@@ -103,6 +103,11 @@ func (s *SQLiteStore) HybridSearch(ctx context.Context, vectorQuery []float32, t
 			`
 			ftsArgs = append(ftsArgs, SubstringPattern(textQuery))
 		} else {
+			// The query is words to find, not an FTS5 expression to obey — see
+			// MatchExpression. Raw text made every hyphenated identifier a
+			// syntax error, which a hybrid search then swallowed as
+			// "vector-only".
+			match := MatchExpression(textQuery)
 			// CJK text needs the trigram companion index; see CJKAwareIndex.
 			index := CJKAwareIndex("chunks_fts", textQuery)
 			ftsQuery = `
@@ -113,7 +118,13 @@ func (s *SQLiteStore) HybridSearch(ctx context.Context, vectorQuery []float32, t
 				ORDER BY rank
 				LIMIT ?
 			`
-			ftsArgs = append(ftsArgs, textQuery)
+			ftsArgs = append(ftsArgs, match)
+			if match == "" {
+				// Nothing indexable to search for, so there is no keyword arm
+				// to run. Skipping is right rather than passing "" to MATCH,
+				// which is a syntax error of its own; the vector arm answers.
+				ftsQuery = ""
+			}
 		}
 		ftsArgs = append(ftsArgs, collectionArgs...)
 		// Fetch more than topK to have a better pool for fusion
@@ -123,8 +134,14 @@ func (s *SQLiteStore) HybridSearch(ctx context.Context, vectorQuery []float32, t
 		}
 		ftsArgs = append(ftsArgs, limit)
 
-		rows, err := s.db.QueryContext(ctx, ftsQuery, ftsArgs...)
+		var rows *sql.Rows
+		var err error
+		if ftsQuery != "" {
+			rows, err = s.db.QueryContext(ctx, ftsQuery, ftsArgs...)
+		}
 		switch {
+		case ftsQuery == "":
+			// No keyword arm this time; see MatchExpression.
 		case err != nil && len(vectorQuery) == 0:
 			// The keyword arm is the ONLY arm here, so swallowing this returns "nothing matched" for a
 			// query that never ran. That reads as an empty corpus and is unfalsifiable from outside.
