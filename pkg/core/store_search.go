@@ -130,12 +130,21 @@ func (s *SQLiteStore) searchWithHNSW(ctx context.Context, query []float32, opts 
 		opts.TopK = 10
 	}
 
-	// Search HNSW index for nearest neighbors
-	candidateIDs, _ := s.hnswIndex.Search(
-		query,
-		opts.TopK*2, // Get more candidates to account for filtering
-		s.config.HNSW.EfSearch,
-	)
+	// Search HNSW index for nearest neighbors.
+	//
+	// ef bounds the candidate list the graph walk keeps, so it must be at least
+	// k or the search cannot return k neighbours — it returns ef of them and
+	// says nothing. With the configured default of 50 that capped every vector
+	// search at ~50 results however large a TopK the caller asked for: a
+	// request for 2000 came back with 50, so anything ranked past that was
+	// unreachable by any caller, including the retrieval gate that widens its
+	// recall precisely to reach it.
+	k := opts.TopK * 2 // more candidates than needed, to survive filtering
+	ef := s.config.HNSW.EfSearch
+	if ef < k {
+		ef = k
+	}
+	candidateIDs, _ := s.hnswIndex.Search(query, k, ef)
 
 	if len(candidateIDs) == 0 {
 		// If no candidates found from HNSW, fallback to linear search

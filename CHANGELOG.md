@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.71.0] - 2026-08-15
+
+### Fixed
+
+- **HNSW search was capped at ~50 results regardless of TopK.** `ef` is the size of the candidate
+  list a graph walk keeps, so it must be at least `k` — the search was calling the index with
+  `k = TopK*2` and the configured `EfSearch` (default 50), which returns `ef` neighbours and says
+  nothing about the rest. Every vector search therefore truncated at ~50: a request for 2000 came
+  back with 50, and any row ranked past that was unreachable through any API — deep retrieval,
+  pagination-style over-fetch, and the `Authorize` widening added in 2.70.0 all silently hit the
+  same invisible ceiling. `ef` is now raised to `k` when the configuration sets it lower.
+
 ## [2.70.1] - 2026-08-15
 
 ### Fixed
