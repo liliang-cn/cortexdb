@@ -236,14 +236,20 @@ func (db *DB) HybridSearchTextWithOptions(ctx context.Context, query string, opt
 	}
 
 	// 1) Authorization gate.
+	//
+	// Widened until TopK candidates pass or the corpus runs out, because a
+	// single fixed over-fetch only holds while the predicate is generous. A
+	// selective one — a user who may read a small share of the corpus, or a
+	// caller separating one source from another — sees every one of its rows
+	// ranked below the first fetchK and gets back a near-empty result that
+	// looks like "nothing matched". Observed on a store where one imported code
+	// graph outnumbered the prose ten to one: the prose scored the same as the
+	// code and sat past rank 50, so a fetch of 50 returned none of it.
 	if opts.Authorize != nil {
-		kept := candidates[:0]
-		for _, c := range candidates {
-			if opts.Authorize(c) {
-				kept = append(kept, c)
-			}
+		candidates, err = db.recallAuthorized(ctx, query, candidates, fetchK, wantK, opts.Authorize)
+		if err != nil {
+			return nil, err
 		}
-		candidates = kept
 	}
 
 	// 2) Rerank (cross-encoder / LLM second stage).
@@ -332,6 +338,63 @@ func overfetchK(wantK int) int {
 		k = 50
 	}
 	return k
+}
+
+// maxAuthorizedFetch bounds how far recallAuthorized will widen its recall. A
+// predicate selective enough to survive this is one the caller should express
+// as a filter on the query, not as a post-recall gate.
+const maxAuthorizedFetch = 4096
+
+// recallAuthorized applies the authorization predicate, re-fetching with a wider
+// recall until TopK candidates pass or the corpus is exhausted.
+//
+// The widening is what makes the documented contract true: callers are promised
+// up to TopK *authorized* results, and a fixed over-fetch silently breaks that
+// promise exactly when the predicate matters most. Each round doubles, so a
+// generous predicate costs one pass (the common case) and a selective one costs
+// a handful.
+func (db *DB) recallAuthorized(
+	ctx context.Context,
+	query string,
+	candidates []core.ScoredEmbedding,
+	fetchK, wantK int,
+	authorize func(core.ScoredEmbedding) bool,
+) ([]core.ScoredEmbedding, error) {
+	filter := func(in []core.ScoredEmbedding) []core.ScoredEmbedding {
+		kept := make([]core.ScoredEmbedding, 0, len(in))
+		for _, c := range in {
+			if authorize(c) {
+				kept = append(kept, c)
+			}
+		}
+		return kept
+	}
+
+	fetched := len(candidates)
+	kept := filter(candidates)
+	for len(kept) < wantK && fetchK < maxAuthorizedFetch {
+		// A recall that came back short of what was asked for has reached the
+		// end of the corpus; widening again would return the same rows.
+		if fetched < fetchK {
+			break
+		}
+		fetchK *= 2
+		if fetchK > maxAuthorizedFetch {
+			fetchK = maxAuthorizedFetch
+		}
+		wider, err := db.HybridSearchText(ctx, query, fetchK)
+		if err != nil {
+			return nil, err
+		}
+		if len(wider) <= fetched {
+			// No new rows: the corpus, not the fetch size, is the limit.
+			kept = filter(wider)
+			break
+		}
+		fetched = len(wider)
+		kept = filter(wider)
+	}
+	return kept, nil
 }
 
 func (db *DB) searchTextOnlyExpanded(ctx context.Context, query string, opts TextSearchOptions) ([]core.ScoredEmbedding, error) {

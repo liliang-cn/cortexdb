@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.70.0] - 2026-08-15
+
+### Fixed
+
+- **`Authorize` now delivers the TopK it documents.** The retrieval gate promised that "the search
+  over-fetches internally so the caller still receives up to TopK authorized results", but the
+  over-fetch was a single fixed round of `max(TopK*5, 50)`: a predicate selective enough to matter
+  saw every one of its rows ranked below that cut and the caller got a near-empty result that reads
+  as "nothing matched". This is worst for the feature's main use case — an RBAC subject who may read
+  a small share of the corpus could search and find almost nothing, with no error to say why. The
+  gate now widens its recall (doubling, bounded at 4096) until TopK candidates pass or the corpus is
+  exhausted; a generous predicate still costs exactly one pass. Found in a store where one imported
+  code graph outnumbered the prose ten to one and scored identically, so no prose row reached rank 50.
+
 ## [2.69.0] - 2026-08-15
 
 ### Added

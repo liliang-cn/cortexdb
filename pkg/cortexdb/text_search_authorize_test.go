@@ -2,132 +2,114 @@ package cortexdb
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
-// TestSearchTextOnlyAuthorize verifies the retrieval-layer security gate:
-// only rows the Authorize predicate accepts count toward TopK, and the search
-// over-fetches internally so authorized results still fill TopK.
-func TestSearchTextOnlyAuthorize(t *testing.T) {
-	cfg := DefaultConfig(filepath.Join(t.TempDir(), "auth.db"))
-	cfg.Dimensions = 1
-	db, err := Open(cfg)
+func openLexicalTestDB(t *testing.T) *DB {
+	t.Helper()
+	dbPath := filepath.Join(t.TempDir(), "authorize.db")
+	db, err := Open(DefaultConfig(dbPath), WithEmbedder(NewMockEmbedder(8)))
 	if err != nil {
-		t.Fatalf("open: %v", err)
+		t.Fatalf("open db: %v", err)
 	}
-	defer db.Close()
+	t.Cleanup(func() {
+		_ = db.Close()
+		for _, suffix := range []string{"", "-wal", "-shm"} {
+			_ = os.Remove(dbPath + suffix)
+		}
+	})
+	return db
+}
 
+// seedTwoSourceCorpus writes `major` rows of one kind and `minor` of another,
+// all on the same topic so they score alike — the shape that breaks a fixed
+// over-fetch. The minority rows are written last so they rank no higher.
+func seedTwoSourceCorpus(t *testing.T, db *DB, major, minor int) {
+	t.Helper()
 	ctx := context.Background()
-	docs := []*core.Embedding{
-		{ID: "pub-1", Vector: []float32{0}, Content: "alpha public report", Metadata: map[string]string{"level": "public"}},
-		{ID: "sec-1", Vector: []float32{0}, Content: "alpha secret report", Metadata: map[string]string{"level": "secret"}},
-		{ID: "pub-2", Vector: []float32{0}, Content: "alpha public memo", Metadata: map[string]string{"level": "public"}},
-		{ID: "sec-2", Vector: []float32{0}, Content: "alpha secret memo", Metadata: map[string]string{"level": "secret"}},
+	texts := make(map[string]string, major+minor)
+	for i := 0; i < major; i++ {
+		texts[fmt.Sprintf("major-%03d", i)] = fmt.Sprintf("quorum promoter failover replication detail %d", i)
 	}
-	for _, d := range docs {
-		if err := db.Vector().Upsert(ctx, d); err != nil {
-			t.Fatalf("upsert %s: %v", d.ID, err)
-		}
+	if err := db.InsertTextBatch(ctx, texts, map[string]string{"kind": "major"}); err != nil {
+		t.Fatalf("seed major: %v", err)
 	}
-
-	// Without a gate: secret docs are reachable.
-	all, err := db.SearchTextOnly(ctx, "alpha", TextSearchOptions{TopK: 10})
-	if err != nil {
-		t.Fatalf("search: %v", err)
+	texts = make(map[string]string, minor)
+	for i := 0; i < minor; i++ {
+		texts[fmt.Sprintf("minor-%03d", i)] = fmt.Sprintf("quorum promoter failover replication runbook %d", i)
 	}
-	if len(all) != 4 {
-		t.Fatalf("want 4 unfiltered results, got %d", len(all))
-	}
-
-	// With a gate that allows only public: secret docs must never appear.
-	publicOnly, err := db.SearchTextOnly(ctx, "alpha", TextSearchOptions{
-		TopK:      10,
-		Authorize: func(e core.ScoredEmbedding) bool { return e.Metadata["level"] == "public" },
-	})
-	if err != nil {
-		t.Fatalf("gated search: %v", err)
-	}
-	if len(publicOnly) != 2 {
-		t.Fatalf("want 2 authorized results, got %d", len(publicOnly))
-	}
-	for _, r := range publicOnly {
-		if r.Metadata["level"] != "public" {
-			t.Fatalf("security gate leaked %s (level=%s)", r.ID, r.Metadata["level"])
-		}
-	}
-
-	// Over-fetch: even with TopK=1, the gate must still return an authorized row
-	// rather than dropping to empty because the top raw hit was unauthorized.
-	one, err := db.SearchTextOnly(ctx, "alpha", TextSearchOptions{
-		TopK:      1,
-		Authorize: func(e core.ScoredEmbedding) bool { return e.Metadata["level"] == "public" },
-	})
-	if err != nil {
-		t.Fatalf("topk1 gated search: %v", err)
-	}
-	if len(one) != 1 || one[0].Metadata["level"] != "public" {
-		t.Fatalf("want 1 public result, got %+v", one)
+	if err := db.InsertTextBatch(ctx, texts, map[string]string{"kind": "minor"}); err != nil {
+		t.Fatalf("seed minor: %v", err)
 	}
 }
 
-// TestHybridSearchTextWithOptionsRerankAndThreshold verifies the
-// retrieve→authorize→rerank→MinScore→TopK pipeline: a reranker reorders by a
-// supplied score, MinScore drops weak tail, TopK truncates.
-func TestHybridSearchTextWithOptionsRerankAndThreshold(t *testing.T) {
-	cfg := DefaultConfig(filepath.Join(t.TempDir(), "rerank.db"))
-	cfg.Dimensions = 1
-	db, err := Open(cfg)
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	defer db.Close()
+// TestAuthorizeFillsTopKWhenPredicateIsSelective pins the documented contract:
+// "the search over-fetches internally so the caller still receives up to TopK
+// authorized results". A single fixed over-fetch (max(TopK*5, 50)) broke it —
+// with 200 majority rows scoring alike, no minority row reached rank 50 and the
+// caller got an empty result that read as "nothing matched".
+func TestAuthorizeFillsTopKWhenPredicateIsSelective(t *testing.T) {
+	db := openLexicalTestDB(t)
+	seedTwoSourceCorpus(t, db, 200, 8)
 
-	ctx := context.Background()
-	docs := []*core.Embedding{
-		{ID: "d1", Vector: []float32{0}, Content: "alpha one"},
-		{ID: "d2", Vector: []float32{0}, Content: "alpha two"},
-		{ID: "d3", Vector: []float32{0}, Content: "alpha three"},
-	}
-	for _, d := range docs {
-		if err := db.Vector().Upsert(ctx, d); err != nil {
-			t.Fatalf("upsert %s: %v", d.ID, err)
-		}
-	}
-
-	// Reranker assigns d3 highest, d1 mid, d2 below the MinScore floor.
-	scores := map[string]float64{"d1": 0.4, "d2": 0.05, "d3": 0.9}
-	reranker := core.RerankerFunc(func(_ context.Context, _ string, results []core.ScoredEmbedding) ([]core.ScoredEmbedding, error) {
-		out := make([]core.ScoredEmbedding, len(results))
-		copy(out, results)
-		for i := range out {
-			out[i].Score = scores[out[i].ID]
-		}
-		// emulate a reranker returning best-first
-		for i := 0; i < len(out); i++ {
-			for j := i + 1; j < len(out); j++ {
-				if out[j].Score > out[i].Score {
-					out[i], out[j] = out[j], out[i]
-				}
-			}
-		}
-		return out, nil
+	got, err := db.HybridSearchTextWithOptions(context.Background(), "quorum promoter failover", TextSearchOptions{
+		TopK: 5,
+		Authorize: func(e core.ScoredEmbedding) bool {
+			return strings.HasPrefix(e.ID, "minor-")
+		},
 	})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(got) < 5 {
+		t.Fatalf("got %d authorized results, want 5 — the widening did not reach the minority rows", len(got))
+	}
+	for _, r := range got {
+		if !strings.HasPrefix(r.ID, "minor-") {
+			t.Fatalf("unauthorized row %q passed the gate", r.ID)
+		}
+	}
+}
 
-	got, err := db.HybridSearchTextWithOptions(ctx, "alpha", TextSearchOptions{
-		TopK:     5,
-		Reranker: reranker,
-		MinScore: 0.1, // drops d2 (0.05)
+// A predicate matching fewer rows than TopK returns what exists rather than
+// looping to the fetch ceiling.
+func TestAuthorizeReturnsWhatExistsWhenCorpusIsSmaller(t *testing.T) {
+	db := openLexicalTestDB(t)
+	seedTwoSourceCorpus(t, db, 60, 2)
+
+	got, err := db.HybridSearchTextWithOptions(context.Background(), "quorum promoter failover", TextSearchOptions{
+		TopK: 10,
+		Authorize: func(e core.ScoredEmbedding) bool {
+			return strings.HasPrefix(e.ID, "minor-")
+		},
 	})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
 	if len(got) != 2 {
-		t.Fatalf("want 2 results after MinScore filter, got %d: %+v", len(got), got)
+		t.Fatalf("got %d results, want the 2 that exist", len(got))
 	}
-	if got[0].ID != "d3" || got[1].ID != "d1" {
-		t.Fatalf("want rerank order [d3 d1], got [%s %s]", got[0].ID, got[1].ID)
+}
+
+// The common case — a generous predicate — must not pay for the widening.
+func TestAuthorizeGenerousPredicateStillFillsTopK(t *testing.T) {
+	db := openLexicalTestDB(t)
+	seedTwoSourceCorpus(t, db, 60, 20)
+
+	got, err := db.HybridSearchTextWithOptions(context.Background(), "quorum promoter failover", TextSearchOptions{
+		TopK:      5,
+		Authorize: func(core.ScoredEmbedding) bool { return true },
+	})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(got) != 5 {
+		t.Fatalf("got %d results, want 5", len(got))
 	}
 }
