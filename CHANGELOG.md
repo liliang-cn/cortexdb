@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.70.1] - 2026-08-15
+
+### Fixed
+
+- **`Authorize` widening stopped one round too early.** A recall that returned fewer rows than it
+  asked for was read as "the corpus is spent", but hybrid recall fuses vector and BM25 results and
+  dedupes, so it is routinely short while a wider fetch would still reach more. Only a round that
+  adds no new rows ends the search now. Without this the widening still missed the authorized rows
+  in the case it was written for.
+
 ## [2.70.0] - 2026-08-15
 
 ### Fixed

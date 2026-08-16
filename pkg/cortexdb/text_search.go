@@ -373,11 +373,10 @@ func (db *DB) recallAuthorized(
 	fetched := len(candidates)
 	kept := filter(candidates)
 	for len(kept) < wantK && fetchK < maxAuthorizedFetch {
-		// A recall that came back short of what was asked for has reached the
-		// end of the corpus; widening again would return the same rows.
-		if fetched < fetchK {
-			break
-		}
+		// Deliberately not stopping because a round returned fewer rows than it
+		// asked for: hybrid recall fuses two result sets and dedupes, so it is
+		// routinely short of fetchK while a wider fetch would still reach more.
+		// Only a round that adds nothing new (below) means the corpus is spent.
 		fetchK *= 2
 		if fetchK > maxAuthorizedFetch {
 			fetchK = maxAuthorizedFetch

@@ -97,6 +97,30 @@ func TestAuthorizeReturnsWhatExistsWhenCorpusIsSmaller(t *testing.T) {
 	}
 }
 
+// A round that comes back short of what it asked for does not mean the corpus
+// is spent: hybrid recall fuses vector and BM25 results and dedupes, so it is
+// routinely short. Stopping on that signal left the authorized rows unreached —
+// the exact shape that kept an operator's runbooks out of a code-heavy store.
+func TestAuthorizeWidensPastAShortRound(t *testing.T) {
+	db := openLexicalTestDB(t)
+	// Enough majority rows that the minority sits well past the first fetch,
+	// with the minority written last so it ranks no higher.
+	seedTwoSourceCorpus(t, db, 400, 6)
+
+	got, err := db.HybridSearchTextWithOptions(context.Background(), "quorum promoter failover", TextSearchOptions{
+		TopK: 4,
+		Authorize: func(e core.ScoredEmbedding) bool {
+			return strings.HasPrefix(e.ID, "minor-")
+		},
+	})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(got) < 4 {
+		t.Fatalf("got %d authorized results, want 4 — widening stopped on a short round", len(got))
+	}
+}
+
 // The common case — a generous predicate — must not pay for the widening.
 func TestAuthorizeGenerousPredicateStillFillsTopK(t *testing.T) {
 	db := openLexicalTestDB(t)
