@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.72.0] - 2026-08-19
+
+### Changed
+
+- **README overhaul (EN + CN) to match the code.** Documented the `KnowledgeMemory` brain facade
+  (`Recall`/`Remember`/`Reflect`/`Consolidate`/`BuildContextPack`/`PromoteToKnowledge` and graph
+  exploration), composable retrieval via `db.Query`/`cortex_query` (prefetch lanes, RRF/DBSF fusion,
+  the `Authorize` retrieval gate and pluggable reranking), deterministic `extract_conversation`,
+  property-graph inference (`apply_inference`) next to the RDFS `knowledge_graph_infer_*` surface,
+  entity provenance + `delete_document_graph`, and the supporting packages (`eval`, `rpcserver`,
+  `agentmem`/`hindsight`, `semantic-router`, `quantization`, `geo`). The Chinese README also picks up
+  the ontology `enforcement: "vocabulary"` mode and the interface/object-type name-collision rule it
+  was missing.
+- **Version manifests re-synced with releases.** `version.go` and the plugin manifests sat at 2.67.0
+  while 2.68–2.71 shipped, so plugin installs kept downloading the 2.67.0 MCP binary — this release
+  moves the pinned binary forward past the 2.68–2.71 retrieval fixes (FTS5 query sanitization, the
+  `Authorize` widening, the HNSW `ef >= k` fix).
+
 ## [2.71.0] - 2026-08-15
 
 ### Fixed
