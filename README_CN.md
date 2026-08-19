@@ -42,7 +42,8 @@ resp, _ := db.SearchKnowledge(ctx, cortexdb.KnowledgeSearchRequest{
 ## 分层 —— 选对层
 
 ```text
-pkg/cortexdb   主 facade：向量、text/RAG 检索、knowledge、memory、KG、tools、MCP。  ← 从这里开始
+pkg/cortexdb   主 facade：向量、text/RAG 检索、knowledge、memory、KG、ontology、tools、MCP。  ← 从这里开始
+               KnowledgeMemory 架在它之上：Recall / Remember / Reflect / Consolidate / context pack。
 pkg/memoryflow Agent memory workflow：transcript ingest、recall、wake-up layers、promotion。
 pkg/graphflow  语料 → 抽取 → build → analyze → report → export（HTML）。
 pkg/importflow 导入 CSV / SQL dump / 线上 Postgres-MySQL 到 RAG + KG（DDL → 图谱）。
@@ -50,6 +51,35 @@ pkg/connector  importflow 之上的隐私闸门：PII 脱敏、人工签字方�
 pkg/graph      底层 RDF/SPARQL/RDFS/SHACL + property graph。
 pkg/core       SQLite 存储、embeddings、FTS5、向量索引（HNSW/IVF/Flat）。
 ```
+
+配套包：`pkg/eval`（检索质量评测 harness）、`pkg/rpcserver`（`cmd/cortexdb-grpc` 背后的 gRPC facade）、`pkg/agentmem` + `pkg/hindsight`（独立的 SQL agent memory bank，带 disposition 加权反思）、`pkg/semantic-router`（基于 embedding 的查询路由）、`pkg/quantization`（标量/二值向量压缩）、`pkg/geo`（地理空间索引）。
+
+## KnowledgeMemory —— 大脑 facade
+
+`db.KnowledgeMemory()` 是最高层 API：一次调用融合 episodic memory、durable knowledge 和知识图谱，返回一个可直接粘贴、带来源归属的 context pack。
+
+```go
+brain := db.KnowledgeMemory()
+_, _ = brain.Remember(ctx, cortexdb.KnowledgeMemoryRememberRequest{
+    Content: "Alice prefers tabs over spaces.", Scope: "user"})
+rec, _ := brain.Recall(ctx, cortexdb.KnowledgeMemoryRecallRequest{
+    Query: "what does Alice prefer?", EntityNames: []string{"Alice"}})
+fmt.Println(rec.ContextPack.Text) // sections + memory/knowledge/chunk ID + entities
+```
+
+- **`Recall` / `BuildContextPack`** —— 跨 memory、knowledge 与 GraphRAG chunk 的融合检索。关系型问题的答案以 **graph facts**（`Alice —uses→ Apollo`）形式返回，读的是图边而不是词法 chunk 匹配，所以"谁在用 X"这类问题即使没有 embedder 也能可靠回答。请求接受结构化检索计划：`keywords`、`alternate_queries`、`entity_names`、`retrieval_mode`。
+- **`Reflect` / `Consolidate`** —— 对一次 recall 做反思（可插拔 `KnowledgeMemoryReflector`，默认确定性实现），并把摘要写回为一条整合后的 memory。
+- **`PromoteToKnowledge`** —— 把 episodic memory 提升为持久、分块的 knowledge。
+- **`ExpandEntityContext` / `Neighbors` / `ShortestPath`** —— 围绕实体的图谱探索。
+- **`extract_conversation`** —— 确定性（无 LLM）地从会话文本或已存 session 中抽取实体、共现关系和摘要；`persist` 会写入 KG 与 durable knowledge。
+
+`MemorySaveRequest` 可以内联携带 `entities`/`relations`，agent 写入的 memory 在存储的同一次调用里就落进图谱。以上全部也以 `knowledge_memory_*` MCP 工具形式暴露。
+
+## 可组合检索
+
+`db.Query`（工具名 `cortex_query`）是一次通用检索调用：具名 **prefetch lane**（`vector`、`lexical`、`hybrid`、`graph`），用 **RRF / 加权 RRF / DBSF** 融合，支持 metadata filter、可选打分公式，以及按来源的 rank/score 调试输出。
+
+再往下，text search 接受 `Authorize` 回调——检索层的安全闸门（对每个候选做 RBAC/ABAC 判定；检索会不断放宽召回，直到能返回 TopK 条**已授权**结果）——以及可插拔的 `Reranker`，完成 recall→precision 的第二阶段。
 
 ## 知识图谱
 
@@ -60,6 +90,10 @@ db.UpsertKnowledgeGraph(ctx, cortexdb.KnowledgeGraphUpsertRequest{Triples: tripl
 res, _ := db.QueryKnowledgeGraph(ctx, cortexdb.KnowledgeGraphQueryRequest{
     Query: `SELECT ?name WHERE { <https://example.com/alice> <https://schema.org/name> ?name }`})
 ```
+
+RDFS 物化推理通过 `knowledge_graph_infer_refresh` / `_summary` / `_explain` / `_explain_match` 驱动。在 property graph 一侧，`ApplyInferenceRules`（工具名 `apply_inference`）把确定性的两跳关系组合——`A works_on B` + `B part_of C` ⇒ `A contributes_to C`——物化为带来源的可查询边。
+
+GraphRAG 实体带有 provenance：`upsert_entities` 把每个断言过该实体的文档记录进 `source_document_ids`；`delete_document_graph` 是与 ingest 对称的删除——移除文档的 chunk/document 节点、关系边，以及只被它断言过的实体（被其他文档共享的实体只解除关联、不删除），并提供 `dry_run` 模式。
 
 ## Ontology（本体）
 
@@ -84,13 +118,18 @@ _, err := db.SaveOntologySchema(ctx, cortexdb.OntologySaveRequest{
 })
 ```
 
-同一时刻只有一份 schema 处于 **active**，它会校验每一次写入：未声明的 object type、未声明的属性、缺失的必填值、解析不了的值都会被拒绝。在它之下写入的节点身份是 `entity:<objectType>:<primaryKey>`；没有 active schema 时仍沿用旧的按名字推导的 ID。
+同一时刻只有一份 schema 处于 **active**。激活的效果取决于 schema 的 `enforcement`：
+
+- `"strict"`（默认）校验每一次写入：未声明的 object type、未声明的属性、缺失的必填值、解析不了的值都会被拒绝。在它之下写入的节点身份是 `entity:<objectType>:<primaryKey>`；没有 active schema 时仍沿用旧的按名字推导的 ID。
+- `"vocabulary"` 把 schema 当作共享词表，不阻拦写入：已声明类型的拼写会被规范化、interface 在检索时照常展开，但一个说不出主键的实体——LLM 从散文抽取实体时的常态——会回落到按名字推导的 ID 而不是被拒绝，未声明的类型和 link type 直接放行。抽取管线用这个模式；strict 会逼它们在"激活 schema"和"保住实体"之间二选一。
+
+`strict_actions` 与 `enforcement: "vocabulary"` 互斥——一个关闭通用写入路径，另一个承诺永不关闭。
 
 **Object type** 带 `api_name`、`display_name`、`plural_display_name`、`description`、`status`、`visibility`、`primary_key`（必填）、`title_property`、`implements` 和类型化的 `properties`。数据类型：string、integer、long、double、decimal、boolean、date、timestamp、geopoint、geoshape、vector、array、struct、marking。属性可标记 `searchable`（进 FTS5）或 `vectorized`。`shared_properties` 让一个定义写一次、在多个 object type 与 interface 里按名字复用。
 
 **Link type** 是双向的，两侧各有自己的 `api_name` 和 `ONE`/`MANY` 基数。一对多 = 一侧 `ONE` + 一侧 `MANY`；只有 `ONE` 侧可以声明 `foreign_key_property`。
 
-**Interface** 提供多态：对 `Facility` 做 object set 或 `find_nodes` 查询会返回所有实现它的 object type。interface 可以多继承，object type 可以实现多个 interface，继承成环在保存时就被拒绝。
+**Interface** 提供多态：对 `Facility` 做 object set 或 `find_nodes` 查询会返回所有实现它的 object type。interface 可以多继承，object type 可以实现多个 interface，继承成环在保存时就被拒绝。interface 不能与 object type 同名——名字在同一命名空间里不区分大小写地解析，`Gateway` interface 和 `Gateway` object type 会成为一次歧义查找；`SaveOntologySchema` 在保存时就拒绝这种冲突。
 
 **Object set** 组合检索——向量检索、全文检索与图遍历在同一个表达式里是同级算子，而不是三套 API：
 
@@ -139,7 +178,7 @@ tools := db.GraphRAGTools()                             // 进程内 tool callin
 server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 ```
 
-工具分组：GraphRAG（`ingest_document`、`search_text`、`build_context`）、knowledge/memory（`knowledge_save`、`memory_search` …）、KG（`knowledge_graph_query`、`_shacl_validate`）、KnowledgeMemory（`knowledge_memory_recall`、`_reflect`）。`memoryflow`/`graphflow`/`importflow`/`connector` 各自也暴露自己的 toolbox。
+工具分组（60+ 个工具，进程内与 MCP 同名）：GraphRAG（`ingest_document`、`search_text`、`build_context`、`expand_graph`、`find_nodes`、`delete_document_graph`）、统一检索（`cortex_query`）、knowledge/memory（`knowledge_save`、`memory_search` …）、KnowledgeMemory（`knowledge_memory_recall`、`_reflect`、`_consolidate`、`extract_conversation`）、KG（`knowledge_graph_query`、`_shacl_validate`、`apply_inference`）、ontology（`ontology_save`、`ontology_action_apply`、`object_set_resolve`）、维护（`vector_dimension_repair`）。MCP server 额外提供 `render_graph_html`——交互式知识图谱视图。`memoryflow`/`graphflow`/`importflow`/`connector` 各自也暴露自己的 toolbox。
 
 ## Claude Code 和 Codex 插件
 

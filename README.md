@@ -42,7 +42,8 @@ resp, _ := db.SearchKnowledge(ctx, cortexdb.KnowledgeSearchRequest{
 ## Layers — pick the right one
 
 ```text
-pkg/cortexdb   Main facade: vectors, text/RAG search, knowledge, memory, KG, tools, MCP.  ← start here
+pkg/cortexdb   Main facade: vectors, text/RAG search, knowledge, memory, KG, ontology, tools, MCP.  ← start here
+               KnowledgeMemory sits on top of it: Recall / Remember / Reflect / Consolidate / context packs.
 pkg/memoryflow Agent memory workflow: transcript ingest, recall, wake-up layers, promotion.
 pkg/graphflow  Corpus → extract → build → analyze → report → export (HTML).
 pkg/importflow Import CSV / SQL dumps / live Postgres-MySQL into RAG + KG (DDL → graph).
@@ -50,6 +51,35 @@ pkg/connector  Privacy gate over importflow: PII masking, signed plan, reversibl
 pkg/graph      Low-level RDF/SPARQL/RDFS/SHACL + property graph.
 pkg/core       SQLite storage, embeddings, FTS5, vector indexes (HNSW/IVF/Flat).
 ```
+
+Supporting packages: `pkg/eval` (retrieval-quality harness), `pkg/rpcserver` (the gRPC facade behind `cmd/cortexdb-grpc`), `pkg/agentmem` + `pkg/hindsight` (a standalone SQL-backed agent memory bank with disposition-weighted reflection), `pkg/semantic-router` (embedding-based query routing), `pkg/quantization` (scalar/binary vector compression), `pkg/geo` (geospatial indexing).
+
+## KnowledgeMemory — the brain facade
+
+`db.KnowledgeMemory()` is the highest-level API: one call fuses episodic memory, durable knowledge, and the knowledge graph, and returns a paste-ready context pack with source attribution.
+
+```go
+brain := db.KnowledgeMemory()
+_, _ = brain.Remember(ctx, cortexdb.KnowledgeMemoryRememberRequest{
+    Content: "Alice prefers tabs over spaces.", Scope: "user"})
+rec, _ := brain.Recall(ctx, cortexdb.KnowledgeMemoryRecallRequest{
+    Query: "what does Alice prefer?", EntityNames: []string{"Alice"}})
+fmt.Println(rec.ContextPack.Text) // sections + memory/knowledge/chunk IDs + entities
+```
+
+- **`Recall` / `BuildContextPack`** — fused retrieval across memory, knowledge, and GraphRAG chunks. Relational answers come back as **graph facts** (`Alice —uses→ Apollo`) read from graph edges rather than lexical chunk matching, so "who uses X" is answered reliably even with no embedder. Requests accept a structured retrieval plan: `keywords`, `alternate_queries`, `entity_names`, `retrieval_mode`.
+- **`Reflect` / `Consolidate`** — reflect over a recall (pluggable `KnowledgeMemoryReflector`, deterministic fallback) and write the summary back as a consolidated memory.
+- **`PromoteToKnowledge`** — turn episodic memories into durable, chunked knowledge.
+- **`ExpandEntityContext` / `Neighbors` / `ShortestPath`** — graph exploration around entities.
+- **`extract_conversation`** — deterministic (no-LLM) extraction of entities, co-occurrence relations, and a summary from a conversation transcript or stored session; `persist` writes them into the KG and durable knowledge.
+
+`MemorySaveRequest` can carry `entities`/`relations` inline, so an agent-written memory lands in the graph in the same call that stores it. Everything above is also exposed as `knowledge_memory_*` MCP tools.
+
+## Composable retrieval
+
+`db.Query` (tool: `cortex_query`) is one universal retrieval call: named **prefetch lanes** (`vector`, `lexical`, `hybrid`, `graph`) fused by **RRF / weighted RRF / DBSF**, with metadata filters, an optional score formula, and per-source rank/score debugging output.
+
+Underneath, text search takes an `Authorize` callback — a retrieval-layer security gate (RBAC/ABAC applied to every candidate; the search widens its recall until it can return TopK *authorized* rows) — and a pluggable `Reranker` for the recall→precision second stage.
 
 ## Knowledge Graph
 
@@ -60,6 +90,10 @@ db.UpsertKnowledgeGraph(ctx, cortexdb.KnowledgeGraphUpsertRequest{Triples: tripl
 res, _ := db.QueryKnowledgeGraph(ctx, cortexdb.KnowledgeGraphQueryRequest{
     Query: `SELECT ?name WHERE { <https://example.com/alice> <https://schema.org/name> ?name }`})
 ```
+
+The RDFS materializer is driven through `knowledge_graph_infer_refresh` / `_summary` / `_explain` / `_explain_match`. On the property-graph side, `ApplyInferenceRules` (tool: `apply_inference`) materializes deterministic two-hop relation compositions — `A works_on B` + `B part_of C` ⇒ `A contributes_to C` — as queryable edges with provenance.
+
+GraphRAG entities carry provenance: `upsert_entities` records every asserting document in `source_document_ids`, and `delete_document_graph` is deletion shaped like ingest — it removes a document's chunk/document nodes, its relation edges, and the entities it alone asserted (shared entities are detached, not deleted), with a `dry_run` mode.
 
 ## Ontology
 
@@ -144,7 +178,7 @@ tools := db.GraphRAGTools()                             // in-process tool calli
 server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 ```
 
-Tool groups: GraphRAG (`ingest_document`, `search_text`, `build_context`), knowledge/memory (`knowledge_save`, `memory_search`, …), KG (`knowledge_graph_query`, `_shacl_validate`), KnowledgeMemory (`knowledge_memory_recall`, `_reflect`). `memoryflow`/`graphflow`/`importflow`/`connector` expose their own toolboxes too.
+Tool groups (60+ tools, same names in-process and over MCP): GraphRAG (`ingest_document`, `search_text`, `build_context`, `expand_graph`, `find_nodes`, `delete_document_graph`), unified retrieval (`cortex_query`), knowledge/memory (`knowledge_save`, `memory_search`, …), KnowledgeMemory (`knowledge_memory_recall`, `_reflect`, `_consolidate`, `extract_conversation`), KG (`knowledge_graph_query`, `_shacl_validate`, `apply_inference`), ontology (`ontology_save`, `ontology_action_apply`, `object_set_resolve`), and maintenance (`vector_dimension_repair`). The MCP server adds `render_graph_html`, an interactive knowledge-graph view. `memoryflow`/`graphflow`/`importflow`/`connector` expose their own toolboxes too.
 
 ## Claude Code and Codex plugin
 
