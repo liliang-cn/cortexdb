@@ -149,8 +149,17 @@ func Open(config Config, opts ...Option) (*DB, error) {
 		return nil, fmt.Errorf("failed to initialize store: %w", err)
 	}
 
-	// Create graph store
+	// Create graph store. The graph schema is created eagerly here, not
+	// lazily by the first write: read-only tools (find_nodes,
+	// object_set_resolve, expand_graph, recall's graph branch, ...) query
+	// graph_nodes/graph_edges directly, and on a fresh database they would
+	// otherwise fail with "no such table" instead of returning an empty
+	// result. Open already issues DDL via store.Init, so this adds no new
+	// write requirement, and InitGraphSchema is idempotent and cached.
 	graphStore := graph.NewGraphStore(store)
+	if err := graphStore.InitGraphSchema(ctx); err != nil {
+		return nil, fmt.Errorf("failed to initialize graph schema: %w", err)
+	}
 
 	db := &DB{
 		store: store,
