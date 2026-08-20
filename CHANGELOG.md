@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.72.1] - 2026-08-20
+
+### Fixed
+
+- **Graph read paths no longer fail with "no such table" on a fresh database.** The
+  `graph_nodes`/`graph_edges` schema was only created lazily by write paths via
+  `InitGraphSchema`, so read-only tools hitting a database that had never taken a graph
+  write — `find_nodes`, `object_set_resolve`, `expand_graph`, graph queries, the graph
+  branch of `knowledge_memory_recall` — errored with `SQL logic error: no such table:
+  graph_nodes` (or `graph_edges`) instead of returning an empty result. `Open` now
+  initializes the graph schema eagerly (idempotent, cached), so every read path sees the
+  tables from the first query and an empty database answers with empty sets. Downstream
+  callers that special-cased these errors as "empty graph" no longer need to.
+
 ## [2.72.0] - 2026-08-19
 
 ### Changed
