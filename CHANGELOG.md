@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.72.2] - 2026-08-21
+
+### Fixed
+
+- **Auto-recall injects memories, not just knowledge.** The `--recall` mode behind the
+  Claude Code `UserPromptSubmit` hook asked `knowledge_search`, which reads durable
+  knowledge only — so anything written with `memory_save` never reached a prompt
+  automatically, however well it matched. The failure looked like working software:
+  memories were injected, they were simply always knowledge documents. Both paths now
+  ask for the fused view (`knowledge_memory_recall` on a shared brain,
+  `KnowledgeMemory().Recall` on a local one), memories first, with light graph
+  expansion because this runs before every message. Memory bodies are flattened to one
+  line and cut to 220 runes — knowledge arrives pre-snippetted, memories arrive whole.
+  A brain on an older server still answers in the knowledge-only shape, and that shape
+  is still parsed.
+
 ## [2.72.1] - 2026-08-20
 
 ### Fixed
