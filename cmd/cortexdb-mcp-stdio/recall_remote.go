@@ -18,9 +18,20 @@ type recallHit struct {
 	Snippet     string `json:"snippet"`
 }
 
-// recallToolName is the shared-brain tool that answers the same question
-// SearchKnowledge answers locally.
-const recallToolName = "knowledge_search"
+// recallToolName is the shared-brain tool the hook asks. It fuses episodic
+// memory, durable knowledge and graph expansion.
+//
+// It used to be `knowledge_search`, which reads durable knowledge ONLY — so
+// everything written with memory_save was invisible to auto-recall, no matter
+// how well it matched the prompt. Memories did get injected, they were just
+// always knowledge documents, which is the kind of gap you only notice by
+// searching for something you saved an hour ago and watching it not come back.
+const recallToolName = "knowledge_memory_recall"
+
+// recallSnippetRunes caps how much of a memory is injected. Knowledge hits
+// arrive pre-snippetted; memories arrive whole, and some of them are a page
+// long. This is a per-prompt hook — it owes the agent a pointer, not the file.
+const recallSnippetRunes = 220
 
 // runRecallRemote answers the UserPromptSubmit hook from the shared brain
 // instead of a local database file.
@@ -40,7 +51,15 @@ func runRecallRemote(addr, token, prompt string, topK int) string {
 	}
 	defer func() { _ = conn.Close() }()
 
-	args, err := json.Marshal(map[string]any{"query": prompt, "top_k": topK})
+	args, err := json.Marshal(map[string]any{
+		"query":           prompt,
+		"keywords":        keywordsFromPrompt(prompt),
+		"top_k_memories":  topK,
+		"top_k_knowledge": topK,
+		// Graph expansion earns its keep on relational prompts ("who uses X"),
+		// but this runs before every single message: light traversal only.
+		"graph_light": true,
+	})
 	if err != nil {
 		return ""
 	}
@@ -66,18 +85,53 @@ func runRecallRemote(addr, token, prompt string, topK int) string {
 // parseRecallPayload reads hits out of the tool's JSON answer. Anything that is
 // not a search result — an error object, a truncated body, a future response
 // shape — yields no hits rather than an injected mess.
+//
+// `results` is still read: a brain running an older server answers
+// knowledge-only, and half a recall beats none.
 func parseRecallPayload(body string) ([]recallHit, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
 		return nil, nil
 	}
 	var payload struct {
-		Results []recallHit `json:"results"`
+		Memories []struct {
+			Memory struct {
+				ID      string `json:"id"`
+				Content string `json:"content"`
+			} `json:"memory"`
+		} `json:"memories"`
+		Knowledge []recallHit `json:"knowledge"`
+		Results   []recallHit `json:"results"`
 	}
 	if err := json.Unmarshal([]byte(body), &payload); err != nil {
 		return nil, fmt.Errorf("recall payload is not search results: %w", err)
 	}
-	return payload.Results, nil
+
+	hits := make([]recallHit, 0, len(payload.Memories)+len(payload.Knowledge))
+	// Memories first: they are the layer that changes, and the one a stale
+	// answer hurts most.
+	for _, m := range payload.Memories {
+		hits = append(hits, recallHit{
+			KnowledgeID: m.Memory.ID,
+			Snippet:     snippetOf(m.Memory.Content),
+		})
+	}
+	hits = append(hits, payload.Knowledge...)
+	if len(hits) == 0 {
+		return payload.Results, nil
+	}
+	return hits, nil
+}
+
+// snippetOf flattens a memory into one injectable line: whitespace collapsed
+// (memories are written as paragraphs) and cut to a fixed rune budget.
+func snippetOf(content string) string {
+	flat := strings.Join(strings.Fields(content), " ")
+	runes := []rune(flat)
+	if len(runes) <= recallSnippetRunes {
+		return flat
+	}
+	return strings.TrimSpace(string(runes[:recallSnippetRunes])) + "…"
 }
 
 // formatRecallHits renders hits as the additionalContext block. Shared by both

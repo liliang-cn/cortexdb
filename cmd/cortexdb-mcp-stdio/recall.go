@@ -69,19 +69,29 @@ func runRecall() {
 	}
 	defer func() { _ = db.Close() }()
 
-	resp, err := db.SearchKnowledge(context.Background(), cortexdb.KnowledgeSearchRequest{
+	// Same question the shared-brain path asks: memory AND knowledge, not
+	// knowledge alone. A local brain that only surfaced knowledge documents hid
+	// every memory_save behind a tool call the agent had to think to make.
+	resp, err := db.KnowledgeMemory().Recall(context.Background(), cortexdb.KnowledgeMemoryRecallRequest{
 		Query:         prompt,
 		Keywords:      keywordsFromPrompt(prompt),
 		RetrievalMode: cortexdb.RetrievalModeAuto,
 		GraphLight:    true,
-		TopK:          topK,
+		TopKMemories:  topK,
+		TopKKnowledge: topK,
 	})
-	if err != nil || resp == nil || len(resp.Results) == 0 {
+	if err != nil || resp == nil {
 		return
 	}
 
-	hits := make([]recallHit, 0, len(resp.Results))
-	for _, hit := range resp.Results {
+	hits := make([]recallHit, 0, len(resp.Memories)+len(resp.Knowledge))
+	for _, hit := range resp.Memories {
+		hits = append(hits, recallHit{
+			KnowledgeID: hit.Memory.ID,
+			Snippet:     snippetOf(hit.Memory.Content),
+		})
+	}
+	for _, hit := range resp.Knowledge {
 		hits = append(hits, recallHit{
 			KnowledgeID: hit.KnowledgeID,
 			Title:       hit.Title,

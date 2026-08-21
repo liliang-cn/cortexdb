@@ -63,6 +63,63 @@ func TestRecallReadsHitsFromTheRemoteToolPayload(t *testing.T) {
 	}
 }
 
+// The real gap this hook had: recall asked knowledge_search, which reads
+// durable knowledge only, so nothing written with memory_save was ever injected
+// — however well it matched. Now it asks knowledge_memory_recall and has to read
+// both halves of that answer.
+func TestRecallReadsMemoriesAndKnowledgeFromTheFusedAnswer(t *testing.T) {
+	payload := `{"query":"集群升级","memories":[
+		{"memory":{"id":"cortexdb-cluster-upgrade-2721","content":"2026-08-20 把共享大脑升到 2.72.1。\n\n在 Primary 上 restart 会触发降级。"},"score":0.4}],
+		"knowledge":[{"knowledge_id":"sds-ha","title":"SDS HA","snippet":"promoter 拉起服务"}]}`
+
+	hits, err := parseRecallPayload(payload)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(hits) != 2 {
+		t.Fatalf("want a memory hit and a knowledge hit, got %d: %+v", len(hits), hits)
+	}
+	// Memories come first — they are the layer that changes.
+	if hits[0].KnowledgeID != "cortexdb-cluster-upgrade-2721" {
+		t.Errorf("memory id not read: %+v", hits[0])
+	}
+	if strings.Contains(hits[0].Snippet, "\n") {
+		t.Errorf("memory snippet must be one line, got %q", hits[0].Snippet)
+	}
+	if !strings.Contains(hits[0].Snippet, "在 Primary 上 restart 会触发降级") {
+		t.Errorf("memory body lost: %q", hits[0].Snippet)
+	}
+	if hits[1].Title != "SDS HA" || hits[1].Snippet != "promoter 拉起服务" {
+		t.Errorf("knowledge hit not read: %+v", hits[1])
+	}
+}
+
+// Memories are written as paragraphs; some run to a page. A hook that fires on
+// every prompt injects a pointer, not the whole file.
+func TestLongMemoriesAreCutToASnippet(t *testing.T) {
+	long := strings.Repeat("很", recallSnippetRunes+50)
+	hits, err := parseRecallPayload(`{"memories":[{"memory":{"id":"m","content":"` + long + `"}}]}`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	got := []rune(hits[0].Snippet)
+	if len(got) != recallSnippetRunes+1 || got[len(got)-1] != '…' {
+		t.Errorf("want %d runes plus an ellipsis, got %d runes: %q", recallSnippetRunes, len(got), hits[0].Snippet)
+	}
+}
+
+// A brain on an older server still answers knowledge-only, in the old shape.
+// Half a recall beats none.
+func TestLegacyKnowledgeOnlyAnswerStillParses(t *testing.T) {
+	hits, err := parseRecallPayload(`{"results":[{"knowledge_id":"old","title":"旧格式","snippet":"仍然可读"}]}`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(hits) != 1 || hits[0].Title != "旧格式" {
+		t.Fatalf("legacy shape not read: %+v", hits)
+	}
+}
+
 // A server that answers with something unexpected must not break the prompt:
 // the hook's whole contract is that it stays silent on every failure.
 func TestRecallPayloadThatIsNotSearchResultsIsNotFatal(t *testing.T) {
