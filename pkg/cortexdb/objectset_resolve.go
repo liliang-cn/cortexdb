@@ -467,7 +467,7 @@ func (db *DB) searchAround(ctx context.Context, compiled *compiledOntology, sour
 		// direction it was asserted, so the query above reaches both ends.
 		// Keeping only objects of the far side's type is what makes the side
 		// name — not just the link type — decide the direction.
-		if err := db.addNodesOfObjectType(ctx, result, reached, traversal.far.ObjectTypeAPIName); err != nil {
+		if err := db.addNodesOfObjectType(ctx, compiled, result, reached, traversal.far.ObjectTypeAPIName); err != nil {
 			return nil, err
 		}
 	}
@@ -516,9 +516,16 @@ func (db *DB) linkedNodeIDs(ctx context.Context, linkTypeAPIName string, nodeIDs
 	return reached, rows.Err()
 }
 
-// addNodesOfObjectType adds the nodes of one object type to a result set,
+// addNodesOfObjectType adds the nodes a type name stands for to a result set,
 // leaving the rest out.
-func (db *DB) addNodesOfObjectType(ctx context.Context, result objectSetResult, nodeIDs []string, objectTypeAPIName string) error {
+//
+// The name may be an interface, in which case it stands for its implementors —
+// the same expansion a type filter gets on FindNodes and search. Matching the
+// name literally, as this did, made a link side naming an interface keep only
+// nodes whose node_type was that interface's name, which nothing is ever stored
+// as: every traversal of a polymorphic relation returned the empty set, and an
+// empty set is what the graph also says about a subject it knows nothing about.
+func (db *DB) addNodesOfObjectType(ctx context.Context, compiled *compiledOntology, result objectSetResult, nodeIDs []string, objectTypeAPIName string) error {
 	if len(nodeIDs) == 0 {
 		return nil
 	}
@@ -526,9 +533,15 @@ func (db *DB) addNodesOfObjectType(ctx context.Context, result objectSetResult, 
 	if err != nil {
 		return fmt.Errorf("filter search around results: %w", err)
 	}
-	target := ontologyAPIKey(objectTypeAPIName)
+	targets := map[string]struct{}{ontologyAPIKey(objectTypeAPIName): {}}
+	if compiled != nil {
+		targets = compiled.typeClosureKeys(objectTypeAPIName)
+	}
 	for _, node := range nodes {
-		if node != nil && ontologyAPIKey(node.NodeType) == target {
+		if node == nil {
+			continue
+		}
+		if _, ok := targets[ontologyAPIKey(node.NodeType)]; ok {
 			result[node.ID] = struct{}{}
 		}
 	}

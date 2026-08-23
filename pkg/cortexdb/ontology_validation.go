@@ -106,11 +106,6 @@ func validateOntologySchemaRules(schema OntologySchema) error {
 	}
 
 	linkTypes := make(map[string]struct{}, len(schema.LinkTypes))
-	// A side api name is how a traversal names the hop it wants to take, so it
-	// has to identify one link type unambiguously from the object type it
-	// starts at. Two link types exposing the same side name on the same object
-	// type would make that lookup a coin flip.
-	sidesByObjectType := make(map[string]map[string]string, len(schema.ObjectTypes))
 	for _, linkType := range schema.LinkTypes {
 		if err := validateOntologyAPIName("link type", linkType.APIName); err != nil {
 			return err
@@ -122,19 +117,9 @@ func validateOntologySchemaRules(schema OntologySchema) error {
 		linkTypes[key] = struct{}{}
 
 		for _, side := range []OntologyLinkSide{linkType.A, linkType.B} {
-			if err := validateOntologyLinkSide(linkType.APIName, side, objectTypes); err != nil {
+			if err := validateOntologyLinkSide(linkType.APIName, side, objectTypes, interfaceTypes); err != nil {
 				return err
 			}
-			ownerKey := ontologyAPIKey(side.ObjectTypeAPIName)
-			sideKey := ontologyAPIKey(side.APIName)
-			if sidesByObjectType[ownerKey] == nil {
-				sidesByObjectType[ownerKey] = make(map[string]string, 2)
-			}
-			if owner, exists := sidesByObjectType[ownerKey][sideKey]; exists {
-				return fmt.Errorf("link types %q and %q both expose side %q on object type %q",
-					owner, linkType.APIName, side.APIName, side.ObjectTypeAPIName)
-			}
-			sidesByObjectType[ownerKey][sideKey] = linkType.APIName
 		}
 		if ontologyAPIKey(linkType.A.APIName) == ontologyAPIKey(linkType.B.APIName) {
 			return fmt.Errorf("link type %q needs distinct api names on each side", linkType.APIName)
@@ -146,6 +131,12 @@ func validateOntologySchemaRules(schema OntologySchema) error {
 	// interface is reported as such rather than as an unsatisfied contract.
 	compiled := compileOntology(schema)
 	if err := validateOntologyInterfaces(schema, compiled); err != nil {
+		return err
+	}
+	if err := validateOntologyLinkSideNames(schema, compiled); err != nil {
+		return err
+	}
+	if err := validateOntologyLinkEnds(schema, compiled); err != nil {
 		return err
 	}
 	// Actions and object sets are checked after the types they reference, so a
@@ -239,13 +230,23 @@ func validateOntologyDataType(owner string, propertyName string, dataType Ontolo
 	}
 }
 
-func validateOntologyLinkSide(linkTypeName string, side OntologyLinkSide, objectTypes map[string]OntologyObjectType) error {
+// validateOntologyLinkSide checks one end of a link type.
+//
+// The end may name an interface as well as an object type. Foundry models a
+// polymorphic relation that way — `protects` running from anything Protector to
+// a Volume — and this side of the schema was the only place an interface was not
+// accepted, while type filters on FindNodes and search expanded one happily. The
+// asymmetry was not a decision anything recorded; it was the interface work
+// stopping at the retrieval paths.
+func validateOntologyLinkSide(linkTypeName string, side OntologyLinkSide, objectTypes map[string]OntologyObjectType, interfaceTypes map[string]OntologyInterfaceType) error {
 	if err := validateOntologyAPIName(fmt.Sprintf("link type %s side", linkTypeName), side.APIName); err != nil {
 		return err
 	}
-	objectType, ok := objectTypes[ontologyAPIKey(side.ObjectTypeAPIName)]
-	if !ok {
-		return fmt.Errorf("link type %q side %q references unknown object type %q", linkTypeName, side.APIName, side.ObjectTypeAPIName)
+	sideKey := ontologyAPIKey(side.ObjectTypeAPIName)
+	objectType, isObject := objectTypes[sideKey]
+	_, isInterface := interfaceTypes[sideKey]
+	if !isObject && !isInterface {
+		return fmt.Errorf("link type %q side %q references unknown object or interface type %q", linkTypeName, side.APIName, side.ObjectTypeAPIName)
 	}
 	switch side.Cardinality {
 	case OntologyCardinalityOne, OntologyCardinalityMany:
@@ -255,6 +256,14 @@ func validateOntologyLinkSide(linkTypeName string, side OntologyLinkSide, object
 
 	if strings.TrimSpace(side.ForeignKeyProperty) == "" {
 		return nil
+	}
+	// A foreign key is a column on one concrete row. An interface is a set of
+	// object types that may each declare the property differently or not at
+	// all, so there is no single place for the key to live — and accepting it
+	// would mean silently picking one implementor's column.
+	if isInterface {
+		return fmt.Errorf("link type %q side %q names the interface %q and declares a foreign key; a foreign key belongs to one object type",
+			linkTypeName, side.APIName, side.ObjectTypeAPIName)
 	}
 	// Foundry backs a ONE side with a foreign key on the object; a MANY side
 	// has nowhere to put one, so accepting it would silently do nothing.

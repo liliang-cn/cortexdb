@@ -183,16 +183,28 @@ func (c *compiledOntology) linkTraversalsBySide(sideAPIName string) []ontologyLi
 // orientLink decides which side of a link type a concrete edge runs from and
 // to, given the object types of its endpoints. A link type is bidirectional,
 // so the endpoint types are what fix the direction.
+//
+// A side may name an interface, so the match is against the object types the
+// side stands for rather than against its name. Comparing names would reject
+// every edge of a polymorphic relation: a Snapshot endpoint is not spelled
+// "Protector", and the write would be refused as connecting the wrong types.
+// Partial overlap between the two sides is rejected at validation, so at most
+// one of these arms can be the honest reading.
 func (c *compiledOntology) orientLink(linkType OntologyLinkType, fromObjectType string, toObjectType string) (OntologyLinkSide, OntologyLinkSide, error) {
 	fromKey := ontologyAPIKey(fromObjectType)
 	toKey := ontologyAPIKey(toObjectType)
-	aKey := ontologyAPIKey(linkType.A.ObjectTypeAPIName)
-	bKey := ontologyAPIKey(linkType.B.ObjectTypeAPIName)
+	a := c.typeClosureKeys(linkType.A.ObjectTypeAPIName)
+	b := c.typeClosureKeys(linkType.B.ObjectTypeAPIName)
+
+	_, fromIsA := a[fromKey]
+	_, toIsB := b[toKey]
+	_, fromIsB := b[fromKey]
+	_, toIsA := a[toKey]
 
 	switch {
-	case fromKey == aKey && toKey == bKey:
+	case fromIsA && toIsB:
 		return linkType.A, linkType.B, nil
-	case fromKey == bKey && toKey == aKey:
+	case fromIsB && toIsA:
 		return linkType.B, linkType.A, nil
 	default:
 		return OntologyLinkSide{}, OntologyLinkSide{}, fmt.Errorf(

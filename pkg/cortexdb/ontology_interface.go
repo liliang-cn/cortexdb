@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // interfaceClosure returns the API keys of an interface and every interface
@@ -96,6 +97,89 @@ func (db *DB) expandOntologyTypeFilter(ctx context.Context, typeNames []string) 
 		}
 	}
 	return expanded, nil
+}
+
+// typeClosureKeys is resolveTypeClosure as a lookup set: the concrete object
+// types a name stands for, api-key folded.
+func (c *compiledOntology) typeClosureKeys(typeAPIName string) map[string]struct{} {
+	resolved := c.resolveTypeClosure(typeAPIName)
+	keys := make(map[string]struct{}, len(resolved))
+	for _, name := range resolved {
+		keys[ontologyAPIKey(name)] = struct{}{}
+	}
+	return keys
+}
+
+// validateOntologyLinkSideNames checks that a side name identifies one hop from
+// every concrete object type it is reachable on.
+//
+// A side api name is how a traversal names the hop it wants to take, so it has
+// to identify one link type unambiguously from the object type it starts at.
+// Two link types exposing the same side name on the same object type would make
+// that lookup a coin flip.
+//
+// This used to compare the declared side owners directly, which was enough while
+// an owner was always one object type. An interface owner makes the overlap
+// indirect: a link hanging "protects" off the Protector interface and another
+// hanging "protects" off Snapshot do not collide by name, but a traversal
+// starting at a Snapshot — which implements Protector — matches both. So the
+// comparison is over the closure, and it runs after the schema is compiled.
+func validateOntologyLinkSideNames(schema OntologySchema, compiled *compiledOntology) error {
+	// owner object type key → side name key → the link type that claimed it.
+	claimed := make(map[string]map[string]string, len(schema.ObjectTypes))
+	for _, linkType := range schema.LinkTypes {
+		for _, side := range []OntologyLinkSide{linkType.A, linkType.B} {
+			sideKey := ontologyAPIKey(side.APIName)
+			// Sorted so a schema with two collisions always reports the same
+			// one; the closure comes back sorted, and map order would make the
+			// error flap between runs.
+			for _, owner := range compiled.resolveTypeClosure(side.ObjectTypeAPIName) {
+				ownerKey := ontologyAPIKey(owner)
+				if claimed[ownerKey] == nil {
+					claimed[ownerKey] = make(map[string]string, 2)
+				}
+				if other, exists := claimed[ownerKey][sideKey]; exists && other != linkType.APIName {
+					return fmt.Errorf("link types %q and %q both expose side %q on object type %q",
+						other, linkType.APIName, side.APIName, owner)
+				}
+				claimed[ownerKey][sideKey] = linkType.APIName
+			}
+		}
+	}
+	return nil
+}
+
+// validateOntologyLinkEnds rejects a link whose two ends overlap without being
+// identical.
+//
+// A link type is bidirectional and the edge is stored in whichever direction it
+// was asserted, so an edge's direction is recovered by matching its endpoint
+// types against the two sides. That works when the sides are disjoint, and when
+// they are the same type — a self-link like `conflicts_with`, where either
+// orientation is the same statement. It does not work in between: with A over
+// {Snapshot, Backup} and B over {Backup, Volume}, an edge between two Backups
+// matches both readings, and which one wins is decided by the order the sides
+// happen to be tried. Partial overlap is only reachable through interfaces,
+// which is why this arrives with them.
+func validateOntologyLinkEnds(schema OntologySchema, compiled *compiledOntology) error {
+	for _, linkType := range schema.LinkTypes {
+		a := compiled.typeClosureKeys(linkType.A.ObjectTypeAPIName)
+		b := compiled.typeClosureKeys(linkType.B.ObjectTypeAPIName)
+
+		shared := make([]string, 0, len(a))
+		for key := range a {
+			if _, both := b[key]; both {
+				shared = append(shared, key)
+			}
+		}
+		if len(shared) == 0 || (len(shared) == len(a) && len(shared) == len(b)) {
+			continue
+		}
+		sort.Strings(shared)
+		return fmt.Errorf("link type %q has ends %q and %q that overlap on %s without being the same set: an edge between two of those has no unambiguous direction",
+			linkType.APIName, linkType.A.ObjectTypeAPIName, linkType.B.ObjectTypeAPIName, strings.Join(shared, ", "))
+	}
+	return nil
 }
 
 // validateOntologyInterfaces checks the interface graph is acyclic and that
