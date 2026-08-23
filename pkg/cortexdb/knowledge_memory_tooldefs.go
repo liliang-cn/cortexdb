@@ -288,7 +288,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "memory_search",
-			Description: "Search memories in a resolved memory bucket. Prefer sending a structured retrieval plan. Expand the goal into keywords, aliases, and alternate phrasings before lexical retrieval.",
+			Description: "Search memories in a resolved memory bucket. Prefer sending a structured retrieval plan. Expand the goal into keywords, aliases, and alternate phrasings before lexical retrieval. Pass entity_names when you know what the question is about: memories saved with entities are reachable through the graph even when their wording shares nothing with the query.",
 			InputSchema: toolObjectSchema(
 				[]string{"query"},
 				map[string]any{
@@ -300,7 +300,8 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 					"top_k":             toolIntegerSchema("Maximum number of memories to return."),
 					"keywords":          toolStringArraySchema("LLM-generated keyword bank derived from the goal."),
 					"alternate_queries": toolStringArraySchema("Alternate phrasings generated from the same goal."),
-					"retrieval_mode":    toolEnumSchema("Preferred retrieval strategy. Auto uses semantic session search when an embedder is available.", RetrievalModeAuto, RetrievalModeLexical, RetrievalModeGraph),
+					"entity_names":      toolStringArraySchema("Entities the question is about. Routes the search through the graph, which finds memories whose wording does not match the query."),
+					"retrieval_mode":    toolEnumSchema("Preferred retrieval strategy. Auto uses semantic session search when an embedder is available, and the graph when entity_names are given.", RetrievalModeAuto, RetrievalModeLexical, RetrievalModeGraph),
 					"plan":              toolRetrievalPlanSchema("Preferred structured retrieval plan produced by the external LLM before search."),
 				},
 			),

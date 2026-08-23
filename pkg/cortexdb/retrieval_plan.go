@@ -41,6 +41,7 @@ func resolveRetrievalPlan(input retrievalPlanInput) retrievalPlanResolution {
 		input.UnsupportedEffectiveMode,
 		input.UnsupportedReason,
 		input.PreferSemantic,
+		input.GraphRequiresEntityNames,
 	)
 
 	return retrievalPlanResolution{
@@ -62,7 +63,7 @@ func normalizeRetrievalMode(mode string) string {
 	}
 }
 
-func resolveRetrievalDecision(mode string, disableGraph bool, query string, entityNames []string, supportsGraph bool, emptyQueryUsesGraph bool, unsupportedEffectiveMode string, unsupportedReason string, preferSemantic bool) RetrievalDecision {
+func resolveRetrievalDecision(mode string, disableGraph bool, query string, entityNames []string, supportsGraph bool, emptyQueryUsesGraph bool, unsupportedEffectiveMode string, unsupportedReason string, preferSemantic bool, graphRequiresEntityNames bool) RetrievalDecision {
 	requested := normalizeRetrievalMode(mode)
 	decision := RetrievalDecision{
 		RequestedMode: requested,
@@ -121,7 +122,7 @@ func resolveRetrievalDecision(mode string, disableGraph bool, query string, enti
 			}
 			return decision
 		}
-		if len(extractEntityNames(extractTitleEntities(query))) > 0 {
+		if !graphRequiresEntityNames && len(extractEntityNames(extractTitleEntities(query))) > 0 {
 			decision.EffectiveMode = RetrievalModeGraph
 			decision.UseGraph = true
 			decision.Reason = "auto mode detected entity-like terms in the query"
@@ -143,11 +144,11 @@ func resolveRetrievalDecision(mode string, disableGraph bool, query string, enti
 }
 
 func shouldUseGraphRetrieval(mode string, disableGraph bool, query string, entityNames []string) bool {
-	return resolveRetrievalDecision(mode, disableGraph, query, entityNames, true, false, RetrievalModeLexical, "", false).UseGraph
+	return resolveRetrievalDecision(mode, disableGraph, query, entityNames, true, false, RetrievalModeLexical, "", false, false).UseGraph
 }
 
 func shouldLoadChunkEntities(mode string, disableGraph bool, query string) bool {
-	return resolveRetrievalDecision(mode, disableGraph, query, nil, true, true, RetrievalModeLexical, "", false).UseGraph
+	return resolveRetrievalDecision(mode, disableGraph, query, nil, true, true, RetrievalModeLexical, "", false, false).UseGraph
 }
 
 func mergeRetrievalFilters(base, override *RetrievalFilters) *RetrievalFilters {

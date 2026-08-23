@@ -13,6 +13,7 @@ import (
 
 	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
 type memoryRow struct {
@@ -141,10 +142,6 @@ func (db *DB) GetMemory(ctx context.Context, req MemoryGetRequest) (*MemoryGetRe
 
 // SearchMemory searches a resolved memory bucket, using semantic session search when an embedder is available.
 func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*MemorySearchResponse, error) {
-	unsupportedMode := RetrievalModeLexical
-	if db.HasEmbedder() {
-		unsupportedMode = RetrievalModeAuto
-	}
 	resolution := resolveRetrievalPlan(retrievalPlanInput{
 		Query:                    req.Query,
 		Plan:                     req.Plan,
@@ -152,9 +149,19 @@ func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*Memor
 		AlternateQueries:         req.AlternateQueries,
 		RetrievalMode:            req.RetrievalMode,
 		Filters:                  &RetrievalFilters{UserID: req.UserID, SessionID: req.SessionID, Scope: req.Scope, Namespace: req.Namespace},
-		SupportsGraph:            false,
-		UnsupportedEffectiveMode: unsupportedMode,
-		UnsupportedReason:        "memory search uses semantic or lexical retrieval, but not graph expansion",
+		// Memories now have graph nodes of their own, so entity hints can be
+		// followed back to them. Until they did, this said false and told the
+		// truth: there was no edge leading to a memory to walk.
+		SupportsGraph: true,
+		EntityNames:   req.EntityNames,
+		// Carries the job the unsupported branch used to do. That branch is what
+		// returned "auto" so an embedder got used at all; reaching the real switch
+		// without this would route every embedder-backed search to lexical.
+		PreferSemantic: db.HasEmbedder(),
+		// A memory only reaches the graph if it was saved with entities, so
+		// guessing entities out of the query would usually route to a graph that
+		// has nothing to say about them.
+		GraphRequiresEntityNames: true,
 	})
 	if strings.TrimSpace(resolution.Plan.Query) == "" {
 		return nil, ErrEmptyText
@@ -180,7 +187,10 @@ func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*Memor
 		req.TopK = 5
 	}
 
-	if db.HasEmbedder() && resolution.Decision.EffectiveMode != RetrievalModeLexical {
+	// Was "!= lexical", which meant "== auto" while graph was unsupported here.
+	// Spelled out now that graph is a real outcome, so entity hints are not
+	// answered by a vector search that ignores them.
+	if db.HasEmbedder() && resolution.Decision.EffectiveMode == RetrievalModeAuto {
 		queryVec, err := db.embedder.Embed(ctx, resolution.Plan.Query)
 		if err != nil {
 			log.Printf("cortexdb: memory semantic embed fallback to lexical: %v", err)
@@ -210,9 +220,32 @@ func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*Memor
 		}
 	}
 
+	// Graph first when entity hints resolved the mode that way: an edge from a
+	// named entity to a memory is a stronger statement than a word both happen
+	// to contain. Lexical still runs to fill the rest of topK, so a graph miss
+	// degrades to the old behaviour instead of returning nothing.
+	var graphHits []MemorySearchHit
+	if resolution.Decision.EffectiveMode == RetrievalModeGraph && resolution.Decision.UseGraph {
+		graphHits, err = db.searchMemoryGraph(ctx, bucketID, resolution.Plan.EntityNames, req.TopK)
+		if err != nil {
+			return nil, err
+		}
+		if len(graphHits) >= req.TopK {
+			return &MemorySearchResponse{
+				Query:    resolution.Plan.Query,
+				Plan:     resolution.Plan,
+				Decision: resolution.Decision,
+				Results:  graphHits[:req.TopK],
+			}, nil
+		}
+	}
+
 	hits, err := db.searchMemoryLexical(ctx, bucketID, resolution.Plan.Query, resolution.Plan.Keywords, resolution.Plan.AlternateQueries, req.TopK)
 	if err != nil {
 		return nil, err
+	}
+	if len(graphHits) > 0 {
+		hits = mergeMemoryHits(graphHits, hits, req.TopK)
 	}
 	return &MemorySearchResponse{
 		Query:    resolution.Plan.Query,
@@ -616,7 +649,22 @@ func (db *DB) saveMemoryGraph(ctx context.Context, req MemorySaveRequest) error 
 	}
 	tools := db.GraphRAGTools()
 	if len(req.Entities) > 0 {
-		if _, err := tools.UpsertEntities(ctx, ToolUpsertEntitiesRequest{Entities: req.Entities}); err != nil {
+		// The entities used to be written with nothing joining them to the memory
+		// that asserted them: mention edges hang off ChunkIDs, and this passed
+		// none. The graph grew entity nodes that no memory pointed at, so entity
+		// hints could never lead back to a memory and memory search had no graph
+		// to search. Giving the memory a node of its own and mentioning it from
+		// each entity puts memories on the same footing as knowledge chunks.
+		nodeID := memoryGraphNodeID(req.MemoryID)
+		if err := db.upsertMemoryNode(ctx, tools, nodeID, req.Content); err != nil {
+			return err
+		}
+		entities := make([]ToolEntityInput, 0, len(req.Entities))
+		for _, entity := range req.Entities {
+			entity.ChunkIDs = appendUniqueString(entity.ChunkIDs, nodeID)
+			entities = append(entities, entity)
+		}
+		if _, err := tools.UpsertEntities(ctx, ToolUpsertEntitiesRequest{Entities: entities}); err != nil {
 			return fmt.Errorf("save memory entities: %w", err)
 		}
 	}
@@ -626,4 +674,190 @@ func (db *DB) saveMemoryGraph(ctx context.Context, req MemorySaveRequest) error 
 		}
 	}
 	return nil
+}
+
+// memoryGraphNodePrefix namespaces memory nodes in the graph the way entity: and
+// chunk: namespace theirs.
+const memoryGraphNodePrefix = "memory:"
+
+// memoryGraphNodeID is the graph node standing for a stored memory.
+func memoryGraphNodeID(memoryID string) string {
+	return memoryGraphNodePrefix + memoryID
+}
+
+// memoryIDFromGraphNode reverses memoryGraphNodeID, reporting whether the node
+// was a memory at all.
+func memoryIDFromGraphNode(nodeID string) (string, bool) {
+	if !strings.HasPrefix(nodeID, memoryGraphNodePrefix) {
+		return "", false
+	}
+	id := strings.TrimPrefix(nodeID, memoryGraphNodePrefix)
+	if id == "" {
+		return "", false
+	}
+	return id, true
+}
+
+// upsertMemoryNode gives a memory a node so entities have something to mention.
+//
+// Written explicitly rather than left to the mention-edge stub filler, which
+// would create it typed "chunk": a memory is not a chunk, and a graph view that
+// says otherwise is a graph view nobody can read.
+func (db *DB) upsertMemoryNode(ctx context.Context, tools *GraphRAGToolbox, nodeID, content string) error {
+	if err := db.graph.InitGraphSchema(ctx); err != nil {
+		return fmt.Errorf("save memory graph: init schema: %w", err)
+	}
+	vectorDim, err := tools.lexicalVectorDim(ctx, defaultGraphRAGCollection)
+	if err != nil {
+		return fmt.Errorf("save memory graph: vector dim: %w", err)
+	}
+	result, err := db.graph.UpsertNodesBatch(ctx, []*graph.GraphNode{{
+		ID:         nodeID,
+		Vector:     lexicalVectorForText(content, vectorDim),
+		Content:    content,
+		NodeType:   "memory",
+		Properties: map[string]interface{}{"memory": true},
+	}})
+	if err != nil {
+		return fmt.Errorf("save memory node: %w", err)
+	}
+	if err := result.Err(); err != nil {
+		return fmt.Errorf("save memory node: %w", err)
+	}
+	return nil
+}
+
+// searchMemoryGraph finds memories by walking mention edges back from entities.
+//
+// This is the half of recall that lexical search cannot do: "what do I know
+// about X" where the memory never spells X the way the question does. Scored by
+// how many of the named entities a memory mentions, so a memory about two of
+// them outranks one that merely touches one.
+func (db *DB) searchMemoryGraph(ctx context.Context, bucketID string, entityNames []string, topK int) ([]MemorySearchHit, error) {
+	nodeIDs := make([]string, 0, len(entityNames))
+	seen := make(map[string]struct{}, len(entityNames))
+	for _, name := range entityNames {
+		id := EntityNodeID(strings.TrimSpace(name))
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		nodeIDs = append(nodeIDs, id)
+	}
+	if len(nodeIDs) == 0 {
+		return nil, nil
+	}
+	if err := db.graph.InitGraphSchema(ctx); err != nil {
+		return nil, fmt.Errorf("search memory graph: init schema: %w", err)
+	}
+	if topK <= 0 {
+		topK = 5
+	}
+
+	placeholders := make([]string, len(nodeIDs))
+	args := make([]interface{}, 0, len(nodeIDs)+1)
+	for i, id := range nodeIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	args = append(args, memoryGraphNodePrefix+"%")
+
+	rows, err := db.store.GetDB().QueryContext(ctx, `
+		SELECT from_node_id, COUNT(DISTINCT to_node_id)
+		FROM graph_edges
+		WHERE edge_type = 'mentions'
+		  AND to_node_id IN (`+strings.Join(placeholders, ",")+`)
+		  AND from_node_id LIKE ?
+		GROUP BY from_node_id
+		ORDER BY COUNT(DISTINCT to_node_id) DESC, from_node_id
+	`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search memory graph: %w", err)
+	}
+	type candidate struct {
+		memoryID string
+		mentions int
+	}
+	candidates := make([]candidate, 0, topK)
+	for rows.Next() {
+		var nodeID string
+		var mentions int
+		if err := rows.Scan(&nodeID, &mentions); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("scan memory graph hit: %w", err)
+		}
+		if memoryID, ok := memoryIDFromGraphNode(nodeID); ok {
+			candidates = append(candidates, candidate{memoryID: memoryID, mentions: mentions})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, fmt.Errorf("iterate memory graph hits: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close memory graph hits: %w", err)
+	}
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+
+	hits := make([]MemorySearchHit, 0, topK)
+	for _, c := range candidates {
+		if len(hits) >= topK {
+			break
+		}
+		row, err := db.loadMemoryRow(ctx, c.memoryID)
+		if err != nil {
+			// A node can outlive its memory — the memory was deleted and the graph
+			// still remembers it. Skip it rather than failing the whole recall.
+			continue
+		}
+		if row.record.SessionID != bucketID || memoryExpired(row.record) {
+			continue
+		}
+		// Normalised so a memory mentioning every named entity scores 1.
+		hits = append(hits, MemorySearchHit{
+			Memory: row.record,
+			Score:  float64(c.mentions) / float64(len(nodeIDs)),
+		})
+	}
+	return hits, nil
+}
+
+func appendUniqueString(list []string, value string) []string {
+	if value == "" {
+		return list
+	}
+	for _, existing := range list {
+		if existing == value {
+			return list
+		}
+	}
+	return append(list, value)
+}
+
+// mergeMemoryHits puts graph hits ahead of lexical ones without repeating a
+// memory that both found, and keeps the result inside topK.
+func mergeMemoryHits(graphHits, lexicalHits []MemorySearchHit, topK int) []MemorySearchHit {
+	if topK <= 0 {
+		topK = len(graphHits) + len(lexicalHits)
+	}
+	merged := make([]MemorySearchHit, 0, topK)
+	seen := make(map[string]struct{}, topK)
+	for _, group := range [][]MemorySearchHit{graphHits, lexicalHits} {
+		for _, hit := range group {
+			if len(merged) >= topK {
+				return merged
+			}
+			if _, ok := seen[hit.Memory.ID]; ok {
+				continue
+			}
+			seen[hit.Memory.ID] = struct{}{}
+			merged = append(merged, hit)
+		}
+	}
+	return merged
 }

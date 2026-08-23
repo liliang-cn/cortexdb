@@ -217,8 +217,12 @@ type MemorySearchRequest struct {
 	TopK             int            `json:"top_k,omitempty"`
 	Keywords         []string       `json:"keywords,omitempty"`
 	AlternateQueries []string       `json:"alternate_queries,omitempty"`
-	RetrievalMode    string         `json:"retrieval_mode,omitempty"`
-	Plan             *RetrievalPlan `json:"plan,omitempty"`
+	// EntityNames let recall reach a memory through the graph when the memory
+	// never spells the entity the way the question does. Lexical search cannot
+	// do that, so before memories had graph nodes this hint had nowhere to go.
+	EntityNames   []string       `json:"entity_names,omitempty"`
+	RetrievalMode string         `json:"retrieval_mode,omitempty"`
+	Plan          *RetrievalPlan `json:"plan,omitempty"`
 }
 
 // MemorySearchHit is one scored memory result.

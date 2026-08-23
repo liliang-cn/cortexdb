@@ -55,6 +55,12 @@ type retrievalPlanInput struct {
 	// available so semantic retrieval is actually used instead of silently
 	// falling back to lexical.
 	PreferSemantic bool
+	// GraphRequiresEntityNames stops auto mode from choosing graph on the
+	// strength of entity-looking words in the query alone. Guessing pays off on
+	// the knowledge path, where ingest fills a dense entity graph; on the memory
+	// path graph presence is opt-in, so most guesses find nothing and only
+	// mislabel the decision on the way to the same lexical answer.
+	GraphRequiresEntityNames bool
 }
 
 type retrievalPlanResolution struct {
