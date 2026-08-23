@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.74.0] - 2026-08-23
+
+### Fixed
+
+- **Memory recall ranked its worst matches first.** FTS5 `bm25()` is negative and a
+  better match is more negative. Both memory paths turned it into a score with
+  `1/(1+|rank|)`, which is decreasing in match quality, and then sorted descending — so
+  the `ORDER BY` handed back the best match first and the scoring put it last. A long
+  memory that mentioned a term once outranked a short one about nothing else, and the
+  top-K cut discarded the real hits. Measured on a five-document corpus: the strong
+  match scored 0.589 against the weak match's 0.807. In a populated store it showed up
+  as recalled memories whose scores sat inside a 0.006-wide band — no discrimination
+  left to rank on, so recall read as noise. `pkg/core/chat.go` was never affected: it
+  orders by `bm25()` in SQL and never converts, which is why knowledge retrieval kept
+  working while memory recall did not.
+
+### Added
+
+- **Memories can be corrected and forgotten by editing files.** `--export-memory` wrote
+  a directory of Markdown files but nothing read one back, so removing a wrong memory
+  meant calling `memory_delete` with an id nobody had written down. (`--import-agent-memory`
+  is not the reverse: it scans `~/.claude` and `~/.codex`, writes into a knowledge
+  collection rather than the memory store, and only ever adds.) `--sync-memory [dir]
+  [--prune] [--dry-run]` closes the loop, using the frontmatter `metadata.id` that the
+  export already emits to match a file to its record; a file without one gets an id from
+  its name, so a memory can also be written by hand. Planning is separate from applying,
+  because with `CORTEXDB_REMOTE` set the same plan is replayed through `memory_save` and
+  `memory_delete`. `--prune` is opt-in and refuses to run against a directory holding no
+  memory files — an empty directory is far more likely to be the wrong path than an
+  instruction to delete everything — and deletions are listed by id before they happen.
+
+- **Entity hints can reach a memory, because memories are now in the graph.**
+  `saveMemoryGraph` wrote the entities a memory was saved with but nothing joining them
+  to it: mention edges hang off `ChunkIDs` and it passed none. The graph grew entity
+  nodes no memory pointed at, so memory search answered `entity_names` with "this API
+  does not use graph expansion" — which was true; there was no edge leading to a memory
+  to walk. A memory now gets a node of its own, typed `memory` rather than left to the
+  stub filler that would call it a chunk, and each entity mentions it, putting memories
+  on the same footing as knowledge chunks. Graph hits are scored by how many of the
+  named entities a memory mentions and merged ahead of lexical ones, which still run to
+  fill top-K, so a graph miss degrades to the old answer instead of no answer. Auto mode
+  will not infer graph from entity-looking words in the query on this path: memory graph
+  presence is opt-in, so a guess usually finds nothing and only mislabels the decision on
+  the way to the same lexical answer. `memory_search` takes `entity_names` directly.
+
 ## [2.73.0] - 2026-08-23
 
 ### Added
