@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.74.1] - 2026-08-23
+
+### Fixed
+
+- **`--export-memory` dropped memories, and `--sync-memory --prune` would have
+  finished the job.** Measured against a store of 2043: the export reported all of
+  them and wrote 2041 files, of which one held the index. Three memories were gone,
+  and because the directory is what a sync treats as the truth, pruning from it would
+  have deleted those three for real. Three defects, all in the export. `slugify`
+  returned `"memory"` when nothing survived — every CJK-only title did — and on macOS
+  and Windows `memory.md` is `MEMORY.md`, so writing the index overwrote a memory; the
+  id, which is ASCII and always present, is the fallback now, and the index name is
+  reserved before the first file is written. `uniqueSlug` assumed its suffixed form was
+  free: `"situation"` seen nine times produced `"situation-9"`, which is also what a
+  memory titled `"situation 9"` slugs to, and the second write replaced the first — each
+  candidate is checked now. And nothing compared the file count to the memory count, so
+  both losses were silent; the export verifies before reporting success and fails
+  loudly otherwise. The frontmatter `name` is the slug the file actually got, so it can
+  no longer be empty. The same store now exports 2043 files and syncs back with nothing
+  to create, update or delete.
+
 ## [2.74.0] - 2026-08-23
 
 ### Fixed
