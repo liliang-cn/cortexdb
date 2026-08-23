@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.73.0] - 2026-08-23
+
+### Added
+
+- **A link side may name an interface, so a polymorphic relation can be traversed.**
+  An interface was a first-class thing on one half of the schema and did not exist on
+  the other: a type filter on `FindNodes`, search or brain expanded one into its
+  implementors, while a link side refused to name one at all. The gap was not inert.
+  Foundry models a relation whose source is polymorphic — anything Protector protects a
+  Volume — by pointing a side at the interface, and with that unavailable the only
+  encoding left was an open supertype standing in for "any of these". CortexDB decides a
+  traversal's direction by keeping only nodes of the far side's object type, and nothing
+  is ever stored under a supertype's name, so every such traversal returned the empty
+  set — which is also what the graph says about a subject it knows nothing about, on a
+  schema that read as complete. Validation, `orientLink` and the search-around filter now
+  all ask the type closure instead of comparing the name.
+
+### Fixed
+
+- **Two ambiguities interfaces make reachable are now rejected at save time.** A side
+  name has to identify one hop from the object type a traversal starts at, and an
+  interface makes a collision indirect: `protects` on Protector and `protects` on
+  Snapshot do not collide by name, but a traversal starting at a Snapshot matches both
+  and declaration order decides which. And a link whose two ends overlap without being
+  identical has no unambiguous direction — with one side over {Snapshot, Backup} and the
+  other over {Backup, Volume}, an edge between two Backups reads both ways. Complete
+  overlap stays legal: that is a self-link, where either orientation is the same
+  statement. A foreign key on an interface side is also refused, since a key is a column
+  on one concrete row.
+
 ## [2.72.2] - 2026-08-21
 
 ### Fixed
