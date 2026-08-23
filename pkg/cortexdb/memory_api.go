@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math"
 	"sort"
 	"strings"
 	"time"
@@ -459,7 +458,16 @@ func (db *DB) searchMemoryLexical(ctx context.Context, bucketID, query string, k
 			if scoreWeight < 0.8 {
 				scoreWeight = 0.8
 			}
-			score := (1 / (1 + math.Abs(rawRank))) * scoreWeight
+			// bm25() is negative and the better the match the lower it goes, so
+			// relevance rises as the raw rank falls. Taking the absolute value and
+			// dividing into 1 reversed that: the ORDER BY handed back the best
+			// match first and the scoring then sorted it last, so a long memory
+			// mentioning the term once outranked a short one about nothing else.
+			relevance := -rawRank
+			if relevance < 0 {
+				relevance = 0
+			}
+			score := (relevance / (1 + relevance)) * scoreWeight
 			if existing, ok := merged[record.ID]; !ok || score > existing.score {
 				merged[record.ID] = scoredMemory{record: record, score: score}
 			}

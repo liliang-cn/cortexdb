@@ -118,7 +118,14 @@ func (s *Store) searchInternal(ctx context.Context, query string, opts SearchOpt
 		if err := rows.Scan(&id, &rank, &importance, &createdAt); err != nil {
 			return nil, err
 		}
-		text := 1.0 / (1.0 + math.Abs(rank))
+		// bm25() is negative and a better match is more negative, so relevance
+		// has to grow as the rank falls. 1/(1+|rank|) did the opposite and the
+		// descending sort below then put the weakest match on top.
+		relevance := -rank
+		if relevance < 0 {
+			relevance = 0
+		}
+		text := relevance / (1 + relevance)
 		score := applyBoosts(text, importance, createdAt, now)
 		hits = append(hits, hit{id: id, bm25: rank, score: score})
 	}
