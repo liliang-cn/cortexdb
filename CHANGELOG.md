@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.75.1] - 2026-08-26
+
+### Added
+
+- **`--graph-cleanup [--dry-run] [--prune-only|--reindex-only]`.** Prunes generic
+  entity nodes whose names the current extraction rules would never produce (typed
+  nodes are exempt: a declared type means a person said what the thing is), naming
+  every victim, and backfills graph presence for stored memories — entities extracted
+  with the current rules, a memory node, mention edges — so the pre-2.74 backlog is
+  reachable through entity_names like a new save. Capped at twelve entities per
+  memory. Idempotent.
+
+### Fixed
+
+- **Graph memory recall cut on an alphabet when mention counts tied.** The candidate
+  list was truncated to topK in SQL order before boosts ran; on a well-indexed graph a
+  popular entity has hundreds of one-mention neighbours, so ties went to whichever
+  memory id sorted first. Candidates are now boosted and sorted before the cut.
+
 ## [2.75.0] - 2026-08-26
 
 ### Added
