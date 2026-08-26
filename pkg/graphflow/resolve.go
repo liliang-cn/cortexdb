@@ -156,8 +156,18 @@ func ResolveEntities(ctx context.Context, db *cortexdb.DB, opts ResolveOptions) 
 
 // canonicalKey normalizes a name to a case/space/punctuation-insensitive key,
 // so "CortexDB", "cortexdb", "Cortex DB", "cortex-db" collapse together.
+//
+// A leading dash survives, because a flag is not a spelling of an identifier.
+// Dropping it collapsed "--read-only" onto "ReadOnly" and merged them under
+// whichever won, so the graph could no longer tell the thing you paste into a
+// shell from the field of the same idea — which is the one property a CLI's
+// help text is ingested for. Two spellings of one flag still meet: only the
+// dash is preserved, not the punctuation after it.
 func canonicalKey(name string) string {
 	var b strings.Builder
+	if strings.HasPrefix(strings.TrimSpace(name), "-") {
+		b.WriteRune('-')
+	}
 	for _, r := range name {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			b.WriteRune(unicode.ToLower(r))

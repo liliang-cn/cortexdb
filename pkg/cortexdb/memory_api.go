@@ -1020,9 +1020,14 @@ func (db *DB) resolveEntityNameToNode(ctx context.Context, name string) string {
 }
 
 // entityAliasKey compares names the way entity resolution groups them:
-// case, space and punctuation insensitive.
+// case, space and punctuation insensitive, except for a leading dash. It must
+// agree with graphflow's canonicalKey — that is what decides which names were
+// merged, and a looser key here resolves a plain name onto a flag's node.
 func entityAliasKey(name string) string {
 	var b strings.Builder
+	if strings.HasPrefix(strings.TrimSpace(name), "-") {
+		b.WriteRune('-')
+	}
 	for _, r := range name {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			b.WriteRune(unicode.ToLower(r))

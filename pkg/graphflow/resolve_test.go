@@ -202,3 +202,38 @@ func TestResolveEntitiesWithoutTypesConsidersEverything(t *testing.T) {
 		t.Errorf("merged = %d, want the pair merged as before", report.EntitiesMerged)
 	}
 }
+
+// A flag is not a spelling of an identifier.
+//
+// The key drops punctuation, so "--read-only" and "ReadOnly" collapse to the
+// same "readonly" and resolution merges them — picking one of the two as the
+// canonical name. Whichever wins, the graph has lost the difference between the
+// flag you can paste into a shell and the field of the same idea. That is the
+// one property a CLI's help text is ingested for.
+//
+// Two spellings of one flag still merge: only the leading dash is preserved.
+func TestResolveEntitiesKeepsAFlagApartFromAName(t *testing.T) {
+	db, ctx := openResolveTestDB(t)
+	if _, err := db.GraphRAGTools().UpsertEntities(ctx, cortexdb.ToolUpsertEntitiesRequest{Entities: []cortexdb.ToolEntityInput{
+		{Name: "--read-only", Type: "param"},
+		{Name: "ReadOnly", Type: "param"},
+		// One flag written two ways — distinct ids (dry_run, dryrun), one key.
+		{Name: "--dry-run", Type: "param"},
+		{Name: "--dryrun", Type: "param"},
+	}}); err != nil {
+		t.Fatalf("upsert entities: %v", err)
+	}
+
+	report, err := ResolveEntities(ctx, db, ResolveOptions{})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if report.EntitiesMerged != 1 {
+		t.Fatalf("merged = %d (%v), want only the two spellings of one flag", report.EntitiesMerged, report.Groups)
+	}
+	for _, g := range report.Groups {
+		if canonicalKey(g.Canonical) == "readonly" {
+			t.Errorf("group %+v merged a flag with a name", g)
+		}
+	}
+}
