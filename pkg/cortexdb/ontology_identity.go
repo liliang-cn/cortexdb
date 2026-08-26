@@ -2,8 +2,6 @@ package cortexdb
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 	"unicode"
@@ -144,7 +142,7 @@ func (db *DB) lookupOntologyRelationEndpointNodeID(ctx context.Context, compiled
 	if strings.HasPrefix(endpoint, "entity:") {
 		return endpoint, nil
 	}
-	nodeID, ok, err := db.findOntologyNodeByName(ctx, endpoint)
+	nodeID, ok, err := db.findOntologyNodeByName(ctx, compiled, endpoint)
 	if err != nil {
 		return "", err
 	}
@@ -154,22 +152,53 @@ func (db *DB) lookupOntologyRelationEndpointNodeID(ctx context.Context, compiled
 	return nodeID, nil
 }
 
-func (db *DB) findOntologyNodeByName(ctx context.Context, name string) (string, bool, error) {
+func (db *DB) findOntologyNodeByName(ctx context.Context, compiled *compiledOntology, name string) (string, bool, error) {
 	// Restricted to entity nodes and ordered, because graph_nodes.content also
 	// holds document titles and chunk text: an unordered match could pick a
 	// chunk that happens to read the same as the entity, and a different one
 	// on the next call.
-	row := db.store.GetDB().QueryRowContext(ctx,
-		`SELECT id FROM graph_nodes WHERE content = ? AND id LIKE 'entity:%' ORDER BY id LIMIT 1`, name)
-	var nodeID string
-	switch err := row.Scan(&nodeID); {
-	case errors.Is(err, sql.ErrNoRows):
-		return "", false, nil
-	case err != nil:
+	//
+	// A name can belong to more than one entity, and then ordering by id alone
+	// is deterministic without being right. A store holding a prose graph and a
+	// code graph had a "Snapshot" of each — the domain's entity and a Go type —
+	// and the id that happened to sort first won, attaching what a runbook says
+	// about snapshots to a struct. The schema already says which of the two the
+	// domain is about, so a declared object type is preferred; among equally
+	// declared (or equally undeclared) candidates the id still decides, so a
+	// store without an ontology behaves exactly as before.
+	rows, err := db.store.GetDB().QueryContext(ctx,
+		`SELECT id, COALESCE(node_type,'') FROM graph_nodes
+		 WHERE content = ? AND id LIKE 'entity:%' ORDER BY id`, name)
+	if err != nil {
 		return "", false, fmt.Errorf("resolve endpoint by name: %w", err)
-	default:
-		return nodeID, true, nil
 	}
+	defer func() { _ = rows.Close() }()
+
+	var first, declared string
+	for rows.Next() {
+		var nodeID, nodeType string
+		if err := rows.Scan(&nodeID, &nodeType); err != nil {
+			return "", false, fmt.Errorf("resolve endpoint by name: %w", err)
+		}
+		if first == "" {
+			first = nodeID
+		}
+		if declared == "" && compiled != nil {
+			if _, ok := compiled.objectType(nodeType); ok {
+				declared = nodeID
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return "", false, fmt.Errorf("resolve endpoint by name: %w", err)
+	}
+	if declared != "" {
+		return declared, true, nil
+	}
+	if first != "" {
+		return first, true, nil
+	}
+	return "", false, nil
 }
 
 // ontologyPrimaryKeyArrivesAsName reports whether an entity's Name field may

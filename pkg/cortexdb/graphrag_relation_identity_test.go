@@ -163,3 +163,55 @@ func chunkIDsOfEdge(t *testing.T, tools *GraphRAGToolbox, ctx context.Context, e
 	}
 	return decoded.ChunkIDs
 }
+
+// A relation endpoint names an entity, and the name may belong to more than one
+// node. The store held a prose entity "Snapshot" and, from a code graph in the
+// same database, a Go type of that name — two nodes, different ids, identical
+// content. Resolution took the first by id, which is deterministic and wrong:
+// it attached what a runbook says about snapshots to a struct.
+//
+// The ontology already says which of them the domain is about. An endpoint
+// resolves to a node whose type the schema declares, before one it does not.
+func TestRelationEndpointPrefersADeclaredObjectType(t *testing.T) {
+	db, tools, ctx := relationTestStore(t)
+
+	idProp := []OntologyProperty{{
+		APIName: "id", DisplayName: "Node id", Required: true,
+		DataType: OntologyDataType{Kind: OntologyDataString},
+	}}
+	if _, err := db.SaveOntologySchema(ctx, OntologySaveRequest{Activate: true, Schema: OntologySchema{
+		SchemaID: "test", Name: "test", Enforcement: OntologyEnforcementVocabulary,
+		ObjectTypes: []OntologyObjectType{
+			{APIName: "Snapshot", DisplayName: "Snapshot", PrimaryKey: "id", Properties: idProp},
+			{APIName: "Volume", DisplayName: "Volume", PrimaryKey: "id", Properties: idProp},
+		},
+	}}); err != nil {
+		t.Fatalf("save ontology: %v", err)
+	}
+
+	// The undeclared node sorts first by id, which is what used to decide it.
+	if _, err := tools.UpsertEntities(ctx, ToolUpsertEntitiesRequest{Entities: []ToolEntityInput{
+		{ID: "aaa-pkg-rbac-snapshot", Name: "Snapshot", Type: "class"},
+		{Name: "Snapshot", Type: "Snapshot"},
+		{Name: "Volume", Type: "Volume"},
+	}}); err != nil {
+		t.Fatalf("create entities: %v", err)
+	}
+
+	if _, err := tools.UpsertRelations(ctx, ToolUpsertRelationsRequest{
+		DocumentID: "runbook",
+		Relations:  []ToolRelationInput{{From: "Snapshot", To: "Volume", Type: "protects"}},
+	}); err != nil {
+		t.Fatalf("upsert relations: %v", err)
+	}
+
+	var fromType string
+	if err := db.SQL().QueryRowContext(ctx, `
+		SELECT n.node_type FROM graph_edges e JOIN graph_nodes n ON n.id = e.from_node_id
+		WHERE e.edge_type = 'protects'`).Scan(&fromType); err != nil {
+		t.Fatalf("read edge: %v", err)
+	}
+	if fromType != "Snapshot" {
+		t.Errorf("edge starts at a %q, want the declared Snapshot", fromType)
+	}
+}
