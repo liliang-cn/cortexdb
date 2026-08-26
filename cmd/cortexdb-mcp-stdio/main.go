@@ -134,6 +134,13 @@ func main() {
 		return
 	}
 
+	// `--memory-usage [--top N] [--stale-days D]` reports which memories recall
+	// surfaces and which never have — input for human curation, not for ranking.
+	if len(os.Args) > 1 && os.Args[1] == "--memory-usage" {
+		runMemoryUsage(os.Args[2:])
+		return
+	}
+
 	// `--capture-session [transcript.jsonl] [--dry-run]` distils a finished
 	// session into fact-scoped memories via CORTEXDB_LLM_*. Run by the
 	// SessionEnd hook; the write-side loop of the memory brain.

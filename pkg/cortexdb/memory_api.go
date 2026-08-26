@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
@@ -254,11 +255,13 @@ func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*Memor
 			return nil, err
 		}
 		if len(graphHits) >= req.TopK {
+			graphHits = graphHits[:req.TopK]
+			db.recordMemoryRecalls(ctx, graphHits)
 			return &MemorySearchResponse{
 				Query:    resolution.Plan.Query,
 				Plan:     resolution.Plan,
 				Decision: resolution.Decision,
-				Results:  graphHits[:req.TopK],
+				Results:  graphHits,
 			}, nil
 		}
 	}
@@ -276,6 +279,7 @@ func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*Memor
 	if len(graphHits) > 0 {
 		hits = mergeMemoryHits(graphHits, hits, req.TopK)
 	}
+	db.recordMemoryRecalls(ctx, hits)
 	return &MemorySearchResponse{
 		Query:    resolution.Plan.Query,
 		Plan:     resolution.Plan,
@@ -769,10 +773,13 @@ func (db *DB) upsertMemoryNode(ctx context.Context, tools *GraphRAGToolbox, node
 // how many of the named entities a memory mentions, so a memory about two of
 // them outranks one that merely touches one.
 func (db *DB) searchMemoryGraph(ctx context.Context, bucketID string, entityNames []string, topK int) ([]MemorySearchHit, error) {
+	if err := db.graph.InitGraphSchema(ctx); err != nil {
+		return nil, fmt.Errorf("search memory graph: init schema: %w", err)
+	}
 	nodeIDs := make([]string, 0, len(entityNames))
 	seen := make(map[string]struct{}, len(entityNames))
 	for _, name := range entityNames {
-		id := EntityNodeID(strings.TrimSpace(name))
+		id := db.resolveEntityNameToNode(ctx, strings.TrimSpace(name))
 		if id == "" {
 			continue
 		}
@@ -784,9 +791,6 @@ func (db *DB) searchMemoryGraph(ctx context.Context, bucketID string, entityName
 	}
 	if len(nodeIDs) == 0 {
 		return nil, nil
-	}
-	if err := db.graph.InitGraphSchema(ctx); err != nil {
-		return nil, fmt.Errorf("search memory graph: init schema: %w", err)
 	}
 	if topK <= 0 {
 		topK = 5
@@ -967,4 +971,84 @@ func (db *DB) markMemoriesSuperseded(ctx context.Context, newID string, targets 
 		}
 	}
 	return nil
+}
+
+
+// resolveEntityNameToNode maps an entity name to its graph node, following
+// aliases when the direct node is gone.
+//
+// Entity resolution merges "K8s" into "Kubernetes" and records the alias on
+// the surviving node — but a query naming the alias still derived the old id
+// and found nothing. Merging entities without resolving their names at query
+// time silently disconnects every caller who knew the entity by the name that
+// lost.
+func (db *DB) resolveEntityNameToNode(ctx context.Context, name string) string {
+	id := EntityNodeID(name)
+	if id == "" {
+		return ""
+	}
+	if nodes, err := db.graph.GetNodesBatch(ctx, []string{id}); err == nil && len(nodes) > 0 && nodes[0] != nil {
+		return id
+	}
+	// Nodes carrying aliases are the merged few, so scanning them is cheap.
+	rows, err := db.store.GetDB().QueryContext(ctx, `
+		SELECT id, properties FROM graph_nodes
+		WHERE id LIKE 'entity:%' AND properties LIKE '%"aliases"%'`)
+	if err != nil {
+		return id
+	}
+	defer rows.Close()
+	wantKey := entityAliasKey(name)
+	for rows.Next() {
+		var nodeID, propsJSON string
+		if err := rows.Scan(&nodeID, &propsJSON); err != nil {
+			continue
+		}
+		var props struct {
+			Aliases []string `json:"aliases"`
+		}
+		if err := json.Unmarshal([]byte(propsJSON), &props); err != nil {
+			continue
+		}
+		for _, alias := range props.Aliases {
+			if entityAliasKey(alias) == wantKey {
+				return nodeID
+			}
+		}
+	}
+	return id
+}
+
+// entityAliasKey compares names the way entity resolution groups them:
+// case, space and punctuation insensitive.
+func entityAliasKey(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(unicode.ToLower(r))
+		}
+	}
+	return b.String()
+}
+
+// recordMemoryRecalls bumps recall counters on memories a search returned.
+//
+// This is the observability half of the feedback loop: which memories actually
+// get recalled, and which have never surfaced. It deliberately does NOT feed
+// ranking — recall begets recall, and a popularity boost would compound its own
+// bias. The numbers exist for the usage report, where a person decides.
+func (db *DB) recordMemoryRecalls(ctx context.Context, hits []MemorySearchHit) {
+	if len(hits) == 0 {
+		return
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, hit := range hits {
+		// Best-effort by design: usage accounting must never fail a search.
+		_, _ = db.store.GetDB().ExecContext(ctx, `
+			UPDATE messages SET metadata = json_set(
+				COALESCE(NULLIF(metadata, ''), '{}'),
+				'$.recall_count', COALESCE(json_extract(metadata, '$.recall_count'), 0) + 1,
+				'$.last_recalled_at', ?
+			) WHERE id = ?`, now, hit.Memory.ID)
+	}
 }

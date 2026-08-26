@@ -213,7 +213,8 @@ func loadEntityInfos(ctx context.Context, db *cortexdb.DB) []entityInfo {
 }
 
 const resolveSystemPrompt = "You find entities that refer to the SAME real-world thing under different names " +
-	"(acronyms, abbreviations, synonyms, e.g. K8s = Kubernetes, Postgres = PostgreSQL). " +
+	"(acronyms, abbreviations, synonyms, plural forms, and cross-language names, " +
+	"e.g. K8s = Kubernetes, Postgres = PostgreSQL, VM = VMs, \u674e\u5458\u5916 = Liang Li). " +
 	"ONLY group names that are truly the same entity — never merely related ones. " +
 	"Use the canonical (fullest, most standard) name as the canonical. " +
 	"Return JSON only: {\"groups\":[{\"canonical\":\"…\",\"aliases\":[\"…\"]}]}. Omit singletons."
