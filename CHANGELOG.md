@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.75.0] - 2026-08-26
+
+### Added
+
+- **Semantic memory recall with a calibrated noise floor.** The memory path now uses
+  the cosine scores `SearchChatHistory` always computed and threw away, filters them at
+  a floor calibrated on a live store (unrelated probes peaked at 0.263, the weakest
+  genuine hit scored 0.311; the floor sits at 0.28), and merges above-floor semantic
+  hits ahead of lexical ones instead of replacing them. Golden-set effect against a
+  copy of the live brain: total recall@5 0.654 → 0.846, paraphrase 0.000 → 0.667 with
+  both cross-lingual cases recovered. Saving no longer fails when the embedder does —
+  the memory is stored without a vector and `--reembed-memories` (new) fills the
+  backlog; the existing reembed pass covered knowledge chunks only.
+- **`supersedes` on memory_save.** A correction names the memories it replaces; they
+  stay stored and exported with `superseded_by` in their metadata, but recall stops
+  presenting them as current. Superseding a missing id fails loudly.
+- **Importance and age rank memories, as a bounded tie-breaker.** The multiplier lives
+  in [0.85, 1.0]: equal matches order by importance and recency, a genuinely better
+  match cannot be dethroned by being old. Raw multiplicative decay was measured first
+  and rejected — it pushed correct months-old answers out of the top ranks.
+- **`--recall-eval <golden.jsonl>`** measures recall quality (recall@K, MRR, forbidden
+  ids, score spread, per category) against either brain, so retrieval changes are
+  judged by a fixed yardstick.
+
 ## [2.74.1] - 2026-08-23
 
 ### Fixed
