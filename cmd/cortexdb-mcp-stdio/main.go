@@ -126,6 +126,13 @@ func main() {
 		return
 	}
 
+	// `--recall-eval <golden.jsonl>` measures recall quality against a golden
+	// set of real queries, so retrieval changes are judged by a fixed yardstick.
+	if len(os.Args) > 1 && os.Args[1] == "--recall-eval" {
+		runRecallEval(os.Args[2:])
+		return
+	}
+
 	// `--sync-memory [dir] [--prune] [--dry-run]` writes an exported directory
 	// back, so correcting a memory is editing a file and forgetting one is
 	// deleting a file. The reverse of --export-memory.
