@@ -126,6 +126,14 @@ func main() {
 		return
 	}
 
+	// `--reembed-memories [--dry-run] [--limit N]` embeds memories whose vector
+	// is missing or wrong-dimensional, so semantic recall covers the backlog a
+	// store accumulated while running without an embedder.
+	if len(os.Args) > 1 && os.Args[1] == "--reembed-memories" {
+		runReembedMemories(os.Args[2:])
+		return
+	}
+
 	// `--recall-eval <golden.jsonl>` measures recall quality against a golden
 	// set of real queries, so retrieval changes are judged by a fixed yardstick.
 	if len(os.Args) > 1 && os.Args[1] == "--recall-eval" {

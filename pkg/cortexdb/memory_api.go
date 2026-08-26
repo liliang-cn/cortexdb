@@ -16,6 +16,14 @@ import (
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
+// memorySemanticFloor is the cosine similarity below which a semantic hit is
+// noise. A vector search has a nearest neighbour to every query, including
+// queries the store holds nothing about; the floor is what lets it answer
+// "nothing relevant". Calibrated on a live store of ~2k memories with
+// embeddinggemma: unrelated probes (weather, cooking, novels) peaked at 0.263
+// while the weakest genuine hit scored 0.311.
+const memorySemanticFloor = 0.28
+
 type memoryRow struct {
 	record MemoryRecord
 	vector []byte
@@ -190,31 +198,31 @@ func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*Memor
 	// Was "!= lexical", which meant "== auto" while graph was unsupported here.
 	// Spelled out now that graph is a real outcome, so entity hints are not
 	// answered by a vector search that ignores them.
+	// The semantic path merges with lexical rather than replacing it. It used
+	// to return exclusively whenever it had any results, scored by list
+	// position — so a query whose best answer was an exact keyword match lost
+	// it to five vaguely-similar neighbours, and a query about nothing the
+	// store knows still got five of them: a vector search without a floor has
+	// a nearest neighbour to every question ever asked.
+	var semanticHits []MemorySearchHit
 	if db.HasEmbedder() && resolution.Decision.EffectiveMode == RetrievalModeAuto {
 		queryVec, err := db.embedder.Embed(ctx, resolution.Plan.Query)
 		if err != nil {
 			log.Printf("cortexdb: memory semantic embed fallback to lexical: %v", err)
 		} else {
-			messages, searchErr := db.store.SearchChatHistory(ctx, queryVec, bucketID, req.TopK)
+			scored, searchErr := db.store.SearchChatHistoryScored(ctx, queryVec, bucketID, req.TopK)
 			if searchErr != nil {
 				log.Printf("cortexdb: memory semantic search fallback to lexical: %v", searchErr)
-			} else if len(messages) > 0 {
-				hits := make([]MemorySearchHit, 0, len(messages))
-				for i, message := range messages {
-					record := memoryRecordFromMessage(bucketID, "", message)
+			} else {
+				for _, sm := range scored {
+					if sm.Score < memorySemanticFloor {
+						continue
+					}
+					record := memoryRecordFromMessage(bucketID, "", sm.Message)
 					if memoryExpired(record) {
 						continue
 					}
-					score := float64(len(messages)-i) / float64(len(messages))
-					hits = append(hits, MemorySearchHit{Memory: record, Score: score})
-				}
-				if len(hits) > 0 {
-					return &MemorySearchResponse{
-						Query:    resolution.Plan.Query,
-						Plan:     resolution.Plan,
-						Decision: resolution.Decision,
-						Results:  hits,
-					}, nil
+					semanticHits = append(semanticHits, MemorySearchHit{Memory: record, Score: sm.Score})
 				}
 			}
 		}
@@ -242,7 +250,13 @@ func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*Memor
 
 	hits, err := db.searchMemoryLexical(ctx, bucketID, resolution.Plan.Query, resolution.Plan.Keywords, resolution.Plan.AlternateQueries, req.TopK)
 	if err != nil {
-		return nil, err
+		if len(semanticHits) == 0 {
+			return nil, err
+		}
+		hits = nil // semantic already answered; lexical failing must not erase it
+	}
+	if len(semanticHits) > 0 {
+		hits = mergeMemoryHits(semanticHits, hits, req.TopK)
 	}
 	if len(graphHits) > 0 {
 		hits = mergeMemoryHits(graphHits, hits, req.TopK)
@@ -381,7 +395,13 @@ func (db *DB) embedMemoryContent(ctx context.Context, content string) ([]byte, e
 	}
 	vec, err := db.embedder.Embed(ctx, content)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrEmbeddingFailed, err)
+		// A memory that cannot be embedded right now must still be remembered.
+		// The embedder is a network service; failing the save couples "can I
+		// remember" to "is that box awake", and a memory refused is gone —
+		// unlike its vector, which a re-embed pass can fill in later. Search
+		// already degrades to lexical for exactly this reason.
+		log.Printf("cortexdb: memory save proceeding without vector (embed failed: %v)", err)
+		return nil, nil
 	}
 	vectorBytes, err := encoding.EncodeVector(vec)
 	if err != nil {

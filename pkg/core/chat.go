@@ -157,7 +157,19 @@ func (s *SQLiteStore) GetSessionHistory(ctx context.Context, sessionID string, l
 
 // SearchChatHistory performs semantic search over messages
 // This requires messages to have vectors stored
-func (s *SQLiteStore) SearchChatHistory(ctx context.Context, queryVec []float32, sessionID string, limit int) ([]*Message, error) {
+// ScoredMessage pairs a message with its cosine similarity to the query.
+type ScoredMessage struct {
+	Message *Message
+	Score   float64
+}
+
+// SearchChatHistoryScored is SearchChatHistory with the similarity kept.
+//
+// The score was always computed and then thrown away, which forced callers to
+// rank by list position and left them nothing to threshold on — and a vector
+// search without a floor returns its nearest neighbours to every query,
+// including queries the store holds nothing about.
+func (s *SQLiteStore) SearchChatHistoryScored(ctx context.Context, queryVec []float32, sessionID string, limit int) ([]ScoredMessage, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -210,11 +222,25 @@ func (s *SQLiteStore) SearchChatHistory(ctx context.Context, queryVec []float32,
 		}
 	}
 
-	result := make([]*Message, 0, limit)
+	result := make([]ScoredMessage, 0, limit)
 	for i := 0; i < len(scored) && i < limit; i++ {
-		result = append(result, scored[i].msg)
+		result = append(result, ScoredMessage{Message: scored[i].msg, Score: float64(scored[i].score)})
 	}
 
+	return result, nil
+}
+
+// SearchChatHistory returns the messages alone, for callers that never needed
+// the scores.
+func (s *SQLiteStore) SearchChatHistory(ctx context.Context, queryVec []float32, sessionID string, limit int) ([]*Message, error) {
+	scored, err := s.SearchChatHistoryScored(ctx, queryVec, sessionID, limit)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*Message, 0, len(scored))
+	for _, sm := range scored {
+		result = append(result, sm.Message)
+	}
 	return result, nil
 }
 

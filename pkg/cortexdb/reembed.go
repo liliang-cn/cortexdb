@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
+
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
@@ -163,4 +165,111 @@ func (db *DB) RepairVectorDimensions(ctx context.Context, req VectorDimensionRep
 	}
 	response.Repair = repair
 	return response, nil
+}
+
+// ReembedMemoryVectors embeds stored memories whose vector is missing or has
+// the wrong dimensionality for the configured embedder.
+//
+// ReembedMismatchedVectors covers knowledge chunks only; memories live in the
+// messages table and were left out, so a store that ran without an embedder
+// accumulated memories with no vector — invisible to semantic recall while
+// lexical search still found them, which masked the gap. Only memory buckets
+// (session ids under the `memory:` prefix) are touched, not chat history.
+func (db *DB) ReembedMemoryVectors(ctx context.Context, opts ReembedOptions) (*ReembedReport, error) {
+	if db.embedder == nil {
+		return nil, ErrEmbedderNotConfigured
+	}
+	targetDim := db.embedder.Dim()
+	if targetDim <= 0 {
+		return nil, fmt.Errorf("cortexdb: embedder reports dimension %d", targetDim)
+	}
+	batchSize := opts.BatchSize
+	if batchSize <= 0 {
+		batchSize = 16
+	}
+
+	// A stored vector is a 4-byte length header plus float32s, so the byte
+	// length identifies the dimension without decoding.
+	query := `
+		SELECT id, content FROM messages
+		WHERE session_id LIKE 'memory:%'
+		  AND (vector IS NULL OR length(vector) != ?)
+		ORDER BY created_at DESC`
+	args := []any{4 + 4*targetDim}
+	if opts.Limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, opts.Limit)
+	}
+	rows, err := db.store.GetDB().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list memories needing vectors: %w", err)
+	}
+	type pending struct{ id, content string }
+	var stale []pending
+	for rows.Next() {
+		var p pending
+		if err := rows.Scan(&p.id, &p.content); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("scan memory: %w", err)
+		}
+		stale = append(stale, p)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	report := &ReembedReport{TargetDim: targetDim, Candidates: len(stale), DryRun: opts.DryRun}
+	if opts.DryRun {
+		return report, nil
+	}
+
+	for start := 0; start < len(stale); start += batchSize {
+		end := start + batchSize
+		if end > len(stale) {
+			end = len(stale)
+		}
+		batch := stale[start:end]
+		texts := make([]string, len(batch))
+		for i, p := range batch {
+			texts[i] = p.content
+		}
+		vectors, err := db.embedder.EmbedBatch(ctx, texts)
+		if err != nil {
+			report.Failed += len(batch)
+			report.Errors = append(report.Errors, fmt.Sprintf("embed batch at %d: %v", start, err))
+			continue
+		}
+		if len(vectors) != len(batch) {
+			report.Failed += len(batch)
+			report.Errors = append(report.Errors,
+				fmt.Sprintf("embed batch at %d returned %d vectors for %d texts", start, len(vectors), len(batch)))
+			continue
+		}
+		for i, p := range batch {
+			if len(vectors[i]) != targetDim {
+				report.Failed++
+				report.Errors = append(report.Errors,
+					fmt.Sprintf("memory %s: embedder returned %d dimensions, want %d", p.id, len(vectors[i]), targetDim))
+				continue
+			}
+			encoded, err := encoding.EncodeVector(vectors[i])
+			if err != nil {
+				report.Failed++
+				report.Errors = append(report.Errors, fmt.Sprintf("memory %s: encode vector: %v", p.id, err))
+				continue
+			}
+			if _, err := db.store.GetDB().ExecContext(ctx,
+				`UPDATE messages SET vector = ? WHERE id = ?`, encoded, p.id); err != nil {
+				report.Failed++
+				report.Errors = append(report.Errors, fmt.Sprintf("memory %s: write vector: %v", p.id, err))
+				continue
+			}
+			report.Reembedded++
+		}
+	}
+	return report, nil
 }
