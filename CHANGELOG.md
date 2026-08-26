@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.77.0] - 2026-08-26
+
+### Added
+
+- **Aliases resolve at query time.** `--resolve-entities` merged "K8s" into
+  "Kubernetes" and recorded the alias — and a query naming the alias then derived the
+  dead node's id and found nothing. Lookup now falls through to alias records when the
+  direct node is gone. The resolve prompt also covers plural forms and cross-language
+  names (VM/VMs, 李员外/Liang Li).
+- **Recall usage accounting and `--memory-usage`.** Every memory a search returns gets
+  `recall_count` and `last_recalled_at` stamped server-side, best-effort. Deliberately
+  observability, not policy — recall begets recall, so counts never feed ranking. The
+  report shows most-recalled memories and never-recalled ones older than a cutoff as
+  prune candidates for `--export-memory` / `--sync-memory`.
+
 ## [2.76.0] - 2026-08-26
 
 ### Added
