@@ -242,6 +242,21 @@ func (db *DB) extractKnowledgeEntities(ctx context.Context, input knowledgeMutat
 	entityMentions := make(map[string]map[string]struct{})
 	relationshipMap := make(map[string]graph.GraphEdge)
 
+	// Names the caller declared in this same request. Extraction must not build
+	// a second, untyped node for them: a declared entity is keyed by its
+	// ontology identity while extraction keys on the name, so the two land on
+	// different ids and the generic one shadows the typed one when a later
+	// relation resolves its endpoints by name. That surfaced as a link being
+	// refused for connecting "Airport and entity" instead of Airport and Flight.
+	declared := make(map[string]struct{}, len(input.Entities)*2)
+	for _, entity := range input.Entities {
+		for _, alias := range []string{entity.Name, entity.ID} {
+			if alias = strings.TrimSpace(alias); alias != "" {
+				declared[strings.ToLower(alias)] = struct{}{}
+			}
+		}
+	}
+
 	for i, chunk := range chunks {
 		extraction, err := extractor.Extract(ctx, chunk)
 		if err != nil {
@@ -254,6 +269,9 @@ func (db *DB) extractKnowledgeEntities(ctx context.Context, input knowledgeMutat
 		chunkID := chunkIDs[i]
 		for _, entity := range extraction.Entities {
 			if strings.TrimSpace(entity.Name) == "" {
+				continue
+			}
+			if _, ok := declared[strings.ToLower(strings.TrimSpace(entity.Name))]; ok {
 				continue
 			}
 			entityID := graphEntityNodeID(entity.Name)
@@ -328,6 +346,19 @@ func (db *DB) buildExtractedEntityArtifacts(ctx context.Context, entityTexts map
 					"type": entity.Type,
 				},
 			}
+		}
+
+		// Extraction types everything it finds "entity", and the upsert would
+		// write that over a type somebody declared earlier.
+		pending := make([]*graph.GraphNode, 0, len(orderedEntityIDs))
+		for _, entityID := range orderedEntityIDs {
+			pending = append(pending, entityNodes[entityID])
+		}
+		if err := db.preserveDeclaredEntityTypes(ctx, pending); err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
+		for _, entityID := range orderedEntityIDs {
+			entityTypes[entityID] = entityNodes[entityID].NodeType
 		}
 	}
 

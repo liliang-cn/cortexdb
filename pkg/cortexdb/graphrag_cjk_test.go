@@ -55,7 +55,9 @@ func TestLatinOnlyTextIsUnaffected(t *testing.T) {
 	names := entityNames(t, "The Chain Rule applies when Composition of Functions appears. See Dr Smith.")
 	joined := strings.Join(names, ",")
 	// Including short vowel-less names, which are only filtered when CJK is present.
-	for _, want := range []string{"The Chain Rule", "Composition", "Functions", "Dr Smith"} {
+	// "Chain Rule" rather than "The Chain Rule": a leading determiner is grammar,
+	// not part of the name, and keeping it made a second node for the same thing.
+	for _, want := range []string{"Chain Rule", "Composition", "Functions", "Dr Smith"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("entity %q lost from Latin-only text; got %v", want, names)
 		}

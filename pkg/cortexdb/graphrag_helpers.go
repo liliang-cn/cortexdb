@@ -11,13 +11,152 @@ import (
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
-var titleEntityPattern = regexp.MustCompile(`\b(?:[A-Z][a-z0-9]+(?:\s+[A-Z][a-z0-9]+)*)\b`)
+// A name starts with a capital and runs on through letters and digits, so
+// internal capitals and trailing digits stay inside one token. The pattern used
+// to be `[A-Z][a-z0-9]+`, which cannot match a word with a capital in the middle
+// at all: there is no word boundary inside "CortexDB", so it matched neither
+// that nor SQLite, GraphRAG, DRBD, MCP or FTS5 — most of the vocabulary of a
+// technical corpus was invisible to entity extraction.
+var titleEntityPattern = regexp.MustCompile(`\b(?:[A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+)*)\b`)
+
+// acronymPattern matches a token that is all capitals and digits. Romanisation
+// debris is Title Case, never this, so such tokens skip the plausibility filter
+// that would otherwise drop DRBD and FTS5 for having no vowel.
+var acronymPattern = regexp.MustCompile(`^[A-Z0-9]+$`)
+
+// minCorroborationMatches is how many Title Case matches a text needs before the
+// corroboration rule is worth applying. Below it the text is a note or a single
+// chunk, where every name legitimately appears once.
+const minCorroborationMatches = 12
 
 type defaultGraphRAGExtractor struct{}
 
 func (defaultGraphRAGExtractor) Extract(_ context.Context, text string) (*GraphExtraction, error) {
-	entities := extractTitleEntities(text)
+	entities := extractCorpusEntities(text)
 	return &GraphExtraction{Entities: entities}, nil
+}
+
+// entityStopwords are words whose capital letter says nothing about them. English
+// capitalises the first word of every sentence, so a pattern looking for Title
+// Case collects the grammar along with the names: real stores ended up with
+// "This", "Only", "Next", "Requires" and "Measured" as entities, and since
+// co-occurrence pairs them with everything nearby, each one spread.
+//
+// Kept to closed-class words and verbs/adverbs that are near-never part of a
+// name. Common nouns are deliberately absent — "Gateway", "Volume" and "Node"
+// are exactly the entities worth having, and a dictionary cannot tell those from
+// "Library" without knowing the subject.
+var entityStopwords = map[string]struct{}{}
+
+// entityLeadingStopwords is the subset safe to strip from the front of a longer
+// match: no proper name begins with one. "This Gateway" is a mention of Gateway,
+// while "New York" keeps its "New" because adjectives are not in here.
+var entityLeadingStopwords = map[string]struct{}{}
+
+func init() {
+	for _, w := range []string{
+		// closed class — also the safe-to-strip set
+		"the", "this", "that", "these", "those", "a", "an", "and", "but", "or",
+		"if", "when", "while", "because", "since", "however", "therefore",
+		"thus", "hence", "also", "then", "though", "although", "otherwise",
+		"instead", "meanwhile", "besides", "moreover", "furthermore",
+	} {
+		entityStopwords[w] = struct{}{}
+		entityLeadingStopwords[w] = struct{}{}
+	}
+	for _, w := range []string{
+		// pronouns and determiners
+		"it", "its", "they", "them", "their", "we", "our", "you", "your",
+		"he", "she", "his", "her", "there", "here", "all", "any", "some",
+		"each", "every", "both", "few", "many", "most", "more", "less",
+		"only", "just", "even", "such", "same", "other", "another", "no", "not",
+		// verbs and participles that open sentences
+		"is", "are", "was", "were", "be", "been", "being", "do", "does", "did",
+		"have", "has", "had", "can", "could", "will", "would", "should", "may",
+		"might", "must", "let", "make", "made", "use", "used", "using", "add",
+		"added", "set", "get", "put", "run", "see", "note", "noted", "given",
+		"keep", "kept", "call", "called", "return", "returns", "returned",
+		"require", "requires", "required", "measure", "measured", "apparent",
+		"consider", "without", "with", "from", "into", "onto", "than",
+		"before", "after", "during", "unless", "until", "why", "how", "what",
+		"which", "who", "whom", "whose", "where",
+		// time and ordinal adverbs
+		"now", "today", "yesterday", "tomorrow", "once", "twice", "next",
+		"last", "first", "second", "third", "finally", "still", "yet", "so",
+		// all-caps prose markers, now that acronyms are matched at all
+		"ok", "todo", "fixme", "note", "warning", "error", "info", "debug",
+		"caveat", "important", "why", "how",
+	} {
+		entityStopwords[w] = struct{}{}
+	}
+}
+
+// stripLeadingStopwords removes grammar words from the front of a match.
+//
+// Which words count as grammar depends on where the match sits. Mid-sentence a
+// capital is a choice, so only the closed class goes — "Set Theory" keeps its
+// "Set". Opening a sentence the capital is forced by grammar and says nothing,
+// so any stopword goes: "See Dr Smith" is a mention of Dr Smith.
+func stripLeadingStopwords(match string, sentenceInitial bool) string {
+	words := strings.Fields(match)
+	for len(words) > 1 {
+		lower := strings.ToLower(words[0])
+		_, closed := entityLeadingStopwords[lower]
+		_, any := entityStopwords[lower]
+		if !closed && !(sentenceInitial && any) {
+			break
+		}
+		words = words[1:]
+	}
+	return strings.Join(words, " ")
+}
+
+// allStopwords reports whether a match is grammar all the way through.
+func allStopwords(match string) bool {
+	words := strings.Fields(match)
+	if len(words) == 0 {
+		return true
+	}
+	for _, w := range words {
+		if _, ok := entityStopwords[strings.ToLower(w)]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// memberAccessAt reports whether the match at start is the tail of a dotted or
+// pathed identifier — the "Printf" in log.Printf, which is a function call being
+// discussed, not a thing the text is about.
+func memberAccessAt(text string, start int) bool {
+	if start == 0 {
+		return false
+	}
+	switch text[start-1] {
+	case '.', '/', ':', '\\':
+		return true
+	}
+	return false
+}
+
+// sentenceInitialAt reports whether the match at start opens a sentence, a line
+// or a list item — positions where a capital letter is required by grammar and
+// therefore carries no evidence that the word is a name.
+func sentenceInitialAt(text string, start int) bool {
+	for i := start - 1; i >= 0; i-- {
+		switch c := text[i]; c {
+		case ' ', '\t', '-', '*', '#', '>', '|', ')', ']', '+':
+			continue
+		case '\n', '\r', '.', '!', '?', ':', ';', '(', '[':
+			return true
+		default:
+			if c >= '0' && c <= '9' {
+				continue // "1. Options ..." — a numbered list marker
+			}
+			return false
+		}
+	}
+	return true
 }
 
 // textHasCJK reports whether the text holds Han, Hiragana, Katakana or Hangul.
@@ -38,6 +177,9 @@ func textHasCJK(text string) bool {
 // text layer has mangled the tone marks, usually vowel-less.
 func plausibleLatinEntity(match string) bool {
 	for _, word := range strings.Fields(match) {
+		if acronymPattern.MatchString(word) {
+			continue
+		}
 		if len([]rune(word)) < 3 {
 			return false
 		}
@@ -486,17 +628,59 @@ func extractEntityNames(entities []GraphEntity) []string {
 // concepts. Tone marks cannot be tested for, because the mangling destroys them, so the
 // pass is skipped for text that is mostly CJK and left to an LLM extractor.
 func extractTitleEntities(text string) []GraphEntity {
+	return extractEntitiesFromText(text, false)
+}
+
+// extractCorpusEntities is extractTitleEntities with one extra demand: a word
+// that only ever appears where grammar would capitalise it anyway has to earn
+// its place by appearing capitalised somewhere else too.
+//
+// Only for text being written into the graph. Queries are one line long, so
+// almost every word in them opens a sentence and the rule would reject the
+// entity hints the query exists to give.
+func extractCorpusEntities(text string) []GraphEntity {
+	return extractEntitiesFromText(text, true)
+}
+
+func extractEntitiesFromText(text string, corroborate bool) []GraphEntity {
 	requirePlausible := textHasCJK(text)
-	matches := titleEntityPattern.FindAllString(text, -1)
+	spans := titleEntityPattern.FindAllStringIndex(text, -1)
+	// A rule that asks for corroboration can only run where there is text to
+	// corroborate against. A short note names each thing once, usually opening a
+	// sentence, so applying it there deletes the entities instead of the noise.
+	corroborate = corroborate && len(spans) >= minCorroborationMatches
+	// Where a word stands mid-sentence, its capital is a choice rather than a
+	// rule — that is the corroboration the second pass looks for.
+	corroborated := make(map[string]struct{})
+	if corroborate {
+		for _, span := range spans {
+			if sentenceInitialAt(text, span[0]) || memberAccessAt(text, span[0]) {
+				continue
+			}
+			for _, w := range strings.Fields(text[span[0]:span[1]]) {
+				corroborated[strings.ToLower(w)] = struct{}{}
+			}
+		}
+	}
+
 	seen := make(map[string]struct{})
-	entities := make([]GraphEntity, 0, len(matches))
-	for _, match := range matches {
-		match = strings.TrimSpace(match)
-		if len(match) < 2 {
+	entities := make([]GraphEntity, 0, len(spans))
+	for _, span := range spans {
+		if memberAccessAt(text, span[0]) {
+			continue
+		}
+		initial := sentenceInitialAt(text, span[0])
+		match := stripLeadingStopwords(strings.TrimSpace(text[span[0]:span[1]]), initial)
+		if len(match) < 2 || allStopwords(match) {
 			continue
 		}
 		if requirePlausible && !plausibleLatinEntity(match) {
 			continue
+		}
+		if corroborate && initial {
+			if _, ok := corroborated[strings.ToLower(strings.Fields(match)[0])]; !ok {
+				continue
+			}
 		}
 		if _, exists := seen[match]; exists {
 			continue

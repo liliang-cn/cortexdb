@@ -70,8 +70,17 @@ func (b *KnowledgeMemory) collectGraphFacts(ctx context.Context, query string, s
 		return entityLabelFromID(id)
 	}
 
-	facts := make([]KnowledgeMemoryGraphFact, 0, maxGraphFacts)
-	seenEdge := make(map[string]struct{})
+	// Deduplicated by the triple, not by edge id. Edge ids carry their
+	// provenance — "edge:rel:<chunk>:<from>:<to>:<type>" — so one fact asserted
+	// by two chunks is two rows with different ids, and the pack printed it
+	// twice while the cap counted it twice.
+	//
+	// That repetition is worth something once it is counted instead of shown:
+	// the number of distinct places a fact was asserted is the only evidence of
+	// its strength this store has.
+	type factKey struct{ from, predicate, to string }
+	collected := make(map[factKey]*graphFactEvidence)
+	order := make([]factKey, 0, maxGraphFacts*2)
 	for _, name := range candidates {
 		nodeID := resolveEntityNodeID("", name)
 		if nodeID == "" || getNode(nodeID) == nil {
@@ -89,27 +98,41 @@ func (b *KnowledgeMemory) collectGraphFacts(ctx context.Context, query string, s
 			if !isEntityNodeID(e.FromNodeID) || !isEntityNodeID(e.ToNodeID) {
 				continue
 			}
-			if _, ok := seenEdge[e.ID]; ok {
+			key := factKey{from: e.FromNodeID, predicate: e.EdgeType, to: e.ToNodeID}
+			if existing, ok := collected[key]; ok {
+				existing.assertions++
 				continue
 			}
-			seenEdge[e.ID] = struct{}{}
-			facts = append(facts, KnowledgeMemoryGraphFact{
-				Subject:   label(e.FromNodeID),
-				Predicate: e.EdgeType,
-				Object:    label(e.ToNodeID),
-				SubjectID: e.FromNodeID,
-				ObjectID:  e.ToNodeID,
-			})
-			if len(facts) >= maxGraphFacts {
-				break
-			}
-		}
-		if len(facts) >= maxGraphFacts {
-			break
+			collected[key] = &graphFactEvidence{assertions: 1}
+			order = append(order, key)
 		}
 	}
 
+	facts := make([]KnowledgeMemoryGraphFact, 0, len(order))
+	for _, key := range order {
+		facts = append(facts, KnowledgeMemoryGraphFact{
+			Subject:   label(key.from),
+			Predicate: key.predicate,
+			Object:    label(key.to),
+			SubjectID: key.from,
+			ObjectID:  key.to,
+		})
+	}
+
+	// Ranked before the cap applies, so the budget buys facts that say
+	// something. co_occurs means only that two names shared a sentence; it is
+	// generated for every adjacent pair, so it outnumbers everything and used to
+	// fill the pack while "oss-agent depends_on cortexdb" sat below the cut.
 	sort.SliceStable(facts, func(i, j int) bool {
+		iWeak, jWeak := isWeakPredicate(facts[i].Predicate), isWeakPredicate(facts[j].Predicate)
+		if iWeak != jWeak {
+			return jWeak
+		}
+		iN := collected[factKey{facts[i].SubjectID, facts[i].Predicate, facts[i].ObjectID}].assertions
+		jN := collected[factKey{facts[j].SubjectID, facts[j].Predicate, facts[j].ObjectID}].assertions
+		if iN != jN {
+			return iN > jN
+		}
 		if facts[i].Subject != facts[j].Subject {
 			return facts[i].Subject < facts[j].Subject
 		}
@@ -118,7 +141,28 @@ func (b *KnowledgeMemory) collectGraphFacts(ctx context.Context, query string, s
 		}
 		return facts[i].Object < facts[j].Object
 	})
+	if len(facts) > maxGraphFacts {
+		facts = facts[:maxGraphFacts]
+	}
 	return facts
+}
+
+// graphFactEvidence counts how many stored edges assert one triple.
+type graphFactEvidence struct{ assertions int }
+
+// weakPredicates say that two entities were near each other and nothing more.
+// They are kept — with a sparse graph they are sometimes all there is — but they
+// rank below any relation that names what actually holds between the two.
+var weakPredicates = map[string]struct{}{
+	"co_occurs":  {},
+	"related":    {},
+	"related_to": {},
+	"mentions":   {},
+}
+
+func isWeakPredicate(predicate string) bool {
+	_, ok := weakPredicates[strings.ToLower(strings.TrimSpace(predicate))]
+	return ok
 }
 
 func isEntityNodeID(id string) bool { return strings.HasPrefix(id, "entity:") }

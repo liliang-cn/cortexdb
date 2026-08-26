@@ -237,6 +237,9 @@ func (t *GraphRAGToolbox) UpsertEntities(ctx context.Context, req ToolUpsertEnti
 			return nil, err
 		}
 	}
+	if err := t.db.preserveDeclaredEntityTypes(ctx, nodes); err != nil {
+		return nil, err
+	}
 	stubs, err := t.missingChunkStubs(ctx, edges, req.DocumentID, vectorDim)
 	if err != nil {
 		return nil, err
@@ -550,4 +553,53 @@ func rejectedEdgeMessages(errs []error) []string {
 		messages = append(messages, err.Error())
 	}
 	return messages
+}
+
+// genericEntityNodeType is what an entity gets when nobody said what it is.
+const genericEntityNodeType = "entity"
+
+// preserveDeclaredEntityTypes stops an untyped mention from overwriting a type
+// somebody declared.
+//
+// Entity nodes upsert with ON CONFLICT ... SET node_type = excluded.node_type,
+// and the automatic extractor types everything it finds "entity". So a document
+// merely mentioning BA117 in prose demoted the Flight that had been saved with a
+// type, and the next link referencing it failed ontology validation — "connects
+// Airport and Flight, not Airport and entity". Widening the pattern to see
+// acronyms at all is what made this reachable.
+func (db *DB) preserveDeclaredEntityTypes(ctx context.Context, nodes []*graph.GraphNode) error {
+	ids := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		if node != nil && node.NodeType == genericEntityNodeType {
+			ids = append(ids, node.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	existing, err := db.graph.GetNodesBatch(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("check declared entity types: %w", err)
+	}
+	declared := make(map[string]string, len(existing))
+	for _, node := range existing {
+		if node == nil {
+			continue
+		}
+		if nodeType := strings.TrimSpace(node.NodeType); nodeType != "" && nodeType != genericEntityNodeType {
+			declared[node.ID] = nodeType
+		}
+	}
+	for _, node := range nodes {
+		if node == nil || node.NodeType != genericEntityNodeType {
+			continue
+		}
+		if nodeType, ok := declared[node.ID]; ok {
+			node.NodeType = nodeType
+			if node.Properties != nil {
+				node.Properties["type"] = nodeType
+			}
+		}
+	}
+	return nil
 }

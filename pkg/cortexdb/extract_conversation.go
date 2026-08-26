@@ -72,7 +72,7 @@ func (t *GraphRAGToolbox) ExtractConversation(ctx context.Context, req ToolExtra
 	// Entities: proper-noun/identifier candidates, minus common stopwords.
 	seen := make(map[string]struct{})
 	entities := make([]string, 0, maxEntities)
-	for _, e := range extractTitleEntities(text) {
+	for _, e := range extractCorpusEntities(text) {
 		name := strings.TrimSpace(e.Name)
 		low := strings.ToLower(name)
 		if len([]rune(name)) < 2 {
