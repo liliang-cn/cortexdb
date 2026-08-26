@@ -25,6 +25,19 @@ type ResolveOptions struct {
 	LLM JSONGenerator
 	// DryRun reports the merges it would make without applying them.
 	DryRun bool
+	// NodeTypes, when set, restricts resolution to entities of those types.
+	//
+	// Resolution reads a node's content as its name, and a store that holds
+	// more than one kind of graph will have names that repeat without being
+	// duplicates: a code graph gives each symbol an id built from its path and
+	// leaves the bare name as the content, so every package's main.go shares a
+	// canonical key. Merging those collapses distinct files into one and
+	// repoints their edges. Naming the types that resolution is about is what
+	// makes it safe to run over such a store.
+	//
+	// Empty means every entity participates, which is what callers had before
+	// this existed.
+	NodeTypes []string
 }
 
 // ResolveGroup is one set of entities merged into a canonical name.
@@ -53,7 +66,7 @@ func ResolveEntities(ctx context.Context, db *cortexdb.DB, opts ResolveOptions) 
 	if db == nil {
 		return nil, fmt.Errorf("graphflow: resolve: nil db")
 	}
-	entities := loadEntityInfos(ctx, db)
+	entities := loadEntityInfos(ctx, db, opts.NodeTypes)
 	report := &ResolveReport{EntitiesBefore: len(entities), DryRun: opts.DryRun}
 	if len(entities) < 2 {
 		return report, nil
@@ -177,7 +190,7 @@ func pickCanonical(group []entityInfo) entityInfo {
 }
 
 // loadEntityInfos returns every entity node with its display name and degree.
-func loadEntityInfos(ctx context.Context, db *cortexdb.DB) []entityInfo {
+func loadEntityInfos(ctx context.Context, db *cortexdb.DB, nodeTypes []string) []entityInfo {
 	degree := make(map[string]int)
 	if rows, err := db.SQL().QueryContext(ctx, `SELECT from_node_id, to_node_id FROM graph_edges`); err == nil {
 		for rows.Next() {
@@ -190,7 +203,15 @@ func loadEntityInfos(ctx context.Context, db *cortexdb.DB) []entityInfo {
 		}
 		_ = rows.Close()
 	}
-	rows, err := db.SQL().QueryContext(ctx, `SELECT id, COALESCE(content,'') FROM graph_nodes WHERE id LIKE 'entity:%'`)
+	query := `SELECT id, COALESCE(content,'') FROM graph_nodes WHERE id LIKE 'entity:%'`
+	args := make([]any, 0, len(nodeTypes))
+	if len(nodeTypes) > 0 {
+		query += ` AND node_type IN (` + strings.TrimSuffix(strings.Repeat("?,", len(nodeTypes)), ",") + `)`
+		for _, t := range nodeTypes {
+			args = append(args, t)
+		}
+	}
+	rows, err := db.SQL().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil
 	}

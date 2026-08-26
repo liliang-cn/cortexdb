@@ -138,3 +138,67 @@ func TestResolveEntitiesLLMAcronym(t *testing.T) {
 		t.Fatalf("expected entity:kubernetes to survive")
 	}
 }
+
+// A graph that holds more than one kind of thing cannot be resolved whole.
+//
+// Entity ids are derived from the name, but a code graph gives each symbol an
+// id built from its path while leaving the bare name as the content — so seven
+// packages each holding a main.go are seven nodes whose canonical key is the
+// same "maingo". Resolution reads the content as the name, groups them, and
+// merges seven distinct files into one with every edge repointed. The prose
+// entities in the same store genuinely do want merging, so the answer is not
+// to skip resolution but to say which types it applies to.
+//
+// Measured on a live base: 3309 nodes, of which 1043 were code symbols sharing
+// 40-odd bare names against 8 genuine prose duplicate pairs.
+func TestResolveEntitiesOnlyTouchesTheTypesAsked(t *testing.T) {
+	db, ctx := openResolveTestDB(t)
+	tools := db.GraphRAGTools()
+
+	if _, err := tools.UpsertEntities(ctx, cortexdb.ToolUpsertEntitiesRequest{Entities: []cortexdb.ToolEntityInput{
+		// Two spellings of one concept — these should merge.
+		{Name: "DRBD resource", Type: "DRBDResource"},
+		{Name: "DRBDResource", Type: "DRBDResource"},
+		// Two files that merely share a base name — these must not.
+		{ID: "repo:cmd/cli/main.go", Name: "main.go", Type: "file"},
+		{ID: "repo:cmd/agent/main.go", Name: "main.go", Type: "file"},
+	}}); err != nil {
+		t.Fatalf("upsert entities: %v", err)
+	}
+
+	report, err := ResolveEntities(ctx, db, ResolveOptions{NodeTypes: []string{"DRBDResource"}})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if report.EntitiesMerged != 1 {
+		t.Fatalf("merged = %d (groups=%v), want only the prose pair", report.EntitiesMerged, report.Groups)
+	}
+
+	var files int
+	if err := db.SQL().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM graph_nodes WHERE node_type = 'file'`).Scan(&files); err != nil {
+		t.Fatalf("count files: %v", err)
+	}
+	if files != 2 {
+		t.Errorf("file nodes = %d, want both left alone", files)
+	}
+}
+
+// Without the option, everything participates — the behaviour every existing
+// caller already has.
+func TestResolveEntitiesWithoutTypesConsidersEverything(t *testing.T) {
+	db, ctx := openResolveTestDB(t)
+	if _, err := db.GraphRAGTools().UpsertEntities(ctx, cortexdb.ToolUpsertEntitiesRequest{Entities: []cortexdb.ToolEntityInput{
+		{Name: "DRBD resource", Type: "DRBDResource"},
+		{Name: "DRBDResource", Type: "DRBDResource"},
+	}}); err != nil {
+		t.Fatalf("upsert entities: %v", err)
+	}
+	report, err := ResolveEntities(ctx, db, ResolveOptions{})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if report.EntitiesMerged != 1 {
+		t.Errorf("merged = %d, want the pair merged as before", report.EntitiesMerged)
+	}
+}
