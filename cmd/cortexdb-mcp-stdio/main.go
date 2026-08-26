@@ -134,6 +134,13 @@ func main() {
 		return
 	}
 
+	// `--graph-cleanup [--dry-run]` prunes junk entity nodes the old extraction
+	// rules produced and backfills graph presence for stored memories.
+	if len(os.Args) > 1 && os.Args[1] == "--graph-cleanup" {
+		runGraphCleanup(os.Args[2:])
+		return
+	}
+
 	// `--recall-eval <golden.jsonl>` measures recall quality against a golden
 	// set of real queries, so retrieval changes are judged by a fixed yardstick.
 	if len(os.Args) > 1 && os.Args[1] == "--recall-eval" {
