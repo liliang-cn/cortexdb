@@ -237,6 +237,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 					"metadata":    toolMapSchema("Optional metadata."),
 					"importance":  toolNumberSchema("Optional importance score."),
 					"ttl_seconds": toolIntegerSchema("Optional TTL in seconds."),
+					"supersedes":  toolStringArraySchema("Memory IDs this memory replaces. They stay stored and exported, but recall stops returning them as current."),
 					"entities":    toolEntityArraySchema(),
 					"relations":   toolRelationArraySchema(),
 				},

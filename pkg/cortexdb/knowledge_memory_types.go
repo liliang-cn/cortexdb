@@ -164,6 +164,11 @@ type MemorySaveRequest struct {
 	Metadata   map[string]any `json:"metadata,omitempty"`
 	Importance float64        `json:"importance,omitempty"`
 	TTLSeconds int            `json:"ttl_seconds,omitempty"`
+	// Supersedes names memories this one replaces. They stay stored and
+	// exported, but recall stops presenting them as current — without this the
+	// old wording keeps answering with stale facts in a confident voice, and
+	// the only fix was hunting down its id and deleting history.
+	Supersedes []string `json:"supersedes,omitempty"`
 	// Entities and Relations let a caller record what this memory is ABOUT in
 	// the same call that stores it, the way SaveKnowledge already can. Without
 	// them the graph could only be filled by a separate extraction pass, which

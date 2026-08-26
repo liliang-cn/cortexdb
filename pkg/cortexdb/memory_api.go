@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -72,6 +73,9 @@ func (db *DB) SaveMemory(ctx context.Context, req MemorySaveRequest) (*MemorySav
 
 	row, err := db.loadMemoryRow(ctx, req.MemoryID)
 	if err != nil {
+		return nil, err
+	}
+	if err := db.markMemoriesSuperseded(ctx, req.MemoryID, req.Supersedes); err != nil {
 		return nil, err
 	}
 	if err := db.saveMemoryGraph(ctx, req); err != nil {
@@ -210,19 +214,30 @@ func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*Memor
 		if err != nil {
 			log.Printf("cortexdb: memory semantic embed fallback to lexical: %v", err)
 		} else {
-			scored, searchErr := db.store.SearchChatHistoryScored(ctx, queryVec, bucketID, req.TopK)
+			// Wider than topK on purpose: boosts reorder, and a memory just
+			// below the raw-similarity cut is exactly the one importance or
+			// recency should be able to lift into view.
+			scored, searchErr := db.store.SearchChatHistoryScored(ctx, queryVec, bucketID, req.TopK*4)
 			if searchErr != nil {
 				log.Printf("cortexdb: memory semantic search fallback to lexical: %v", searchErr)
 			} else {
+				now := time.Now().UTC()
 				for _, sm := range scored {
 					if sm.Score < memorySemanticFloor {
 						continue
 					}
 					record := memoryRecordFromMessage(bucketID, "", sm.Message)
-					if memoryExpired(record) {
+					if memoryExpired(record) || memorySuperseded(record) {
 						continue
 					}
-					semanticHits = append(semanticHits, MemorySearchHit{Memory: record, Score: sm.Score})
+					semanticHits = append(semanticHits, MemorySearchHit{
+						Memory: record,
+						Score:  applyMemoryRecallBoosts(sm.Score, record, now),
+					})
+				}
+				sort.SliceStable(semanticHits, func(i, j int) bool { return semanticHits[i].Score > semanticHits[j].Score })
+				if len(semanticHits) > req.TopK {
+					semanticHits = semanticHits[:req.TopK]
 				}
 			}
 		}
@@ -503,7 +518,7 @@ func (db *DB) searchMemoryLexical(ctx context.Context, bucketID, query string, k
 				}
 			}
 			applyMemoryMetadata(&record)
-			if memoryExpired(record) {
+			if memoryExpired(record) || memorySuperseded(record) {
 				continue
 			}
 
@@ -520,7 +535,7 @@ func (db *DB) searchMemoryLexical(ctx context.Context, bucketID, query string, k
 			if relevance < 0 {
 				relevance = 0
 			}
-			score := (relevance / (1 + relevance)) * scoreWeight
+			score := applyMemoryRecallBoosts((relevance/(1+relevance))*scoreWeight, record, time.Now().UTC())
 			if existing, ok := merged[record.ID]; !ok || score > existing.score {
 				merged[record.ID] = scoredMemory{record: record, score: score}
 			}
@@ -835,13 +850,13 @@ func (db *DB) searchMemoryGraph(ctx context.Context, bucketID string, entityName
 			// still remembers it. Skip it rather than failing the whole recall.
 			continue
 		}
-		if row.record.SessionID != bucketID || memoryExpired(row.record) {
+		if row.record.SessionID != bucketID || memoryExpired(row.record) || memorySuperseded(row.record) {
 			continue
 		}
 		// Normalised so a memory mentioning every named entity scores 1.
 		hits = append(hits, MemorySearchHit{
 			Memory: row.record,
-			Score:  float64(c.mentions) / float64(len(nodeIDs)),
+			Score:  applyMemoryRecallBoosts(float64(c.mentions)/float64(len(nodeIDs)), row.record, time.Now().UTC()),
 		})
 	}
 	return hits, nil
@@ -880,4 +895,66 @@ func mergeMemoryHits(graphHits, lexicalHits []MemorySearchHit, topK int) []Memor
 		}
 	}
 	return merged
+}
+
+
+// applyMemoryRecallBoosts folds importance and age into a relevance score as a
+// bounded tie-breaker: the multiplier lives in [0.85, 1.0], so equal matches
+// are ordered by importance and recency while a genuinely better match cannot
+// be dethroned by being old. agentmem multiplies the raw decay in — right for
+// working memory that goes stale in weeks, wrong here, where a July memory is
+// still the correct answer in August: measured on the golden set, the raw form
+// pushed correct months-old answers out of the top ranks.
+func applyMemoryRecallBoosts(relevance float64, record MemoryRecord, now time.Time) float64 {
+	importance := record.Importance
+	if importance <= 0 {
+		importance = 0.5
+	}
+	days := now.Sub(record.CreatedAt).Hours() / 24
+	if days < 0 {
+		days = 0
+	}
+	inner := (0.5 + importance*0.5) * math.Exp(-0.007*days)
+	return relevance * (0.85 + 0.15*inner)
+}
+
+// memorySuperseded reports whether a newer memory has replaced this one. A
+// superseded memory stays stored — the export shows it, and its id explains
+// where a correction came from — but recall must not present it as current:
+// the whole point of superseding is that the old wording answers with stale
+// facts in a confident voice.
+func memorySuperseded(record MemoryRecord) bool {
+	if record.Metadata == nil {
+		return false
+	}
+	v, _ := record.Metadata["superseded_by"].(string)
+	return strings.TrimSpace(v) != ""
+}
+
+// markMemoriesSuperseded stamps each target as replaced by newID.
+func (db *DB) markMemoriesSuperseded(ctx context.Context, newID string, targets []string) error {
+	for _, target := range targets {
+		target = strings.TrimSpace(target)
+		if target == "" || target == newID {
+			continue
+		}
+		row, err := db.loadMemoryRow(ctx, target)
+		if err != nil {
+			// A supersede aimed at an id that does not exist is a caller mistake
+			// worth hearing about: silently succeeding would leave them sure the
+			// old fact is retired when nothing changed.
+			return fmt.Errorf("supersede %q: %w", target, err)
+		}
+		metadata := cloneAnyMap(row.record.Metadata)
+		metadata["superseded_by"] = newID
+		metadataJSON, err := json.Marshal(metadata)
+		if err != nil {
+			return fmt.Errorf("supersede %q: marshal metadata: %w", target, err)
+		}
+		if _, err := db.store.GetDB().ExecContext(ctx,
+			`UPDATE messages SET metadata = ? WHERE id = ?`, metadataJSON, target); err != nil {
+			return fmt.Errorf("supersede %q: %w", target, err)
+		}
+	}
+	return nil
 }
