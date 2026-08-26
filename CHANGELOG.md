@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.80.0] - 2026-08-26
+
+### Fixed
+
+- **A relation endpoint resolves to the entity the schema is about.** An endpoint
+  names an entity, and a name can belong to more than one node; resolution took the
+  first by id. In a store holding a prose vocabulary and a code graph — a "Snapshot"
+  entity and a Go type of that name — the code node's id sorted first, so edges
+  extracted from runbooks attached to structs. An endpoint now prefers a node whose
+  type the ontology declares; among equally declared or undeclared candidates the id
+  still decides, so a store with no ontology is unaffected.
+
 ## [2.79.0] - 2026-08-26
 
 ### Fixed
