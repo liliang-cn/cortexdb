@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.78.0] - 2026-08-26
+
+### Added
+
+- **Entity resolution can be scoped to node types.** `ResolveOptions.NodeTypes`
+  (and `--resolve-entities --types A,B`) restricts the merge to the types named.
+  Resolution reads a node's content as its name, so a store that also holds a code
+  graph — where each symbol keeps its bare name as content and its path in the id —
+  had every package's `main.go` sharing one canonical key, and a resolve pass merged
+  distinct files into one with their edges repointed. Empty keeps every entity, which
+  is what callers had. The CLI prints the scope so a merge over everything cannot be
+  mistaken for a scoped one.
+
 ## [2.77.0] - 2026-08-26
 
 ### Added
