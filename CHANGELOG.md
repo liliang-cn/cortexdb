@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.79.0] - 2026-08-26
+
+### Fixed
+
+- **A flag is no longer merged with an identifier.** `canonicalKey` dropped
+  punctuation, so `--read-only` and `ReadOnly` shared a key and entity resolution
+  collapsed them under whichever won — losing the difference between what you paste
+  into a shell and the field of the same idea, which is the one thing a CLI's help
+  text is ingested for. Five of eighteen proposed merges on a live base were this
+  shape, and node type did not separate them. A leading dash now survives into the
+  key; two spellings of one flag still merge.
+
 ## [2.78.0] - 2026-08-26
 
 ### Added
