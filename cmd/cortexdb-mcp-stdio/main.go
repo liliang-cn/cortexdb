@@ -134,6 +134,14 @@ func main() {
 		return
 	}
 
+	// `--capture-session [transcript.jsonl] [--dry-run]` distils a finished
+	// session into fact-scoped memories via CORTEXDB_LLM_*. Run by the
+	// SessionEnd hook; the write-side loop of the memory brain.
+	if len(os.Args) > 1 && os.Args[1] == "--capture-session" {
+		runCaptureSession(os.Args[2:])
+		return
+	}
+
 	// `--graph-cleanup [--dry-run]` prunes junk entity nodes the old extraction
 	// rules produced and backfills graph presence for stored memories.
 	if len(os.Args) > 1 && os.Args[1] == "--graph-cleanup" {

@@ -24,6 +24,17 @@
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/cortexdb-session-end",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

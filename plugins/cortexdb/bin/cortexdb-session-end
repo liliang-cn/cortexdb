@@ -1,0 +1,68 @@
+#!/bin/sh
+# CortexDB session-capture launcher for the Claude Code SessionEnd hook.
+#
+# Hands the ending session's transcript to `cortexdb-mcp --capture-session`,
+# which distils it into fact-scoped memories — the write-side loop of the
+# memory brain. Without it the brain only knows what an agent remembered to
+# tell it: forget a memory_save and the session never happened.
+#
+# It NEVER delays the session's exit: the capture runs detached in the
+# background, and every problem path exits 0 silently. The capture itself is
+# opt-in by configuration — without CORTEXDB_LLM_* the binary declines quietly,
+# so installing this hook costs nothing until an LLM is configured.
+#
+#   cortexdb-session-end            run as the hook (reads hook JSON on stdin)
+#   cortexdb-session-end --disable  turn capture off (writes the sentinel)
+#   cortexdb-session-end --enable   turn capture back on
+set -eu
+
+cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/cortexdb"
+sentinel="${cache_root}/autocapture"
+
+case "${1:-}" in
+  --enable)  mkdir -p "$cache_root"; printf 'on\n'  > "$sentinel"; echo "CortexDB session capture enabled.";  exit 0 ;;
+  --disable) mkdir -p "$cache_root"; printf 'off\n' > "$sentinel"; echo "CortexDB session capture disabled."; exit 0 ;;
+esac
+
+# Default on: the binary already declines without LLM configuration, so the
+# sentinel only exists to switch capture off where an LLM IS configured.
+if [ -f "$sentinel" ]; then
+  case "$(cat "$sentinel" 2>/dev/null || true)" in
+    off*) exit 0 ;;
+  esac
+fi
+
+self="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/$(basename "$0")"
+
+# Resolve the server binary exactly like cortexdb-recall does.
+bin=""
+if [ -n "${CORTEXDB_MCP_BIN:-}" ] && [ -x "${CORTEXDB_MCP_BIN}" ]; then
+  bin="${CORTEXDB_MCP_BIN}"
+else
+  os="$(uname -s)"; arch="$(uname -m)"
+  case "$os" in Darwin) goos=darwin ;; Linux) goos=linux ;; *) exit 0 ;; esac
+  case "$arch" in x86_64|amd64) goarch=amd64 ;; arm64|aarch64) goarch=arm64 ;; *) exit 0 ;; esac
+  asset="cortexdb-mcp-${goos}-${goarch}"
+  bin_cache_dir="${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-$HOME/.cache}/cortexdb}/bin"
+  plugin_root="${CLAUDE_PLUGIN_ROOT:-$(dirname "$self")/..}"
+  version="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+    "${plugin_root}/.claude-plugin/plugin.json" 2>/dev/null | head -n1)"
+  if [ -n "$version" ] && [ -x "${bin_cache_dir}/${asset}-${version}" ]; then
+    bin="${bin_cache_dir}/${asset}-${version}"
+  elif [ -x "${bin_cache_dir}/${asset}" ]; then
+    bin="${bin_cache_dir}/${asset}"
+  fi
+fi
+[ -n "$bin" ] || exit 0
+
+# Park the payload in a file: the detached process must not depend on our
+# stdin surviving, and the hook must return before the capture runs.
+mkdir -p "$cache_root"
+payload="$(mktemp "${cache_root}/capture-payload.XXXXXX")"
+cat > "$payload" 2>/dev/null || { rm -f "$payload"; exit 0; }
+
+logfile="${cache_root}/capture.log"
+nohup sh -c '"$1" --capture-session < "$2" >> "$3" 2>&1; rm -f "$2"' \
+  capture "$bin" "$payload" "$logfile" >/dev/null 2>&1 &
+
+exit 0
