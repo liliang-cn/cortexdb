@@ -839,11 +839,17 @@ func (db *DB) searchMemoryGraph(ctx context.Context, bucketID string, entityName
 		return nil, nil
 	}
 
-	hits := make([]MemorySearchHit, 0, topK)
+	// Cut only after boosting. Mention counts tie constantly — on a well-
+	// indexed graph a popular entity has hundreds of one-mention neighbours —
+	// and truncating on the SQL ordering handed those ties to whichever memory
+	// node id sorted first, which is an alphabet, not a ranking.
+	candidateCap := topK * 8
+	if len(candidates) > candidateCap {
+		candidates = candidates[:candidateCap]
+	}
+	now := time.Now().UTC()
+	hits := make([]MemorySearchHit, 0, len(candidates))
 	for _, c := range candidates {
-		if len(hits) >= topK {
-			break
-		}
 		row, err := db.loadMemoryRow(ctx, c.memoryID)
 		if err != nil {
 			// A node can outlive its memory — the memory was deleted and the graph
@@ -856,8 +862,12 @@ func (db *DB) searchMemoryGraph(ctx context.Context, bucketID string, entityName
 		// Normalised so a memory mentioning every named entity scores 1.
 		hits = append(hits, MemorySearchHit{
 			Memory: row.record,
-			Score:  applyMemoryRecallBoosts(float64(c.mentions)/float64(len(nodeIDs)), row.record, time.Now().UTC()),
+			Score:  applyMemoryRecallBoosts(float64(c.mentions)/float64(len(nodeIDs)), row.record, now),
 		})
+	}
+	sort.SliceStable(hits, func(i, j int) bool { return hits[i].Score > hits[j].Score })
+	if len(hits) > topK {
+		hits = hits[:topK]
 	}
 	return hits, nil
 }
