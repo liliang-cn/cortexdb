@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.76.0] - 2026-08-26
+
+### Added
+
+- **Automatic session capture — the write-side loop.** A SessionEnd hook hands the
+  finished transcript to `--capture-session`, which distils it into fact-scoped
+  memories via `CORTEXDB_LLM_*` (declining quietly when unset) and saves each with its
+  entities, so auto-captured facts are reachable through semantic, lexical and graph
+  recall alike. One fact per memory by design: long mixed notes embed to mush. The
+  hook detaches immediately — a session's exit never waits on a model. Ids are stable
+  per session and slug, so re-capture overwrites rather than stacks. Disable with
+  `cortexdb-session-end --disable`. Measured: probes phrased in Chinese hit English
+  auto-captured facts at rank 1.
+
 ## [2.75.1] - 2026-08-26
 
 ### Added
