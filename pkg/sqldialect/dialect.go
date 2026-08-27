@@ -20,6 +20,7 @@
 package sqldialect
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -42,6 +43,15 @@ type Dialect interface {
 
 	// BlobType is the column type for opaque bytes — a serialized vector.
 	BlobType() string
+
+	// JSONText reads a top-level string field out of a JSON column.
+	//
+	// The fourth thing the two databases genuinely disagree about, and the one
+	// that keeps a whole feature from crossing: pkg/graphflow stores a
+	// temporal fact's validity inside an edge's `properties` JSON and reads it
+	// back with json_extract, which PostgreSQL does not have. Written once
+	// here, the same query works on both.
+	JSONText(column, key string) string
 
 	// IsDuplicateColumn reports whether err is "this column already exists",
 	// which an idempotent ALTER TABLE ADD COLUMN must swallow.
@@ -81,9 +91,21 @@ func KindForDSN(dsn string) Kind {
 	}
 }
 
+// jsonKey makes a key safe to embed in a SQL string literal.
+//
+// Every caller passes a constant today, which is exactly when this is easy to
+// leave out and hard to notice missing later.
+func jsonKey(key string) string {
+	return strings.ReplaceAll(key, "'", "''")
+}
+
 type sqliteDialect struct{}
 
-func (sqliteDialect) Kind() Kind             { return SQLite }
+func (sqliteDialect) Kind() Kind { return SQLite }
+
+func (sqliteDialect) JSONText(column, key string) string {
+	return fmt.Sprintf("json_extract(%s, '$.%s')", column, jsonKey(key))
+}
 func (sqliteDialect) Rebind(q string) string { return q }
 func (sqliteDialect) BlobType() string       { return "BLOB" }
 func (sqliteDialect) BoolType() string       { return "INTEGER" }
@@ -95,6 +117,12 @@ type postgresDialect struct{}
 
 func (postgresDialect) Kind() Kind       { return Postgres }
 func (postgresDialect) BlobType() string { return "BYTEA" }
+
+// ->> rather than -> so the result is text and not a quoted JSON scalar; the
+// cast is there because `properties` is a TEXT column, not jsonb.
+func (postgresDialect) JSONText(column, key string) string {
+	return fmt.Sprintf("(%s::jsonb ->> '%s')", column, jsonKey(key))
+}
 
 func (postgresDialect) IsDuplicateColumn(err error) bool {
 	if err == nil {

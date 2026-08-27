@@ -161,24 +161,68 @@ func SupersedeFact(ctx context.Context, db *cortexdb.DB, from, typ string, asOf 
 // — optionally scoped by subject and/or predicate. Endpoint node ids are
 // resolved to entity display names (falling back to the id suffix), matching the
 // community.go loadEntityDisplayNames pattern.
+// ensureTemporalIndex creates the expression index the as-of filter needs.
+//
+// Now that the instant is compared in SQL, an index on the extracted
+// valid_from turns "what was true on this date" from a scan of every edge that
+// carries a validity into a range lookup. Both databases index expressions, so
+// this is one statement rather than two.
+//
+// Idempotent and non-fatal: an index that cannot be created costs speed, not
+// correctness, and refusing to answer would be the worse trade.
+func ensureTemporalIndex(ctx context.Context, db *cortexdb.DB) error {
+	if err := db.Graph().InitGraphSchema(ctx); err != nil {
+		return fmt.Errorf("graphflow: temporal: init graph schema: %w", err)
+	}
+	stmt := `CREATE INDEX IF NOT EXISTS idx_graph_edges_valid_from ON graph_edges(` +
+		db.Dialect().JSONText("properties", factValidFromKey) + `)`
+	_, _ = db.SQL().ExecContext(ctx, stmt)
+	return nil
+}
+
 func QueryFactsAsOf(ctx context.Context, db *cortexdb.DB, at time.Time, filter TemporalFilter) ([]TemporalFact, error) {
 	if db == nil {
 		return nil, fmt.Errorf("graphflow: temporal: nil db")
 	}
-	// Ensure the graph tables exist: querying facts on a brand-new brain that
-	// never wrote a graph would otherwise hit "no such table: graph_edges".
-	if err := db.Graph().InitGraphSchema(ctx); err != nil {
-		return nil, fmt.Errorf("graphflow: temporal: init graph schema: %w", err)
+	// Creates the graph tables too, so querying a brand-new brain that never
+	// wrote a graph does not hit "no such table: graph_edges".
+	if err := ensureTemporalIndex(ctx, db); err != nil {
+		return nil, err
 	}
 	names := loadEntityDisplayNames(ctx, db)
 
+	// Asked of the dialect rather than written out: json_extract is SQLite's
+	// and PostgreSQL has no such function, so a hardcoded query is a feature
+	// that cannot cross backends.
+	d := db.Dialect()
+	validFromCol := d.JSONText("properties", factValidFromKey)
+	validToCol := d.JSONText("properties", factValidToKey)
+	recordedCol := d.JSONText("properties", factRecordedAtKey)
+
+	// The instant is compared in SQL, not in Go.
+	//
+	// This used to read every temporal fact for the subject and filter them
+	// in the loop below, which is a full scan of the history to answer a
+	// question about one moment of it. String comparison is exact here
+	// because SaveTemporalFact writes .UTC().Format(time.RFC3339): every
+	// stored instant is Zulu and fixed-width, so lexicographic order is
+	// chronological order. The Go checks below are kept anyway as a backstop
+	// for rows this package did not write.
+	//
+	// The interval is half-open, [valid_from, valid_to), which is what the Go
+	// filter did: a fact starting exactly at `at` is current, one ending
+	// exactly at `at` is not.
+	atStr := at.UTC().Format(time.RFC3339)
 	query := `SELECT from_node_id, to_node_id, COALESCE(edge_type, ''),
-	                 json_extract(properties, '$.` + factValidFromKey + `'),
-	                 json_extract(properties, '$.` + factValidToKey + `'),
-	                 json_extract(properties, '$.` + factRecordedAtKey + `')
+	                 ` + validFromCol + `,
+	                 ` + validToCol + `,
+	                 ` + recordedCol + `
 	          FROM graph_edges
-	          WHERE json_extract(properties, '$.` + factValidFromKey + `') IS NOT NULL`
-	args := make([]any, 0, 2)
+	          WHERE ` + validFromCol + ` IS NOT NULL
+	            AND ` + validFromCol + ` <= ?
+	            AND (` + validToCol + ` IS NULL OR ` + validToCol + ` = '' OR ` + validToCol + ` > ?)`
+	args := make([]any, 0, 4)
+	args = append(args, atStr, atStr)
 	if f := strings.TrimSpace(filter.From); f != "" {
 		query += ` AND from_node_id = ?`
 		args = append(args, cortexdb.EntityNodeID(f))
@@ -187,7 +231,7 @@ func QueryFactsAsOf(ctx context.Context, db *cortexdb.DB, at time.Time, filter T
 		query += ` AND edge_type = ?`
 		args = append(args, t)
 	}
-	query += ` ORDER BY from_node_id, json_extract(properties, '$.` + factValidFromKey + `')`
+	query += ` ORDER BY from_node_id, ` + validFromCol
 
 	rows, err := db.SQL().QueryContext(ctx, query, args...)
 	if err != nil {

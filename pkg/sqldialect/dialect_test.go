@@ -2,6 +2,7 @@ package sqldialect
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -115,5 +116,25 @@ func TestKindForDSN(t *testing.T) {
 func TestBlobTypeFollowsTheDatabase(t *testing.T) {
 	if For(SQLite).BlobType() != "BLOB" || For(Postgres).BlobType() != "BYTEA" {
 		t.Error("blob type does not follow the database")
+	}
+}
+
+// The fourth difference: reading a field out of a JSON column. json_extract is
+// SQLite's and PostgreSQL has no such function, which is what kept the
+// temporal-fact layer from crossing.
+func TestJSONTextSpeaksEachDatabase(t *testing.T) {
+	if got := For(SQLite).JSONText("properties", "valid_from"); got != `json_extract(properties, '$.valid_from')` {
+		t.Errorf("SQLite JSONText = %s", got)
+	}
+	if got := For(Postgres).JSONText("properties", "valid_from"); got != `(properties::jsonb ->> 'valid_from')` {
+		t.Errorf("PostgreSQL JSONText = %s", got)
+	}
+	// Every caller passes a constant today, which is exactly when an escape is
+	// easy to leave out and hard to miss later.
+	for _, d := range []Dialect{For(SQLite), For(Postgres)} {
+		got := d.JSONText("properties", "it's")
+		if strings.Contains(got, "'s'") && !strings.Contains(got, "''s") {
+			t.Errorf("%s left a quote unescaped: %s", d.Kind(), got)
+		}
 	}
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
+	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 )
 
 // DB represents a SQLite vector database instance
@@ -189,6 +190,17 @@ func (db *DB) Graph() *graph.GraphStore {
 // file (e.g. pkg/agentmem). Callers must not close the returned handle.
 func (db *DB) SQL() *sql.DB {
 	return db.store.GetDB()
+}
+
+// Dialect names the SQL this DB speaks, for the sibling packages that build
+// their own queries against SQL().
+//
+// SQLite today, because DB holds a *core.SQLiteStore. The seam exists so the
+// queries written against it are already correct when that stops being true —
+// a query that hardcodes json_extract has to be found and rewritten later,
+// while one that asks the dialect does not.
+func (db *DB) Dialect() sqldialect.Dialect {
+	return sqldialect.For(sqldialect.SQLite)
 }
 
 // DBInfo provides information about the database instance
