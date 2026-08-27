@@ -67,6 +67,19 @@ func (a *pgArgs) add(v any) string {
 // It matches against the top-level array elements, which is exactly what
 // SQLite's `EXISTS (SELECT 1 FROM json_each(acl) WHERE value IN (…))` walks.
 func (s *PostgresStore) SearchWithACL(ctx context.Context, query []float32, acl []string, opts SearchOptions) ([]ScoredEmbedding, error) {
+	// One retry, for a `vector` type replaced under this connection.
+	// See IsStaleTypeCache: the statement never ran, and the failure is
+	// what clears the cache that caused it.
+	var out []ScoredEmbedding
+	err := retryOnStaleTypeCache(func() error {
+		var e error
+		out, e = s.searchWithACL(ctx, query, acl, opts)
+		return e
+	})
+	return out, err
+}
+
+func (s *PostgresStore) searchWithACL(ctx context.Context, query []float32, acl []string, opts SearchOptions) ([]ScoredEmbedding, error) {
 	if len(query) == 0 {
 		return nil, fmt.Errorf("search_acl: empty query vector")
 	}
@@ -109,6 +122,19 @@ func (s *PostgresStore) SearchWithACL(ctx context.Context, query []float32, acl 
 // vector-only and says so in the log, because silently vector-only results are
 // indistinguishable from ordinary ones.
 func (s *PostgresStore) HybridSearch(ctx context.Context, vectorQuery []float32, textQuery string, opts HybridSearchOptions) ([]ScoredEmbedding, error) {
+	// One retry, for a `vector` type replaced under this connection.
+	// See IsStaleTypeCache: the statement never ran, and the failure is
+	// what clears the cache that caused it.
+	var out []ScoredEmbedding
+	err := retryOnStaleTypeCache(func() error {
+		var e error
+		out, e = s.hybridSearch(ctx, vectorQuery, textQuery, opts)
+		return e
+	})
+	return out, err
+}
+
+func (s *PostgresStore) hybridSearch(ctx context.Context, vectorQuery []float32, textQuery string, opts HybridSearchOptions) ([]ScoredEmbedding, error) {
 	var (
 		vectorResults []ScoredEmbedding
 		err           error
@@ -256,6 +282,19 @@ func (s *PostgresStore) lexicalArm(ctx context.Context, textQuery string, opts H
 // operator nothing evaluates would otherwise reject every row and look like an
 // empty corpus.
 func (s *PostgresStore) SearchWithAdvancedFilter(ctx context.Context, query []float32, opts AdvancedSearchOptions) ([]ScoredEmbedding, error) {
+	// One retry, for a `vector` type replaced under this connection.
+	// See IsStaleTypeCache: the statement never ran, and the failure is
+	// what clears the cache that caused it.
+	var out []ScoredEmbedding
+	err := retryOnStaleTypeCache(func() error {
+		var e error
+		out, e = s.searchWithAdvancedFilter(ctx, query, opts)
+		return e
+	})
+	return out, err
+}
+
+func (s *PostgresStore) searchWithAdvancedFilter(ctx context.Context, query []float32, opts AdvancedSearchOptions) ([]ScoredEmbedding, error) {
 	if len(query) == 0 {
 		return nil, fmt.Errorf("advanced_search: empty query vector")
 	}

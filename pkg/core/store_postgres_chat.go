@@ -148,6 +148,19 @@ func (s *PostgresStore) GetSessionHistory(ctx context.Context, sessionID string,
 // cosine distance to cosine similarity so a threshold tuned against one
 // backend is right on the other; an exact match scores ~1 on both.
 func (s *PostgresStore) SearchChatHistoryScored(ctx context.Context, queryVec []float32, sessionID string, limit int) ([]ScoredMessage, error) {
+	// One retry, for a `vector` type replaced under this connection.
+	// See IsStaleTypeCache: the statement never ran, and the failure is
+	// what clears the cache that caused it.
+	var out []ScoredMessage
+	err := retryOnStaleTypeCache(func() error {
+		var e error
+		out, e = s.searchChatHistoryScored(ctx, queryVec, sessionID, limit)
+		return e
+	})
+	return out, err
+}
+
+func (s *PostgresStore) searchChatHistoryScored(ctx context.Context, queryVec []float32, sessionID string, limit int) ([]ScoredMessage, error) {
 	if limit <= 0 {
 		// SQLite's `make([]ScoredMessage, 0, limit)` yields nothing for 0 and
 		// panics below it. Nothing is the honest answer for both.
@@ -190,6 +203,19 @@ func (s *PostgresStore) SearchChatHistoryScored(ctx context.Context, queryVec []
 // SearchChatHistory returns the messages alone, for callers that never needed
 // the scores.
 func (s *PostgresStore) SearchChatHistory(ctx context.Context, queryVec []float32, sessionID string, limit int) ([]*Message, error) {
+	// One retry, for a `vector` type replaced under this connection.
+	// See IsStaleTypeCache: the statement never ran, and the failure is
+	// what clears the cache that caused it.
+	var out []*Message
+	err := retryOnStaleTypeCache(func() error {
+		var e error
+		out, e = s.searchChatHistory(ctx, queryVec, sessionID, limit)
+		return e
+	})
+	return out, err
+}
+
+func (s *PostgresStore) searchChatHistory(ctx context.Context, queryVec []float32, sessionID string, limit int) ([]*Message, error) {
 	scored, err := s.SearchChatHistoryScored(ctx, queryVec, sessionID, limit)
 	if err != nil {
 		return nil, err

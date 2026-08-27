@@ -285,6 +285,19 @@ func (s *PostgresStore) UpsertBatch(ctx context.Context, embs []*Embedding) erro
 // thing it does on SQLite — a caller comparing against a threshold must not
 // have to know which backend answered.
 func (s *PostgresStore) Search(ctx context.Context, query []float32, opts SearchOptions) ([]ScoredEmbedding, error) {
+	// One retry, for a `vector` type replaced under this connection.
+	// See IsStaleTypeCache: the statement never ran, and the failure is
+	// what clears the cache that caused it.
+	var out []ScoredEmbedding
+	err := retryOnStaleTypeCache(func() error {
+		var e error
+		out, e = s.search(ctx, query, opts)
+		return e
+	})
+	return out, err
+}
+
+func (s *PostgresStore) search(ctx context.Context, query []float32, opts SearchOptions) ([]ScoredEmbedding, error) {
 	if len(query) == 0 {
 		return nil, fmt.Errorf("search: empty query vector")
 	}
