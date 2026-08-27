@@ -83,18 +83,29 @@ func (s *PostgresStore) Init(ctx context.Context) error {
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`INSERT INTO collections (id, name) VALUES (1, 'default') ON CONFLICT (id) DO NOTHING`,
+		`CREATE TABLE IF NOT EXISTS documents (
+			id TEXT PRIMARY KEY,
+			title TEXT,
+			content TEXT,
+			source_url TEXT,
+			version INTEGER NOT NULL DEFAULT 1,
+			author TEXT,
+			metadata JSONB,
+			acl JSONB,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_documents_author ON documents(author)`,
 		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS embeddings (
 			id TEXT PRIMARY KEY,
 			collection_id INTEGER NOT NULL DEFAULT 1 REFERENCES collections(id) ON DELETE CASCADE,
 			vector %s NOT NULL,
 			content TEXT NOT NULL,
-			-- No foreign key: the SQLite store points doc_id at documents(id)
-			-- and enforces it, but documents are not implemented here yet, so
-			-- there is nothing to point at. Until they are, doc_id is a free
-			-- tag on this backend and an insert SQLite would reject is
-			-- accepted. Stated here because the parity suite found it, and a
-			-- divergence nobody wrote down is one somebody debugs.
-			doc_id TEXT,
+			-- The same foreign key SQLite declares. It was absent while
+			-- documents were unimplemented here, which meant an insert SQLite
+			-- rejected was accepted on this backend — a divergence the parity
+			-- suite found and this closes.
+			doc_id TEXT REFERENCES documents(id) ON DELETE CASCADE,
 			metadata JSONB,
 			acl JSONB,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -409,6 +420,155 @@ func (s *PostgresStore) DeleteCollection(ctx context.Context, name string) error
 	return err
 }
 
+// --- Documents ---------------------------------------------------------------
+//
+// Implemented because DB needs them: cortexdb.DB reaches for GetDocument and
+// CreateDocument in eleven places, so a store that cannot hold a document
+// cannot back a brain no matter how well it holds vectors. Their absence was
+// also the one divergence the parity suite found — SQLite enforces
+// embeddings.doc_id as a foreign key and this backend had nothing to point at.
+// Now it does, and the constraint matches.
+
+func (s *PostgresStore) CreateDocument(ctx context.Context, doc *Document) error {
+	if doc == nil || doc.ID == "" {
+		return fmt.Errorf("create document: an ID is required")
+	}
+	meta, err := json.Marshal(doc.Metadata)
+	if err != nil {
+		return fmt.Errorf("create document: metadata: %w", err)
+	}
+	acl, err := json.Marshal(doc.ACL)
+	if err != nil {
+		return fmt.Errorf("create document: acl: %w", err)
+	}
+	version := doc.Version
+	if version <= 0 {
+		version = 1
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO documents (id, title, source_url, content, version, author, metadata, acl, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+		doc.ID, doc.Title, doc.SourceURL, doc.Content, version, doc.Author, string(meta), string(acl))
+	return err
+}
+
+func (s *PostgresStore) GetDocument(ctx context.Context, id string) (*Document, error) {
+	var (
+		doc                    Document
+		title, source, content sql.NullString
+		author                 sql.NullString
+		metadata, acl          []byte
+	)
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, title, source_url, content, version, author, metadata, acl, created_at, updated_at
+		FROM documents WHERE id = $1`, id).
+		Scan(&doc.ID, &title, &source, &content, &doc.Version, &author,
+			&metadata, &acl, &doc.CreatedAt, &doc.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("document %q not found", id)
+	}
+	if err != nil {
+		return nil, err
+	}
+	doc.Title, doc.SourceURL, doc.Content, doc.Author = title.String, source.String, content.String, author.String
+	if len(metadata) > 0 {
+		if err := json.Unmarshal(metadata, &doc.Metadata); err != nil {
+			return nil, fmt.Errorf("get document %q: metadata: %w", id, err)
+		}
+	}
+	if len(acl) > 0 {
+		if err := json.Unmarshal(acl, &doc.ACL); err != nil {
+			return nil, fmt.Errorf("get document %q: acl: %w", id, err)
+		}
+	}
+	return &doc, nil
+}
+
+// UpdateDocument replaces a document's content and bumps its version.
+//
+// Not part of the Store interface, but cortexdb.DB calls it, and a store that
+// cannot answer it cannot back a brain.
+func (s *PostgresStore) UpdateDocument(ctx context.Context, doc *Document) error {
+	if doc == nil || doc.ID == "" {
+		return fmt.Errorf("update document: an ID is required")
+	}
+	meta, err := json.Marshal(doc.Metadata)
+	if err != nil {
+		return fmt.Errorf("update document: metadata: %w", err)
+	}
+	acl, err := json.Marshal(doc.ACL)
+	if err != nil {
+		return fmt.Errorf("update document: acl: %w", err)
+	}
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE documents
+		   SET title = $2, source_url = $3, content = $4, version = $5,
+		       author = $6, metadata = $7, acl = $8, updated_at = CURRENT_TIMESTAMP
+		 WHERE id = $1`,
+		doc.ID, doc.Title, doc.SourceURL, doc.Content, doc.Version, doc.Author, string(meta), string(acl))
+	if err != nil {
+		return err
+	}
+	// Reported rather than swallowed: an update that matched nothing means the
+	// caller is working from a document that is not there, and returning nil
+	// would let it carry on believing otherwise.
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return fmt.Errorf("update document: %q does not exist", doc.ID)
+	}
+	return nil
+}
+
+// DeleteDocument removes a document. Its embeddings go with it, by the foreign
+// key — the same cascade SQLite declares.
+func (s *PostgresStore) DeleteDocument(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM documents WHERE id = $1`, id)
+	return err
+}
+
+func (s *PostgresStore) ListDocumentsWithFilter(ctx context.Context, author string, limit int) ([]*Document, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	query := `SELECT id, title, source_url, content, version, author, metadata, acl, created_at, updated_at
+	          FROM documents`
+	args := []any{}
+	if author != "" {
+		args = append(args, author)
+		query += ` WHERE author = $1`
+	}
+	args = append(args, limit)
+	query += fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d`, len(args))
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*Document
+	for rows.Next() {
+		var (
+			doc                    Document
+			title, source, content sql.NullString
+			auth                   sql.NullString
+			metadata, acl          []byte
+		)
+		if err := rows.Scan(&doc.ID, &title, &source, &content, &doc.Version, &auth,
+			&metadata, &acl, &doc.CreatedAt, &doc.UpdatedAt); err != nil {
+			return nil, err
+		}
+		doc.Title, doc.SourceURL, doc.Content, doc.Author = title.String, source.String, content.String, auth.String
+		if len(metadata) > 0 {
+			_ = json.Unmarshal(metadata, &doc.Metadata)
+		}
+		if len(acl) > 0 {
+			_ = json.Unmarshal(acl, &doc.ACL)
+		}
+		out = append(out, &doc)
+	}
+	return out, rows.Err()
+}
+
 // --- The rest of Store, named rather than silently absent. -------------------
 //
 // Documents, sessions, chat history and the quantizer trainers belong to the
@@ -425,18 +585,6 @@ func (s *PostgresStore) TrainIndex(context.Context, int) error {
 }
 func (s *PostgresStore) TrainQuantizer(context.Context) error {
 	return unimplemented("TrainQuantizer")
-}
-func (s *PostgresStore) CreateDocument(context.Context, *Document) error {
-	return unimplemented("CreateDocument")
-}
-func (s *PostgresStore) GetDocument(context.Context, string) (*Document, error) {
-	return nil, unimplemented("GetDocument")
-}
-func (s *PostgresStore) DeleteDocument(context.Context, string) error {
-	return unimplemented("DeleteDocument")
-}
-func (s *PostgresStore) ListDocumentsWithFilter(context.Context, string, int) ([]*Document, error) {
-	return nil, unimplemented("ListDocumentsWithFilter")
 }
 func (s *PostgresStore) CreateSession(context.Context, *Session) error {
 	return unimplemented("CreateSession")

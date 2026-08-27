@@ -49,7 +49,7 @@ func storesUnderTest(t *testing.T) []storeUnderTest {
 	if err != nil {
 		t.Fatalf("postgres: %v", err)
 	}
-	for _, table := range []string{"embeddings", "collections"} {
+	for _, table := range []string{"embeddings", "documents", "collections"} {
 		if _, err := db.Exec("DROP TABLE IF EXISTS " + table + " CASCADE"); err != nil {
 			t.Fatalf("reset %s: %v", table, err)
 		}
@@ -120,18 +120,15 @@ func TestBothStoresCountAndDeleteTheSame(t *testing.T) {
 	for _, s := range storesUnderTest(t) {
 		t.Run(s.name, func(t *testing.T) {
 			ctx := context.Background()
-			// A divergence worth stating rather than working around: SQLite
-			// declares doc_id a foreign key into documents and enforces it,
-			// while the PostgreSQL store has no documents table yet, so there
-			// doc_id is a free tag. The same insert is therefore rejected by
-			// one and accepted by the other — found by this suite, which is
-			// what it is for. Create the row where it is required.
-			err := s.store.CreateDocument(ctx, &Document{ID: "shared-doc", Title: "shared"})
-			if err != nil && !errors.Is(err, ErrPostgresStoreUnimplemented) {
+			// Both stores declare doc_id a foreign key into documents and both
+			// enforce it. That was the one divergence this suite found while
+			// documents were unimplemented on PostgreSQL, and it is now an
+			// ordinary requirement on either backend.
+			if err := s.store.CreateDocument(ctx, &Document{ID: "shared-doc", Title: "shared"}); err != nil {
 				t.Fatalf("CreateDocument: %v", err)
 			}
 			for i := 0; i < 5; i++ {
-				err = s.store.Upsert(ctx, &Embedding{
+				err := s.store.Upsert(ctx, &Embedding{
 					ID:      fmt.Sprintf("e%d", i),
 					Vector:  []float32{float32(i), 1, 0, 0},
 					Content: fmt.Sprintf("doc %d", i),
@@ -218,7 +215,7 @@ func TestUnimplementedPartsNameThemselves(t *testing.T) {
 	ctx := context.Background()
 
 	for name, call := range map[string]func() error{
-		"CreateDocument": func() error { return pg.CreateDocument(ctx, &Document{}) },
+		"CreateSession":  func() error { return pg.CreateSession(ctx, &Session{}) },
 		"AddMessage":     func() error { return pg.AddMessage(ctx, &Message{}) },
 		"TrainQuantizer": func() error { return pg.TrainQuantizer(ctx) },
 		"DeleteByFilter": func() error { return pg.DeleteByFilter(ctx, nil) },
@@ -252,4 +249,73 @@ func indexOfStr(h, n string) int {
 		}
 	}
 	return -1
+}
+
+// Documents on both stores, because DB reaches for them in eleven places and a
+// store that cannot hold one cannot back a brain however well it holds vectors.
+func TestDocumentsRoundTripOnBothStores(t *testing.T) {
+	for _, s := range storesUnderTest(t) {
+		t.Run(s.name, func(t *testing.T) {
+			ctx := context.Background()
+			doc := &Document{
+				ID: "handbook", Title: "Handbook", Content: "the text",
+				SourceURL: "https://example.com/h", Version: 1, Author: "leo",
+				Metadata: map[string]any{"team": "infra"},
+				ACL:      []string{"leo", "rene"},
+			}
+			if err := s.store.CreateDocument(ctx, doc); err != nil {
+				t.Fatalf("CreateDocument: %v", err)
+			}
+
+			got, err := s.store.GetDocument(ctx, "handbook")
+			if err != nil {
+				t.Fatalf("GetDocument: %v", err)
+			}
+			if got.Title != "Handbook" || got.Content != "the text" || got.Author != "leo" {
+				t.Errorf("document came back changed: %+v", got)
+			}
+			if got.Metadata["team"] != "infra" {
+				t.Errorf("metadata lost: %+v", got.Metadata)
+			}
+			if len(got.ACL) != 2 {
+				t.Errorf("acl lost: %v", got.ACL)
+			}
+
+			// Deleting the document takes its embeddings with it, on both.
+			if err := s.store.Upsert(ctx, &Embedding{
+				ID: "chunk-1", Vector: []float32{1, 0, 0, 0}, Content: "the text", DocID: "handbook",
+			}); err != nil {
+				t.Fatalf("Upsert: %v", err)
+			}
+			if err := s.store.DeleteDocument(ctx, "handbook"); err != nil {
+				t.Fatalf("DeleteDocument: %v", err)
+			}
+			stats, err := s.store.Stats(ctx)
+			if err != nil {
+				t.Fatalf("Stats: %v", err)
+			}
+			if stats.Count != 0 {
+				t.Errorf("%d embeddings survived their document; the cascade did not fire", stats.Count)
+			}
+			if _, err := s.store.GetDocument(ctx, "handbook"); err == nil {
+				t.Error("a deleted document is still readable")
+			}
+		})
+	}
+}
+
+// An embedding pointing at a document that does not exist is rejected by both.
+// This is the assertion that would have caught the divergence in the first
+// place, rather than the suite noticing it by accident.
+func TestADanglingDocIDIsRejectedOnBothStores(t *testing.T) {
+	for _, s := range storesUnderTest(t) {
+		t.Run(s.name, func(t *testing.T) {
+			err := s.store.Upsert(context.Background(), &Embedding{
+				ID: "orphan", Vector: []float32{1, 0, 0, 0}, Content: "x", DocID: "no-such-document",
+			})
+			if err == nil {
+				t.Error("an embedding referencing a document that does not exist was accepted")
+			}
+		})
+	}
 }
