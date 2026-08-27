@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.81.0] - 2026-08-27
+
+### Fixed
+
+- **Entity resolution no longer merges across node types.** Grouping was by spelling
+  alone, so "Primary" the state and "primary" the node — one canonical key apart —
+  merged, putting a role where a machine belongs and ending every `has_state` edge at
+  a Node. The deterministic pass now keys groups by type as well, and the LLM pass
+  takes the first member's type as the group's. Untyped nodes share the empty type
+  and still meet each other; same-type spellings merge exactly as before.
+
 ## [2.80.0] - 2026-08-26
 
 ### Fixed
