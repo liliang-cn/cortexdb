@@ -237,3 +237,62 @@ func TestResolveEntitiesKeepsAFlagApartFromAName(t *testing.T) {
 		}
 	}
 }
+
+// Two nodes of different types are two things, whatever they are called.
+//
+// A DRBD graph holds "Primary" the state and "primary" the node, one key apart,
+// and merging them puts a role where a machine belongs — every `has_state` edge
+// then ends at a Node. The same key covers "DR node" the node and "DRNode" the
+// config field. Spelling decides which of two names is the same name; it cannot
+// decide whether two things are the same thing, and the type already does.
+func TestResolveEntitiesDoesNotMergeAcrossTypes(t *testing.T) {
+	db, ctx := openResolveTestDB(t)
+	if _, err := db.GraphRAGTools().UpsertEntities(ctx, cortexdb.ToolUpsertEntitiesRequest{Entities: []cortexdb.ToolEntityInput{
+		{Name: "Primary", Type: "State"},
+		{ID: "node-primary", Name: "primary", Type: "Node"},
+		// A pair that shares its type still merges.
+		{Name: "thin pool", Type: "StoragePool"},
+		{Name: "thinpool", Type: "StoragePool"},
+	}}); err != nil {
+		t.Fatalf("upsert entities: %v", err)
+	}
+
+	report, err := ResolveEntities(ctx, db, ResolveOptions{})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if report.EntitiesMerged != 1 {
+		t.Fatalf("merged = %d (%v), want only the pool pair", report.EntitiesMerged, report.Groups)
+	}
+	var states int
+	if err := db.SQL().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM graph_nodes WHERE node_type = 'State'`).Scan(&states); err != nil {
+		t.Fatalf("count states: %v", err)
+	}
+	if states != 1 {
+		t.Errorf("State nodes = %d, want the state kept apart from the node", states)
+	}
+}
+
+// The LLM proposes synonyms by name, and it is right about the words and blind
+// to the types: "primary" is a fine synonym for "Primary" and a terrible merge
+// of a node into a state. The type check has to apply to what it proposes too,
+// or the deterministic pass is careful and the clever pass is not.
+func TestResolveEntitiesRejectsACrossTypeGroupFromTheLLM(t *testing.T) {
+	db, ctx := openResolveTestDB(t)
+	if _, err := db.GraphRAGTools().UpsertEntities(ctx, cortexdb.ToolUpsertEntitiesRequest{Entities: []cortexdb.ToolEntityInput{
+		{Name: "K8s", Type: "Package"},
+		{ID: "the-cluster", Name: "Kubernetes cluster", Type: "Node"},
+	}}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	llm := resolveFakeLLM{resp: `{"groups":[{"canonical":"Kubernetes cluster","aliases":["K8s"]}]}`}
+
+	report, err := ResolveEntities(ctx, db, ResolveOptions{LLM: llm})
+	if err != nil {
+		t.Fatalf("resolve llm: %v", err)
+	}
+	if report.EntitiesMerged != 0 {
+		t.Errorf("merged = %d (%v), want the cross-type group refused", report.EntitiesMerged, report.Groups)
+	}
+}

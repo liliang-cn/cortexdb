@@ -55,9 +55,10 @@ type ResolveReport struct {
 }
 
 type entityInfo struct {
-	id     string
-	name   string
-	degree int
+	id       string
+	name     string
+	nodeType string
+	degree   int
 }
 
 // ResolveEntities finds duplicate/alias entities and merges each group into a
@@ -87,8 +88,15 @@ func ResolveEntities(ctx context.Context, db *cortexdb.DB, opts ResolveOptions) 
 	keyGroups := make(map[string][]entityInfo)
 	var keyOrder []string
 	for _, e := range entities {
-		k := canonicalKey(e.name)
-		if k == "" {
+		// Keyed by type as well as spelling: two nodes of different types are
+		// two things, whatever they are called. A DRBD graph holds "Primary"
+		// the state and "primary" the node one key apart, and merging them puts
+		// a role where a machine belongs — every has_state edge then ends at a
+		// Node. Spelling decides whether two names are the same name; it cannot
+		// decide whether two things are the same thing, and the type already
+		// does. Untyped nodes share the empty type and still meet each other.
+		k := e.nodeType + "\x00" + canonicalKey(e.name)
+		if canonicalKey(e.name) == "" {
 			continue
 		}
 		if _, seen := keyGroups[k]; !seen {
@@ -213,7 +221,7 @@ func loadEntityInfos(ctx context.Context, db *cortexdb.DB, nodeTypes []string) [
 		}
 		_ = rows.Close()
 	}
-	query := `SELECT id, COALESCE(content,'') FROM graph_nodes WHERE id LIKE 'entity:%'`
+	query := `SELECT id, COALESCE(content,''), COALESCE(node_type,'') FROM graph_nodes WHERE id LIKE 'entity:%'`
 	args := make([]any, 0, len(nodeTypes))
 	if len(nodeTypes) > 0 {
 		query += ` AND node_type IN (` + strings.TrimSuffix(strings.Repeat("?,", len(nodeTypes)), ",") + `)`
@@ -228,15 +236,15 @@ func loadEntityInfos(ctx context.Context, db *cortexdb.DB, nodeTypes []string) [
 	defer func() { _ = rows.Close() }()
 	out := make([]entityInfo, 0)
 	for rows.Next() {
-		var id, content string
-		if err := rows.Scan(&id, &content); err != nil {
+		var id, content, nodeType string
+		if err := rows.Scan(&id, &content, &nodeType); err != nil {
 			return out
 		}
 		name := strings.TrimSpace(content)
 		if name == "" {
 			name = trimEntityPrefix(id)
 		}
-		out = append(out, entityInfo{id: id, name: name, degree: degree[id]})
+		out = append(out, entityInfo{id: id, name: name, nodeType: nodeType, degree: degree[id]})
 	}
 	// Stable order for deterministic canonical selection / output.
 	sort.Slice(out, func(i, j int) bool { return out[i].id < out[j].id })
@@ -285,6 +293,12 @@ func llmAliasGroups(ctx context.Context, llm JSONGenerator, entities []entityInf
 	for _, g := range parsed.Groups {
 		members := make([]entityInfo, 0)
 		seen := make(map[string]struct{})
+		// The model proposes synonyms by name: it is right about the words and
+		// blind to the types. "primary" is a fine synonym for "Primary" and a
+		// terrible merge of a node into a state. The first member fixes the
+		// type of the group, and anything of another type is a different thing
+		// that happens to be called something similar.
+		groupType := ""
 		for _, nm := range append([]string{g.Canonical}, g.Aliases...) {
 			info, ok := byName[strings.ToLower(strings.TrimSpace(nm))]
 			if !ok {
@@ -294,6 +308,11 @@ func llmAliasGroups(ctx context.Context, llm JSONGenerator, entities []entityInf
 				continue
 			}
 			if _, done := claimed[info.id]; done {
+				continue
+			}
+			if len(members) == 0 {
+				groupType = info.nodeType
+			} else if info.nodeType != groupType {
 				continue
 			}
 			seen[info.id] = struct{}{}
