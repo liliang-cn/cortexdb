@@ -164,6 +164,12 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *resp, nil
 	})
+	addGraphRAGMCPTool(server, definitions["fact_provenance"], func(ctx context.Context, req ToolFactProvenanceRequest) (ToolFactProvenanceResponse, error) {
+		return db.FactProvenanceTool(ctx, req)
+	})
+	addGraphRAGMCPTool(server, definitions["uncited_facts"], func(ctx context.Context, req ToolUncitedFactsRequest) (ToolUncitedFactsResponse, error) {
+		return db.UncitedFactsTool(ctx, req)
+	})
 	addGraphRAGMCPTool(server, definitions["build_context"], func(ctx context.Context, req ToolBuildContextRequest) (ToolBuildContextResponse, error) {
 		resp, err := toolbox.BuildContext(ctx, req)
 		if err != nil {

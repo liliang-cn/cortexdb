@@ -156,12 +156,12 @@ func (db *DB) GetMemory(ctx context.Context, req MemoryGetRequest) (*MemoryGetRe
 // SearchMemory searches a resolved memory bucket, using semantic session search when an embedder is available.
 func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*MemorySearchResponse, error) {
 	resolution := resolveRetrievalPlan(retrievalPlanInput{
-		Query:                    req.Query,
-		Plan:                     req.Plan,
-		Keywords:                 req.Keywords,
-		AlternateQueries:         req.AlternateQueries,
-		RetrievalMode:            req.RetrievalMode,
-		Filters:                  &RetrievalFilters{UserID: req.UserID, SessionID: req.SessionID, Scope: req.Scope, Namespace: req.Namespace},
+		Query:            req.Query,
+		Plan:             req.Plan,
+		Keywords:         req.Keywords,
+		AlternateQueries: req.AlternateQueries,
+		RetrievalMode:    req.RetrievalMode,
+		Filters:          &RetrievalFilters{UserID: req.UserID, SessionID: req.SessionID, Scope: req.Scope, Namespace: req.Namespace},
 		// Memories now have graph nodes of their own, so entity hints can be
 		// followed back to them. Until they did, this said false and told the
 		// truth: there was no edge leading to a memory to walk.
@@ -911,7 +911,6 @@ func mergeMemoryHits(graphHits, lexicalHits []MemorySearchHit, topK int) []Memor
 	return merged
 }
 
-
 // applyMemoryRecallBoosts folds importance and age into a relevance score as a
 // bounded tie-breaker: the multiplier lives in [0.85, 1.0], so equal matches
 // are ordered by importance and recency while a genuinely better match cannot
@@ -972,7 +971,6 @@ func (db *DB) markMemoriesSuperseded(ctx context.Context, newID string, targets 
 	}
 	return nil
 }
-
 
 // resolveEntityNameToNode maps an entity name to its graph node, following
 // aliases when the direct node is gone.

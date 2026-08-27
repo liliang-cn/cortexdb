@@ -187,6 +187,27 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			),
 		},
 		{
+			Name:        "fact_provenance",
+			Description: "Answer \"says who?\" for one relationship edge: the document and chunks behind it, whether it was inferred and by which rule, and optionally the supporting text itself. A chunk that no longer exists is reported as missing rather than dropped, because a citation pointing at deleted text is a finding.",
+			InputSchema: toolObjectSchema(
+				[]string{"edge_id"},
+				map[string]any{
+					"edge_id":   toolStringSchema("The graph edge to trace back to its source."),
+					"with_text": toolBooleanSchema("Load the supporting chunk text as well. Costs a second query and the chunk bodies; leave it off to ask only whether the fact is cited at all."),
+				},
+			),
+		},
+		{
+			Name:        "uncited_facts",
+			Description: "List relationship edges that cannot say where they came from — no supporting chunks, no document, and no rule for a derived fact. This reports what is missing, not whether a citation is any good: checking that the text still says what the fact says needs fact_provenance with_text.",
+			InputSchema: toolObjectSchema(
+				nil,
+				map[string]any{
+					"limit": toolIntegerSchema("Maximum edges to return. Defaults to 100."),
+				},
+			),
+		},
+		{
 			Name:        "build_context",
 			Description: "Pack chunk text into a bounded context window.",
 			InputSchema: toolObjectSchema(

@@ -214,14 +214,14 @@ type MemoryDeleteResponse struct {
 
 // MemorySearchRequest searches memories inside a resolved memory bucket.
 type MemorySearchRequest struct {
-	Query            string         `json:"query"`
-	UserID           string         `json:"user_id,omitempty"`
-	SessionID        string         `json:"session_id,omitempty"`
-	Scope            string         `json:"scope,omitempty"`
-	Namespace        string         `json:"namespace,omitempty"`
-	TopK             int            `json:"top_k,omitempty"`
-	Keywords         []string       `json:"keywords,omitempty"`
-	AlternateQueries []string       `json:"alternate_queries,omitempty"`
+	Query            string   `json:"query"`
+	UserID           string   `json:"user_id,omitempty"`
+	SessionID        string   `json:"session_id,omitempty"`
+	Scope            string   `json:"scope,omitempty"`
+	Namespace        string   `json:"namespace,omitempty"`
+	TopK             int      `json:"top_k,omitempty"`
+	Keywords         []string `json:"keywords,omitempty"`
+	AlternateQueries []string `json:"alternate_queries,omitempty"`
 	// EntityNames let recall reach a memory through the graph when the memory
 	// never spells the entity the way the question does. Lexical search cannot
 	// do that, so before memories had graph nodes this hint had nowhere to go.
