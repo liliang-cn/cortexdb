@@ -320,3 +320,49 @@ func TestADanglingDocIDIsRejectedOnBothStores(t *testing.T) {
 		})
 	}
 }
+
+// Collection statistics on both, because a number that looks plausible and
+// means something else is the worst kind of wrong for a statistic nobody
+// double-checks. SQLite measures LENGTH(vector); on a pgvector column that is
+// the dimension count, not the bytes.
+func TestCollectionStatsAgreeOnBothStores(t *testing.T) {
+	for _, s := range storesUnderTest(t) {
+		t.Run(s.name, func(t *testing.T) {
+			ctx := context.Background()
+			col, err := s.store.CreateCollection(ctx, "stats-test", 4)
+			if err != nil {
+				t.Fatalf("CreateCollection: %v", err)
+			}
+			for i := 0; i < 3; i++ {
+				if err := s.store.Upsert(ctx, &Embedding{
+					ID:           fmt.Sprintf("s%d", i),
+					CollectionID: col.ID,
+					Vector:       []float32{float32(i), 1, 0, 0},
+					Content:      "row",
+				}); err != nil {
+					t.Fatalf("Upsert: %v", err)
+				}
+			}
+
+			stats, err := s.store.GetCollectionStats(ctx, "stats-test")
+			if err != nil {
+				t.Fatalf("GetCollectionStats: %v", err)
+			}
+			if stats.Count != 3 {
+				t.Errorf("Count = %d, want 3", stats.Count)
+			}
+			if stats.Dimensions != 4 {
+				t.Errorf("Dimensions = %d, want 4", stats.Dimensions)
+			}
+			// Not compared across backends — the two measure storage
+			// differently and always will. What must hold is that three
+			// vectors take more than nothing.
+			if stats.Size <= 0 {
+				t.Errorf("Size = %d for three vectors", stats.Size)
+			}
+			if stats.LastInsertedAt.IsZero() {
+				t.Error("LastInsertedAt is zero though rows were just written")
+			}
+		})
+	}
+}

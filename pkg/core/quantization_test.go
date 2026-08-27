@@ -51,7 +51,7 @@ func TestQuantizationIntegration(t *testing.T) {
 	if store.quantizer == nil {
 		t.Fatal("Quantizer should not be nil")
 	}
-	
+
 	// Check memory: HNSW nodes should have Vector == nil and Quantized != nil
 	nodeCount := 0
 	for _, node := range store.hnswIndex.Nodes {
@@ -79,7 +79,7 @@ func TestQuantizationIntegration(t *testing.T) {
 	}
 
 	t.Logf("Top result score with SQ8: %f", results[0].Score)
-	
+
 	// 5. Test Persistence with Quantization
 	if err := store.Close(); err != nil {
 		t.Fatalf("Close failed: %v", err)
@@ -107,7 +107,7 @@ func TestQuantizationIntegration(t *testing.T) {
 	if len(results2) != len(results) {
 		t.Errorf("Expected same number of results after reopen, got %d vs %d", len(results2), len(results))
 	}
-	
+
 	if results2[0].ID != results[0].ID {
 		t.Errorf("Top result ID mismatch after reopen: %s vs %s", results2[0].ID, results[0].ID)
 	}

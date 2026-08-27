@@ -75,7 +75,7 @@ func TestHNSWSimple(t *testing.T) {
 	// Simple search
 	queryVec := []float32{0.9, 0.1, 0.0, 0.0}
 	t.Logf("Searching with query: %v", queryVec)
-	
+
 	// Test HNSW index directly
 	if store.hnswIndex != nil {
 		ids, dists := store.hnswIndex.Search(queryVec, 3, 50)
@@ -84,7 +84,7 @@ func TestHNSWSimple(t *testing.T) {
 			t.Logf("  %d. %s (dist: %.4f)", i+1, id, dists[i])
 		}
 	}
-	
+
 	// Test fetchEmbeddingsByIDs directly
 	if store.hnswIndex != nil {
 		ids, _ := store.hnswIndex.Search(queryVec, 3, 50)
@@ -95,7 +95,7 @@ func TestHNSWSimple(t *testing.T) {
 			t.Logf("fetchEmbeddingsByIDs returned %d candidates for IDs %v", len(candidates), ids)
 		}
 	}
-	
+
 	// Test through store Search
 	results, err := store.Search(ctx, queryVec, SearchOptions{
 		TopK: 3,

@@ -328,9 +328,9 @@ func TestAggregations(t *testing.T) {
 		}
 
 		expectedStock := map[string]float64{
-			"electronics": 15,  // 10 + 5
-			"clothing":    35,  // 20 + 15
-			"books":       50,  // 50
+			"electronics": 15, // 10 + 5
+			"clothing":    35, // 20 + 15
+			"books":       50, // 50
 		}
 
 		for category, expected := range expectedStock {

@@ -50,13 +50,13 @@ type AdvancedSearchOptions struct {
 func ParseFilterString(filterStr string) (*FilterExpression, error) {
 	// Simple parser for demonstration - in production use a proper parser
 	filterStr = strings.TrimSpace(filterStr)
-	
+
 	// Handle parentheses for grouping
 	if strings.HasPrefix(filterStr, "(") && strings.HasSuffix(filterStr, ")") {
 		inner := filterStr[1 : len(filterStr)-1]
 		return ParseFilterString(inner)
 	}
-	
+
 	// Check for AND/OR at top level
 	if idx := strings.Index(filterStr, " AND "); idx > 0 {
 		left, err := ParseFilterString(filterStr[:idx])
@@ -72,7 +72,7 @@ func ParseFilterString(filterStr string) (*FilterExpression, error) {
 			Children: []*FilterExpression{left, right},
 		}, nil
 	}
-	
+
 	if idx := strings.Index(filterStr, " OR "); idx > 0 {
 		left, err := ParseFilterString(filterStr[:idx])
 		if err != nil {
@@ -87,7 +87,7 @@ func ParseFilterString(filterStr string) (*FilterExpression, error) {
 			Children: []*FilterExpression{left, right},
 		}, nil
 	}
-	
+
 	// Parse comparison operators
 	return parseComparison(filterStr)
 }
@@ -99,13 +99,13 @@ func parseComparison(expr string) (*FilterExpression, error) {
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("invalid BETWEEN expression: %s", expr)
 		}
-		
+
 		field := strings.TrimSpace(parts[0])
 		rangeParts := strings.Split(parts[1], " AND ")
 		if len(rangeParts) != 2 {
 			return nil, fmt.Errorf("invalid BETWEEN range: %s", parts[1])
 		}
-		
+
 		min, err := parseValue(strings.TrimSpace(rangeParts[0]))
 		if err != nil {
 			return nil, err
@@ -114,29 +114,29 @@ func parseComparison(expr string) (*FilterExpression, error) {
 		if err != nil {
 			return nil, err
 		}
-		
+
 		return &FilterExpression{
 			Operator: FilterBETWEEN,
 			Field:    field,
 			Value:    []interface{}{min, max},
 		}, nil
 	}
-	
+
 	// Check for IN
 	if strings.Contains(expr, " IN ") {
 		parts := strings.Split(expr, " IN ")
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("invalid IN expression: %s", expr)
 		}
-		
+
 		field := strings.TrimSpace(parts[0])
 		valueStr := strings.TrimSpace(parts[1])
-		
+
 		// Parse array values
 		if !strings.HasPrefix(valueStr, "(") || !strings.HasSuffix(valueStr, ")") {
 			return nil, fmt.Errorf("IN values must be in parentheses: %s", valueStr)
 		}
-		
+
 		valueStr = valueStr[1 : len(valueStr)-1]
 		valueParts := strings.Split(valueStr, ",")
 		values := make([]interface{}, len(valueParts))
@@ -147,14 +147,14 @@ func parseComparison(expr string) (*FilterExpression, error) {
 			}
 			values[i] = val
 		}
-		
+
 		return &FilterExpression{
 			Operator: FilterIN,
 			Field:    field,
 			Value:    values,
 		}, nil
 	}
-	
+
 	// Check other operators
 	operators := []struct {
 		op  string
@@ -169,7 +169,7 @@ func parseComparison(expr string) (*FilterExpression, error) {
 		{":=", FilterEQ}, // Alternative syntax
 		{":", FilterEQ},  // Shorthand
 	}
-	
+
 	for _, op := range operators {
 		if idx := strings.Index(expr, op.op); idx > 0 {
 			field := strings.TrimSpace(expr[:idx])
@@ -178,7 +178,7 @@ func parseComparison(expr string) (*FilterExpression, error) {
 			if err != nil {
 				return nil, err
 			}
-			
+
 			return &FilterExpression{
 				Operator: op.typ,
 				Field:    field,
@@ -186,13 +186,13 @@ func parseComparison(expr string) (*FilterExpression, error) {
 			}, nil
 		}
 	}
-	
+
 	return nil, fmt.Errorf("invalid filter expression: %s", expr)
 }
 
 func parseValue(str string) (interface{}, error) {
 	str = strings.TrimSpace(str)
-	
+
 	// String with quotes
 	if strings.HasPrefix(str, "'") && strings.HasSuffix(str, "'") {
 		return str[1 : len(str)-1], nil
@@ -200,7 +200,7 @@ func parseValue(str string) (interface{}, error) {
 	if strings.HasPrefix(str, "\"") && strings.HasSuffix(str, "\"") {
 		return str[1 : len(str)-1], nil
 	}
-	
+
 	// Boolean
 	if str == "true" || str == "TRUE" {
 		return true, nil
@@ -208,12 +208,12 @@ func parseValue(str string) (interface{}, error) {
 	if str == "false" || str == "FALSE" {
 		return false, nil
 	}
-	
+
 	// Number
 	if num, err := strconv.ParseFloat(str, 64); err == nil {
 		return num, nil
 	}
-	
+
 	// Treat as string without quotes
 	return str, nil
 }
@@ -223,9 +223,9 @@ func BuildSQLFromFilter(filter *FilterExpression, paramIndex *int) (string, []in
 	if filter == nil {
 		return "", nil
 	}
-	
+
 	params := []interface{}{}
-	
+
 	switch filter.Operator {
 	case FilterAND:
 		clauses := []string{}
@@ -237,7 +237,7 @@ func BuildSQLFromFilter(filter *FilterExpression, paramIndex *int) (string, []in
 			}
 		}
 		return strings.Join(clauses, " AND "), params
-		
+
 	case FilterOR:
 		clauses := []string{}
 		for _, child := range filter.Children {
@@ -248,43 +248,43 @@ func BuildSQLFromFilter(filter *FilterExpression, paramIndex *int) (string, []in
 			}
 		}
 		return strings.Join(clauses, " OR "), params
-		
+
 	case FilterEQ:
 		*paramIndex++
 		params = append(params, filter.Value)
 		return fmt.Sprintf("json_extract(metadata, '$.%s') = ?", filter.Field), params
-		
+
 	case FilterNE:
 		*paramIndex++
 		params = append(params, filter.Value)
 		return fmt.Sprintf("json_extract(metadata, '$.%s') != ?", filter.Field), params
-		
+
 	case FilterGT:
 		*paramIndex++
 		params = append(params, filter.Value)
 		return fmt.Sprintf("CAST(json_extract(metadata, '$.%s') AS REAL) > ?", filter.Field), params
-		
+
 	case FilterGTE:
 		*paramIndex++
 		params = append(params, filter.Value)
 		return fmt.Sprintf("CAST(json_extract(metadata, '$.%s') AS REAL) >= ?", filter.Field), params
-		
+
 	case FilterLT:
 		*paramIndex++
 		params = append(params, filter.Value)
 		return fmt.Sprintf("CAST(json_extract(metadata, '$.%s') AS REAL) < ?", filter.Field), params
-		
+
 	case FilterLTE:
 		*paramIndex++
 		params = append(params, filter.Value)
 		return fmt.Sprintf("CAST(json_extract(metadata, '$.%s') AS REAL) <= ?", filter.Field), params
-		
+
 	case FilterBETWEEN:
 		values := filter.Value.([]interface{})
 		*paramIndex += 2
 		params = append(params, values[0], values[1])
 		return fmt.Sprintf("CAST(json_extract(metadata, '$.%s') AS REAL) BETWEEN ? AND ?", filter.Field), params
-		
+
 	case FilterIN:
 		values := filter.Value.([]interface{})
 		placeholders := make([]string, len(values))
@@ -293,14 +293,14 @@ func BuildSQLFromFilter(filter *FilterExpression, paramIndex *int) (string, []in
 			placeholders[i] = "?"
 			params = append(params, v)
 		}
-		return fmt.Sprintf("json_extract(metadata, '$.%s') IN (%s)", 
+		return fmt.Sprintf("json_extract(metadata, '$.%s') IN (%s)",
 			filter.Field, strings.Join(placeholders, ",")), params
-		
+
 	case FilterLIKE:
 		*paramIndex++
 		params = append(params, filter.Value)
 		return fmt.Sprintf("json_extract(metadata, '$.%s') LIKE ?", filter.Field), params
-		
+
 	default:
 		return "", nil
 	}
@@ -421,18 +421,18 @@ func (f *MetadataFilter) NotIn(field string, values ...interface{}) *MetadataFil
 	// Or we can add FilterNOTIN operator.
 	// Current implementation doesn't support FilterNOTIN directly in BuildSQLFromFilter?
 	// Let's implement as NOT(IN)
-	
+
 	inExpr := &FilterExpression{
 		Operator: FilterIN,
 		Field:    field,
 		Value:    values,
 	}
-	
+
 	expr := &FilterExpression{
 		Operator: FilterNOT,
 		Children: []*FilterExpression{inExpr},
 	}
-	
+
 	f.combine(expr)
 	return f
 }
@@ -460,7 +460,7 @@ func (f *MetadataFilter) And(other *MetadataFilter) *MetadataFilter {
 		f.expression = other.expression
 		return f
 	}
-	
+
 	// If current is AND, append to children to keep tree flat?
 	// For simplicity, just create new AND node
 	f.expression = &FilterExpression{
@@ -479,7 +479,7 @@ func (f *MetadataFilter) Or(other *MetadataFilter) *MetadataFilter {
 		f.expression = other.expression
 		return f
 	}
-	
+
 	f.expression = &FilterExpression{
 		Operator: FilterOR,
 		Children: []*FilterExpression{f.expression, other.expression},
@@ -523,32 +523,32 @@ func (f *MetadataFilter) IsEmpty() bool {
 func (s *SQLiteStore) SearchWithAdvancedFilter(ctx context.Context, query []float32, opts AdvancedSearchOptions) ([]ScoredEmbedding, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if s.closed {
 		return nil, wrapError("advanced_search", ErrStoreClosed)
 	}
-	
+
 	// Build SQL query with pre-filter
 	var whereClause string
 	var params []interface{}
-	
+
 	if opts.PreFilter != nil {
 		paramIndex := 0
 		whereClause, params = BuildSQLFromFilter(opts.PreFilter, &paramIndex)
 	}
-	
+
 	// Fetch candidates with pre-filter
 	candidates, err := s.fetchCandidatesWithSQL(ctx, whereClause, params, opts.SearchOptions)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Score candidates
 	results := make([]ScoredEmbedding, 0, len(candidates))
 	for _, candidate := range candidates {
 		score := s.similarityFn(query, candidate.Vector)
 		candidate.Score = score
-		
+
 		// Apply post-filter if specified
 		if opts.PostFilter != nil {
 			// Convert metadata to interface{} map
@@ -560,20 +560,20 @@ func (s *SQLiteStore) SearchWithAdvancedFilter(ctx context.Context, query []floa
 				continue
 			}
 		}
-		
+
 		results = append(results, candidate)
 	}
-	
+
 	// Sort by score (descending)
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].Score > results[j].Score
 	})
-	
+
 	// Apply TopK limit
 	if opts.TopK > 0 && len(results) > opts.TopK {
 		results = results[:opts.TopK]
 	}
-	
+
 	return results, nil
 }
 
@@ -584,28 +584,28 @@ func (s *SQLiteStore) fetchCandidatesWithSQL(ctx context.Context, whereClause st
 		FROM embeddings e
 		LEFT JOIN collections c ON e.collection_id = c.id
 	`
-	
+
 	conditions := []string{}
-	
+
 	if whereClause != "" {
 		conditions = append(conditions, whereClause)
 	}
-	
+
 	if opts.Collection != "" {
 		conditions = append(conditions, "c.name = ?")
 		params = append(params, opts.Collection)
 	}
-	
+
 	if len(conditions) > 0 {
 		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
-	
+
 	rows, err := s.db.QueryContext(ctx, query, params...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query with filter: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	
+
 	var candidates []ScoredEmbedding
 	for rows.Next() {
 		candidate, err := s.scanEmbedding(rows)
@@ -614,7 +614,7 @@ func (s *SQLiteStore) fetchCandidatesWithSQL(ctx context.Context, whereClause st
 		}
 		candidates = append(candidates, candidate)
 	}
-	
+
 	return candidates, rows.Err()
 }
 
@@ -623,7 +623,7 @@ func evaluateFilter(filter *FilterExpression, metadata map[string]interface{}) b
 	if filter == nil {
 		return true
 	}
-	
+
 	switch filter.Operator {
 	case FilterAND:
 		for _, child := range filter.Children {
@@ -632,7 +632,7 @@ func evaluateFilter(filter *FilterExpression, metadata map[string]interface{}) b
 			}
 		}
 		return true
-		
+
 	case FilterOR:
 		for _, child := range filter.Children {
 			if evaluateFilter(child, metadata) {
@@ -640,34 +640,34 @@ func evaluateFilter(filter *FilterExpression, metadata map[string]interface{}) b
 			}
 		}
 		return false
-		
+
 	case FilterNOT:
 		if len(filter.Children) > 0 {
 			return !evaluateFilter(filter.Children[0], metadata)
 		}
 		return false
-		
+
 	case FilterEQ:
 		val, exists := metadata[filter.Field]
 		if !exists {
 			return false
 		}
 		return compareValues(val, filter.Value, FilterEQ)
-		
+
 	case FilterNE:
 		val, exists := metadata[filter.Field]
 		if !exists {
 			return true
 		}
 		return compareValues(val, filter.Value, FilterNE)
-		
+
 	case FilterGT, FilterGTE, FilterLT, FilterLTE:
 		val, exists := metadata[filter.Field]
 		if !exists {
 			return false
 		}
 		return compareValues(val, filter.Value, filter.Operator)
-		
+
 	case FilterBETWEEN:
 		val, exists := metadata[filter.Field]
 		if !exists {
@@ -675,7 +675,7 @@ func evaluateFilter(filter *FilterExpression, metadata map[string]interface{}) b
 		}
 		values := filter.Value.([]interface{})
 		return compareValues(val, values[0], FilterGTE) && compareValues(val, values[1], FilterLTE)
-		
+
 	case FilterIN:
 		val, exists := metadata[filter.Field]
 		if !exists {
@@ -688,7 +688,7 @@ func evaluateFilter(filter *FilterExpression, metadata map[string]interface{}) b
 			}
 		}
 		return false
-		
+
 	case FilterLIKE:
 		val, exists := metadata[filter.Field]
 		if !exists {
@@ -701,7 +701,7 @@ func evaluateFilter(filter *FilterExpression, metadata map[string]interface{}) b
 		pattern = strings.ReplaceAll(pattern, "_", ".")
 		matched, _ := regexp.MatchString("^"+pattern+"$", text)
 		return matched
-		
+
 	default:
 		return false
 	}
@@ -712,7 +712,7 @@ func compareValues(a, b interface{}, op FilterOperator) bool {
 	// Convert to comparable types
 	aFloat, aIsNum := toFloat64(a)
 	bFloat, bIsNum := toFloat64(b)
-	
+
 	if aIsNum && bIsNum {
 		switch op {
 		case FilterEQ:
@@ -729,11 +729,11 @@ func compareValues(a, b interface{}, op FilterOperator) bool {
 			return aFloat <= bFloat
 		}
 	}
-	
+
 	// String comparison
 	aStr := fmt.Sprintf("%v", a)
 	bStr := fmt.Sprintf("%v", b)
-	
+
 	switch op {
 	case FilterEQ:
 		return aStr == bStr
@@ -748,7 +748,7 @@ func compareValues(a, b interface{}, op FilterOperator) bool {
 	case FilterLTE:
 		return aStr <= bStr
 	}
-	
+
 	return false
 }
 

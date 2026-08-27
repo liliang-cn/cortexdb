@@ -38,8 +38,8 @@ type RerankOptions struct {
 // DefaultRerankOptions returns default reranking options
 func DefaultRerankOptions() RerankOptions {
 	return RerankOptions{
-		TopK:                 10,
-		Threshold:            0.0,
+		TopK:                  10,
+		Threshold:             0.0,
 		PreserveOriginalScore: false,
 	}
 }
@@ -147,7 +147,7 @@ func (norm *ScoreNormalizationReranker) Rerank(ctx context.Context, query string
 	for i, r := range results {
 		normalized[i] = r
 		// Normalize to [0, 1] then scale to [norm.MinScore, norm.MaxScore]
-		normalizedScore := (r.Score-minVal)/rangeVal
+		normalizedScore := (r.Score - minVal) / rangeVal
 		normalized[i].Score = normalizedScore*(norm.MaxScore-norm.MinScore) + norm.MinScore
 	}
 
@@ -268,38 +268,38 @@ func (r *ReciprocalRankFusionReranker) Rerank(ctx context.Context, query string,
 		}
 	}
 
-		// Calculate RRF scores
-		for i, result := range results {
-			reranked[i] = result
-			// RRF formula: 1/(k+rank)
-			// Higher score = better rank = lower rank value (1, 2, 3...)
-			vectorRank := float64(i + 1)
-			textRank := float64(len(results)) // Default to last rank
+	// Calculate RRF scores
+	for i, result := range results {
+		reranked[i] = result
+		// RRF formula: 1/(k+rank)
+		// Higher score = better rank = lower rank value (1, 2, 3...)
+		vectorRank := float64(i + 1)
+		textRank := float64(len(results)) // Default to last rank
 
-			// Find text rank
-			type scoredItem struct {
-				idx   int
-				score float64
-			}
-			textRanked := make([]scoredItem, len(results))
-			for j := range results {
-				textRanked[j] = scoredItem{j, textScores[j]}
-			}
-			// Sort text candidates by score descending
-			sort.Slice(textRanked, func(a, b int) bool {
-				return textRanked[a].score > textRanked[b].score
-			})
-			for j, item := range textRanked {
-				if item.idx == i {
-					textRank = float64(j + 1) // 1-indexed rank
-					break
-				}
-			}
-
-			// Combine using RRF
-			rrfScore := (r.VectorWeight / (r.K + vectorRank)) + (r.TextWeight / (r.K + textRank))
-			reranked[i].Score = rrfScore
+		// Find text rank
+		type scoredItem struct {
+			idx   int
+			score float64
 		}
+		textRanked := make([]scoredItem, len(results))
+		for j := range results {
+			textRanked[j] = scoredItem{j, textScores[j]}
+		}
+		// Sort text candidates by score descending
+		sort.Slice(textRanked, func(a, b int) bool {
+			return textRanked[a].score > textRanked[b].score
+		})
+		for j, item := range textRanked {
+			if item.idx == i {
+				textRank = float64(j + 1) // 1-indexed rank
+				break
+			}
+		}
+
+		// Combine using RRF
+		rrfScore := (r.VectorWeight / (r.K + vectorRank)) + (r.TextWeight / (r.K + textRank))
+		reranked[i].Score = rrfScore
+	}
 
 	// Sort by combined score
 	sort.Slice(reranked, func(i, j int) bool {
@@ -321,7 +321,7 @@ type DiversityReranker struct {
 // NewDiversityReranker creates a new diversity-based reranker
 func NewDiversityReranker(lambda float64, simFunc SimilarityFunc) *DiversityReranker {
 	return &DiversityReranker{
-		Lambda:        lambda,
+		Lambda:         lambda,
 		SimilarityFunc: simFunc,
 	}
 }

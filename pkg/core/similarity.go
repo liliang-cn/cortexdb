@@ -24,10 +24,10 @@ func GetEuclideanDist() SimilarityFunc {
 var (
 	// CosineSimilarity calculates cosine similarity between two vectors
 	CosineSimilarity = cosineSimilarity
-	
+
 	// DotProduct calculates dot product between two vectors
 	DotProduct = dotProduct
-	
+
 	// EuclideanDist calculates negative Euclidean distance (higher = more similar)
 	EuclideanDist = euclideanDistance
 )
@@ -38,20 +38,20 @@ func cosineSimilarity(a, b []float32) float64 {
 	if len(a) != len(b) {
 		return 0.0
 	}
-	
+
 	var dotProduct, normA, normB float64
-	
+
 	for i := 0; i < len(a); i++ {
 		dotProduct += float64(a[i]) * float64(b[i])
 		normA += float64(a[i]) * float64(a[i])
 		normB += float64(b[i]) * float64(b[i])
 	}
-	
+
 	// Handle zero vectors
 	if normA == 0.0 || normB == 0.0 {
 		return 0.0
 	}
-	
+
 	return dotProduct / (math.Sqrt(normA) * math.Sqrt(normB))
 }
 
@@ -60,12 +60,12 @@ func dotProduct(a, b []float32) float64 {
 	if len(a) != len(b) {
 		return 0.0
 	}
-	
+
 	var result float64
 	for i := 0; i < len(a); i++ {
 		result += float64(a[i]) * float64(b[i])
 	}
-	
+
 	return result
 }
 
@@ -75,12 +75,12 @@ func euclideanDistance(a, b []float32) float64 {
 	if len(a) != len(b) {
 		return -math.Inf(1)
 	}
-	
+
 	var sum float64
 	for i := 0; i < len(a); i++ {
 		diff := float64(a[i]) - float64(b[i])
 		sum += diff * diff
 	}
-	
+
 	return -math.Sqrt(sum)
 }

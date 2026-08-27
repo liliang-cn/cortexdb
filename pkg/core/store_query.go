@@ -272,12 +272,12 @@ func (s *SQLiteStore) scanEmbeddingForGet(rows *sql.Rows) (*Embedding, error) {
 	}
 
 	return &Embedding{
-		ID:        id,
+		ID:         id,
 		Collection: collectionName,
-		Vector:    vector,
-		Content:   content,
-		DocID:     docID.String,
-		Metadata:  metadata,
-		ACL:       acl,
+		Vector:     vector,
+		Content:    content,
+		DocID:      docID.String,
+		Metadata:   metadata,
+		ACL:        acl,
 	}, nil
 }

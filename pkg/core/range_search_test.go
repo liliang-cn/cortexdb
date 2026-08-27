@@ -17,7 +17,7 @@ func TestRangeSearch(t *testing.T) {
 	config.Path = dbPath
 	config.VectorDim = 3
 	config.SimilarityFn = EuclideanDist // Use Euclidean distance for this test
-	config.HNSW.Enabled = false // Test without HNSW for simplicity
+	config.HNSW.Enabled = false         // Test without HNSW for simplicity
 
 	store, err := NewWithConfig(config)
 	if err != nil {
@@ -37,10 +37,10 @@ func TestRangeSearch(t *testing.T) {
 			{ID: "p1", Vector: []float32{1, 0, 0}},
 			{ID: "p2", Vector: []float32{0, 1, 0}},
 			{ID: "p3", Vector: []float32{0, 0, 1}},
-			{ID: "p4", Vector: []float32{1, 1, 0}}, // distance sqrt(2) from origin
-			{ID: "p5", Vector: []float32{1, 0, 1}}, // distance sqrt(2) from origin
-			{ID: "p6", Vector: []float32{0, 1, 1}}, // distance sqrt(2) from origin
-			{ID: "p7", Vector: []float32{1, 1, 1}}, // distance sqrt(3) from origin
+			{ID: "p4", Vector: []float32{1, 1, 0}},  // distance sqrt(2) from origin
+			{ID: "p5", Vector: []float32{1, 0, 1}},  // distance sqrt(2) from origin
+			{ID: "p6", Vector: []float32{0, 1, 1}},  // distance sqrt(2) from origin
+			{ID: "p7", Vector: []float32{1, 1, 1}},  // distance sqrt(3) from origin
 			{ID: "far", Vector: []float32{3, 3, 3}}, // distance 3*sqrt(3) from origin
 		}
 
@@ -172,8 +172,8 @@ func TestRangeSearch(t *testing.T) {
 		defer func() { _ = os.Remove(dbPath2) }()
 
 		store2, _ := NewWithConfig(Config{
-			Path:       dbPath2,
-			VectorDim:  3,
+			Path:      dbPath2,
+			VectorDim: 3,
 		})
 		defer func() { _ = store2.Close() }()
 		_ = store2.Init(ctx)
@@ -230,7 +230,7 @@ func TestRangeSearchWithCosineDistance(t *testing.T) {
 		{ID: "v1", Vector: normalize([]float32{1, 0, 0})},
 		{ID: "v2", Vector: normalize([]float32{1, 1, 0})},
 		{ID: "v3", Vector: normalize([]float32{0, 1, 0})},
-		{ID: "v4", Vector: normalize([]float32{-1, 0, 0})}, // Opposite of v1
+		{ID: "v4", Vector: normalize([]float32{-1, 0, 0})},  // Opposite of v1
 		{ID: "v5", Vector: normalize([]float32{1, 0.1, 0})}, // Very similar to v1
 	}
 
@@ -286,8 +286,8 @@ func TestRangeSearchSortOrder(t *testing.T) {
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, _ := NewWithConfig(Config{
-		Path:       dbPath,
-		VectorDim:  2,
+		Path:      dbPath,
+		VectorDim: 2,
 	})
 	defer func() { _ = store.Close() }()
 

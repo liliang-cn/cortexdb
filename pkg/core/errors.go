@@ -9,19 +9,19 @@ import (
 var (
 	// ErrInvalidDimension is returned when vector dimension doesn't match expected
 	ErrInvalidDimension = errors.New("invalid vector dimension")
-	
+
 	// ErrNotFound is returned when an embedding is not found
 	ErrNotFound = errors.New("embedding not found")
-	
+
 	// ErrInvalidVector is returned when vector data is invalid
 	ErrInvalidVector = errors.New("invalid vector data")
-	
+
 	// ErrStoreClosed is returned when trying to use a closed store
 	ErrStoreClosed = errors.New("store is closed")
-	
+
 	// ErrInvalidConfig is returned when configuration is invalid
 	ErrInvalidConfig = errors.New("invalid configuration")
-	
+
 	// ErrEmptyQuery is returned when search query is empty
 	ErrEmptyQuery = errors.New("empty query vector")
 )

@@ -98,7 +98,7 @@ func TestDiversityReranker(t *testing.T) {
 	results := []ScoredEmbedding{
 		{Embedding: Embedding{ID: "1", Vector: []float32{1, 0, 0}}, Score: 0.9},
 		{Embedding: Embedding{ID: "2", Vector: []float32{0.95, 0, 0}}, Score: 0.85}, // Very similar to 1
-		{Embedding: Embedding{ID: "3", Vector: []float32{0, 1, 0}}, Score: 0.7},    // Different
+		{Embedding: Embedding{ID: "3", Vector: []float32{0, 1, 0}}, Score: 0.7},     // Different
 	}
 
 	reranked, err := reranker.Rerank(ctx, "", results)
@@ -191,9 +191,9 @@ func TestSearchWithRerankerIntegration(t *testing.T) {
 	// Insert test data with semantic similarity but different content
 	testData := []*Embedding{
 		{ID: "1", Vector: []float32{1, 0, 0, 0}, Content: "Python programming tutorial"},
-		{ID: "2", Vector: []float32{0.95, 0, 0, 0}, Content: "Java programming guide"},     // Similar vector to 1
-		{ID: "3", Vector: []float32{0.9, 0, 0, 0}, Content: "Python machine learning"},     // Similar vector, Python keyword
-		{ID: "4", Vector: []float32{0, 1, 0, 0}, Content: "JavaScript basics"},            // Different vector
+		{ID: "2", Vector: []float32{0.95, 0, 0, 0}, Content: "Java programming guide"}, // Similar vector to 1
+		{ID: "3", Vector: []float32{0.9, 0, 0, 0}, Content: "Python machine learning"}, // Similar vector, Python keyword
+		{ID: "4", Vector: []float32{0, 1, 0, 0}, Content: "JavaScript basics"},         // Different vector
 	}
 
 	for _, emb := range testData {

@@ -65,7 +65,7 @@ func DefaultHNSWConfig() HNSWConfig {
 		M:              16,
 		EfConstruction: 64,
 		EfSearch:       50,
-		NumWorkers:     4,  // Use 4 parallel workers
+		NumWorkers:     4,    // Use 4 parallel workers
 		Incremental:    true, // Enable incremental indexing
 	}
 }
@@ -138,39 +138,39 @@ const (
 
 // Config represents configuration options for the vector store
 type Config struct {
-	Path           string               `json:"path"`                    // Database file path
-	VectorDim      int                  `json:"vectorDim"`               // Expected vector dimension, 0 = auto-detect
-	AutoDimAdapt   AdaptPolicy          `json:"autoDimAdapt"`            // How to handle dimension mismatches
-	SimilarityFn   SimilarityFunc       `json:"-"`                       // Similarity function
-	IndexType      IndexType            `json:"indexType"`               // Index type to use
-	HNSW           HNSWConfig           `json:"hnsw,omitempty"`          // HNSW index configuration
-	IVF            IVFConfig            `json:"ivf,omitempty"`           // IVF index configuration
+	Path           string               `json:"path"`                     // Database file path
+	VectorDim      int                  `json:"vectorDim"`                // Expected vector dimension, 0 = auto-detect
+	AutoDimAdapt   AdaptPolicy          `json:"autoDimAdapt"`             // How to handle dimension mismatches
+	SimilarityFn   SimilarityFunc       `json:"-"`                        // Similarity function
+	IndexType      IndexType            `json:"indexType"`                // Index type to use
+	HNSW           HNSWConfig           `json:"hnsw,omitempty"`           // HNSW index configuration
+	IVF            IVFConfig            `json:"ivf,omitempty"`            // IVF index configuration
 	TextSimilarity TextSimilarityConfig `json:"textSimilarity,omitempty"` // Text similarity configuration
 	Quantization   QuantizationConfig   `json:"quantization,omitempty"`   // Quantization configuration
-	Logger         Logger               `json:"-"`                       // Logger instance (defaults to nop logger)
-	AutoSave       AutoSaveConfig       `json:"autoSave,omitempty"`      // Auto-save configuration
+	Logger         Logger               `json:"-"`                        // Logger instance (defaults to nop logger)
+	AutoSave       AutoSaveConfig       `json:"autoSave,omitempty"`       // Auto-save configuration
 }
 
 // AutoSaveConfig defines configuration for automatic index snapshot saving
 type AutoSaveConfig struct {
-	Enabled     bool          `json:"enabled"`      // Enable auto-save (default: true)
-	Interval    time.Duration `json:"interval"`     // Save interval (default: 5 minutes)
-	SaveOnClose bool          `json:"saveOnClose"`  // Save on database close (default: true)
+	Enabled     bool          `json:"enabled"`     // Enable auto-save (default: true)
+	Interval    time.Duration `json:"interval"`    // Save interval (default: 5 minutes)
+	SaveOnClose bool          `json:"saveOnClose"` // Save on database close (default: true)
 	MinChanges  int           `json:"minChanges"`  // Minimum changes before saving (default: 100)
 }
 
 // DefaultConfig returns a default configuration
 func DefaultConfig() Config {
 	return Config{
-		VectorDim:      0,                              // Auto-detect dimension
-		AutoDimAdapt:   StrictMode,                     // Strict by default
-		SimilarityFn:   CosineSimilarity,               // Cosine similarity
-		IndexType:      IndexTypeHNSW,                  // Default to HNSW
-		HNSW:           DefaultHNSWConfig(),            // HNSW configuration
-		IVF:            DefaultIVFConfig(),             // IVF configuration
-		TextSimilarity: DefaultTextSimilarityConfig(),  // Text similarity configuration
-		Quantization:   DefaultQuantizationConfig(),    // Quantization configuration
-		AutoSave:       DefaultAutoSaveConfig(),        // Auto-save configuration
+		VectorDim:      0,                             // Auto-detect dimension
+		AutoDimAdapt:   StrictMode,                    // Strict by default
+		SimilarityFn:   CosineSimilarity,              // Cosine similarity
+		IndexType:      IndexTypeHNSW,                 // Default to HNSW
+		HNSW:           DefaultHNSWConfig(),           // HNSW configuration
+		IVF:            DefaultIVFConfig(),            // IVF configuration
+		TextSimilarity: DefaultTextSimilarityConfig(), // Text similarity configuration
+		Quantization:   DefaultQuantizationConfig(),   // Quantization configuration
+		AutoSave:       DefaultAutoSaveConfig(),       // Auto-save configuration
 	}
 }
 

@@ -40,11 +40,11 @@ func TestHNSWIntegration(t *testing.T) {
 			t.Fatalf("Failed to initialize store: %v", err)
 		}
 		defer func() {
-		if err := store.Close(); err != nil {
-			// Ignore cleanup errors in tests
-			_ = err
-		}
-	}()
+			if err := store.Close(); err != nil {
+				// Ignore cleanup errors in tests
+				_ = err
+			}
+		}()
 
 		// Insert test vectors
 		vectors := generateTestVectors(100, 128)
@@ -111,11 +111,11 @@ func TestHNSWIntegration(t *testing.T) {
 			t.Fatalf("Failed to initialize store: %v", err)
 		}
 		defer func() {
-		if err := store.Close(); err != nil {
-			// Ignore cleanup errors in tests
-			_ = err
-		}
-	}()
+			if err := store.Close(); err != nil {
+				// Ignore cleanup errors in tests
+				_ = err
+			}
+		}()
 
 		// Insert test vectors
 		vectors := generateTestVectors(100, 128)
@@ -285,7 +285,7 @@ func TestHNSWPerformance(t *testing.T) {
 
 	// Clean up and test without HNSW
 	_ = os.Remove(dbPath)
-	
+
 	configLinear := DefaultConfig()
 	configLinear.Path = dbPath
 	configLinear.VectorDim = dim

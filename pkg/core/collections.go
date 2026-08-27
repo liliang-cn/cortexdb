@@ -21,12 +21,12 @@ type Collection struct {
 
 // CollectionStats represents statistics for a collection
 type CollectionStats struct {
-	Name            string    `json:"name"`
-	Count           int64     `json:"count"`
-	Dimensions      int       `json:"dimensions"`
-	Size            int64     `json:"size"`
-	CreatedAt       time.Time `json:"created_at"`
-	LastInsertedAt  time.Time `json:"last_inserted_at,omitempty"`
+	Name           string    `json:"name"`
+	Count          int64     `json:"count"`
+	Dimensions     int       `json:"dimensions"`
+	Size           int64     `json:"size"`
+	CreatedAt      time.Time `json:"created_at"`
+	LastInsertedAt time.Time `json:"last_inserted_at,omitempty"`
 }
 
 // CreateCollection creates a new collection
@@ -293,13 +293,22 @@ func (s *SQLiteStore) GetCollectionStats(ctx context.Context, name string) (*Col
 		return nil, wrapError("get_collection_stats", fmt.Errorf("failed to get stats: %w", err))
 	}
 
-	// Get last inserted timestamp if any embeddings exist
+	// Get last inserted timestamp if any embeddings exist.
+	//
+	// Scanned as text and parsed, not straight into a time.Time. SQLite stores
+	// created_at as a DATETIME string and the driver will not convert it, so
+	// the scan failed every time — and the "don't fail for this" below turned
+	// that into a silent zero. The field has been zero for every collection
+	// since it was written, which nothing noticed because nothing compared it
+	// to anything. A cross-backend test did.
 	if stats.Count > 0 {
-		err = s.db.QueryRowContext(ctx, `
+		var last sql.NullString
+		if err := s.db.QueryRowContext(ctx, `
 			SELECT MAX(created_at) FROM embeddings WHERE collection_id = ?
-		`, collection.ID).Scan(&stats.LastInsertedAt)
-		if err != nil {
-			// Don't fail for this
+		`, collection.ID).Scan(&last); err == nil && last.Valid {
+			stats.LastInsertedAt = parseSQLiteTime(last.String)
+		} else {
+			// Still not worth failing the whole report over.
 			stats.LastInsertedAt = time.Time{}
 		}
 	}
@@ -307,3 +316,19 @@ func (s *SQLiteStore) GetCollectionStats(ctx context.Context, name string) (*Col
 	return stats, nil
 }
 
+// parseSQLiteTime reads the timestamp formats SQLite's CURRENT_TIMESTAMP and
+// Go's own writers produce, in order of likelihood. An unparseable value comes
+// back as the zero time, which is what the caller already treats as "unknown".
+func parseSQLiteTime(v string) time.Time {
+	for _, layout := range []string{
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04:05.999999999-07:00",
+		time.RFC3339Nano,
+		time.RFC3339,
+	} {
+		if t, err := time.Parse(layout, v); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}

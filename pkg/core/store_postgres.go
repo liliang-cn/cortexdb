@@ -431,8 +431,8 @@ func (s *PostgresStore) CreateCollection(ctx context.Context, name string, dimen
 func (s *PostgresStore) GetCollection(ctx context.Context, name string) (*Collection, error) {
 	var c Collection
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, name, dimensions FROM collections WHERE name = $1`, name).
-		Scan(&c.ID, &c.Name, &c.Dimensions)
+		`SELECT id, name, dimensions, created_at FROM collections WHERE name = $1`, name).
+		Scan(&c.ID, &c.Name, &c.Dimensions, &c.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("collection %q not found", name)
 	}
@@ -623,15 +623,9 @@ func (s *PostgresStore) ListDocumentsWithFilter(ctx context.Context, author stri
 // that hits one knows exactly what is missing instead of debugging an empty
 // result.
 
-func (s *PostgresStore) GetCollectionStats(context.Context, string) (*CollectionStats, error) {
-	return nil, unimplemented("GetCollectionStats")
-}
 func (s *PostgresStore) TrainIndex(context.Context, int) error {
 	// pgvector builds and maintains its own index; there is nothing to train.
 	return nil
-}
-func (s *PostgresStore) TrainQuantizer(context.Context) error {
-	return unimplemented("TrainQuantizer")
 }
 func (s *PostgresStore) SearchWithACL(context.Context, []float32, []string, SearchOptions) ([]ScoredEmbedding, error) {
 	return nil, unimplemented("SearchWithACL")

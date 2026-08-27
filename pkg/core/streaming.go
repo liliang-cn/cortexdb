@@ -18,10 +18,10 @@ type StreamingResult struct {
 // StreamingOptions configures streaming search behavior
 type StreamingOptions struct {
 	SearchOptions
-	BatchSize       int           // Number of vectors to process per batch
-	MaxLatency      time.Duration // Maximum time to wait before sending partial results
-	EarlyTerminate  bool          // Stop when enough good results are found
-	QualityThreshold float64      // Score threshold for early termination
+	BatchSize        int                        // Number of vectors to process per batch
+	MaxLatency       time.Duration              // Maximum time to wait before sending partial results
+	EarlyTerminate   bool                       // Stop when enough good results are found
+	QualityThreshold float64                    // Score threshold for early termination
 	ProgressCallback func(processed, total int) // Optional progress reporting
 }
 
@@ -29,11 +29,11 @@ type StreamingOptions struct {
 func (s *SQLiteStore) StreamSearch(ctx context.Context, query []float32, opts StreamingOptions) (<-chan StreamingResult, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if s.closed {
 		return nil, wrapError("stream_search", ErrStoreClosed)
 	}
-	
+
 	// Set defaults
 	if opts.BatchSize <= 0 {
 		opts.BatchSize = 100
@@ -41,44 +41,44 @@ func (s *SQLiteStore) StreamSearch(ctx context.Context, query []float32, opts St
 	if opts.MaxLatency <= 0 {
 		opts.MaxLatency = 100 * time.Millisecond
 	}
-	
+
 	// Create result channel
 	resultChan := make(chan StreamingResult, opts.BatchSize)
-	
+
 	// Start streaming goroutine
 	go func() {
 		defer close(resultChan)
-		
+
 		// Get all candidates
 		candidates, err := s.fetchCandidates(ctx, opts.SearchOptions)
 		if err != nil {
 			return
 		}
-		
+
 		// Process in batches
 		batchID := 0
 		totalCandidates := len(candidates)
-		
+
 		for i := 0; i < totalCandidates; i += opts.BatchSize {
 			select {
 			case <-ctx.Done():
 				return // Context cancelled
 			default:
 			}
-			
+
 			end := i + opts.BatchSize
 			if end > totalCandidates {
 				end = totalCandidates
 			}
-			
+
 			batch := candidates[i:end]
 			batchResults := make([]StreamingResult, 0, len(batch))
-			
+
 			// Score batch
 			for _, candidate := range batch {
 				score := s.similarityFn(query, candidate.Vector)
 				candidate.Score = score
-				
+
 				result := StreamingResult{
 					ScoredEmbedding: candidate,
 					Timestamp:       time.Now(),
@@ -86,12 +86,12 @@ func (s *SQLiteStore) StreamSearch(ctx context.Context, query []float32, opts St
 				}
 				batchResults = append(batchResults, result)
 			}
-			
+
 			// Sort batch by score
 			sort.Slice(batchResults, func(j, k int) bool {
 				return batchResults[j].Score > batchResults[k].Score
 			})
-			
+
 			// Send results
 			for _, result := range batchResults {
 				select {
@@ -102,7 +102,7 @@ func (s *SQLiteStore) StreamSearch(ctx context.Context, query []float32, opts St
 					// Skip if channel is full after max latency
 					continue
 				}
-				
+
 				// Check early termination
 				if opts.EarlyTerminate && result.Score >= opts.QualityThreshold {
 					if opts.TopK > 0 && i+len(batchResults) >= opts.TopK {
@@ -110,23 +110,23 @@ func (s *SQLiteStore) StreamSearch(ctx context.Context, query []float32, opts St
 					}
 				}
 			}
-			
+
 			// Report progress
 			if opts.ProgressCallback != nil {
 				opts.ProgressCallback(end, totalCandidates)
 			}
-			
+
 			batchID++
 		}
 	}()
-	
+
 	return resultChan, nil
 }
 
 // ParallelStreamSearch performs parallel streaming search across multiple queries
 func (s *SQLiteStore) ParallelStreamSearch(ctx context.Context, queries [][]float32, opts StreamingOptions) ([]<-chan StreamingResult, error) {
 	channels := make([]<-chan StreamingResult, len(queries))
-	
+
 	for i, query := range queries {
 		ch, err := s.StreamSearch(ctx, query, opts)
 		if err != nil {
@@ -134,7 +134,7 @@ func (s *SQLiteStore) ParallelStreamSearch(ctx context.Context, queries [][]floa
 		}
 		channels[i] = ch
 	}
-	
+
 	return channels, nil
 }
 
@@ -142,7 +142,7 @@ func (s *SQLiteStore) ParallelStreamSearch(ctx context.Context, queries [][]floa
 func MergeStreamResults(ctx context.Context, channels ...<-chan StreamingResult) <-chan StreamingResult {
 	out := make(chan StreamingResult)
 	var wg sync.WaitGroup
-	
+
 	// Start a goroutine for each input channel
 	for _, ch := range channels {
 		wg.Add(1)
@@ -165,13 +165,13 @@ func MergeStreamResults(ctx context.Context, channels ...<-chan StreamingResult)
 			}
 		}(ch)
 	}
-	
+
 	// Close output channel when all inputs are done
 	go func() {
 		wg.Wait()
 		close(out)
 	}()
-	
+
 	return out
 }
 
@@ -180,7 +180,7 @@ func CollectTopKFromStream(ctx context.Context, stream <-chan StreamingResult, k
 	// Use a heap to maintain top-k
 	topK := make([]ScoredEmbedding, 0, k)
 	seen := make(map[string]bool)
-	
+
 	for {
 		select {
 		case result, ok := <-stream:
@@ -188,13 +188,13 @@ func CollectTopKFromStream(ctx context.Context, stream <-chan StreamingResult, k
 				// Stream closed, return what we have
 				return topK, nil
 			}
-			
+
 			// Skip duplicates
 			if seen[result.ID] {
 				continue
 			}
 			seen[result.ID] = true
-			
+
 			// Add to top-k
 			if len(topK) < k {
 				topK = append(topK, result.ScoredEmbedding)
@@ -207,7 +207,7 @@ func CollectTopKFromStream(ctx context.Context, stream <-chan StreamingResult, k
 					return topK[i].Score > topK[j].Score
 				})
 			}
-			
+
 			// Check if we have k results with good scores
 			if len(topK) == k && topK[k-1].Score > 0.9 {
 				// Drain remaining results
@@ -217,7 +217,7 @@ func CollectTopKFromStream(ctx context.Context, stream <-chan StreamingResult, k
 				}()
 				return topK, nil
 			}
-			
+
 		case <-ctx.Done():
 			return topK, ctx.Err()
 		}
@@ -239,10 +239,10 @@ func NewIncrementalIndex(store *SQLiteStore) *IncrementalIndex {
 		store:   store,
 		updates: make(chan *Embedding, 100),
 	}
-	
+
 	// Start background update processor
 	go idx.processUpdates()
-	
+
 	return idx
 }
 
@@ -250,11 +250,11 @@ func NewIncrementalIndex(store *SQLiteStore) *IncrementalIndex {
 func (idx *IncrementalIndex) AddAsync(emb *Embedding) error {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
-	
+
 	if idx.closed {
 		return fmt.Errorf("index is closed")
 	}
-	
+
 	select {
 	case idx.updates <- emb:
 		return nil
@@ -270,17 +270,17 @@ func (idx *IncrementalIndex) SearchWithUpdates(ctx context.Context, query []floa
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Check pending updates
 	idx.mu.RLock()
 	pendingCount := len(idx.updates)
 	idx.mu.RUnlock()
-	
+
 	if pendingCount > 0 {
 		// Process some pending updates quickly
 		processedCount := 0
 		timeout := time.After(10 * time.Millisecond)
-		
+
 	ProcessLoop:
 		for processedCount < pendingCount && processedCount < 10 {
 			select {
@@ -293,29 +293,29 @@ func (idx *IncrementalIndex) SearchWithUpdates(ctx context.Context, query []floa
 							Embedding: *emb,
 							Score:     score,
 						})
-						
+
 						// Re-sort
 						sort.Slice(results, func(i, j int) bool {
 							return results[i].Score > results[j].Score
 						})
-						
+
 						// Trim to TopK
 						if opts.TopK > 0 && len(results) > opts.TopK {
 							results = results[:opts.TopK]
 						}
 					}
-					
+
 					// Re-queue for background processing
 					idx.updates <- emb
 				}
 				processedCount++
-				
+
 			case <-timeout:
 				break ProcessLoop
 			}
 		}
 	}
-	
+
 	return results, nil
 }
 
@@ -334,7 +334,7 @@ func (idx *IncrementalIndex) processUpdates() {
 	batch := make([]*Embedding, 0, 100)
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case emb, ok := <-idx.updates:
@@ -345,15 +345,15 @@ func (idx *IncrementalIndex) processUpdates() {
 				}
 				return
 			}
-			
+
 			batch = append(batch, emb)
-			
+
 			// Flush batch if full
 			if len(batch) >= 100 {
 				_ = idx.store.UpsertBatch(context.Background(), batch)
 				batch = batch[:0]
 			}
-			
+
 		case <-ticker.C:
 			// Periodic flush
 			if len(batch) > 0 {

@@ -30,11 +30,11 @@ const (
 
 // DumpOptions defines options for data export
 type DumpOptions struct {
-	Format         DumpFormat // Export format
-	IncludeVectors bool       // Include vector data (can be large)
-	IncludeIndex   bool       // Include index data (HNSW, IVF)
+	Format         DumpFormat      // Export format
+	IncludeVectors bool            // Include vector data (can be large)
+	IncludeIndex   bool            // Include index data (HNSW, IVF)
 	Filter         *MetadataFilter // Optional filter for selective export
-	BatchSize      int        // Batch size for export (default: 1000)
+	BatchSize      int             // Batch size for export (default: 1000)
 }
 
 // DefaultDumpOptions returns default dump options
@@ -50,27 +50,27 @@ func DefaultDumpOptions() DumpOptions {
 
 // DumpStats provides statistics about the export operation
 type DumpStats struct {
-	TotalEmbeddings int    `json:"total_embeddings"`
-	TotalDocuments  int    `json:"total_documents"`
+	TotalEmbeddings  int   `json:"total_embeddings"`
+	TotalDocuments   int   `json:"total_documents"`
 	TotalCollections int   `json:"total_collections"`
-	BytesWritten    int64  `json:"bytes_written"`
+	BytesWritten     int64 `json:"bytes_written"`
 }
 
 // ExportMetadata contains metadata about the export
 type ExportMetadata struct {
-	Version     string    `json:"version"`
-	Dimensions  int       `json:"dimensions"`
-	Count       int       `json:"count"`
-	ExportedAt  string    `json:"exported_at"`
-	Config      Config    `json:"config"`
+	Version    string `json:"version"`
+	Dimensions int    `json:"dimensions"`
+	Count      int    `json:"count"`
+	ExportedAt string `json:"exported_at"`
+	Config     Config `json:"config"`
 }
 
 // ImportStats provides statistics about the import operation
 type ImportStats struct {
-	TotalEmbeddings int      `json:"total_embeddings"`
-	TotalDocuments  int      `json:"total_documents"`
-	FailedCount     int      `json:"failed_count"`
-	SkippedCount    int      `json:"skipped_count"`
+	TotalEmbeddings int `json:"total_embeddings"`
+	TotalDocuments  int `json:"total_documents"`
+	FailedCount     int `json:"failed_count"`
+	SkippedCount    int `json:"skipped_count"`
 }
 
 // Dump exports all embeddings to a writer in the specified format
@@ -232,12 +232,12 @@ func (s *SQLiteStore) getAllEmbeddings(ctx context.Context, opts DumpOptions) ([
 
 		// Convert ScoredEmbedding to Embedding
 		emb := &Embedding{
-			ID:           scoredEmb.ID,
-			Collection:   scoredEmb.Collection,
-			Vector:       scoredEmb.Vector,
-			Content:      scoredEmb.Content,
-			DocID:        scoredEmb.DocID,
-			Metadata:     scoredEmb.Metadata,
+			ID:         scoredEmb.ID,
+			Collection: scoredEmb.Collection,
+			Vector:     scoredEmb.Vector,
+			Content:    scoredEmb.Content,
+			DocID:      scoredEmb.DocID,
+			Metadata:   scoredEmb.Metadata,
 		}
 
 		if !opts.IncludeVectors {

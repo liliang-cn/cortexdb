@@ -168,34 +168,34 @@ func TestACLSearch(t *testing.T) {
 
 	// Insert Data with ACLs
 	// 1. Public document
-	store.Upsert(ctx, &Embedding{ID: "public_doc", Vector: []float32{1,0,0,0}, Content: "Public", ACL: nil})
-	
+	store.Upsert(ctx, &Embedding{ID: "public_doc", Vector: []float32{1, 0, 0, 0}, Content: "Public", ACL: nil})
+
 	// 2. User specific
-	store.Upsert(ctx, &Embedding{ID: "alice_doc", Vector: []float32{0,1,0,0}, Content: "Alice Only", ACL: []string{"user:alice"}})
-	
+	store.Upsert(ctx, &Embedding{ID: "alice_doc", Vector: []float32{0, 1, 0, 0}, Content: "Alice Only", ACL: []string{"user:alice"}})
+
 	// 3. Group specific
-	store.Upsert(ctx, &Embedding{ID: "admin_doc", Vector: []float32{0,0,1,0}, Content: "Admins Only", ACL: []string{"group:admin"}})
+	store.Upsert(ctx, &Embedding{ID: "admin_doc", Vector: []float32{0, 0, 1, 0}, Content: "Admins Only", ACL: []string{"group:admin"}})
 
 	// Search as Public (no ACL)
-	results, _ := store.SearchWithACL(ctx, []float32{0,0,0,0}, nil, SearchOptions{TopK: 10})
+	results, _ := store.SearchWithACL(ctx, []float32{0, 0, 0, 0}, nil, SearchOptions{TopK: 10})
 	if len(results) != 1 || results[0].ID != "public_doc" {
 		t.Errorf("Public search failed, got %d results", len(results))
 	}
 
 	// Search as Alice (should see public + alice)
-	results, _ = store.SearchWithACL(ctx, []float32{0,0,0,0}, []string{"user:alice"}, SearchOptions{TopK: 10})
+	results, _ = store.SearchWithACL(ctx, []float32{0, 0, 0, 0}, []string{"user:alice"}, SearchOptions{TopK: 10})
 	if len(results) != 2 {
 		t.Errorf("Alice search failed, expected 2 results, got %d", len(results))
 	}
 
 	// Search as Admin (should see public + admin)
-	results, _ = store.SearchWithACL(ctx, []float32{0,0,0,0}, []string{"group:admin"}, SearchOptions{TopK: 10})
+	results, _ = store.SearchWithACL(ctx, []float32{0, 0, 0, 0}, []string{"group:admin"}, SearchOptions{TopK: 10})
 	if len(results) != 2 {
 		t.Errorf("Admin search failed, expected 2 results, got %d", len(results))
 	}
-	
+
 	// Search as Bob (should see public only)
-	results, _ = store.SearchWithACL(ctx, []float32{0,0,0,0}, []string{"user:bob"}, SearchOptions{TopK: 10})
+	results, _ = store.SearchWithACL(ctx, []float32{0, 0, 0, 0}, []string{"user:bob"}, SearchOptions{TopK: 10})
 	if len(results) != 1 {
 		t.Errorf("Bob search failed, expected 1 result, got %d", len(results))
 	}
@@ -211,24 +211,24 @@ func TestHybridSearch(t *testing.T) {
 	defer store.Close()
 
 	// Insert data
-	store.Upsert(ctx, &Embedding{ID: "1", Vector: []float32{1,0,0,0}, Content: "Apple iPhone"})
-	store.Upsert(ctx, &Embedding{ID: "2", Vector: []float32{0,1,0,0}, Content: "Apple Pie"})
-	store.Upsert(ctx, &Embedding{ID: "3", Vector: []float32{0,0,1,0}, Content: "Green Apple"})
+	store.Upsert(ctx, &Embedding{ID: "1", Vector: []float32{1, 0, 0, 0}, Content: "Apple iPhone"})
+	store.Upsert(ctx, &Embedding{ID: "2", Vector: []float32{0, 1, 0, 0}, Content: "Apple Pie"})
+	store.Upsert(ctx, &Embedding{ID: "3", Vector: []float32{0, 0, 1, 0}, Content: "Green Apple"})
 
 	// Hybrid Search
 	opts := HybridSearchOptions{}
 	opts.TopK = 3
-	
-	results, err := store.HybridSearch(ctx, []float32{1,0,0,0}, "Apple", opts)
+
+	results, err := store.HybridSearch(ctx, []float32{1, 0, 0, 0}, "Apple", opts)
 	if err != nil {
 		t.Logf("HybridSearch skipped (FTS likely missing): %v", err)
 		return
 	}
-	
+
 	if len(results) == 0 {
 		t.Error("HybridSearch returned 0 results")
 	}
-	
+
 	if results[0].ID != "1" {
 		t.Errorf("Expected top result ID=1, got %s", results[0].ID)
 	}

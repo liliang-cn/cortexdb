@@ -91,32 +91,32 @@ func TestDimensionAdapter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			adapter := NewDimensionAdapter(tt.policy)
-			
+
 			result, err := adapter.AdaptVector(tt.sourceVec, tt.sourceDim, tt.targetDim)
-			
+
 			if tt.shouldFail {
 				if err == nil {
 					t.Errorf("Expected error for policy %v, but got none", tt.policy)
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Errorf("Unexpected error: %v", err)
 				return
 			}
-			
+
 			if len(result) != tt.targetDim {
 				t.Errorf("Expected result length %d, got %d", tt.targetDim, len(result))
 			}
-			
+
 			// Check if vector is normalized (approximately)
 			var sumSquares float64
 			for _, v := range result {
 				sumSquares += float64(v) * float64(v)
 			}
 			norm := math.Sqrt(sumSquares)
-			
+
 			if math.Abs(norm-1.0) > 1e-6 {
 				t.Errorf("Result vector is not normalized: norm = %f", norm)
 			}
@@ -261,12 +261,12 @@ func TestMixedDimensionSearch(t *testing.T) {
 		{
 			name:      "2D query",
 			query:     []float32{0.8, 0.6}, // Will be padded to 3D
-			expectTop: "vec2d", // Should match the adapted 2D vector
+			expectTop: "vec2d",             // Should match the adapted 2D vector
 		},
 		{
 			name:      "5D query",
 			query:     []float32{0.4, 0.4, 0.4, 0.4, 0.4}, // Will be truncated to 3D
-			expectTop: "vec4d", // Should match the truncated 4D vector
+			expectTop: "vec4d",                            // Should match the truncated 4D vector
 		},
 	}
 
@@ -283,7 +283,7 @@ func TestMixedDimensionSearch(t *testing.T) {
 
 			// Don't strictly require the expected top result since adaptation might change similarities
 			// Just verify we get results without errors
-			t.Logf("Query %s returned top result: %s (score: %.4f)", 
+			t.Logf("Query %s returned top result: %s (score: %.4f)",
 				tq.name, results[0].ID, results[0].Score)
 		})
 	}
@@ -359,7 +359,7 @@ func TestDimensionPolicies(t *testing.T) {
 }
 
 func TestStrictMode(t *testing.T) {
-	// Create temporary database file  
+	// Create temporary database file
 	dbPath := "test_strict_" + time.Now().Format("20060102_150405") + ".db"
 	defer func() {
 		if err := os.Remove(dbPath); err != nil {
@@ -395,7 +395,7 @@ func TestStrictMode(t *testing.T) {
 }
 
 func TestWarnOnlyPolicy(t *testing.T) {
-	// Create temporary database file  
+	// Create temporary database file
 	dbPath := "test_warnonly_" + time.Now().Format("20060102_150405") + ".db"
 	defer func() {
 		if err := os.Remove(dbPath); err != nil {

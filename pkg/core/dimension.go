@@ -9,11 +9,11 @@ import (
 
 // DimensionAnalysis contains information about vector dimensions in the store
 type DimensionAnalysis struct {
-	PrimaryDim    int            `json:"primaryDim"`    // Most common dimension
-	PrimaryCount  int            `json:"primaryCount"`  // Count of primary dimension
-	Dimensions    map[int]int    `json:"dimensions"`    // Map of dimension -> count
-	TotalVectors  int            `json:"totalVectors"`  // Total number of vectors
-	NeedsMigration bool          `json:"needsMigration"` // Whether migration is recommended
+	PrimaryDim     int         `json:"primaryDim"`     // Most common dimension
+	PrimaryCount   int         `json:"primaryCount"`   // Count of primary dimension
+	Dimensions     map[int]int `json:"dimensions"`     // Map of dimension -> count
+	TotalVectors   int         `json:"totalVectors"`   // Total number of vectors
+	NeedsMigration bool        `json:"needsMigration"` // Whether migration is recommended
 }
 
 // DimensionAdapter handles vector dimension adaptation
@@ -71,7 +71,7 @@ func (da *DimensionAdapter) truncateVector(vector []float32, targetDim int) []fl
 		copy(result, vector)
 		return normalizeVector(result)
 	}
-	
+
 	result := make([]float32, targetDim)
 	copy(result, vector[:targetDim])
 	return normalizeVector(result)

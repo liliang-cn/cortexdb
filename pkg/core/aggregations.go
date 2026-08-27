@@ -23,13 +23,13 @@ const (
 // AggregationRequest defines parameters for aggregation queries
 type AggregationRequest struct {
 	Type       AggregationType        `json:"type"`
-	Field      string                 `json:"field"`           // Metadata field to aggregate
-	GroupBy    []string               `json:"group_by"`        // Fields to group by
-	Filters    map[string]interface{} `json:"filters"`         // Optional filters
-	Collection string                 `json:"collection"`      // Optional collection filter
-	Having     map[string]interface{} `json:"having"`          // Post-aggregation filters
-	OrderBy    string                 `json:"order_by"`        // Field to order results by
-	Limit      int                    `json:"limit"`           // Max results
+	Field      string                 `json:"field"`      // Metadata field to aggregate
+	GroupBy    []string               `json:"group_by"`   // Fields to group by
+	Filters    map[string]interface{} `json:"filters"`    // Optional filters
+	Collection string                 `json:"collection"` // Optional collection filter
+	Having     map[string]interface{} `json:"having"`     // Post-aggregation filters
+	OrderBy    string                 `json:"order_by"`   // Field to order results by
+	Limit      int                    `json:"limit"`      // Max results
 }
 
 // AggregationResult represents a single aggregation result
@@ -259,9 +259,9 @@ func (s *SQLiteStore) aggregateGroupBy(ctx context.Context, req AggregationReque
 	selectClauses := []string{}
 	groupByClauses := []string{}
 	for _, field := range req.GroupBy {
-		selectClauses = append(selectClauses, 
+		selectClauses = append(selectClauses,
 			fmt.Sprintf("json_extract(metadata, '$.%s') as %s", field, field))
-		groupByClauses = append(groupByClauses, 
+		groupByClauses = append(groupByClauses,
 			fmt.Sprintf("json_extract(metadata, '$.%s')", field))
 	}
 
@@ -411,7 +411,7 @@ func validateAggregationRequest(req AggregationRequest) error {
 func addMetadataFilters(query string, args []interface{}, filters map[string]interface{}) (string, []interface{}) {
 	for field, value := range filters {
 		query += fmt.Sprintf(" AND json_extract(metadata, '$.%s') = ?", field)
-		
+
 		// Convert value to appropriate SQL type
 		switch v := value.(type) {
 		case string:
