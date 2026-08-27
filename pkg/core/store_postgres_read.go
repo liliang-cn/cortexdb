@@ -205,6 +205,18 @@ func (s *PostgresStore) UpsertBatchTx(ctx context.Context, tx *sql.Tx, embs []*E
 // lookupCollectionIDTx does on SQLite: an explicit id wins, a name is looked
 // up, and nothing at all means the default collection.
 func pgLookupCollectionIDTx(ctx context.Context, tx *sql.Tx, emb *Embedding) (int, error) {
+	return pgLookupCollectionID(ctx, tx, emb)
+}
+
+// pgLookupCollectionID is the same on a plain handle.
+//
+// Shared because it was not, and that was a real bug: Upsert and UpsertBatch
+// read only CollectionID and defaulted the rest to 1, so every chunk the
+// GraphRAG ingester wrote — which names its collection rather than numbering
+// it — landed in `default` while every search looked in `graphrag_chunks`.
+// Ingest reported success, the rows were there, and retrieval returned
+// nothing. No unit test caught it because they all pass an id.
+func pgLookupCollectionID(ctx context.Context, q queryRower, emb *Embedding) (int, error) {
 	if emb.CollectionID != 0 {
 		return emb.CollectionID, nil
 	}
@@ -213,13 +225,18 @@ func pgLookupCollectionIDTx(ctx context.Context, tx *sql.Tx, emb *Embedding) (in
 	}
 
 	var collectionID int
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM collections WHERE name = $1`, emb.Collection).Scan(&collectionID); err != nil {
+	if err := q.QueryRowContext(ctx, `SELECT id FROM collections WHERE name = $1`, emb.Collection).Scan(&collectionID); err != nil {
 		if err == sql.ErrNoRows {
 			return 0, fmt.Errorf("collection %q not found", emb.Collection)
 		}
 		return 0, err
 	}
 	return collectionID, nil
+}
+
+// queryRower is the *sql.DB / *sql.Tx overlap the resolver needs.
+type queryRower interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
 // UpsertBatchWithAdapt writes vectors that may not be the store's width,

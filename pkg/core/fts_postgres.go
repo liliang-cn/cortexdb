@@ -24,7 +24,10 @@ package core
 // or drop stopwords, and a backend that quietly stemmed would return different
 // rows for the same query depending on where it ran.
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // PostgresLexicalDDL returns the statements that make lexical search on a
 // column fast, in the order they must run.
@@ -49,30 +52,48 @@ func PostgresLexicalDDL(table, column string) []string {
 	}
 }
 
-// PostgresLexicalCondition builds the WHERE fragment for one query, with a
-// single `?` placeholder for the dialect to rebind.
+// PostgresLexicalCondition builds the WHERE fragment for one query, with `?`
+// placeholders for the dialect to rebind, and the values to bind.
 //
 // indexed reports whether an index can serve it. False is not a failure — the
 // row still gets found — but it is linear in table size, and a caller that
 // wants to log or refuse that needs to be told rather than left to infer it
 // from a slow query log.
-func PostgresLexicalCondition(column, query string) (sql string, arg string, indexed bool) {
+//
+// The CJK arm matches TERMS, not the whole string. That was wrong for a while
+// and wrong in a way no unit test saw: every test passed a single word, while
+// the real caller passes a whole question. `LIKE '%pkg/agentmem 那个 bug 是
+// 什么？%'` matches nothing however much of the corpus is about it, so search
+// returned an empty result and the model above it correctly answered "the
+// material does not say" — a wrong answer that looks like an honest one.
+// FTS5's MATCH tokenises, so this has to as well, or the two backends are
+// answering different questions.
+func PostgresLexicalCondition(column, query string) (sql string, args []any, indexed bool) {
 	switch {
-	case BelowTrigramFloor(query):
-		// One or two CJK characters: no trigram exists to look up, on either
-		// backend. A substring scan is slower than an index and infinitely
-		// faster than the zero rows MATCH would return.
-		return fmt.Sprintf(`%s LIKE ? ESCAPE '\'`, column), SubstringPattern(query), false
-
 	case ContainsCJK(query):
-		// Long enough to have trigrams, so the pg_trgm index serves the same
-		// LIKE that would otherwise scan.
-		return fmt.Sprintf(`%s LIKE ? ESCAPE '\'`, column), SubstringPattern(query), true
+		// Split into the runs FTS5 would tokenise, and match any of them.
+		// A query whose terms are all below the trigram floor cannot use the
+		// pg_trgm index; one long enough term is enough for it to help.
+		terms := indexableTerms(query)
+		if len(terms) == 0 {
+			terms = []string{query}
+		}
+		conds := make([]string, 0, len(terms))
+		indexed = false
+		for _, t := range terms {
+			conds = append(conds, fmt.Sprintf(`%s LIKE ? ESCAPE '\'`, column))
+			args = append(args, SubstringPattern(t))
+			if !BelowTrigramFloor(t) {
+				indexed = true
+			}
+		}
+		return "(" + strings.Join(conds, " OR ") + ")", args, indexed
 
 	default:
 		// plainto_tsquery, not to_tsquery: it takes the user's words as words
 		// and never reads a stray & or ! as an operator, which is the same
-		// reason MatchExpression exists on the FTS5 side.
-		return fmt.Sprintf(`to_tsvector('simple', %s) @@ plainto_tsquery('simple', ?)`, column), query, true
+		// reason MatchExpression exists on the FTS5 side. It tokenises for us.
+		return fmt.Sprintf(`to_tsvector('simple', %s) @@ plainto_tsquery('simple', ?)`, column),
+			[]any{query}, true
 	}
 }

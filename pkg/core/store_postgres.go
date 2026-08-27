@@ -155,6 +155,16 @@ func (s *PostgresStore) Init(ctx context.Context) error {
 		}
 	}
 
+	// The lexical indexes behind PostgresLexicalCondition: a GIN tsvector for
+	// words and a pg_trgm GIN for CJK substrings. Non-fatal — a managed
+	// instance may refuse CREATE EXTENSION to this account, and the same
+	// queries still answer without them, just linearly.
+	for _, stmt := range PostgresLexicalDDL("embeddings", "content") {
+		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+			break
+		}
+	}
+
 	return s.buildVectorIndex(ctx)
 }
 
@@ -202,9 +212,12 @@ func (s *PostgresStore) Upsert(ctx context.Context, emb *Embedding) error {
 	if err != nil {
 		return err
 	}
-	collection := emb.CollectionID
-	if collection == 0 {
-		collection = 1
+	// Resolved, not defaulted. A caller that names its collection rather than
+	// numbering it — which is what the GraphRAG ingester does — used to have
+	// every row silently filed under `default`.
+	collection, err := pgLookupCollectionID(ctx, s.db, emb)
+	if err != nil {
+		return err
 	}
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO embeddings (id, collection_id, vector, content, doc_id, metadata, acl)
@@ -244,9 +257,9 @@ func (s *PostgresStore) UpsertBatch(ctx context.Context, embs []*Embedding) erro
 		if err != nil {
 			return err
 		}
-		collection := emb.CollectionID
-		if collection == 0 {
-			collection = 1
+		collection, err := pgLookupCollectionID(ctx, tx, emb)
+		if err != nil {
+			return err
 		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO embeddings (id, collection_id, vector, content, doc_id, metadata, acl)

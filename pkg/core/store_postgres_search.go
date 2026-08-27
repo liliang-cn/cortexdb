@@ -177,13 +177,20 @@ func (s *PostgresStore) HybridSearch(ctx context.Context, vectorQuery []float32,
 // The pool is deliberately wider than TopK — fusion needs candidates below the
 // cut to have anything to promote — matching the SQLite arm's TopK*3.
 func (s *PostgresStore) lexicalArm(ctx context.Context, textQuery string, opts HybridSearchOptions) ([]ScoredEmbedding, error) {
-	cond, arg, _ := PostgresLexicalCondition("content", textQuery)
+	cond, lexArgs, _ := PostgresLexicalCondition("content", textQuery)
 
 	args := &pgArgs{}
-	p := args.add(arg)
-	// PostgresLexicalCondition writes one `?` for the dialect to rebind; this
-	// dialect is $n.
-	cond = strings.Replace(cond, "?", p+"::text", 1)
+	// PostgresLexicalCondition writes one `?` per value for the dialect to
+	// rebind; this dialect is $n. The CJK arm writes one per term, so the
+	// count is whatever it returned rather than always one.
+	var firstPlaceholder string
+	for _, v := range lexArgs {
+		ph := args.add(v)
+		if firstPlaceholder == "" {
+			firstPlaceholder = ph
+		}
+		cond = strings.Replace(cond, "?", ph+"::text", 1)
+	}
 
 	where := []string{"(" + cond + ")"}
 	// The keyword arm has to be restricted exactly like the vector arm. Left
@@ -199,10 +206,12 @@ func (s *PostgresStore) lexicalArm(ctx context.Context, textQuery string, opts H
 	// BelowTrigramFloor), so neither backend pretends to rank what it cannot.
 	order := "id"
 	if !ContainsCJK(textQuery) {
-		// Safe to reuse p: on this branch PostgresLexicalCondition binds the
-		// query itself, not a LIKE pattern built from it.
+		// Safe to reuse the first placeholder: on this branch
+		// PostgresLexicalCondition binds the query itself — one value — not
+		// the LIKE patterns the CJK branch builds from it.
 		order = fmt.Sprintf(
-			"ts_rank_cd(to_tsvector('simple', content), plainto_tsquery('simple', %s::text)) DESC, id", p)
+			"ts_rank_cd(to_tsvector('simple', content), plainto_tsquery('simple', %s::text)) DESC, id",
+			firstPlaceholder)
 	}
 
 	limit := opts.TopK * 3

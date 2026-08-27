@@ -83,14 +83,14 @@ func TestPostgresLexicalFindsWhatSQLiteWouldFind(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.query, func(t *testing.T) {
-			cond, arg, indexed := PostgresLexicalCondition("content", tc.query)
+			cond, args, indexed := PostgresLexicalCondition("content", tc.query)
 			if indexed != tc.wantIndexed {
 				t.Errorf("indexed = %v, want %v (%s)", indexed, tc.wantIndexed, tc.why)
 			}
 
 			var found string
 			err := db.QueryRowContext(ctx,
-				pgRebind(`SELECT content FROM lex_docs WHERE `+cond+` LIMIT 1`), arg).Scan(&found)
+				pgRebind(`SELECT content FROM lex_docs WHERE `+cond+` LIMIT 1`), args...).Scan(&found)
 			if err == sql.ErrNoRows {
 				t.Fatalf("%q found nothing — a silent zero is the exact failure this strategy exists to prevent", tc.query)
 			}
@@ -112,8 +112,8 @@ func TestPunctuationIsDataNotSyntax(t *testing.T) {
 	ctx := context.Background()
 
 	for _, q := range []string{"fox & dog", "!quick", "'; DROP TABLE lex_docs; --", "分数!"} {
-		cond, arg, _ := PostgresLexicalCondition("content", q)
-		rows, err := db.QueryContext(ctx, pgRebind(`SELECT content FROM lex_docs WHERE `+cond), arg)
+		cond, args, _ := PostgresLexicalCondition("content", q)
+		rows, err := db.QueryContext(ctx, pgRebind(`SELECT content FROM lex_docs WHERE `+cond), args...)
 		if err != nil {
 			t.Errorf("%q raised %v — user text was read as syntax", q, err)
 			continue
