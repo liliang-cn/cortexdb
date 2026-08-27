@@ -2,6 +2,71 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.82.0] - 2026-08-27
+
+### Added
+
+- **A brain can live on PostgreSQL.** The DSN picks the backend: a path is the
+  SQLite file it has always been, a `postgres://` URL is PostgreSQL with pgvector.
+  Everything follows — documents, collections, sessions and messages, the graph, RDF
+  triples, temporal facts, agent memory — and vector search happens in the database
+  rather than in Go. `pkg/sqldialect` holds the handful of things that genuinely
+  cannot be written once; the rest of the SQL is shared. SQLite is untouched and
+  remains the default.
+- **A fact can say where it came from.** `fact_provenance` and `uncited_facts`
+  report which chunk asserted an edge and which edges nothing supports.
+- **The ontology decides what contradicts what.** A link type declared ONE on a side
+  makes a second value for that side a contradiction rather than a second fact, so
+  supersession is deterministic instead of heuristic.
+
+### Fixed
+
+Ten defects found by sending the same JSON to the same tool on both backends and
+comparing the answers — sixty-four calls, seventeen of which failed on PostgreSQL
+while every unit test stayed green.
+
+- **All graph-mode retrieval on PostgreSQL.** `json_valid`/`json_extract` were
+  written out in four files; the one reading a chunk's `document_id` sits under every
+  graph-mode query and raised `function json_valid(text) does not exist`. Now on the
+  dialect, with `JSONFlag` kept separate from `JSONTextGuarded` because a JSON `true`
+  reads back as the integer `1` on SQLite and the text `'true'` on PostgreSQL — an
+  inference rule was re-deriving its own output.
+- **Document deletion on PostgreSQL**, which used `json_each` and answered with
+  "syntax error at end of input", and ran its queries on the raw handle so its
+  placeholders were never rebound.
+- **Lexical search was handed FTS5 syntax as if it were prose.** The retrieval layer
+  quotes every token and emits `owner OR name`; `plainto_tsquery` read that as an AND
+  over the English word "or", which no document contains. `ParseFTS5` reads the
+  expression now, and the rank is built from the same parse.
+- **Every memory search on PostgreSQL**, which asked for `messages_fts MATCH ?` — an
+  FTS5 virtual table and an operator that database has neither of.
+- **Object sets and ontology links**, which compared with `COLLATE NOCASE`:
+  `collation "nocase" for encoding "UTF8" does not exist`.
+- **Saving a memory on PostgreSQL.** The vector went in as SQLite's blob encoding,
+  so `memory_save`, `knowledge_memory_remember` and every consolidation failed.
+- **Recall accounting**, patched with `json_set` and discarding its errors by design,
+  so it wrote nothing on PostgreSQL and said nothing about it: `recall_count` stayed
+  at zero forever.
+- **Ontology actions on PostgreSQL.** The audit table's DDL used
+  `INTEGER PRIMARY KEY AUTOINCREMENT`, so it could not be created and no action could
+  be applied. `SELECT EXISTS` scanned into an `int` was next in line.
+- **Saving new knowledge on PostgreSQL.** `GetDocument` spelled "not found" as a bare
+  error, and `SaveKnowledge` reads that answer with `errors.Is` to decide
+  create-or-update.
+- **Scored rows carry their collection name again** from the vector arm, which had
+  drifted from the other two copies of the projection.
+
+Two more that are not portability at all, found because the other backend disagreed:
+
+- **SQLite's vector search post-filtered.** The index was asked for the globally
+  nearest rows and the collection filter applied afterwards, so a search scoped to a
+  collection whose rows missed the global top-k came back short — or empty. It failed
+  worst on a large store with several collections, which is the case it exists for.
+- **Graph edges were read with no `ORDER BY`.** SQLite happened to return insertion
+  order; PostgreSQL returned whatever the plan produced, and could return something
+  else next time. Neighbors feeds graph-mode retrieval, so the same question could
+  retrieve a different set of chunks on two runs of one database.
+
 ## [2.81.0] - 2026-08-27
 
 ### Fixed
