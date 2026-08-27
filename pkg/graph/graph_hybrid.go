@@ -302,6 +302,23 @@ type graphDistance struct {
 }
 
 func (g *GraphStore) vectorCandidates(ctx context.Context, query *HybridQuery) ([]*GraphNode, error) {
+	// In-database first when it is available: the alternative below this is
+	// GetAllNodes, which reads the whole table into memory and scores it in
+	// Go. That is the difference this backend exists to make.
+	if g.vecCap.Enabled && len(query.Vector) > 0 {
+		limit := query.TopK * 5
+		if limit < 50 {
+			limit = 50
+		}
+		nodes, err := g.pgVectorCandidates(ctx, query, limit)
+		if err != nil {
+			return nil, err
+		}
+		if len(nodes) > 0 {
+			return nodes, nil
+		}
+	}
+
 	if g.hnswIndex != nil && query.TopK > 0 {
 		candidateLimit := query.TopK * 5
 		if candidateLimit < 50 {

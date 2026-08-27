@@ -129,3 +129,114 @@ func TestTriplesRoundTripOnBothBackends(t *testing.T) {
 		})
 	}
 }
+
+// Nearest-neighbour search must agree across backends.
+//
+// The point of moving top-k into SQL is speed, not different answers. If
+// PostgreSQL ranked these differently from the in-process path, every result
+// in the product would depend on where it was deployed.
+func TestNearestNeighboursAgreeAcrossBackends(t *testing.T) {
+	// Four nodes on a line, so "closest to [1,0,0,0]" has one obvious order.
+	vectors := map[string][]float32{
+		"near":   {1, 0, 0, 0},
+		"close":  {0.9, 0.1, 0, 0},
+		"middle": {0.5, 0.5, 0, 0},
+		"far":    {0, 1, 0, 0},
+	}
+	want := []string{"near", "close", "middle", "far"}
+
+	ranked := map[string][]string{}
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			ctx := context.Background()
+			if err := b.store.InitGraphSchema(ctx); err != nil {
+				t.Fatalf("schema: %v", err)
+			}
+			for id, v := range vectors {
+				if err := b.store.UpsertNode(ctx, &GraphNode{ID: id, Vector: v, NodeType: "point"}); err != nil {
+					t.Fatalf("UpsertNode %s: %v", id, err)
+				}
+			}
+
+			results, err := b.store.HybridSearch(ctx, &HybridQuery{
+				Vector: []float32{1, 0, 0, 0},
+				TopK:   4,
+			})
+			if err != nil {
+				t.Fatalf("HybridSearch: %v", err)
+			}
+			got := make([]string, 0, len(results))
+			for _, r := range results {
+				got = append(got, r.Node.ID)
+			}
+			if len(got) < len(want) {
+				t.Fatalf("got %d results (%v), want %d", len(got), got, len(want))
+			}
+			got = got[:len(want)]
+			for i := range want {
+				if got[i] != want[i] {
+					t.Fatalf("ranking = %v, want %v", got, want)
+				}
+			}
+			ranked[b.name] = got
+		})
+	}
+
+	if len(ranked) == 2 && ranked["sqlite"] != nil && ranked["postgres"] != nil {
+		for i := range ranked["sqlite"] {
+			if ranked["sqlite"][i] != ranked["postgres"][i] {
+				t.Errorf("backends disagree: sqlite %v vs postgres %v", ranked["sqlite"], ranked["postgres"])
+				break
+			}
+		}
+	}
+}
+
+// The dimension cap, stated by the code rather than discovered in production.
+//
+// pgvector refuses to index a `vector` column past 2000 dimensions, and the
+// qwen3-embedding model on the t2m gateway is 4096. A brain configured that
+// way must still work — exact search is a real answer — and must say that it
+// is unindexed, because the symptom otherwise is only latency.
+func TestTheDimensionCapIsReportedNotHidden(t *testing.T) {
+	dsn := os.Getenv("CORTEXDB_TEST_POSTGRES")
+	if dsn == "" {
+		t.Skip("CORTEXDB_TEST_POSTGRES unset")
+	}
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	for _, tc := range []struct {
+		name        string
+		dim         int
+		wantIndexed bool
+	}{
+		{"768 (embeddinggemma)", 768, true},
+		{"2000 (exactly at the limit)", 2000, true},
+		{"4096 (qwen3-embedding)", 4096, false},
+		{"0 (dimension not yet known)", 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			table := fmt.Sprintf("graph_node_vectors")
+			if _, err := db.Exec("DROP TABLE IF EXISTS " + table + " CASCADE"); err != nil {
+				t.Fatalf("reset: %v", err)
+			}
+			cfg := core.DefaultConfig()
+			g := NewGraphStoreOn(db, sqldialect.For(sqldialect.Postgres), testHost{cfg: cfg})
+			capability := g.initPgVector(context.Background(), tc.dim)
+
+			if !capability.Enabled {
+				t.Fatalf("pgvector should be enabled: %s", capability.Reason)
+			}
+			if capability.Indexed != tc.wantIndexed {
+				t.Errorf("Indexed = %v, want %v (reason: %q)", capability.Indexed, tc.wantIndexed, capability.Reason)
+			}
+			if !capability.Indexed && capability.Reason == "" {
+				t.Error("unindexed with no reason given — the operator has nothing to act on")
+			}
+		})
+	}
+}

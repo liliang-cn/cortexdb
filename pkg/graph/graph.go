@@ -8,6 +8,7 @@ import (
 	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -101,6 +102,12 @@ type GraphStore struct {
 	// store convinced the tables exist for the rest of its lifetime.
 	schemaMu    sync.Mutex
 	schemaReady bool
+
+	// vecCap is what in-database vector search can do here, decided once when
+	// the schema is created. The zero value — everything false — is the
+	// SQLite backend and any PostgreSQL without pgvector, both of which fall
+	// back to the scan that was always there.
+	vecCap vectorCapability
 }
 
 // NewGraphStore creates a new graph store from a SQLite store.
@@ -163,6 +170,13 @@ func (g *GraphStore) InitGraphSchema(ctx context.Context) error {
 	}
 	if err := g.createGraphSchema(ctx); err != nil {
 		return err
+	}
+	// Optional, and never fatal: a backend without pgvector still works, it
+	// just scans. Logged once, here, because a silently linear search is the
+	// kind of thing that is only discovered under load.
+	g.vecCap = g.initPgVector(ctx, g.rdfVectorDim())
+	if g.vecCap.Enabled && !g.vecCap.Indexed {
+		log.Printf("cortexdb/graph: pgvector enabled without an index — %s", g.vecCap.Reason)
 	}
 	g.schemaReady = true
 	return nil
@@ -315,6 +329,15 @@ func (g *GraphStore) UpsertNode(ctx context.Context, node *GraphNode) error {
 		g.hnswIndex.index.Remove(node.ID)
 		if err := g.hnswIndex.index.Add(node.ID, node.Vector); err != nil {
 			return fmt.Errorf("failed to update hnsw index: %w", err)
+		}
+	}
+
+	// The same bookkeeping for the database-side index. A failure here would
+	// leave a node that exists but cannot be found by similarity, so it is an
+	// error rather than a warning.
+	if g.vecCap.Enabled {
+		if err := g.pgUpsertVector(ctx, node.ID, node.Vector); err != nil {
+			return fmt.Errorf("mirror vector for search: %w", err)
 		}
 	}
 
