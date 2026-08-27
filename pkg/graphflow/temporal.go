@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 )
 
 // Temporal / bitemporal facts on top of the existing property graph. A relation
@@ -85,7 +86,31 @@ func SaveTemporalFact(ctx context.Context, db *cortexdb.DB, fact TemporalFact) e
 
 	// Supersession: close prior open facts for this subject+predicate so the new
 	// value takes over exactly where the old one ends.
-	if fact.Supersede {
+	//
+	// Forced by the caller, or decided by the ontology. Leaving it entirely to
+	// the caller was the gap: a caller who forgets leaves two open facts
+	// claiming to be current about the same thing, and nothing says so — the
+	// graph simply answers a question about today with two contradictory
+	// values. Asking the schema whether the link reaches one object closes
+	// that hole for every link the schema describes, without ever guessing
+	// about the ones it does not.
+	// Re-stating an open fact must not move when it became true.
+	//
+	// An edge is identified by (from, type, to), so saying again that Leo lives
+	// in Chengdu overwrites the same edge's properties — and used to carry the
+	// new valid_from with it. The fact then claimed to have started on the day
+	// it was last mentioned, and every question about the period before that
+	// answered "nothing was true", which is how a graph forgets by being told
+	// something it already knew.
+	if earlier := openFactStart(ctx, db, fact, typ, validFrom); earlier != nil && earlier.Before(validFrom) {
+		validFrom = *earlier
+	}
+
+	supersede := fact.Supersede
+	if !supersede {
+		supersede = shouldAutoSupersede(ctx, db, fact, typ, validFrom)
+	}
+	if supersede {
 		if _, err := SupersedeFact(ctx, db, fact.From, typ, validFrom); err != nil {
 			return err
 		}
@@ -126,6 +151,54 @@ func SaveTemporalFact(ctx context.Context, db *cortexdb.DB, fact TemporalFact) e
 // edge carries a valid_from but no valid_to. This is the mechanism behind
 // SaveTemporalFact's Supersede option and can also be called directly to retire
 // a subject's current value without asserting a replacement.
+// shouldAutoSupersede decides whether this fact contradicts what is already
+// open, using the ontology rather than a guess.
+//
+// Three things all have to hold, and each of the other two is a way to get
+// this wrong:
+//
+//   - the ontology says the link reaches at most one object. Without this,
+//     a second "knows" would close the first.
+//   - something is actually open for this subject and predicate at the new
+//     fact's start. Superseding nothing is harmless but pointless.
+//   - the open fact points somewhere else. Re-stating that Leo still lives in
+//     Chengdu is not a contradiction, and closing and reopening the interval
+//     would shred one continuous fact into a chain of fragments — which then
+//     reads as "moved house every time we mentioned it".
+//
+// openFactStart returns when an identical fact already open at `at` began, or
+// nil when there is none. Identical means the same subject, predicate and
+// object: a different object is a contradiction, not a restatement.
+func openFactStart(ctx context.Context, db *cortexdb.DB, fact TemporalFact, typ string, at time.Time) *time.Time {
+	open, err := QueryFactsAsOf(ctx, db, at, TemporalFilter{From: fact.From, Type: typ})
+	if err != nil {
+		return nil
+	}
+	for _, existing := range open {
+		if existing.To == fact.To && existing.ValidFrom != nil {
+			return existing.ValidFrom
+		}
+	}
+	return nil
+}
+
+func shouldAutoSupersede(ctx context.Context, db *cortexdb.DB, fact TemporalFact, typ string, validFrom time.Time) bool {
+	single, known := db.LinkSingleValued(ctx, typ)
+	if !known || !single {
+		return false
+	}
+	open, err := QueryFactsAsOf(ctx, db, validFrom, TemporalFilter{From: fact.From, Type: typ})
+	if err != nil || len(open) == 0 {
+		return false
+	}
+	for _, existing := range open {
+		if existing.To != fact.To {
+			return true
+		}
+	}
+	return false
+}
+
 func SupersedeFact(ctx context.Context, db *cortexdb.DB, from, typ string, asOf time.Time) (int, error) {
 	if db == nil {
 		return 0, fmt.Errorf("graphflow: temporal: nil db")
@@ -180,6 +253,54 @@ func ensureTemporalIndex(ctx context.Context, db *cortexdb.DB) error {
 	return nil
 }
 
+// asOfQuery builds the "what was true at this instant" query for a dialect.
+//
+// Extracted so it can be checked against a real PostgreSQL instance without a
+// PostgreSQL cortexdb.DB, which does not exist yet: the query is the part that
+// has to be right on both, and a form that is only ever built and never run is
+// a form nobody has tested.
+func asOfQuery(d sqldialect.Dialect, at time.Time, filter TemporalFilter) (string, []any) {
+	// Asked of the dialect rather than written out: json_extract is SQLite's
+	// and PostgreSQL has no such function, so a hardcoded query is a feature
+	// that cannot cross backends.
+	validFromCol := d.JSONText("properties", factValidFromKey)
+	validToCol := d.JSONText("properties", factValidToKey)
+	recordedCol := d.JSONText("properties", factRecordedAtKey)
+
+	// The instant is compared in SQL, not in Go.
+	//
+	// This used to read every temporal fact for the subject and filter them in
+	// the caller's loop, which is a scan of the whole history to answer a
+	// question about one moment of it. String comparison is exact because
+	// SaveTemporalFact writes .UTC().Format(time.RFC3339): every stored
+	// instant is Zulu and fixed-width, so lexicographic order is chronological
+	// order.
+	//
+	// The interval is half-open, [valid_from, valid_to): a fact starting
+	// exactly at `at` is current, one ending exactly at `at` is not.
+	atStr := at.UTC().Format(time.RFC3339)
+	query := `SELECT from_node_id, to_node_id, COALESCE(edge_type, ''),
+	                 ` + validFromCol + `,
+	                 ` + validToCol + `,
+	                 ` + recordedCol + `
+	          FROM graph_edges
+	          WHERE ` + validFromCol + ` IS NOT NULL
+	            AND ` + validFromCol + ` <= ?
+	            AND (` + validToCol + ` IS NULL OR ` + validToCol + ` = '' OR ` + validToCol + ` > ?)`
+	args := []any{atStr, atStr}
+
+	if f := strings.TrimSpace(filter.From); f != "" {
+		query += ` AND from_node_id = ?`
+		args = append(args, cortexdb.EntityNodeID(f))
+	}
+	if t := strings.TrimSpace(filter.Type); t != "" {
+		query += ` AND edge_type = ?`
+		args = append(args, t)
+	}
+	query += ` ORDER BY from_node_id, ` + validFromCol
+	return d.Rebind(query), args
+}
+
 func QueryFactsAsOf(ctx context.Context, db *cortexdb.DB, at time.Time, filter TemporalFilter) ([]TemporalFact, error) {
 	if db == nil {
 		return nil, fmt.Errorf("graphflow: temporal: nil db")
@@ -191,47 +312,7 @@ func QueryFactsAsOf(ctx context.Context, db *cortexdb.DB, at time.Time, filter T
 	}
 	names := loadEntityDisplayNames(ctx, db)
 
-	// Asked of the dialect rather than written out: json_extract is SQLite's
-	// and PostgreSQL has no such function, so a hardcoded query is a feature
-	// that cannot cross backends.
-	d := db.Dialect()
-	validFromCol := d.JSONText("properties", factValidFromKey)
-	validToCol := d.JSONText("properties", factValidToKey)
-	recordedCol := d.JSONText("properties", factRecordedAtKey)
-
-	// The instant is compared in SQL, not in Go.
-	//
-	// This used to read every temporal fact for the subject and filter them
-	// in the loop below, which is a full scan of the history to answer a
-	// question about one moment of it. String comparison is exact here
-	// because SaveTemporalFact writes .UTC().Format(time.RFC3339): every
-	// stored instant is Zulu and fixed-width, so lexicographic order is
-	// chronological order. The Go checks below are kept anyway as a backstop
-	// for rows this package did not write.
-	//
-	// The interval is half-open, [valid_from, valid_to), which is what the Go
-	// filter did: a fact starting exactly at `at` is current, one ending
-	// exactly at `at` is not.
-	atStr := at.UTC().Format(time.RFC3339)
-	query := `SELECT from_node_id, to_node_id, COALESCE(edge_type, ''),
-	                 ` + validFromCol + `,
-	                 ` + validToCol + `,
-	                 ` + recordedCol + `
-	          FROM graph_edges
-	          WHERE ` + validFromCol + ` IS NOT NULL
-	            AND ` + validFromCol + ` <= ?
-	            AND (` + validToCol + ` IS NULL OR ` + validToCol + ` = '' OR ` + validToCol + ` > ?)`
-	args := make([]any, 0, 4)
-	args = append(args, atStr, atStr)
-	if f := strings.TrimSpace(filter.From); f != "" {
-		query += ` AND from_node_id = ?`
-		args = append(args, cortexdb.EntityNodeID(f))
-	}
-	if t := strings.TrimSpace(filter.Type); t != "" {
-		query += ` AND edge_type = ?`
-		args = append(args, t)
-	}
-	query += ` ORDER BY from_node_id, ` + validFromCol
+	query, args := asOfQuery(db.Dialect(), at, filter)
 
 	rows, err := db.SQL().QueryContext(ctx, query, args...)
 	if err != nil {
