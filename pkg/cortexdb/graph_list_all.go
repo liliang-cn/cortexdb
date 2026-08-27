@@ -71,7 +71,7 @@ func (db *DB) ListGraphAll(ctx context.Context, req GraphListAllRequest) (*Graph
 	}
 
 	// Edges first: they give every node its degree.
-	edgeRows, err := db.SQL().QueryContext(ctx,
+	edgeRows, err := db.query(ctx,
 		`SELECT from_node_id, COALESCE(edge_type,''), to_node_id
 		 FROM graph_edges WHERE edge_type NOT IN (?, ?)`,
 		graphListSkipEdgeTypes...)
@@ -97,7 +97,7 @@ func (db *DB) ListGraphAll(ctx context.Context, req GraphListAllRequest) (*Graph
 	}
 	_ = edgeRows.Close()
 
-	nodeRows, err := db.SQL().QueryContext(ctx,
+	nodeRows, err := db.query(ctx,
 		`SELECT id, COALESCE(content,''), COALESCE(node_type,'')
 		 FROM graph_nodes WHERE node_type != 'chunk'`)
 	if err != nil {

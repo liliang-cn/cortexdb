@@ -59,7 +59,7 @@ func (db *DB) SaveMemory(ctx context.Context, req MemorySaveRequest) (*MemorySav
 	}
 
 	role := firstNonEmpty(req.Role, defaultMemoryRole)
-	if _, err := db.store.GetDB().ExecContext(ctx, `
+	if _, err := db.exec(ctx, `
 		INSERT INTO messages (id, session_id, role, content, vector, metadata, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(id) DO UPDATE SET
@@ -129,7 +129,7 @@ func (db *DB) UpdateMemory(ctx context.Context, req MemoryUpdateRequest) (*Memor
 		return nil, fmt.Errorf("marshal memory metadata: %w", err)
 	}
 
-	if _, err := db.store.GetDB().ExecContext(ctx, `
+	if _, err := db.exec(ctx, `
 		UPDATE messages
 		SET content = ?, vector = ?, metadata = ?
 		WHERE id = ?
@@ -293,7 +293,7 @@ func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*Memor
 // (session ids under the `memory:` prefix), not arbitrary chat history.
 // Intended for export/backup — see the --export-memory tool.
 func (db *DB) ListAllMemories(ctx context.Context) ([]MemoryRecord, error) {
-	rows, err := db.store.GetDB().QueryContext(ctx, `
+	rows, err := db.query(ctx, `
 		SELECT m.id, m.session_id, s.user_id, m.role, m.content, m.metadata, m.created_at
 		FROM messages m
 		JOIN sessions s ON s.id = m.session_id
@@ -351,10 +351,10 @@ func (db *DB) DeleteMemory(ctx context.Context, req MemoryDeleteRequest) (*Memor
 	if err != nil {
 		return nil, err
 	}
-	if _, err := db.store.GetDB().ExecContext(ctx, `DELETE FROM messages WHERE id = ?`, req.MemoryID); err != nil {
+	if _, err := db.exec(ctx, `DELETE FROM messages WHERE id = ?`, req.MemoryID); err != nil {
 		return nil, fmt.Errorf("delete memory: %w", err)
 	}
-	if _, err := db.store.GetDB().ExecContext(ctx, `
+	if _, err := db.exec(ctx, `
 		DELETE FROM sessions
 		WHERE id = ?
 		  AND NOT EXISTS (SELECT 1 FROM messages WHERE session_id = ?)
@@ -437,7 +437,7 @@ func (db *DB) loadMemoryRow(ctx context.Context, memoryID string) (*memoryRow, e
 	row := memoryRow{}
 	var metadataJSON []byte
 	var createdAt time.Time
-	err := db.store.GetDB().QueryRowContext(ctx, `
+	err := db.queryRow(ctx, `
 		SELECT m.id, m.session_id, s.user_id, m.role, m.content, m.vector, m.metadata, m.created_at
 		FROM messages m
 		JOIN sessions s ON s.id = m.session_id
@@ -488,7 +488,7 @@ func (db *DB) searchMemoryLexical(ctx context.Context, bucketID, query string, k
 	for idx, searchQuery := range queries {
 		// CJK text needs the trigram companion index; see core.CJKAwareIndex.
 		index := core.CJKAwareIndex("messages_fts", searchQuery)
-		rows, err := db.store.GetDB().QueryContext(ctx, `
+		rows, err := db.query(ctx, `
 			SELECT m.id, m.session_id, s.user_id, m.role, m.content, m.metadata, m.created_at, bm25(`+index+`)
 			FROM `+index+`
 			JOIN messages m ON m.rowid = `+index+`.rowid
@@ -804,7 +804,7 @@ func (db *DB) searchMemoryGraph(ctx context.Context, bucketID string, entityName
 	}
 	args = append(args, memoryGraphNodePrefix+"%")
 
-	rows, err := db.store.GetDB().QueryContext(ctx, `
+	rows, err := db.query(ctx, `
 		SELECT from_node_id, COUNT(DISTINCT to_node_id)
 		FROM graph_edges
 		WHERE edge_type = 'mentions'
@@ -964,7 +964,7 @@ func (db *DB) markMemoriesSuperseded(ctx context.Context, newID string, targets 
 		if err != nil {
 			return fmt.Errorf("supersede %q: marshal metadata: %w", target, err)
 		}
-		if _, err := db.store.GetDB().ExecContext(ctx,
+		if _, err := db.exec(ctx,
 			`UPDATE messages SET metadata = ? WHERE id = ?`, metadataJSON, target); err != nil {
 			return fmt.Errorf("supersede %q: %w", target, err)
 		}
@@ -989,7 +989,7 @@ func (db *DB) resolveEntityNameToNode(ctx context.Context, name string) string {
 		return id
 	}
 	// Nodes carrying aliases are the merged few, so scanning them is cheap.
-	rows, err := db.store.GetDB().QueryContext(ctx, `
+	rows, err := db.query(ctx, `
 		SELECT id, properties FROM graph_nodes
 		WHERE id LIKE 'entity:%' AND properties LIKE '%"aliases"%'`)
 	if err != nil {
@@ -1047,7 +1047,7 @@ func (db *DB) recordMemoryRecalls(ctx context.Context, hits []MemorySearchHit) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, hit := range hits {
 		// Best-effort by design: usage accounting must never fail a search.
-		_, _ = db.store.GetDB().ExecContext(ctx, `
+		_, _ = db.exec(ctx, `
 			UPDATE messages SET metadata = json_set(
 				COALESCE(NULLIF(metadata, ''), '{}'),
 				'$.recall_count', COALESCE(json_extract(metadata, '$.recall_count'), 0) + 1,

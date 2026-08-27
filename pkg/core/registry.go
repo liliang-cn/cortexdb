@@ -109,3 +109,24 @@ func init() {
 		return NewPostgresStore(db, config), nil
 	})
 }
+
+// OpenBrainStore opens a store that can back a brain.
+//
+// Same DSNs as OpenStore, one extra requirement: the backend has to implement
+// everything cortexdb.DB reaches for, not only the vector contract. A backend
+// that opens but cannot be a brain is refused here, by name, rather than
+// panicking on a type assertion somewhere in the middle of a request.
+func OpenBrainStore(dsn string, config Config) (BrainStore, error) {
+	store, err := OpenStore(dsn, config)
+	if err != nil {
+		return nil, err
+	}
+	brain, ok := store.(BrainStore)
+	if !ok {
+		_ = store.Close()
+		return nil, fmt.Errorf(
+			"the %s store cannot back a brain yet: it implements Store but not BrainStore",
+			sqldialect.KindForDSN(dsn))
+	}
+	return brain, nil
+}

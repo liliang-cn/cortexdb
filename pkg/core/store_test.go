@@ -3,10 +3,10 @@ package core
 import (
 	"context"
 	"fmt"
-	"math/rand"
-	"path/filepath"
 	"math"
+	"math/rand"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -1290,28 +1290,28 @@ func BenchmarkSearch(b *testing.B) {
 // BenchmarkIndexRebuild benchmarks the time to rebuild HNSW index from existing vectors
 func BenchmarkIndexRebuild(b *testing.B) {
 	ctx := context.Background()
-	
+
 	for _, n := range []int{100, 500, 1000, 5000} {
 		b.Run(fmt.Sprintf("%d_vectors", n), func(b *testing.B) {
 			// Create temp directory
 			tmpDir := b.TempDir()
 			dbPath := filepath.Join(tmpDir, "test.db")
-			
+
 			// First, create a database and insert vectors with HNSW enabled
 			config := DefaultConfig()
 			config.Path = dbPath
 			config.VectorDim = 128
 			config.HNSW.Enabled = true
-			
+
 			store, err := NewWithConfig(config)
 			if err != nil {
 				b.Fatal(err)
 			}
-			
+
 			if err := store.Init(ctx); err != nil {
 				b.Fatal(err)
 			}
-			
+
 			// Insert vectors
 			for i := 0; i < n; i++ {
 				vec := make([]float32, 128)
@@ -1326,23 +1326,23 @@ func BenchmarkIndexRebuild(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
-			
+
 			// Close the store (this saves the index)
 			store.Close()
-			
+
 			b.ResetTimer()
-			
+
 			for i := 0; i < b.N; i++ {
 				// Reopen the store - this will trigger index rebuild
 				store2, err := NewWithConfig(config)
 				if err != nil {
 					b.Fatal(err)
 				}
-				
+
 				if err := store2.Init(ctx); err != nil {
 					b.Fatal(err)
 				}
-				
+
 				store2.Close()
 			}
 		})
@@ -1352,22 +1352,22 @@ func BenchmarkIndexRebuild(b *testing.B) {
 // BenchmarkIndexLoad benchmarks loading index from snapshot
 func BenchmarkIndexLoad(b *testing.B) {
 	ctx := context.Background()
-	
+
 	for _, n := range []int{100, 500, 1000, 5000} {
 		b.Run(fmt.Sprintf("%d_vectors", n), func(b *testing.B) {
 			tmpDir := b.TempDir()
 			dbPath := filepath.Join(tmpDir, "test.db")
-			
+
 			// Create config with HNSW enabled
 			config := DefaultConfig()
 			config.Path = dbPath
 			config.VectorDim = 128
 			config.HNSW.Enabled = true
-			
+
 			// Create and populate
 			store, _ := NewWithConfig(config)
 			store.Init(ctx)
-			
+
 			for i := 0; i < n; i++ {
 				vec := make([]float32, 128)
 				for j := 0; j < 128; j++ {
@@ -1376,9 +1376,9 @@ func BenchmarkIndexLoad(b *testing.B) {
 				store.Upsert(ctx, &Embedding{ID: fmt.Sprintf("vec_%d", i), Vector: vec})
 			}
 			store.Close()
-			
+
 			b.ResetTimer()
-			
+
 			for i := 0; i < b.N; i++ {
 				store2, _ := NewWithConfig(config)
 				store2.Init(ctx)

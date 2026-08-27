@@ -17,7 +17,15 @@ import (
 
 // DB represents a SQLite vector database instance
 type DB struct {
-	store                    *core.SQLiteStore
+	// store is an interface, not *core.SQLiteStore, which is what lets a brain
+	// live on PostgreSQL. BrainStore names the surface DB actually reaches for
+	// — Store plus documents, sessions, the raw handle and the dimension
+	// bookkeeping — so a backend either satisfies it at compile time or is
+	// refused by name at Open.
+	store core.BrainStore
+	// dialect is the SQL this store speaks, for the sibling packages that
+	// build their own queries against SQL().
+	dialect                  sqldialect.Dialect
 	graph                    *graph.GraphStore
 	embedder                 Embedder         // Optional embedder for text operations
 	reranker                 Reranker         // Optional cross-encoder reranker for retrieval
@@ -139,7 +147,11 @@ func Open(config Config, opts ...Option) (*DB, error) {
 		TextSimilarity: core.DefaultTextSimilarityConfig(),
 	}
 
-	store, err := core.NewWithConfig(coreConfig)
+	// The DSN decides the backend: a bare path is the SQLite file it has
+	// always been, a postgres:// URL is PostgreSQL + pgvector.
+	dsn := config.Path
+	kind := sqldialect.KindForDSN(dsn)
+	store, err := core.OpenBrainStore(dsn, coreConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
 	}
@@ -157,14 +169,17 @@ func Open(config Config, opts ...Option) (*DB, error) {
 	// otherwise fail with "no such table" instead of returning an empty
 	// result. Open already issues DDL via store.Init, so this adds no new
 	// write requirement, and InitGraphSchema is idempotent and cached.
-	graphStore := graph.NewGraphStore(store)
+	// Built from the handle and the dialect rather than from a concrete
+	// SQLite store, for the same reason: the graph runs on either database.
+	graphStore := graph.NewGraphStoreOn(store.GetDB(), sqldialect.For(kind), store)
 	if err := graphStore.InitGraphSchema(ctx); err != nil {
 		return nil, fmt.Errorf("failed to initialize graph schema: %w", err)
 	}
 
 	db := &DB{
-		store: store,
-		graph: graphStore,
+		store:   store,
+		graph:   graphStore,
+		dialect: sqldialect.For(kind),
 	}
 
 	// Apply options
@@ -195,12 +210,14 @@ func (db *DB) SQL() *sql.DB {
 // Dialect names the SQL this DB speaks, for the sibling packages that build
 // their own queries against SQL().
 //
-// SQLite today, because DB holds a *core.SQLiteStore. The seam exists so the
-// queries written against it are already correct when that stops being true —
-// a query that hardcodes json_extract has to be found and rewritten later,
-// while one that asks the dialect does not.
+// Decided by the DSN at Open. Queries written against it were already correct
+// when this always answered SQLite, which is the point of having had the seam
+// before there was anything on the other side of it.
 func (db *DB) Dialect() sqldialect.Dialect {
-	return sqldialect.For(sqldialect.SQLite)
+	if db == nil || db.dialect == nil {
+		return sqldialect.For(sqldialect.SQLite)
+	}
+	return db.dialect
 }
 
 // DBInfo provides information about the database instance

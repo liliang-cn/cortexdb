@@ -153,7 +153,15 @@ func TestQuickAdd(t *testing.T) {
 	t.Run("SmartPadding", func(t *testing.T) {
 		// Test smart padding feature
 		// We need to enable SmartAdapt explicitly now that StrictMode is default
-		db.store.SetAutoDimAdapt(core.SmartAdapt)
+		// Asserted to the concrete store on purpose. BrainStore is the set of
+		// methods DB itself calls, and widening it so a test can reach a
+		// SQLite-only knob would put that knob on every future backend for no
+		// production reason.
+		lite, ok := db.store.(*core.SQLiteStore)
+		if !ok {
+			t.Skip("smart padding is a SQLiteStore behaviour")
+		}
+		lite.SetAutoDimAdapt(core.SmartAdapt)
 
 		vector := []float32{1.0, 2.0} // Will be padded to 3 dimensions
 		content := "Padded vector"

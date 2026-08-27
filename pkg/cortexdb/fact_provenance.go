@@ -71,7 +71,7 @@ func (db *DB) FactProvenanceFor(ctx context.Context, edgeID string, withText boo
 		edgeType string
 		propsRaw string
 	)
-	err := db.SQL().QueryRowContext(ctx, db.Dialect().Rebind(`
+	err := db.queryRow(ctx, db.Dialect().Rebind(`
 		SELECT from_node_id, to_node_id, COALESCE(edge_type, ''), COALESCE(properties, '')
 		FROM graph_edges WHERE id = ?`), edgeID).Scan(&from, &to, &edgeType, &propsRaw)
 	if err != nil {
@@ -183,7 +183,7 @@ func (db *DB) UncitedFacts(ctx context.Context, limit int) ([]FactProvenance, er
 		ORDER BY id
 		LIMIT ?`)
 
-	rows, err := db.SQL().QueryContext(ctx, query, limit)
+	rows, err := db.query(ctx, query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("cortexdb: uncited facts: %w", err)
 	}

@@ -11,9 +11,10 @@ package core
 //
 // Partial on purpose, and it says which parts.
 //
-// Store has thirty methods, and most of them are not about vectors: documents,
-// sessions, chat messages, quantizer training. This implements the vector core
-// — write, search, delete, count, collections — and answers the rest with
+// Store has thirty methods, and most of them are not about vectors. The vector
+// core is here; documents, sessions and chat live in store_postgres_chat.go,
+// the reads and batch writes in store_postgres_read.go, and the dimension
+// bookkeeping in store_postgres_dims.go. What is still missing answers with
 // ErrPostgresStoreUnimplemented naming the method. That is the same bargain
 // agent-go's BaseStore strikes with ErrMemoryStoreUnsupported: a backend that
 // silently did nothing would be worse than one that says what it cannot do,
@@ -83,6 +84,13 @@ func (s *PostgresStore) Init(ctx context.Context) error {
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`INSERT INTO collections (id, name) VALUES (1, 'default') ON CONFLICT (id) DO NOTHING`,
+		// Seeding an explicit id does not advance the SERIAL sequence, so the
+		// first CreateCollection asks for 1 again and dies on the primary key
+		// — and ON CONFLICT (name) does not catch a conflict on id. Nudging
+		// the sequence past whatever is already there is the fix. Found by
+		// the dimension tests, which needed a collection of their own.
+		`SELECT setval(pg_get_serial_sequence('collections', 'id'),
+		               GREATEST((SELECT COALESCE(MAX(id), 1) FROM collections), 1))`,
 		`CREATE TABLE IF NOT EXISTS documents (
 			id TEXT PRIMARY KEY,
 			title TEXT,
@@ -115,6 +123,31 @@ func (s *PostgresStore) Init(ctx context.Context) error {
 		// metadata is jsonb rather than TEXT: the filters below query it, and
 		// a GIN index makes that a lookup instead of a parse-per-row.
 		`CREATE INDEX IF NOT EXISTS idx_embeddings_metadata ON embeddings USING gin (metadata)`,
+		// Chat lives in the same database as the vectors it searches. The
+		// columns are SQLite's, translated rather than redesigned: DATETIME
+		// becomes TIMESTAMP, the metadata TEXT becomes JSONB, and the message
+		// vector — a BLOB there, decoded and scored in Go — becomes the same
+		// pgvector column the embeddings use, so the ranking happens in the
+		// database and means the same thing.
+		`CREATE TABLE IF NOT EXISTS sessions (
+			id TEXT PRIMARY KEY,
+			user_id TEXT,
+			metadata JSONB,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS messages (
+			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+			role TEXT NOT NULL,
+			content TEXT NOT NULL,
+			vector %s,
+			metadata JSONB,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`, colType),
+		`CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)`,
 	}
 	for _, stmt := range ddl {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
@@ -368,6 +401,20 @@ func (s *PostgresStore) Stats(ctx context.Context) (StoreStats, error) {
 
 func (s *PostgresStore) Close() error { return nil } // the pool belongs to the caller
 
+// GetSimilarityFunc is how this store compares two vectors.
+//
+// The graph layer scores its own candidates in Go and has to score them the
+// same way, or a hybrid result would rank differently from a plain search over
+// the same rows. Ranking here happens in the database, so this is the
+// conversion that keeps the two agreeing: pgvector's <=> is cosine distance
+// and Search returns 1 - distance, which is what CosineSimilarity computes.
+func (s *PostgresStore) GetSimilarityFunc() SimilarityFunc {
+	if s.config.SimilarityFn != nil {
+		return s.config.SimilarityFn
+	}
+	return CosineSimilarity
+}
+
 func (s *PostgresStore) CreateCollection(ctx context.Context, name string, dimensions int) (*Collection, error) {
 	var c Collection
 	err := s.db.QueryRowContext(ctx, `
@@ -571,10 +618,10 @@ func (s *PostgresStore) ListDocumentsWithFilter(ctx context.Context, author stri
 
 // --- The rest of Store, named rather than silently absent. -------------------
 //
-// Documents, sessions, chat history and the quantizer trainers belong to the
-// SQLite store's world and have no PostgreSQL implementation yet. Each says so
-// with its own name in the error, so a caller that hits one knows exactly what
-// is missing instead of debugging an empty result.
+// What is left is the ACL and advanced-filter search surface, plus the
+// quantizer trainer. Each says so with its own name in the error, so a caller
+// that hits one knows exactly what is missing instead of debugging an empty
+// result.
 
 func (s *PostgresStore) GetCollectionStats(context.Context, string) (*CollectionStats, error) {
 	return nil, unimplemented("GetCollectionStats")
@@ -585,21 +632,6 @@ func (s *PostgresStore) TrainIndex(context.Context, int) error {
 }
 func (s *PostgresStore) TrainQuantizer(context.Context) error {
 	return unimplemented("TrainQuantizer")
-}
-func (s *PostgresStore) CreateSession(context.Context, *Session) error {
-	return unimplemented("CreateSession")
-}
-func (s *PostgresStore) GetSession(context.Context, string) (*Session, error) {
-	return nil, unimplemented("GetSession")
-}
-func (s *PostgresStore) AddMessage(context.Context, *Message) error {
-	return unimplemented("AddMessage")
-}
-func (s *PostgresStore) GetSessionHistory(context.Context, string, int) ([]*Message, error) {
-	return nil, unimplemented("GetSessionHistory")
-}
-func (s *PostgresStore) SearchChatHistory(context.Context, []float32, string, int) ([]*Message, error) {
-	return nil, unimplemented("SearchChatHistory")
 }
 func (s *PostgresStore) SearchWithACL(context.Context, []float32, []string, SearchOptions) ([]ScoredEmbedding, error) {
 	return nil, unimplemented("SearchWithACL")

@@ -65,7 +65,7 @@ func (t *GraphRAGToolbox) DeleteEntities(ctx context.Context, req ToolDeleteEnti
 		}
 
 		var edges int
-		if err := t.db.SQL().QueryRowContext(ctx,
+		if err := t.db.queryRow(ctx,
 			`SELECT COUNT(*) FROM graph_edges WHERE from_node_id = ? OR to_node_id = ?`,
 			id, id).Scan(&edges); err != nil {
 			return nil, fmt.Errorf("count edges for %q: %w", name, err)

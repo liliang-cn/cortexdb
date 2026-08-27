@@ -178,7 +178,7 @@ func (db *DB) loadExplicitRelationEdges(ctx context.Context, relationTypes []str
 	}
 	query += ` ORDER BY id ASC`
 
-	rows, err := db.store.GetDB().QueryContext(ctx, query, args...)
+	rows, err := db.query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query explicit relation edges: %w", err)
 	}
@@ -252,7 +252,7 @@ func (db *DB) inferredEdgeIDs(ctx context.Context, documentID string, ruleIDs []
 	}
 	query += ` ORDER BY id ASC`
 
-	rows, err := db.store.GetDB().QueryContext(ctx, query, args...)
+	rows, err := db.query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query inferred edges: %w", err)
 	}

@@ -172,7 +172,7 @@ func (t *GraphRAGToolbox) ExtractConversation(ctx context.Context, req ToolExtra
 
 // loadSessionText concatenates a session's messages as "role: content" lines.
 func (t *GraphRAGToolbox) loadSessionText(ctx context.Context, sessionID string) (string, error) {
-	rows, err := t.db.SQL().QueryContext(ctx,
+	rows, err := t.db.query(ctx,
 		`SELECT COALESCE(role,''), COALESCE(content,'') FROM messages WHERE session_id = ? ORDER BY created_at`, sessionID)
 	if err != nil {
 		return "", fmt.Errorf("extract_conversation: load session: %w", err)

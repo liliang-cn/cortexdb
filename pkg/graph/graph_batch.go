@@ -74,7 +74,7 @@ func (g *GraphStore) UpsertNodesBatch(ctx context.Context, nodes []*GraphNode) (
 	defer func() { _ = tx.Rollback() }()
 
 	// Prepare statement for batch insert
-	stmt, err := tx.PrepareContext(ctx, `
+	stmt, err := g.txPrepare(ctx, tx, `
 		INSERT INTO graph_nodes (id, vector, content, node_type, properties, updated_at)
 		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(id) DO UPDATE SET
@@ -221,7 +221,7 @@ func (g *GraphStore) UpsertEdgesBatch(ctx context.Context, edges []*GraphEdge) (
 	defer func() { _ = tx.Rollback() }()
 
 	// Prepare statement for batch insert
-	stmt, err := tx.PrepareContext(ctx, `
+	stmt, err := g.txPrepare(ctx, tx, `
 		INSERT INTO graph_edges (id, from_node_id, to_node_id, edge_type, weight, properties, vector)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
@@ -574,7 +574,7 @@ func (g *GraphStore) ExecuteBatch(ctx context.Context, ops *BatchGraphOperation)
 func (g *GraphStore) upsertNodesBatchTx(ctx context.Context, tx *sql.Tx, nodes []*GraphNode) (*BatchResult, error) {
 	result := &BatchResult{Errors: make([]error, 0)}
 
-	stmt, err := tx.PrepareContext(ctx, `
+	stmt, err := g.txPrepare(ctx, tx, `
 		INSERT INTO graph_nodes (id, vector, content, node_type, properties, updated_at)
 		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(id) DO UPDATE SET
@@ -646,7 +646,7 @@ func (g *GraphStore) deleteNodesBatchTx(ctx context.Context, tx *sql.Tx, nodeIDs
 func (g *GraphStore) upsertEdgesBatchTx(ctx context.Context, tx *sql.Tx, edges []*GraphEdge) (*BatchResult, error) {
 	result := &BatchResult{Errors: make([]error, 0)}
 
-	stmt, err := tx.PrepareContext(ctx, `
+	stmt, err := g.txPrepare(ctx, tx, `
 		INSERT INTO graph_edges (id, from_node_id, to_node_id, edge_type, weight, properties, vector)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET

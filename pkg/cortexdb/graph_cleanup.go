@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 	"strings"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
@@ -29,7 +30,7 @@ func (db *DB) cleanupKnowledgeGraphArtifactsTx(ctx context.Context, tx *sql.Tx, 
 	if err != nil {
 		return nil, err
 	}
-	if err := deleteStringIDsTx(ctx, tx, "graph_edges", "id", edgeIDs); err != nil {
+	if err := deleteStringIDsTx(ctx, db.Dialect(), tx, "graph_edges", "id", edgeIDs); err != nil {
 		return nil, fmt.Errorf("delete document graph edges: %w", err)
 	}
 
@@ -38,7 +39,7 @@ func (db *DB) cleanupKnowledgeGraphArtifactsTx(ctx context.Context, tx *sql.Tx, 
 	for _, chunk := range chunks {
 		nodeIDs = append(nodeIDs, chunk.ID)
 	}
-	if err := deleteStringIDsTx(ctx, tx, "graph_nodes", "id", nodeIDs); err != nil {
+	if err := deleteStringIDsTx(ctx, db.Dialect(), tx, "graph_nodes", "id", nodeIDs); err != nil {
 		return nil, fmt.Errorf("delete graph nodes: %w", err)
 	}
 
@@ -46,7 +47,7 @@ func (db *DB) cleanupKnowledgeGraphArtifactsTx(ctx context.Context, tx *sql.Tx, 
 	if err != nil {
 		return nil, fmt.Errorf("get orphan entity nodes: %w", err)
 	}
-	if err := deleteStringIDsTx(ctx, tx, "graph_nodes", "id", orphanIDs); err != nil {
+	if err := deleteStringIDsTx(ctx, db.Dialect(), tx, "graph_nodes", "id", orphanIDs); err != nil {
 		return nil, fmt.Errorf("delete orphan entity nodes: %w", err)
 	}
 	return append(nodeIDs, orphanIDs...), nil
@@ -61,7 +62,7 @@ func (db *DB) graphEdgeIDsByDocumentTx(ctx context.Context, querier graphStringQ
 		return nil, nil
 	}
 
-	rows, err := querier.QueryContext(ctx, `
+	rows, err := db.querierQuery(ctx, querier, `
 		SELECT id
 		FROM graph_edges
 		WHERE CASE
@@ -90,7 +91,7 @@ func (db *DB) graphEdgeIDsByDocumentTx(ctx context.Context, querier graphStringQ
 }
 
 func (db *DB) knowledgeChunkRefsTx(ctx context.Context, tx *sql.Tx, knowledgeID string) ([]*core.Embedding, error) {
-	rows, err := tx.QueryContext(ctx, `
+	rows, err := db.txQuery(ctx, tx, `
 		SELECT id
 		FROM embeddings
 		WHERE doc_id = ?
@@ -125,7 +126,7 @@ func (db *DB) chunkEntityNamesBatchTx(ctx context.Context, querier graphStringQu
 		placeholders, args := sqlPlaceholders(chunk)
 		unionArgs := append([]any{}, args...)
 		unionArgs = append(unionArgs, args...)
-		rows, err := querier.QueryContext(ctx, fmt.Sprintf(`
+		rows, err := db.querierQuery(ctx, querier, fmt.Sprintf(`
 			SELECT chunk_id, entity_name
 			FROM (
 				SELECT e.from_node_id AS chunk_id, n.content AS entity_name
@@ -176,7 +177,7 @@ func (db *DB) orphanNodeIDsTx(ctx context.Context, querier graphStringQuerier, n
 		placeholders, args := sqlPlaceholders(chunk)
 		unionArgs := append([]any{}, args...)
 		unionArgs = append(unionArgs, args...)
-		rows, err := querier.QueryContext(ctx, fmt.Sprintf(`
+		rows, err := db.querierQuery(ctx, querier, fmt.Sprintf(`
 			SELECT DISTINCT node_id
 			FROM (
 				SELECT from_node_id AS node_id FROM graph_edges WHERE from_node_id IN (%s)
@@ -215,13 +216,17 @@ func (db *DB) orphanNodeIDsTx(ctx context.Context, querier graphStringQuerier, n
 	return orphanIDs, nil
 }
 
-func deleteStringIDsTx(ctx context.Context, tx *sql.Tx, table string, column string, ids []string) error {
+// deleteStringIDsTx takes the dialect explicitly because it has no receiver to
+// ask. The placeholders it generates are `?`; rebinding turns them into
+// whatever this database expects.
+func deleteStringIDsTx(ctx context.Context, d sqldialect.Dialect, tx *sql.Tx, table string, column string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
 	for _, chunk := range stringChunks(ids, 1) {
 		placeholders, args := sqlPlaceholders(chunk)
-		if _, err := tx.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s WHERE %s IN (%s)", table, column, placeholders), args...); err != nil {
+		stmt := d.Rebind(fmt.Sprintf("DELETE FROM %s WHERE %s IN (%s)", table, column, placeholders))
+		if _, err := tx.ExecContext(ctx, stmt, args...); err != nil {
 			return err
 		}
 	}

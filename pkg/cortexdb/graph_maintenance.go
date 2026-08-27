@@ -38,7 +38,7 @@ func (db *DB) PruneJunkEntities(ctx context.Context, opts GraphMaintenanceOption
 	if err := db.graph.InitGraphSchema(ctx); err != nil {
 		return nil, fmt.Errorf("prune junk entities: init schema: %w", err)
 	}
-	rows, err := db.store.GetDB().QueryContext(ctx, `
+	rows, err := db.query(ctx, `
 		SELECT id, content FROM graph_nodes
 		WHERE id LIKE 'entity:%' AND (node_type = ? OR node_type = '' OR node_type IS NULL)
 	`, genericEntityNodeType)
@@ -80,7 +80,7 @@ func (db *DB) PruneJunkEntities(ctx context.Context, opts GraphMaintenanceOption
 	}
 
 	for _, v := range victims {
-		res, err := db.store.GetDB().ExecContext(ctx,
+		res, err := db.exec(ctx,
 			`DELETE FROM graph_edges WHERE from_node_id = ? OR to_node_id = ?`, v.id, v.id)
 		if err != nil {
 			return report, fmt.Errorf("delete edges of %q: %w", v.id, err)
@@ -88,7 +88,7 @@ func (db *DB) PruneJunkEntities(ctx context.Context, opts GraphMaintenanceOption
 		if n, err := res.RowsAffected(); err == nil {
 			report.EdgesRemoved += int(n)
 		}
-		if _, err := db.store.GetDB().ExecContext(ctx,
+		if _, err := db.exec(ctx,
 			`DELETE FROM graph_nodes WHERE id = ?`, v.id); err != nil {
 			return report, fmt.Errorf("delete node %q: %w", v.id, err)
 		}

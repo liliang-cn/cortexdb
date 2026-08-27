@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 	"sync"
+	"time"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/index"
 
@@ -14,20 +14,20 @@ import (
 
 // SQLiteStore implements the Store interface using SQLite as backend
 type SQLiteStore struct {
-	changesCounter  int32              // Counter for tracking changes
-	saveMu          sync.Mutex         // Mutex for save operations
-	saveTimer      *time.Timer        // Timer for periodic saves
+	changesCounter int32       // Counter for tracking changes
+	saveMu         sync.Mutex  // Mutex for save operations
+	saveTimer      *time.Timer // Timer for periodic saves
 	db             *sql.DB
 	config         Config
 	mu             sync.RWMutex
 	closed         bool
 	similarityFn   SimilarityFunc
-	hnswIndex      *index.HNSW            // HNSW index for fast search
-	ivfIndex       *index.IVFIndex        // IVF index for partitioned search
-	quantizer      index.Quantizer        // Vector quantizer
-	adapter        *DimensionAdapter      // Dimension adaptation handler
-	textSimilarity TextSimilarity         // Text similarity calculator
-	logger         Logger                 // Logger instance
+	hnswIndex      *index.HNSW       // HNSW index for fast search
+	ivfIndex       *index.IVFIndex   // IVF index for partitioned search
+	quantizer      index.Quantizer   // Vector quantizer
+	adapter        *DimensionAdapter // Dimension adaptation handler
+	textSimilarity TextSimilarity    // Text similarity calculator
+	logger         Logger            // Logger instance
 }
 
 // New creates a new SQLite vector store with the given configuration

@@ -120,8 +120,15 @@ func (postgresDialect) BlobType() string { return "BYTEA" }
 
 // ->> rather than -> so the result is text and not a quoted JSON scalar; the
 // cast is there because `properties` is a TEXT column, not jsonb.
+//
+// NULLIF guards the cast. A row whose properties column is the empty string —
+// which is what an edge written without any gets — makes ”::jsonb an error in
+// PostgreSQL, while SQLite's json_extract(”) quietly returns NULL. Without
+// this, one such row anywhere in the table fails the whole query, and the
+// error ("invalid input syntax for type json") names neither the column nor
+// the row.
 func (postgresDialect) JSONText(column, key string) string {
-	return fmt.Sprintf("(%s::jsonb ->> '%s')", column, jsonKey(key))
+	return fmt.Sprintf("(NULLIF(%s, '')::jsonb ->> '%s')", column, jsonKey(key))
 }
 
 func (postgresDialect) IsDuplicateColumn(err error) bool {

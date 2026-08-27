@@ -607,7 +607,7 @@ func (db *DB) applyKnowledgeMutation(ctx context.Context, knowledgeID string, re
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM embeddings WHERE doc_id = ?`, knowledgeID); err != nil {
+		if _, err := db.txExec(ctx, tx, `DELETE FROM embeddings WHERE doc_id = ?`, knowledgeID); err != nil {
 			return fmt.Errorf("delete prior knowledge chunks: %w", err)
 		}
 	}
@@ -641,7 +641,7 @@ func (db *DB) upsertKnowledgeDocumentRecordTx(ctx context.Context, tx *sql.Tx, d
 	if err != nil {
 		return fmt.Errorf("marshal knowledge document metadata: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := db.txExec(ctx, tx, `
 		INSERT INTO documents (id, title, source_url, content, version, author, metadata, acl, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, '[]', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 		ON CONFLICT(id) DO UPDATE SET

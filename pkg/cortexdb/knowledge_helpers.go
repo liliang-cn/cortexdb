@@ -33,10 +33,10 @@ func (db *DB) cleanupKnowledgeArtifacts(ctx context.Context, knowledgeID string)
 	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM embeddings WHERE doc_id = ?`, knowledgeID); err != nil {
+	if _, err := db.txExec(ctx, tx, `DELETE FROM embeddings WHERE doc_id = ?`, knowledgeID); err != nil {
 		return fmt.Errorf("delete knowledge chunks: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM documents WHERE id = ?`, knowledgeID); err != nil {
+	if _, err := db.txExec(ctx, tx, `DELETE FROM documents WHERE id = ?`, knowledgeID); err != nil {
 		return fmt.Errorf("delete knowledge document: %w", err)
 	}
 	if err := tx.Commit(); err != nil {

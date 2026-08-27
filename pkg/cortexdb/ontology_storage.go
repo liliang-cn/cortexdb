@@ -37,7 +37,7 @@ func (db *DB) ensureOntologySchemaTable(ctx context.Context) error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_ontology_schemas_v2_active ON ontology_schemas_v2(is_active);
 	`
-	if _, err := db.store.GetDB().ExecContext(ctx, schema); err != nil {
+	if _, err := db.exec(ctx, schema); err != nil {
 		// Deliberately not latched: a transient failure such as a cancelled
 		// context must not permanently disable ontology storage.
 		return err
@@ -130,7 +130,7 @@ func (db *DB) saveOntologySchemaRecord(ctx context.Context, req OntologySaveRequ
 		active = false
 	}
 	if active {
-		if _, err := tx.ExecContext(ctx,
+		if _, err := db.txExec(ctx, tx,
 			`UPDATE ontology_schemas_v2 SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE is_active = 1 AND id <> ?`,
 			schema.SchemaID); err != nil {
 			return nil, fmt.Errorf("deactivate ontology schemas: %w", err)
@@ -142,7 +142,7 @@ func (db *DB) saveOntologySchemaRecord(ctx context.Context, req OntologySaveRequ
 		name = schema.SchemaID
 	}
 
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := db.txExec(ctx, tx, `
 		INSERT INTO ontology_schemas_v2 (id, name, version, description, strict_actions, metadata, definition, is_active, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(id) DO UPDATE SET
@@ -198,7 +198,7 @@ func (db *DB) listOntologySchemaRecords(ctx context.Context, activeOnly bool) ([
 	}
 	query += ` ORDER BY id`
 
-	rows, err := db.store.GetDB().QueryContext(ctx, query)
+	rows, err := db.query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("list ontology schemas: %w", err)
 	}
@@ -223,7 +223,7 @@ func (db *DB) deleteOntologySchemaRecord(ctx context.Context, schemaID string) (
 	if err := db.ensureOntologySchemaTable(ctx); err != nil {
 		return false, fmt.Errorf("init ontology schema table: %w", err)
 	}
-	result, err := db.store.GetDB().ExecContext(ctx, `DELETE FROM ontology_schemas_v2 WHERE id = ?`, schemaID)
+	result, err := db.exec(ctx, `DELETE FROM ontology_schemas_v2 WHERE id = ?`, schemaID)
 	if err != nil {
 		return false, fmt.Errorf("delete ontology schema: %w", err)
 	}
@@ -254,7 +254,7 @@ type ontologyRowScanner interface {
 }
 
 func (db *DB) getOntologySchemaTx(ctx context.Context, querier ontologyRowQuerier, schemaID string) (*OntologySchema, error) {
-	row := querier.QueryRowContext(ctx,
+	row := db.querierQueryRow(ctx, querier,
 		`SELECT `+ontologySchemaColumns+` FROM ontology_schemas_v2 WHERE id = ?`, schemaID)
 	schema, err := scanOntologySchema(row)
 	if errors.Is(err, sql.ErrNoRows) {

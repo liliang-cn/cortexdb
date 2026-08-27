@@ -487,7 +487,7 @@ func (db *DB) checkOntologyCardinality(ctx context.Context, linkType OntologyLin
 // way everywhere else; an exact match would let a caller spell the link type
 // differently and slip a second edge past a ONE side.
 func (db *DB) countOntologyLinks(ctx context.Context, linkTypeAPIName string, nodeID string, excludeNodeID string) (int, error) {
-	row := db.store.GetDB().QueryRowContext(ctx, `
+	row := db.queryRow(ctx, `
 		SELECT COUNT(*) FROM graph_edges
 		WHERE edge_type = ? COLLATE NOCASE
 		  AND (from_node_id = ? OR to_node_id = ?)

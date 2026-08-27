@@ -166,7 +166,7 @@ func (db *DB) findOntologyNodeByName(ctx context.Context, compiled *compiledOnto
 	// domain is about, so a declared object type is preferred; among equally
 	// declared (or equally undeclared) candidates the id still decides, so a
 	// store without an ontology behaves exactly as before.
-	rows, err := db.store.GetDB().QueryContext(ctx,
+	rows, err := db.query(ctx,
 		`SELECT id, COALESCE(node_type,'') FROM graph_nodes
 		 WHERE content = ? AND id LIKE 'entity:%' ORDER BY id`, name)
 	if err != nil {

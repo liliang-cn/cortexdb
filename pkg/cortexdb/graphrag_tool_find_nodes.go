@@ -62,7 +62,7 @@ func (t *GraphRAGToolbox) FindNodes(ctx context.Context, req ToolFindNodesReques
 	// One scan for every name asked about. The graph has no index on content —
 	// which is why this tool is needed — so the cost is paid once here rather
 	// than once per name, and callers are expected to batch.
-	rows, err := t.db.SQL().QueryContext(ctx,
+	rows, err := t.db.query(ctx,
 		`SELECT id, COALESCE(content,''), COALESCE(node_type,'') FROM graph_nodes WHERE TRIM(COALESCE(content,'')) != ''`)
 	if err != nil {
 		return nil, err

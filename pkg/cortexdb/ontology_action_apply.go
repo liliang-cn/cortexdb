@@ -441,7 +441,7 @@ func (db *DB) applyLinkRule(ctx context.Context, scope *actionScope, rule Ontolo
 		// case-insensitively for the same reason it is everywhere else — api
 		// names resolve that way, so an exact match would leave a differently
 		// spelled edge behind.
-		if _, err := db.store.GetDB().ExecContext(ctx, `
+		if _, err := db.exec(ctx, `
 			DELETE FROM graph_edges
 			WHERE edge_type = ? COLLATE NOCASE
 			  AND ((from_node_id = ? AND to_node_id = ?) OR (from_node_id = ? AND to_node_id = ?))
@@ -477,7 +477,7 @@ func ontologyReferenceNodeID(objectTypeAPIName string, value string) string {
 
 func (db *DB) ontologyNodeExists(ctx context.Context, nodeID string) (bool, error) {
 	var exists int
-	err := db.store.GetDB().QueryRowContext(ctx,
+	err := db.queryRow(ctx,
 		`SELECT EXISTS(SELECT 1 FROM graph_nodes WHERE id = ?)`, nodeID).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("check object exists: %w", err)
@@ -559,7 +559,7 @@ func (db *DB) ensureActionAuditTable(ctx context.Context) error {
 		return nil
 	}
 
-	if _, err := db.store.GetDB().ExecContext(ctx, `
+	if _, err := db.exec(ctx, `
 	CREATE TABLE IF NOT EXISTS ontology_action_audit (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		action_api_name TEXT NOT NULL,
@@ -641,7 +641,7 @@ func (db *DB) recordActionAudit(ctx context.Context, action OntologyActionType, 
 	if err != nil {
 		return fmt.Errorf("encode action edits: %w", err)
 	}
-	if _, err := db.store.GetDB().ExecContext(ctx,
+	if _, err := db.exec(ctx,
 		`INSERT INTO ontology_action_audit (action_api_name, actor, parameters, edits) VALUES (?, ?, ?, ?)`,
 		action.APIName, req.Actor, string(parametersJSON), string(editsJSON)); err != nil {
 		return fmt.Errorf("record action audit: %w", err)

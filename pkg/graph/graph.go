@@ -148,6 +148,17 @@ func (g *GraphStore) queryRow(ctx context.Context, q string, args ...any) *sql.R
 	return g.db.QueryRowContext(ctx, g.dialect.Rebind(q), args...)
 }
 
+// txPrepare is the same for a statement prepared once and executed many times.
+//
+// Missed on the first pass, which cost an afternoon: rebinding exec and query
+// leaves prepare untouched, and a batch insert is exactly the path that
+// prepares. The symptom was a syntax error at the first ingest — every write
+// through the batch path failed on PostgreSQL while the single-row path
+// worked, which reads as something much stranger than a missing rebind.
+func (g *GraphStore) txPrepare(ctx context.Context, tx *sql.Tx, q string) (*sql.Stmt, error) {
+	return tx.PrepareContext(ctx, g.dialect.Rebind(q))
+}
+
 // txExec is the same for a statement inside a transaction.
 func (g *GraphStore) txExec(ctx context.Context, tx *sql.Tx, q string, args ...any) (sql.Result, error) {
 	return tx.ExecContext(ctx, g.dialect.Rebind(q), args...)

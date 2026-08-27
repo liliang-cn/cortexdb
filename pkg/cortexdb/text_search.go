@@ -498,7 +498,7 @@ func ftsSearchQuery(query string, opts TextSearchOptions) (string, []any) {
 
 func (db *DB) ftsSearch(ctx context.Context, query string, opts TextSearchOptions) ([]core.ScoredEmbedding, error) {
 	querySQL, args := ftsSearchQuery(query, opts)
-	rows, err := db.store.GetDB().QueryContext(ctx, querySQL, args...)
+	rows, err := db.query(ctx, querySQL, args...)
 	if err != nil {
 		return nil, fmt.Errorf("FTS search failed: %w", err)
 	}

@@ -215,8 +215,9 @@ func TestUnimplementedPartsNameThemselves(t *testing.T) {
 	ctx := context.Background()
 
 	for name, call := range map[string]func() error{
-		"CreateSession":  func() error { return pg.CreateSession(ctx, &Session{}) },
-		"AddMessage":     func() error { return pg.AddMessage(ctx, &Message{}) },
+		// CreateSession and AddMessage used to be listed here. They are
+		// implemented now, so the thing that would name them is a chat test,
+		// not this one.
 		"TrainQuantizer": func() error { return pg.TrainQuantizer(ctx) },
 		"DeleteByFilter": func() error { return pg.DeleteByFilter(ctx, nil) },
 		"SearchWithACL":  func() error { _, err := pg.SearchWithACL(ctx, nil, nil, SearchOptions{}); return err },

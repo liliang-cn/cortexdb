@@ -126,8 +126,14 @@ func TestJSONTextSpeaksEachDatabase(t *testing.T) {
 	if got := For(SQLite).JSONText("properties", "valid_from"); got != `json_extract(properties, '$.valid_from')` {
 		t.Errorf("SQLite JSONText = %s", got)
 	}
-	if got := For(Postgres).JSONText("properties", "valid_from"); got != `(properties::jsonb ->> 'valid_from')` {
+	if got := For(Postgres).JSONText("properties", "valid_from"); got != `(NULLIF(properties, '')::jsonb ->> 'valid_from')` {
 		t.Errorf("PostgreSQL JSONText = %s", got)
+	}
+	// The NULLIF is not decoration: an edge stored without properties holds the
+	// empty string, ''::jsonb is an error in PostgreSQL, and one such row fails
+	// the entire query with a message that names neither column nor row.
+	if !strings.Contains(For(Postgres).JSONText("properties", "k"), "NULLIF") {
+		t.Error("the PostgreSQL cast is unguarded against an empty properties column")
 	}
 	// Every caller passes a constant today, which is exactly when an escape is
 	// easy to leave out and hard to miss later.

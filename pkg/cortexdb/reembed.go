@@ -200,7 +200,7 @@ func (db *DB) ReembedMemoryVectors(ctx context.Context, opts ReembedOptions) (*R
 		query += " LIMIT ?"
 		args = append(args, opts.Limit)
 	}
-	rows, err := db.store.GetDB().QueryContext(ctx, query, args...)
+	rows, err := db.query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list memories needing vectors: %w", err)
 	}
@@ -262,7 +262,7 @@ func (db *DB) ReembedMemoryVectors(ctx context.Context, opts ReembedOptions) (*R
 				report.Errors = append(report.Errors, fmt.Sprintf("memory %s: encode vector: %v", p.id, err))
 				continue
 			}
-			if _, err := db.store.GetDB().ExecContext(ctx,
+			if _, err := db.exec(ctx,
 				`UPDATE messages SET vector = ? WHERE id = ?`, encoded, p.id); err != nil {
 				report.Failed++
 				report.Errors = append(report.Errors, fmt.Sprintf("memory %s: write vector: %v", p.id, err))

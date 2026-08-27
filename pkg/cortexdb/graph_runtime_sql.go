@@ -35,7 +35,7 @@ func (db *DB) graphNodeSummariesByIDs(ctx context.Context, nodeIDs []string) (ma
 	summaries := make(map[string]graphNodeSummary, len(nodeIDs))
 	for _, chunk := range stringChunks(nodeIDs, 1) {
 		placeholders, args := sqlPlaceholders(chunk)
-		rows, err := db.store.GetDB().QueryContext(ctx, fmt.Sprintf(`
+		rows, err := db.query(ctx, fmt.Sprintf(`
 			SELECT id,
 			       content,
 			       node_type,
@@ -95,7 +95,7 @@ func (db *DB) graphEdgesByNodeIDs(ctx context.Context, nodeIDs []string, directi
 			return nil, fmt.Errorf("invalid direction: %s", direction)
 		}
 
-		rows, err := db.store.GetDB().QueryContext(ctx, query, args...)
+		rows, err := db.query(ctx, query, args...)
 		if err != nil {
 			return nil, fmt.Errorf("query graph edges by nodes: %w", err)
 		}
@@ -141,7 +141,7 @@ func (db *DB) chunkEntityNamesBatch(ctx context.Context, chunkIDs []string, limi
 		placeholders, args := sqlPlaceholders(chunk)
 		unionArgs := append([]any{}, args...)
 		unionArgs = append(unionArgs, args...)
-		rows, err := db.store.GetDB().QueryContext(ctx, fmt.Sprintf(`
+		rows, err := db.query(ctx, fmt.Sprintf(`
 			SELECT chunk_id, entity_name
 			FROM (
 				SELECT e.from_node_id AS chunk_id, n.content AS entity_name
@@ -190,7 +190,7 @@ func (db *DB) embeddingsByIDs(ctx context.Context, embeddingIDs []string) (map[s
 	result := make(map[string]embeddingSummary, len(embeddingIDs))
 	for _, chunk := range stringChunks(embeddingIDs, 1) {
 		placeholders, args := sqlPlaceholders(chunk)
-		rows, err := db.store.GetDB().QueryContext(ctx, fmt.Sprintf(`
+		rows, err := db.query(ctx, fmt.Sprintf(`
 			SELECT e.id, COALESCE(e.doc_id, ''), e.content, e.metadata
 			FROM embeddings e
 			WHERE e.id IN (%s)
@@ -238,7 +238,7 @@ func (db *DB) orphanNodeIDs(ctx context.Context, nodeIDs []string) ([]string, er
 		placeholders, args := sqlPlaceholders(chunk)
 		unionArgs := append([]any{}, args...)
 		unionArgs = append(unionArgs, args...)
-		rows, err := db.store.GetDB().QueryContext(ctx, fmt.Sprintf(`
+		rows, err := db.query(ctx, fmt.Sprintf(`
 			SELECT DISTINCT node_id
 			FROM (
 				SELECT from_node_id AS node_id FROM graph_edges WHERE from_node_id IN (%s)
