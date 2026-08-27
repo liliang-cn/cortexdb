@@ -251,7 +251,7 @@ func (g *GraphStore) GetAllNodes(ctx context.Context, filter *GraphFilter) ([]*G
 		query += `)`
 	}
 
-	rows, err := g.db.QueryContext(ctx, query, args...)
+	rows, err := g.query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

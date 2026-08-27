@@ -3,12 +3,12 @@ package graph
 import (
 	"context"
 	"fmt"
+	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"math"
 	"math/rand"
 	"sort"
 	"sync"
-	"github.com/liliang-cn/cortexdb/v2/pkg/core"
-	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 )
 
 // SimpleHNSW implements a simplified HNSW-like index for vector search
@@ -18,7 +18,7 @@ type SimpleHNSW struct {
 	maxConns   int
 	mL         float64
 	vectors    map[string][]float32
-	graph      map[int]map[string][]string  // level -> nodeID -> connections
+	graph      map[int]map[string][]string // level -> nodeID -> connections
 	entryPoint string
 	mutex      sync.RWMutex
 	similarity func([]float32, []float32) float64
@@ -99,7 +99,7 @@ func (h *SimpleHNSW) Add(id string, vector []float32) error {
 func (h *SimpleHNSW) searchLevel(query []float32, entryPoint string, ef int, level int) []searchCandidate {
 	visited := make(map[string]bool)
 	candidates := make([]searchCandidate, 0, ef*2)
-	
+
 	if entryPoint == "" {
 		return candidates
 	}
@@ -129,7 +129,7 @@ func (h *SimpleHNSW) searchLevel(query []float32, entryPoint string, ef int, lev
 		for _, candidate := range candidates {
 			if !visited[candidate.nodeID+"_expanded"] {
 				visited[candidate.nodeID+"_expanded"] = true
-				
+
 				// Explore connections
 				if connections, exists := h.graph[level][candidate.nodeID]; exists {
 					for _, connID := range connections {
@@ -228,7 +228,7 @@ func (h *SimpleHNSW) Search(query []float32, k int) []searchCandidate {
 
 	// Start from top level and work down
 	currentNodes := []searchCandidate{{nodeID: h.entryPoint, score: 0}}
-	
+
 	// Search from top to level 1
 	for level := h.getNodeLevel(h.entryPoint); level > 0; level-- {
 		candidates := h.searchLevel(query, h.entryPoint, 1, level)
@@ -242,19 +242,19 @@ func (h *SimpleHNSW) Search(query []float32, k int) []searchCandidate {
 	if ef < 50 {
 		ef = 50
 	}
-	
+
 	entryPoint := h.entryPoint
 	if len(currentNodes) > 0 {
 		entryPoint = currentNodes[0].nodeID
 	}
-	
+
 	results := h.searchLevel(query, entryPoint, ef, 0)
-	
+
 	// Return top k results
 	if len(results) > k {
 		results = results[:k]
 	}
-	
+
 	return results
 }
 
@@ -300,10 +300,10 @@ func (g *GraphStore) EnableHNSWIndex(dimensions int) error {
 	g.hnswIndex = &HNSWGraphIndex{
 		index: NewSimpleHNSW(dimensions, 16),
 	}
-	
+
 	// Index existing nodes with vectors
 	ctx := context.Background()
-	rows, err := g.db.QueryContext(ctx, `
+	rows, err := g.query(ctx, `
 		SELECT id, vector FROM graph_nodes WHERE vector IS NOT NULL
 	`)
 	if err != nil {
@@ -397,7 +397,7 @@ func (g *GraphStore) HNSWHybridSearch(ctx context.Context, query *HybridQuery) (
 			}
 
 			totalScore := query.VectorWeight*candidate.score + query.GraphWeight*graphScore
-			
+
 			if totalScore >= query.TotalThreshold {
 				results = append(results, &HybridResult{
 					Node:        node,
@@ -420,4 +420,3 @@ func (g *GraphStore) HNSWHybridSearch(ctx context.Context, query *HybridQuery) (
 
 	return results, nil
 }
-

@@ -668,7 +668,7 @@ func (g *GraphStore) deleteInferredTriplesByID(ctx context.Context, ids []string
 		}
 		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(chunk)), ",")
 
-		result, err := tx.ExecContext(ctx, fmt.Sprintf(`DELETE FROM graph_edges WHERE id IN (%s)`, placeholders), args...)
+		result, err := g.txExec(ctx, tx, fmt.Sprintf(`DELETE FROM graph_edges WHERE id IN (%s)`, placeholders), args...)
 		if err != nil {
 			return deleted, fmt.Errorf("delete inferred graph edge: %w", err)
 		}
@@ -676,7 +676,7 @@ func (g *GraphStore) deleteInferredTriplesByID(ctx context.Context, ids []string
 			return deleted, fmt.Errorf("count inferred graph edge delete: %w", err)
 		}
 
-		result, err = tx.ExecContext(ctx, fmt.Sprintf(`DELETE FROM kg_triples WHERE inferred = 1 AND id IN (%s)`, placeholders), args...)
+		result, err = g.txExec(ctx, tx, fmt.Sprintf(`DELETE FROM kg_triples WHERE inferred = 1 AND id IN (%s)`, placeholders), args...)
 		if err != nil {
 			return deleted, fmt.Errorf("delete inferred triple: %w", err)
 		}
@@ -804,10 +804,10 @@ func (g *GraphStore) clearInferredTriples(ctx context.Context) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM graph_edges WHERE id IN (SELECT id FROM kg_triples WHERE inferred = 1)`); err != nil {
+	if _, err := g.txExec(ctx, tx, `DELETE FROM graph_edges WHERE id IN (SELECT id FROM kg_triples WHERE inferred = 1)`); err != nil {
 		return fmt.Errorf("delete inferred graph edges: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM kg_triples WHERE inferred = 1`); err != nil {
+	if _, err := g.txExec(ctx, tx, `DELETE FROM kg_triples WHERE inferred = 1`); err != nil {
 		return fmt.Errorf("delete inferred triples: %w", err)
 	}
 	if err := tx.Commit(); err != nil {

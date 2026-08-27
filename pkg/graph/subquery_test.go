@@ -118,7 +118,7 @@ func TestSPARQLSubqueryDistinctLimit(t *testing.T) {
 	// Wait, the subquery here is evaluated ONCE.
 	// So SELECT ?y WHERE { ?y <knows> ?z } LIMIT 1 will return exactly ONE ?y.
 	// Then that ?y is joined with ?x <knows> ?y.
-	
+
 	result, err := g.ExecuteSPARQL(ctx, query)
 	if err != nil {
 		t.Fatalf("Query failed: %v", err)
@@ -127,7 +127,7 @@ func TestSPARQLSubqueryDistinctLimit(t *testing.T) {
 	// The subquery will return either alice or bob (since they both know someone).
 	// Let's say it returns alice. Then ?x <knows> "alice" matches (bob).
 	// If it returns bob. Then ?x <knows> "bob" matches (alice).
-	
+
 	if result.Count != 1 {
 		t.Errorf("Expected 1 result due to LIMIT 1 in subquery, got %d", result.Count)
 	}

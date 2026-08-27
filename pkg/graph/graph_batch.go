@@ -178,7 +178,7 @@ func (g *GraphStore) DeleteNodesBatch(ctx context.Context, nodeIDs []string) (*B
 
 	query := fmt.Sprintf("DELETE FROM graph_nodes WHERE id IN (%s)", strings.Join(placeholders, ","))
 
-	res, err := tx.ExecContext(ctx, query, args...)
+	res, err := g.txExec(ctx, tx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to delete nodes: %w", err)
 	}
@@ -336,7 +336,7 @@ func (g *GraphStore) DeleteEdgesBatch(ctx context.Context, edgeIDs []string) (*B
 
 	query := fmt.Sprintf("DELETE FROM graph_edges WHERE id IN (%s)", strings.Join(placeholders, ","))
 
-	res, err := tx.ExecContext(ctx, query, args...)
+	res, err := g.txExec(ctx, tx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to delete edges: %w", err)
 	}
@@ -377,7 +377,7 @@ func (g *GraphStore) GetNodesBatch(ctx context.Context, nodeIDs []string) ([]*Gr
 		WHERE id IN (%s)
 	`, strings.Join(placeholders, ","))
 
-	rows, err := g.db.QueryContext(ctx, query, args...)
+	rows, err := g.query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query nodes: %w", err)
 	}
@@ -442,7 +442,7 @@ func (g *GraphStore) GetEdgesBatch(ctx context.Context, edgeIDs []string) ([]*Gr
 		WHERE id IN (%s)
 	`, strings.Join(placeholders, ","))
 
-	rows, err := g.db.QueryContext(ctx, query, args...)
+	rows, err := g.query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query edges: %w", err)
 	}
@@ -631,7 +631,7 @@ func (g *GraphStore) deleteNodesBatchTx(ctx context.Context, tx *sql.Tx, nodeIDs
 	}
 
 	query := fmt.Sprintf("DELETE FROM graph_nodes WHERE id IN (%s)", strings.Join(placeholders, ","))
-	res, err := tx.ExecContext(ctx, query, args...)
+	res, err := g.txExec(ctx, tx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -710,7 +710,7 @@ func (g *GraphStore) deleteEdgesBatchTx(ctx context.Context, tx *sql.Tx, edgeIDs
 	}
 
 	query := fmt.Sprintf("DELETE FROM graph_edges WHERE id IN (%s)", strings.Join(placeholders, ","))
-	res, err := tx.ExecContext(ctx, query, args...)
+	res, err := g.txExec(ctx, tx, query, args...)
 	if err != nil {
 		return nil, err
 	}

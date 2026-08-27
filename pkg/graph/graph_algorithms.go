@@ -24,11 +24,11 @@ func (g *GraphStore) PageRank(ctx context.Context, iterations int, dampingFactor
 	}
 
 	// 1. Load Topology (IDs)
-	rows, err := g.db.QueryContext(ctx, "SELECT id FROM graph_nodes")
+	rows, err := g.query(ctx, "SELECT id FROM graph_nodes")
 	if err != nil {
 		return nil, fmt.Errorf("query nodes: %w", err)
 	}
-	
+
 	var nodes []string
 	nodeToIndex := make(map[string]int)
 	for rows.Next() {
@@ -47,11 +47,11 @@ func (g *GraphStore) PageRank(ctx context.Context, iterations int, dampingFactor
 	}
 
 	// 2. Load Topology (Edges)
-	edgeRows, err := g.db.QueryContext(ctx, "SELECT from_node_id, to_node_id FROM graph_edges")
+	edgeRows, err := g.query(ctx, "SELECT from_node_id, to_node_id FROM graph_edges")
 	if err != nil {
 		return nil, fmt.Errorf("query edges: %w", err)
 	}
-	
+
 	outDegree := make([]int, len(nodes))
 	inLinks := make([][]int, len(nodes))
 
@@ -61,7 +61,7 @@ func (g *GraphStore) PageRank(ctx context.Context, iterations int, dampingFactor
 			edgeRows.Close()
 			return nil, err
 		}
-		
+
 		u, ok1 := nodeToIndex[from]
 		v, ok2 := nodeToIndex[to]
 		if ok1 && ok2 {
@@ -83,10 +83,10 @@ func (g *GraphStore) PageRank(ctx context.Context, iterations int, dampingFactor
 
 	for iter := 0; iter < iterations; iter++ {
 		maxDiff := 0.0
-		
+
 		for i := 0; i < len(nodes); i++ {
 			rank := (1.0 - dampingFactor) / nodeCount
-			
+
 			// Sum contributions from incoming links
 			for _, inIdx := range inLinks[i] {
 				outDeg := outDegree[inIdx]
@@ -94,7 +94,7 @@ func (g *GraphStore) PageRank(ctx context.Context, iterations int, dampingFactor
 					rank += dampingFactor * scores[inIdx] / float64(outDeg)
 				}
 			}
-			
+
 			newScores[i] = rank
 			diff := math.Abs(newScores[i] - scores[i])
 			if diff > maxDiff {
@@ -135,7 +135,7 @@ type Community struct {
 // Optimized to reduce DB queries.
 func (g *GraphStore) CommunityDetection(ctx context.Context) ([]Community, error) {
 	// 1. Load Nodes
-	rows, err := g.db.QueryContext(ctx, "SELECT id FROM graph_nodes")
+	rows, err := g.query(ctx, "SELECT id FROM graph_nodes")
 	if err != nil {
 		return nil, fmt.Errorf("query nodes: %w", err)
 	}
@@ -164,7 +164,7 @@ func (g *GraphStore) CommunityDetection(ctx context.Context) ([]Community, error
 		adj[i] = make(map[int]float64)
 	}
 
-	edgeRows, err := g.db.QueryContext(ctx, "SELECT from_node_id, to_node_id, weight FROM graph_edges")
+	edgeRows, err := g.query(ctx, "SELECT from_node_id, to_node_id, weight FROM graph_edges")
 	if err != nil {
 		return nil, fmt.Errorf("query edges: %w", err)
 	}
@@ -176,7 +176,7 @@ func (g *GraphStore) CommunityDetection(ctx context.Context) ([]Community, error
 			edgeRows.Close()
 			return nil, err
 		}
-		
+
 		u, ok1 := nodeToIndex[from]
 		v, ok2 := nodeToIndex[to]
 		if ok1 && ok2 {
@@ -275,21 +275,21 @@ func (g *GraphStore) PredictEdges(ctx context.Context, nodeID string, topK int) 
 	}
 
 	// Pre-fetch all edges to avoid N+1 queries
-	// We only need edges connected to 'nodeID' (already got via GetNode -> GetEdges usually, 
+	// We only need edges connected to 'nodeID' (already got via GetNode -> GetEdges usually,
 	// but here we need 2-hop neighbors or all edges for 'common neighbors')
-	// For "common neighbors", we really need the full graph topology or at least 
+	// For "common neighbors", we really need the full graph topology or at least
 	// the neighbors of my neighbors.
-	
+
 	// Let's rely on GetAllNodes for vectors (needed for similarity)
 	// But optimize the structural check.
-	
+
 	allNodes, err := g.GetAllNodes(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get nodes: %w", err)
 	}
 
 	// Load topology efficiently
-	edgeRows, err := g.db.QueryContext(ctx, "SELECT from_node_id, to_node_id FROM graph_edges")
+	edgeRows, err := g.query(ctx, "SELECT from_node_id, to_node_id FROM graph_edges")
 	if err != nil {
 		return nil, fmt.Errorf("query edges: %w", err)
 	}
@@ -300,8 +300,12 @@ func (g *GraphStore) PredictEdges(ctx context.Context, nodeID string, topK int) 
 	for edgeRows.Next() {
 		var u, v string
 		if err := edgeRows.Scan(&u, &v); err == nil {
-			if adj[u] == nil { adj[u] = make(map[string]bool) }
-			if adj[v] == nil { adj[v] = make(map[string]bool) }
+			if adj[u] == nil {
+				adj[u] = make(map[string]bool)
+			}
+			if adj[v] == nil {
+				adj[v] = make(map[string]bool)
+			}
 			adj[u][v] = true
 			adj[v][u] = true // Treat as undirected for common neighbors
 		}
@@ -321,7 +325,7 @@ func (g *GraphStore) PredictEdges(ctx context.Context, nodeID string, topK int) 
 
 		// Method 1: Vector Similarity
 		similarity := g.store.GetSimilarityFunc()(node.Vector, otherNode.Vector)
-		
+
 		// Method 2: Common Neighbors
 		commonNeighbors := 0
 		for neighbor := range existingConnections {
@@ -362,11 +366,11 @@ func (g *GraphStore) PredictEdges(ctx context.Context, nodeID string, topK int) 
 
 // GraphStatistics represents overall graph statistics
 type GraphStatistics struct {
-	NodeCount        int     `json:"node_count"`
-	EdgeCount        int     `json:"edge_count"`
-	AverageDegree    float64 `json:"average_degree"`
-	Density          float64 `json:"density"`
-	ConnectedComponents int  `json:"connected_components"`
+	NodeCount           int     `json:"node_count"`
+	EdgeCount           int     `json:"edge_count"`
+	AverageDegree       float64 `json:"average_degree"`
+	Density             float64 `json:"density"`
+	ConnectedComponents int     `json:"connected_components"`
 }
 
 // GetGraphStatistics computes statistics about the graph
@@ -374,7 +378,7 @@ func (g *GraphStore) GetGraphStatistics(ctx context.Context) (*GraphStatistics, 
 	stats := &GraphStatistics{}
 
 	// 1. Counts via SQL (Fast)
-	err := g.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM graph_nodes").Scan(&stats.NodeCount)
+	err := g.queryRow(ctx, "SELECT COUNT(*) FROM graph_nodes").Scan(&stats.NodeCount)
 	if err != nil {
 		return nil, err
 	}
@@ -382,25 +386,25 @@ func (g *GraphStore) GetGraphStatistics(ctx context.Context) (*GraphStatistics, 
 		return stats, nil
 	}
 
-	err = g.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM graph_edges").Scan(&stats.EdgeCount)
+	err = g.queryRow(ctx, "SELECT COUNT(*) FROM graph_edges").Scan(&stats.EdgeCount)
 	if err != nil {
 		return nil, err
 	}
 
 	stats.AverageDegree = 2.0 * float64(stats.EdgeCount) / float64(stats.NodeCount)
-	
-	maxEdges := float64(stats.NodeCount) * float64(stats.NodeCount - 1)
+
+	maxEdges := float64(stats.NodeCount) * float64(stats.NodeCount-1)
 	if maxEdges > 0 {
 		stats.Density = float64(stats.EdgeCount) / maxEdges
 	}
 
 	// 2. Connected Components (BFS)
 	// Need topology for this
-	edgeRows, err := g.db.QueryContext(ctx, "SELECT from_node_id, to_node_id FROM graph_edges")
+	edgeRows, err := g.query(ctx, "SELECT from_node_id, to_node_id FROM graph_edges")
 	if err != nil {
 		return nil, err
 	}
-	
+
 	adj := make(map[string][]string)
 	for edgeRows.Next() {
 		var u, v string
@@ -411,7 +415,7 @@ func (g *GraphStore) GetGraphStatistics(ctx context.Context) (*GraphStatistics, 
 	edgeRows.Close()
 
 	// Get all IDs for traversal
-	idRows, err := g.db.QueryContext(ctx, "SELECT id FROM graph_nodes")
+	idRows, err := g.query(ctx, "SELECT id FROM graph_nodes")
 	if err != nil {
 		return nil, err
 	}
@@ -432,11 +436,11 @@ func (g *GraphStore) GetGraphStatistics(ctx context.Context) (*GraphStatistics, 
 			// BFS
 			queue := []string{id}
 			visited[id] = true
-			
+
 			for len(queue) > 0 {
 				curr := queue[0]
 				queue = queue[1:]
-				
+
 				for _, neighbor := range adj[curr] {
 					if !visited[neighbor] {
 						visited[neighbor] = true
@@ -446,7 +450,7 @@ func (g *GraphStore) GetGraphStatistics(ctx context.Context) (*GraphStatistics, 
 			}
 		}
 	}
-	
+
 	stats.ConnectedComponents = components
 
 	return stats, nil

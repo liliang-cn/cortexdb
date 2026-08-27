@@ -173,7 +173,7 @@ func (g *GraphStore) UpsertNamespace(ctx context.Context, ns Namespace) error {
 	if ns.URI == "" {
 		return fmt.Errorf("namespace uri is required")
 	}
-	_, err := g.db.ExecContext(ctx, `
+	_, err := g.exec(ctx, `
 		INSERT INTO kg_namespaces (prefix, uri)
 		VALUES (?, ?)
 		ON CONFLICT(prefix) DO UPDATE SET uri = excluded.uri
@@ -190,7 +190,7 @@ func (g *GraphStore) DeleteNamespace(ctx context.Context, prefix string) error {
 	if prefix == "" {
 		return fmt.Errorf("namespace prefix is required")
 	}
-	_, err := g.db.ExecContext(ctx, `DELETE FROM kg_namespaces WHERE prefix = ?`, prefix)
+	_, err := g.exec(ctx, `DELETE FROM kg_namespaces WHERE prefix = ?`, prefix)
 	return err
 }
 
@@ -204,7 +204,7 @@ func (g *GraphStore) ListNamespaces(ctx context.Context) ([]Namespace, error) {
 		merged[prefix] = uri
 	}
 
-	rows, err := g.db.QueryContext(ctx, `SELECT prefix, uri FROM kg_namespaces`)
+	rows, err := g.query(ctx, `SELECT prefix, uri FROM kg_namespaces`)
 	if err != nil {
 		return nil, err
 	}
@@ -364,7 +364,7 @@ func (g *GraphStore) GetTriple(ctx context.Context, id string) (*RDFTriple, erro
 	if err := g.InitGraphSchema(ctx); err != nil {
 		return nil, err
 	}
-	row := g.db.QueryRowContext(ctx, `
+	row := g.queryRow(ctx, `
 		SELECT
 			id, graph_kind, graph_value,
 			subject_kind, subject_value,
@@ -457,7 +457,7 @@ func (g *GraphStore) FindTriples(ctx context.Context, pattern TriplePattern) ([]
 		query += fmt.Sprintf(" LIMIT %d", pattern.Limit)
 	}
 
-	rows, err := g.db.QueryContext(ctx, query, args...)
+	rows, err := g.query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -493,10 +493,10 @@ func (g *GraphStore) DeleteTriple(ctx context.Context, triple RDFTriple) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM kg_triples WHERE id = ?`, normalized.ID); err != nil {
+	if _, err := g.txExec(ctx, tx, `DELETE FROM kg_triples WHERE id = ?`, normalized.ID); err != nil {
 		return fmt.Errorf("delete kg triple: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM graph_edges WHERE id = ?`, normalized.ID); err != nil {
+	if _, err := g.txExec(ctx, tx, `DELETE FROM graph_edges WHERE id = ?`, normalized.ID); err != nil {
 		return fmt.Errorf("delete rdf edge: %w", err)
 	}
 	if err := g.cleanupOrphanRDFNodeTx(ctx, tx, normalized.Subject); err != nil {
@@ -991,7 +991,7 @@ func (g *GraphStore) upsertRDFTermNodeWithLabelTx(ctx context.Context, tx *sql.T
 	if err != nil {
 		return fmt.Errorf("encode rdf node properties: %w", err)
 	}
-	_, err = tx.ExecContext(ctx, `
+	_, err = g.txExec(ctx, tx, `
 		INSERT INTO graph_nodes (id, vector, content, node_type, properties, updated_at)
 		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(id) DO UPDATE SET
@@ -1074,7 +1074,7 @@ func (g *GraphStore) upsertRDFEdgeWithTypeTx(ctx context.Context, tx *sql.Tx, tr
 }
 
 func (g *GraphStore) upsertRDFEdgeWithTypeJSONTx(ctx context.Context, tx *sql.Tx, triple RDFTriple, edgeType, propertiesJSON string) error {
-	_, err := tx.ExecContext(ctx, `
+	_, err := g.txExec(ctx, tx, `
 		INSERT INTO graph_edges (id, from_node_id, to_node_id, edge_type, weight, properties, vector)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
@@ -1100,13 +1100,13 @@ func (g *GraphStore) cleanupOrphanRDFNodeTx(ctx context.Context, tx *sql.Tx, ter
 		WHERE (subject_kind = ? AND subject_value = ?)
 		   OR (object_kind = ? AND object_value = ?)
 	`
-	if err := tx.QueryRowContext(ctx, query, term.Kind, term.Value, term.Kind, term.Value).Scan(&refCount); err != nil {
+	if err := g.txQueryRow(ctx, tx, query, term.Kind, term.Value, term.Kind, term.Value).Scan(&refCount); err != nil {
 		return fmt.Errorf("count rdf node refs: %w", err)
 	}
 	if refCount > 0 {
 		return nil
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM graph_nodes WHERE id = ?`, nodeID); err != nil {
+	if _, err := g.txExec(ctx, tx, `DELETE FROM graph_nodes WHERE id = ?`, nodeID); err != nil {
 		return fmt.Errorf("delete orphan rdf node: %w", err)
 	}
 	return nil
@@ -1176,7 +1176,7 @@ func (g *GraphStore) upsertPreparedTripleTx(ctx context.Context, tx *sql.Tx, tri
 		supportIDsJSON = string(payload)
 	}
 
-	_, err := tx.ExecContext(ctx, `
+	_, err := g.txExec(ctx, tx, `
 		INSERT INTO kg_triples (
 			id, graph_kind, graph_value,
 			subject_kind, subject_value,

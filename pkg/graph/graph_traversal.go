@@ -318,7 +318,7 @@ func (g *GraphStore) getEdgeByID(ctx context.Context, edgeID string) (*GraphEdge
 	var propertiesJSON sql.NullString
 	var vectorBytes []byte
 
-	err := g.db.QueryRowContext(ctx, query, edgeID).Scan(
+	err := g.queryRow(ctx, query, edgeID).Scan(
 		&edge.ID,
 		&edge.FromNodeID,
 		&edge.ToNodeID,

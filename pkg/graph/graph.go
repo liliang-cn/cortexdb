@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 	"strings"
 	"sync"
 	"time"
@@ -75,10 +76,24 @@ type HybridResult struct {
 	Distance      int        `json:"distance"`       // Graph distance from start
 }
 
+// vectorHost is the part of the underlying store the graph actually needs.
+//
+// Narrowed from *core.SQLiteStore to two methods because that is all the graph
+// ever called — and because a PostgreSQL-backed graph has no SQLiteStore to
+// hand it. Widen it only when the graph genuinely needs more.
+type vectorHost interface {
+	GetSimilarityFunc() core.SimilarityFunc
+	Config() core.Config
+}
+
 // GraphStore provides graph operations on top of the vector store
 type GraphStore struct {
-	store     *core.SQLiteStore
-	db        *sql.DB
+	store vectorHost
+	db    *sql.DB
+	// dialect spells the parts of a query the two databases disagree about.
+	// See pkg/sqldialect: placeholders, the blob type, and what "this column
+	// already exists" sounds like.
+	dialect   sqldialect.Dialect
 	hnswIndex *HNSWGraphIndex // HNSW index for fast vector search
 	// Guards one-time creation of the graph schema. A mutex plus a flag rather
 	// than sync.Once, because Once latches on panic-free completion even when
@@ -88,12 +103,51 @@ type GraphStore struct {
 	schemaReady bool
 }
 
-// NewGraphStore creates a new graph store from a SQLite store
+// NewGraphStore creates a new graph store from a SQLite store.
 func NewGraphStore(s *core.SQLiteStore) *GraphStore {
 	return &GraphStore{
-		store: s,
-		db:    s.GetDB(),
+		store:   s,
+		db:      s.GetDB(),
+		dialect: sqldialect.For(sqldialect.SQLite),
 	}
+}
+
+// NewGraphStoreOn creates a graph store over any database this dialect can
+// speak, for a host that supplies the vector-side settings.
+//
+// The same tables and the same queries as NewGraphStore — the graph layer has
+// no SQLite-only SQL in it, which is what makes one implementation over two
+// databases possible rather than two implementations to keep in step.
+func NewGraphStoreOn(db *sql.DB, d sqldialect.Dialect, host vectorHost) *GraphStore {
+	if d == nil {
+		d = sqldialect.For(sqldialect.SQLite)
+	}
+	return &GraphStore{store: host, db: db, dialect: d}
+}
+
+// exec, query and queryRow run a statement with this store's placeholder
+// style. Every call site goes through them so that `?` can stay in the SQL:
+// the queries read the same in both worlds and only this layer knows the
+// difference.
+func (g *GraphStore) exec(ctx context.Context, q string, args ...any) (sql.Result, error) {
+	return g.db.ExecContext(ctx, g.dialect.Rebind(q), args...)
+}
+
+func (g *GraphStore) query(ctx context.Context, q string, args ...any) (*sql.Rows, error) {
+	return g.db.QueryContext(ctx, g.dialect.Rebind(q), args...)
+}
+
+func (g *GraphStore) queryRow(ctx context.Context, q string, args ...any) *sql.Row {
+	return g.db.QueryRowContext(ctx, g.dialect.Rebind(q), args...)
+}
+
+// txExec is the same for a statement inside a transaction.
+func (g *GraphStore) txExec(ctx context.Context, tx *sql.Tx, q string, args ...any) (sql.Result, error) {
+	return tx.ExecContext(ctx, g.dialect.Rebind(q), args...)
+}
+
+func (g *GraphStore) txQueryRow(ctx context.Context, tx *sql.Tx, q string, args ...any) *sql.Row {
+	return tx.QueryRowContext(ctx, g.dialect.Rebind(q), args...)
 }
 
 // InitGraphSchema creates the graph tables if they don't exist.
@@ -116,11 +170,12 @@ func (g *GraphStore) InitGraphSchema(ctx context.Context) error {
 
 // createGraphSchema issues the DDL. Callers must hold schemaMu.
 func (g *GraphStore) createGraphSchema(ctx context.Context) error {
-	schema := `
+	blob := g.dialect.BlobType()
+	schema := fmt.Sprintf(`
 	-- Graph nodes table (extends embeddings concept)
 	CREATE TABLE IF NOT EXISTS graph_nodes (
 		id TEXT PRIMARY KEY,
-		vector BLOB NOT NULL,
+		vector %[1]s NOT NULL,
 		content TEXT,
 		node_type TEXT,
 		properties TEXT, -- JSON
@@ -136,7 +191,7 @@ func (g *GraphStore) createGraphSchema(ctx context.Context) error {
 		edge_type TEXT,
 		weight REAL DEFAULT 1.0,
 		properties TEXT, -- JSON
-		vector BLOB, -- Optional edge embedding
+		vector %[1]s, -- Optional edge embedding
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (from_node_id) REFERENCES graph_nodes(id) ON DELETE CASCADE,
 		FOREIGN KEY (to_node_id) REFERENCES graph_nodes(id) ON DELETE CASCADE
@@ -179,7 +234,7 @@ func (g *GraphStore) createGraphSchema(ctx context.Context) error {
 	CREATE INDEX IF NOT EXISTS idx_kg_triples_object ON kg_triples(object_kind, object_value);
 	CREATE INDEX IF NOT EXISTS idx_kg_triples_graph ON kg_triples(graph_kind, graph_value);
 	CREATE INDEX IF NOT EXISTS idx_kg_triples_inferred ON kg_triples(inferred);
-	`
+	`, blob)
 
 	if _, err := g.db.ExecContext(ctx, schema); err != nil {
 		return err
@@ -191,7 +246,12 @@ func (g *GraphStore) createGraphSchema(ctx context.Context) error {
 		`ALTER TABLE kg_triples ADD COLUMN inference_rule TEXT`,
 		`ALTER TABLE kg_triples ADD COLUMN support_ids TEXT`,
 	} {
-		if _, err := g.db.ExecContext(ctx, stmt); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+		// Idempotent: on every start after the first the column is already
+		// there. Which error says so depends on the database — SQLite says
+		// "duplicate column name", PostgreSQL says `column "x" of relation
+		// "y" already exists` — so the dialect is asked instead of a string
+		// being matched here.
+		if _, err := g.exec(ctx, stmt); err != nil && !g.dialect.IsDuplicateColumn(err) {
 			return err
 		}
 	}
@@ -239,7 +299,7 @@ func (g *GraphStore) UpsertNode(ctx context.Context, node *GraphNode) error {
 		updated_at = CURRENT_TIMESTAMP
 	`
 
-	_, err = g.db.ExecContext(ctx, query,
+	_, err = g.exec(ctx, query,
 		node.ID,
 		vectorBytes,
 		node.Content,
@@ -273,7 +333,7 @@ func (g *GraphStore) GetNode(ctx context.Context, nodeID string) (*GraphNode, er
 	var vectorBytes []byte
 	var propertiesJSON sql.NullString
 
-	err := g.db.QueryRowContext(ctx, query, nodeID).Scan(
+	err := g.queryRow(ctx, query, nodeID).Scan(
 		&node.ID,
 		&vectorBytes,
 		&node.Content,
@@ -319,13 +379,13 @@ func (g *GraphStore) MergeEntities(ctx context.Context, canonicalID string, alia
 		if alias == "" || alias == canonicalID {
 			continue
 		}
-		if _, err := g.db.ExecContext(ctx, `UPDATE graph_edges SET from_node_id = ? WHERE from_node_id = ?`, canonicalID, alias); err != nil {
+		if _, err := g.exec(ctx, `UPDATE graph_edges SET from_node_id = ? WHERE from_node_id = ?`, canonicalID, alias); err != nil {
 			return fmt.Errorf("repoint from-edges: %w", err)
 		}
-		if _, err := g.db.ExecContext(ctx, `UPDATE graph_edges SET to_node_id = ? WHERE to_node_id = ?`, canonicalID, alias); err != nil {
+		if _, err := g.exec(ctx, `UPDATE graph_edges SET to_node_id = ? WHERE to_node_id = ?`, canonicalID, alias); err != nil {
 			return fmt.Errorf("repoint to-edges: %w", err)
 		}
-		if _, err := g.db.ExecContext(ctx, `DELETE FROM graph_edges WHERE from_node_id = to_node_id`); err != nil {
+		if _, err := g.exec(ctx, `DELETE FROM graph_edges WHERE from_node_id = to_node_id`); err != nil {
 			return fmt.Errorf("drop self-loops: %w", err)
 		}
 		if err := g.DeleteNode(ctx, alias); err != nil && err.Error() != fmt.Sprintf("node not found: %s", alias) {
@@ -339,7 +399,7 @@ func (g *GraphStore) MergeEntities(ctx context.Context, canonicalID string, alia
 func (g *GraphStore) DeleteNode(ctx context.Context, nodeID string) error {
 	// Edges are automatically deleted due to CASCADE
 	query := `DELETE FROM graph_nodes WHERE id = ?`
-	result, err := g.db.ExecContext(ctx, query, nodeID)
+	result, err := g.exec(ctx, query, nodeID)
 	if err != nil {
 		return err
 	}
@@ -411,7 +471,7 @@ func (g *GraphStore) UpsertEdge(ctx context.Context, edge *GraphEdge) error {
 		vector = excluded.vector
 	`
 
-	_, err := g.db.ExecContext(ctx, query,
+	_, err := g.exec(ctx, query,
 		edge.ID,
 		edge.FromNodeID,
 		edge.ToNodeID,
@@ -445,9 +505,9 @@ func (g *GraphStore) GetEdges(ctx context.Context, nodeID string, direction stri
 	var err error
 
 	if direction == "both" || direction == "" {
-		rows, err = g.db.QueryContext(ctx, query, nodeID, nodeID)
+		rows, err = g.query(ctx, query, nodeID, nodeID)
 	} else {
-		rows, err = g.db.QueryContext(ctx, query, nodeID)
+		rows, err = g.query(ctx, query, nodeID)
 	}
 
 	if err != nil {
@@ -500,7 +560,7 @@ func (g *GraphStore) GetEdges(ctx context.Context, nodeID string, direction stri
 // DeleteEdge removes an edge from the graph
 func (g *GraphStore) DeleteEdge(ctx context.Context, edgeID string) error {
 	query := `DELETE FROM graph_edges WHERE id = ?`
-	result, err := g.db.ExecContext(ctx, query, edgeID)
+	result, err := g.exec(ctx, query, edgeID)
 	if err != nil {
 		return err
 	}
@@ -535,7 +595,7 @@ func (g *GraphStore) getNodesByIDs(ctx context.Context, nodeIDs []string) (map[s
 	WHERE id IN (%s)
 	`, strings.Join(placeholders, ","))
 
-	rows, err := g.db.QueryContext(ctx, query, args...)
+	rows, err := g.query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
