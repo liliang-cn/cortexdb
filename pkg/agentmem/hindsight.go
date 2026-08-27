@@ -20,7 +20,7 @@ func (s *Store) MarkStale(ctx context.Context, id, supersededBy string) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	res, err := tx.ExecContext(ctx, `
+	res, err := s.txExec(ctx, tx, `
 		UPDATE agentmem_memories
 		SET valid_to = ?, superseded_by = ?, updated_at = ?
 		WHERE id = ?
@@ -31,7 +31,7 @@ func (s *Store) MarkStale(ctx context.Context, id, supersededBy string) error {
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return ErrNotFound
 	}
-	if err := appendRevisionTx(ctx, tx, id, "reflect", fmt.Sprintf("superseded by %s", supersededBy), now); err != nil {
+	if err := s.appendRevisionTx(ctx, tx, id, "reflect", fmt.Sprintf("superseded by %s", supersededBy), now); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -50,7 +50,7 @@ func (s *Store) Archive(ctx context.Context, id, reason string) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	res, err := tx.ExecContext(ctx, `
+	res, err := s.txExec(ctx, tx, `
 		UPDATE agentmem_memories
 		SET archived = 1, archived_at = ?, archive_reason = ?, updated_at = ?
 		WHERE id = ?
@@ -61,7 +61,7 @@ func (s *Store) Archive(ctx context.Context, id, reason string) error {
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return ErrNotFound
 	}
-	if err := appendRevisionTx(ctx, tx, id, "archive", reason, now); err != nil {
+	if err := s.appendRevisionTx(ctx, tx, id, "archive", reason, now); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -73,7 +73,7 @@ func (s *Store) Unarchive(ctx context.Context, id string) error {
 		return fmt.Errorf("agentmem: empty id")
 	}
 	now := time.Now().UTC()
-	res, err := s.db.ExecContext(ctx, `
+	res, err := s.exec(ctx, `
 		UPDATE agentmem_memories
 		SET archived = 0, archived_at = NULL, archive_reason = '', updated_at = ?
 		WHERE id = ?
@@ -97,7 +97,7 @@ func (s *Store) AddRevision(ctx context.Context, id, by, summary string) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := appendRevisionTx(ctx, tx, id, by, summary, time.Now().UTC()); err != nil {
+	if err := s.appendRevisionTx(ctx, tx, id, by, summary, time.Now().UTC()); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -108,13 +108,13 @@ func IsStale(m *Memory) bool {
 	return m != nil && (m.ValidTo != nil || m.SupersededBy != "")
 }
 
-func appendRevisionTx(ctx context.Context, tx *sql.Tx, id, by, summary string, at time.Time) error {
+func (s *Store) appendRevisionTx(ctx context.Context, tx *sql.Tx, id, by, summary string, at time.Time) error {
 	var nextSeq int
-	row := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq), -1) + 1 FROM agentmem_revisions WHERE memory_id = ?`, id)
+	row := s.txQueryRow(ctx, tx, `SELECT COALESCE(MAX(seq), -1) + 1 FROM agentmem_revisions WHERE memory_id = ?`, id)
 	if err := row.Scan(&nextSeq); err != nil {
 		return fmt.Errorf("agentmem: revision seq: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO agentmem_revisions (memory_id, seq, at, by, summary) VALUES (?, ?, ?, ?, ?)`,
+	if _, err := s.txExec(ctx, tx, `INSERT INTO agentmem_revisions (memory_id, seq, at, by, summary) VALUES (?, ?, ?, ?, ?)`,
 		id, nextSeq, at, by, summary); err != nil {
 		return fmt.Errorf("agentmem: insert revision: %w", err)
 	}

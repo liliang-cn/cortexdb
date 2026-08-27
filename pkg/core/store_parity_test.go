@@ -218,10 +218,10 @@ func TestUnimplementedPartsNameThemselves(t *testing.T) {
 		// CreateSession and AddMessage used to be listed here. They are
 		// implemented now, so the thing that would name them is a chat test,
 		// not this one.
+		// SearchWithACL, HybridSearch and SearchWithAdvancedFilter used to be
+		// listed here too. They are implemented now, so what names them is
+		// store_postgres_search_test.go, not this one.
 		"TrainQuantizer": func() error { return pg.TrainQuantizer(ctx) },
-		"DeleteByFilter": func() error { return pg.DeleteByFilter(ctx, nil) },
-		"SearchWithACL":  func() error { _, err := pg.SearchWithACL(ctx, nil, nil, SearchOptions{}); return err },
-		"HybridSearch":   func() error { _, err := pg.HybridSearch(ctx, nil, "", HybridSearchOptions{}); return err },
 	} {
 		err := call()
 		if !errors.Is(err, ErrPostgresStoreUnimplemented) {

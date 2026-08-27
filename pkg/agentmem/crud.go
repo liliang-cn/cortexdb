@@ -52,7 +52,7 @@ func (s *Store) Save(ctx context.Context, m *Memory) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := s.txExec(ctx, tx, `
 		INSERT INTO agentmem_memories
 			(id, scope_type, scope_id, bank_id, type, content, importance, source_type,
 			 confidence, valid_from, valid_to, superseded_by, conflicting,
@@ -85,19 +85,19 @@ func (s *Store) Save(ctx context.Context, m *Memory) error {
 		return fmt.Errorf("agentmem: upsert memory: %w", err)
 	}
 
-	if err := replaceStringSet(ctx, tx, "agentmem_tags", "tag", m.ID, m.Tags); err != nil {
+	if err := s.replaceStringSet(ctx, tx, "agentmem_tags", "tag", m.ID, m.Tags); err != nil {
 		return err
 	}
-	if err := replaceStringSet(ctx, tx, "agentmem_keywords", "keyword", m.ID, m.Keywords); err != nil {
+	if err := s.replaceStringSet(ctx, tx, "agentmem_keywords", "keyword", m.ID, m.Keywords); err != nil {
 		return err
 	}
-	if err := replaceStringSet(ctx, tx, "agentmem_evidence", "evidence_id", m.ID, m.EvidenceIDs); err != nil {
+	if err := s.replaceStringSet(ctx, tx, "agentmem_evidence", "evidence_id", m.ID, m.EvidenceIDs); err != nil {
 		return err
 	}
-	if err := replaceRevisions(ctx, tx, m.ID, m.RevisionHistory); err != nil {
+	if err := s.replaceRevisions(ctx, tx, m.ID, m.RevisionHistory); err != nil {
 		return err
 	}
-	if err := upsertFTS(ctx, tx, m); err != nil {
+	if err := s.upsertFTS(ctx, tx, m); err != nil {
 		return err
 	}
 
@@ -112,7 +112,7 @@ func (s *Store) Get(ctx context.Context, id string) (*Memory, error) {
 	if id == "" {
 		return nil, fmt.Errorf("agentmem: empty id")
 	}
-	row := s.db.QueryRowContext(ctx, selectMemoryColumns+` FROM agentmem_memories WHERE id = ?`, id)
+	row := s.queryRow(ctx, selectMemoryColumns+` FROM agentmem_memories WHERE id = ?`, id)
 	m, err := scanMemory(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -139,14 +139,14 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	for _, table := range []string{
 		"agentmem_tags", "agentmem_keywords", "agentmem_evidence", "agentmem_revisions",
 	} {
-		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE memory_id = ?", id); err != nil {
+		if _, err := s.txExec(ctx, tx, "DELETE FROM "+table+" WHERE memory_id = ?", id); err != nil {
 			return fmt.Errorf("agentmem: delete %s: %w", table, err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM agentmem_fts WHERE memory_id = ?", id); err != nil {
+	if _, err := s.txExec(ctx, tx, "DELETE FROM agentmem_fts WHERE memory_id = ?", id); err != nil {
 		return fmt.Errorf("agentmem: delete fts: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM agentmem_memories WHERE id = ?", id); err != nil {
+	if _, err := s.txExec(ctx, tx, "DELETE FROM agentmem_memories WHERE id = ?", id); err != nil {
 		return fmt.Errorf("agentmem: delete memory: %w", err)
 	}
 	return tx.Commit()
@@ -168,7 +168,7 @@ func (s *Store) Clear(ctx context.Context) error {
 		"DELETE FROM agentmem_fts",
 		"DELETE FROM agentmem_memories",
 	} {
-		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+		if _, err := s.txExec(ctx, tx, stmt); err != nil {
 			return fmt.Errorf("agentmem: clear: %w", err)
 		}
 	}
@@ -177,7 +177,7 @@ func (s *Store) Clear(ctx context.Context) error {
 
 // IncrementAccess bumps access_count and last_accessed.
 func (s *Store) IncrementAccess(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, `
+	res, err := s.exec(ctx, `
 		UPDATE agentmem_memories
 		SET access_count = access_count + 1,
 		    last_accessed = ?
@@ -203,10 +203,10 @@ func (s *Store) List(ctx context.Context, limit, offset int) ([]*Memory, int, er
 		offset = 0
 	}
 	var total int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM agentmem_memories`).Scan(&total); err != nil {
+	if err := s.queryRow(ctx, `SELECT COUNT(*) FROM agentmem_memories`).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("agentmem: count: %w", err)
 	}
-	rows, err := s.db.QueryContext(ctx, selectMemoryColumns+`
+	rows, err := s.query(ctx, selectMemoryColumns+`
 		FROM agentmem_memories
 		ORDER BY created_at DESC, id ASC
 		LIMIT ? OFFSET ?
@@ -228,7 +228,7 @@ func (s *Store) ListByScope(ctx context.Context, scope Scope, limit int) ([]*Mem
 		limit = 50
 	}
 	scope = normalizeScope(scope)
-	rows, err := s.db.QueryContext(ctx, selectMemoryColumns+`
+	rows, err := s.query(ctx, selectMemoryColumns+`
 		FROM agentmem_memories
 		WHERE bank_id = ? AND archived = 0
 		ORDER BY importance DESC, created_at DESC
@@ -246,7 +246,7 @@ func (s *Store) GetByType(ctx context.Context, t Type, limit int) ([]*Memory, er
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, err := s.db.QueryContext(ctx, selectMemoryColumns+`
+	rows, err := s.query(ctx, selectMemoryColumns+`
 		FROM agentmem_memories
 		WHERE type = ? AND archived = 0
 		ORDER BY importance DESC, created_at DESC
@@ -335,22 +335,22 @@ func (s *Store) scanAndAttach(ctx context.Context, rows *sql.Rows) ([]*Memory, e
 }
 
 func (s *Store) attachSides(ctx context.Context, m *Memory) error {
-	tags, err := loadStringSet(ctx, s.db, "agentmem_tags", "tag", m.ID)
+	tags, err := s.loadStringSet(ctx, "agentmem_tags", "tag", m.ID)
 	if err != nil {
 		return err
 	}
 	m.Tags = tags
-	kws, err := loadStringSet(ctx, s.db, "agentmem_keywords", "keyword", m.ID)
+	kws, err := s.loadStringSet(ctx, "agentmem_keywords", "keyword", m.ID)
 	if err != nil {
 		return err
 	}
 	m.Keywords = kws
-	ev, err := loadStringSet(ctx, s.db, "agentmem_evidence", "evidence_id", m.ID)
+	ev, err := s.loadStringSet(ctx, "agentmem_evidence", "evidence_id", m.ID)
 	if err != nil {
 		return err
 	}
 	m.EvidenceIDs = ev
-	revs, err := loadRevisions(ctx, s.db, m.ID)
+	revs, err := s.loadRevisions(ctx, m.ID)
 	if err != nil {
 		return err
 	}
@@ -358,14 +358,17 @@ func (s *Store) attachSides(ctx context.Context, m *Memory) error {
 	return nil
 }
 
-func replaceStringSet(ctx context.Context, tx *sql.Tx, table, col, id string, values []string) error {
-	if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE memory_id = ?", id); err != nil {
+func (s *Store) replaceStringSet(ctx context.Context, tx *sql.Tx, table, col, id string, values []string) error {
+	if _, err := s.txExec(ctx, tx, "DELETE FROM "+table+" WHERE memory_id = ?", id); err != nil {
 		return fmt.Errorf("agentmem: clear %s: %w", table, err)
 	}
 	if len(values) == 0 {
 		return nil
 	}
-	stmt, err := tx.PrepareContext(ctx, "INSERT OR IGNORE INTO "+table+" (memory_id, "+col+") VALUES (?, ?)")
+	// ON CONFLICT DO NOTHING rather than INSERT OR IGNORE: the SQLite-only
+	// spelling of the same thing, and SQLite has understood the standard one
+	// since 3.24.
+	stmt, err := s.txPrepare(ctx, tx, "INSERT INTO "+table+" (memory_id, "+col+") VALUES (?, ?) ON CONFLICT DO NOTHING")
 	if err != nil {
 		return fmt.Errorf("agentmem: prepare %s: %w", table, err)
 	}
@@ -387,14 +390,14 @@ func replaceStringSet(ctx context.Context, tx *sql.Tx, table, col, id string, va
 	return nil
 }
 
-func replaceRevisions(ctx context.Context, tx *sql.Tx, id string, revs []Revision) error {
-	if _, err := tx.ExecContext(ctx, "DELETE FROM agentmem_revisions WHERE memory_id = ?", id); err != nil {
+func (s *Store) replaceRevisions(ctx context.Context, tx *sql.Tx, id string, revs []Revision) error {
+	if _, err := s.txExec(ctx, tx, "DELETE FROM agentmem_revisions WHERE memory_id = ?", id); err != nil {
 		return fmt.Errorf("agentmem: clear revisions: %w", err)
 	}
 	if len(revs) == 0 {
 		return nil
 	}
-	stmt, err := tx.PrepareContext(ctx, `INSERT INTO agentmem_revisions (memory_id, seq, at, by, summary) VALUES (?, ?, ?, ?, ?)`)
+	stmt, err := s.txPrepare(ctx, tx, `INSERT INTO agentmem_revisions (memory_id, seq, at, by, summary) VALUES (?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -407,8 +410,8 @@ func replaceRevisions(ctx context.Context, tx *sql.Tx, id string, revs []Revisio
 	return nil
 }
 
-func loadStringSet(ctx context.Context, db *sql.DB, table, col, id string) ([]string, error) {
-	rows, err := db.QueryContext(ctx, "SELECT "+col+" FROM "+table+" WHERE memory_id = ? ORDER BY "+col, id)
+func (s *Store) loadStringSet(ctx context.Context, table, col, id string) ([]string, error) {
+	rows, err := s.query(ctx, "SELECT "+col+" FROM "+table+" WHERE memory_id = ? ORDER BY "+col, id)
 	if err != nil {
 		return nil, fmt.Errorf("agentmem: load %s: %w", table, err)
 	}
@@ -424,8 +427,8 @@ func loadStringSet(ctx context.Context, db *sql.DB, table, col, id string) ([]st
 	return out, rows.Err()
 }
 
-func loadRevisions(ctx context.Context, db *sql.DB, id string) ([]Revision, error) {
-	rows, err := db.QueryContext(ctx, `SELECT at, by, summary FROM agentmem_revisions WHERE memory_id = ? ORDER BY seq`, id)
+func (s *Store) loadRevisions(ctx context.Context, id string) ([]Revision, error) {
+	rows, err := s.query(ctx, `SELECT at, by, summary FROM agentmem_revisions WHERE memory_id = ? ORDER BY seq`, id)
 	if err != nil {
 		return nil, fmt.Errorf("agentmem: load revisions: %w", err)
 	}
@@ -441,11 +444,11 @@ func loadRevisions(ctx context.Context, db *sql.DB, id string) ([]Revision, erro
 	return out, rows.Err()
 }
 
-func upsertFTS(ctx context.Context, tx *sql.Tx, m *Memory) error {
-	if _, err := tx.ExecContext(ctx, `DELETE FROM agentmem_fts WHERE memory_id = ?`, m.ID); err != nil {
+func (s *Store) upsertFTS(ctx context.Context, tx *sql.Tx, m *Memory) error {
+	if _, err := s.txExec(ctx, tx, `DELETE FROM agentmem_fts WHERE memory_id = ?`, m.ID); err != nil {
 		return fmt.Errorf("agentmem: clear fts: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO agentmem_fts (memory_id, content, tags, keywords) VALUES (?, ?, ?, ?)`,
+	if _, err := s.txExec(ctx, tx, `INSERT INTO agentmem_fts (memory_id, content, tags, keywords) VALUES (?, ?, ?, ?)`,
 		m.ID, m.Content, strings.Join(m.Tags, " "), strings.Join(m.Keywords, " "),
 	); err != nil {
 		return fmt.Errorf("agentmem: insert fts: %w", err)

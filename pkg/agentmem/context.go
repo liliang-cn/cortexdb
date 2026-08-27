@@ -15,7 +15,7 @@ func (s *Store) SetContext(ctx context.Context, scope Scope, slot ContextSlot, c
 		return fmt.Errorf("agentmem: empty slot")
 	}
 	bank := BankID(normalizeScope(scope))
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.exec(ctx, `
 		INSERT INTO agentmem_context_slots (bank_id, slot, content, updated_at)
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT(bank_id, slot) DO UPDATE SET
@@ -32,7 +32,7 @@ func (s *Store) SetContext(ctx context.Context, scope Scope, slot ContextSlot, c
 // slot has not been written.
 func (s *Store) GetContext(ctx context.Context, scope Scope, slot ContextSlot) (string, error) {
 	bank := BankID(normalizeScope(scope))
-	row := s.db.QueryRowContext(ctx, `SELECT content FROM agentmem_context_slots WHERE bank_id = ? AND slot = ?`, bank, string(slot))
+	row := s.queryRow(ctx, `SELECT content FROM agentmem_context_slots WHERE bank_id = ? AND slot = ?`, bank, string(slot))
 	var content string
 	if err := row.Scan(&content); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -64,7 +64,7 @@ func (s *Store) AppendContext(ctx context.Context, scope Scope, slot ContextSlot
 // DeleteContext removes a slot.
 func (s *Store) DeleteContext(ctx context.Context, scope Scope, slot ContextSlot) error {
 	bank := BankID(normalizeScope(scope))
-	_, err := s.db.ExecContext(ctx, `DELETE FROM agentmem_context_slots WHERE bank_id = ? AND slot = ?`, bank, string(slot))
+	_, err := s.exec(ctx, `DELETE FROM agentmem_context_slots WHERE bank_id = ? AND slot = ?`, bank, string(slot))
 	return err
 }
 
@@ -126,7 +126,7 @@ func (s *Store) BuildEntrypoint(ctx context.Context, scope Scope, opts Entrypoin
 	}
 	args = append(args, opts.TopN)
 
-	rows, err := s.db.QueryContext(ctx, selectMemoryColumns+`
+	rows, err := s.query(ctx, selectMemoryColumns+`
 		FROM agentmem_memories
 		WHERE `+strings.Join(conds, " AND ")+`
 		ORDER BY importance DESC, created_at DESC

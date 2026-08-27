@@ -379,15 +379,36 @@ func (s *PostgresStore) DeleteBatch(ctx context.Context, ids []string) error {
 	return err
 }
 
-// DeleteByFilter is deliberately absent rather than approximated.
+// DeleteByFilter deletes the rows a filter selects.
 //
-// MetadataFilter carries an expression tree — AND/OR, comparisons, ranges —
-// and translating it to SQL is its own piece of work. A partial translation
-// that quietly ignored a clause would delete rows the caller meant to keep,
-// and unlike a wrong search result there is nothing to notice afterwards.
-// Data loss is not a degradation, so this waits for the real thing.
-func (s *PostgresStore) DeleteByFilter(context.Context, *MetadataFilter) error {
-	return unimplemented("DeleteByFilter")
+// It waited for the real filter compiler rather than getting an approximate
+// one of its own. A partial translation that quietly ignored a clause would
+// delete rows the caller meant to keep, and unlike a wrong search result there
+// is nothing to notice afterwards — data loss is not a degradation. So this
+// shares pgFilterSQL with SearchWithAdvancedFilter: one translation, checked
+// by that method's tests, and an operator it refuses to compile is refused
+// here too rather than silently widening the delete.
+func (s *PostgresStore) DeleteByFilter(ctx context.Context, filter *MetadataFilter) error {
+	if filter == nil {
+		return fmt.Errorf("delete by filter: refusing to run without a filter")
+	}
+	expr := filter.expression
+	if expr == nil {
+		// An empty filter matches everything. Deleting the entire table
+		// because a builder was never given a condition is not a plausible
+		// intent, and Clear exists for when it is.
+		return fmt.Errorf("delete by filter: refusing to run without a condition")
+	}
+	if err := checkFilterSupported(expr); err != nil {
+		return fmt.Errorf("delete by filter: %w", err)
+	}
+	args := &pgArgs{}
+	where, err := pgFilterSQL(expr, args)
+	if err != nil {
+		return fmt.Errorf("delete by filter: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `DELETE FROM embeddings WHERE `+where, args.vals...)
+	return err
 }
 
 func (s *PostgresStore) Stats(ctx context.Context) (StoreStats, error) {
@@ -618,23 +639,17 @@ func (s *PostgresStore) ListDocumentsWithFilter(ctx context.Context, author stri
 
 // --- The rest of Store, named rather than silently absent. -------------------
 //
-// What is left is the ACL and advanced-filter search surface, plus the
-// quantizer trainer. Each says so with its own name in the error, so a caller
-// that hits one knows exactly what is missing instead of debugging an empty
-// result.
+// --- Nothing is left ---------------------------------------------------------
+//
+// Every Store method is implemented, and TrainQuantizer —
+// the one that returns an error — does so because pgvector has no trainable
+// quantizer at all, not because the work is outstanding. See
+// store_postgres_collections.go for why that is an error and TrainIndex is a
+// no-op.
 
 func (s *PostgresStore) TrainIndex(context.Context, int) error {
 	// pgvector builds and maintains its own index; there is nothing to train.
 	return nil
-}
-func (s *PostgresStore) SearchWithACL(context.Context, []float32, []string, SearchOptions) ([]ScoredEmbedding, error) {
-	return nil, unimplemented("SearchWithACL")
-}
-func (s *PostgresStore) HybridSearch(context.Context, []float32, string, HybridSearchOptions) ([]ScoredEmbedding, error) {
-	return nil, unimplemented("HybridSearch")
-}
-func (s *PostgresStore) SearchWithAdvancedFilter(context.Context, []float32, AdvancedSearchOptions) ([]ScoredEmbedding, error) {
-	return nil, unimplemented("SearchWithAdvancedFilter")
 }
 
 // --- helpers -----------------------------------------------------------------

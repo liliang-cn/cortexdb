@@ -19,7 +19,7 @@ func (s *Store) ConfigureBank(ctx context.Context, scope Scope, cfg *BankConfig)
 		return fmt.Errorf("agentmem: marshal directives: %w", err)
 	}
 	bank := BankID(normalizeScope(scope))
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.exec(ctx, `
 		INSERT INTO agentmem_bank_config (bank_id, mission, directives, skepticism, literalism, empathy, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(bank_id) DO UPDATE SET
@@ -40,7 +40,7 @@ func (s *Store) ConfigureBank(ctx context.Context, scope Scope, cfg *BankConfig)
 // when the bank has not been configured yet.
 func (s *Store) GetBankConfig(ctx context.Context, scope Scope) (*BankConfig, error) {
 	bank := BankID(normalizeScope(scope))
-	row := s.db.QueryRowContext(ctx, `
+	row := s.queryRow(ctx, `
 		SELECT mission, directives, skepticism, literalism, empathy
 		FROM agentmem_bank_config WHERE bank_id = ?
 	`, bank)
@@ -75,7 +75,7 @@ func (s *Store) AddMentalModel(ctx context.Context, m *MentalModel) error {
 		return fmt.Errorf("agentmem: marshal tags: %w", err)
 	}
 	now := time.Now().UTC()
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := s.exec(ctx, `
 		INSERT INTO agentmem_mental_models (id, name, description, content, tags, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
@@ -93,7 +93,7 @@ func (s *Store) AddMentalModel(ctx context.Context, m *MentalModel) error {
 
 // ListMentalModels returns all curated rules ordered by most recently updated.
 func (s *Store) ListMentalModels(ctx context.Context) ([]MentalModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.query(ctx, `
 		SELECT id, name, description, content, tags, updated_at
 		FROM agentmem_mental_models
 		ORDER BY updated_at DESC
@@ -105,8 +105,8 @@ func (s *Store) ListMentalModels(ctx context.Context) ([]MentalModel, error) {
 	var out []MentalModel
 	for rows.Next() {
 		var (
-			m       MentalModel
-			tagsJS  string
+			m      MentalModel
+			tagsJS string
 		)
 		if err := rows.Scan(&m.ID, &m.Name, &m.Description, &m.Content, &tagsJS, &m.UpdatedAt); err != nil {
 			return nil, err
@@ -121,6 +121,6 @@ func (s *Store) ListMentalModels(ctx context.Context) ([]MentalModel, error) {
 
 // DeleteMentalModel removes a rule by id.
 func (s *Store) DeleteMentalModel(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM agentmem_mental_models WHERE id = ?`, id)
+	_, err := s.exec(ctx, `DELETE FROM agentmem_mental_models WHERE id = ?`, id)
 	return err
 }

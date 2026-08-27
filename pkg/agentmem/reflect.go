@@ -30,11 +30,11 @@ type Observation struct {
 
 // ReflectResult summarises a Reflect run.
 type ReflectResult struct {
-	Created   int      `json:"created"`
-	Updated   int      `json:"updated"`
-	Reviewed  int      `json:"reviewed"`
-	NewIDs    []string `json:"new_ids,omitempty"`
-	Note      string   `json:"note,omitempty"`
+	Created  int      `json:"created"`
+	Updated  int      `json:"updated"`
+	Reviewed int      `json:"reviewed"`
+	NewIDs   []string `json:"new_ids,omitempty"`
+	Note     string   `json:"note,omitempty"`
 }
 
 // Reflect collects active facts in scope, asks the Reflector to consolidate
@@ -120,7 +120,7 @@ func (s *Store) Reflect(ctx context.Context, scope Scope, r Reflector) (*Reflect
 }
 
 func (s *Store) activeBankMemories(ctx context.Context, bank string) ([]*Memory, error) {
-	rows, err := s.db.QueryContext(ctx, selectMemoryColumns+`
+	rows, err := s.query(ctx, selectMemoryColumns+`
 		FROM agentmem_memories
 		WHERE bank_id = ? AND archived = 0
 		  AND valid_to IS NULL AND (superseded_by IS NULL OR superseded_by = '')
