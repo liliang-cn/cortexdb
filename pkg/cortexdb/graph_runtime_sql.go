@@ -35,17 +35,18 @@ func (db *DB) graphNodeSummariesByIDs(ctx context.Context, nodeIDs []string) (ma
 	summaries := make(map[string]graphNodeSummary, len(nodeIDs))
 	for _, chunk := range stringChunks(nodeIDs, 1) {
 		placeholders, args := sqlPlaceholders(chunk)
+		// The document_id lives in the properties JSON, and how a JSON field is
+		// read is the one thing the two databases will not agree on — this
+		// query was the reason graph-mode retrieval returned an error on
+		// PostgreSQL while every unit test passed on both.
 		rows, err := db.query(ctx, fmt.Sprintf(`
 			SELECT id,
 			       content,
 			       node_type,
-			       CASE
-			         WHEN json_valid(properties) = 1 THEN COALESCE(json_extract(properties, '$.document_id'), '')
-			         ELSE ''
-			       END AS document_id
+			       COALESCE(%s, '') AS document_id
 			FROM graph_nodes
 			WHERE id IN (%s)
-		`, placeholders), args...)
+		`, db.dialect.JSONTextGuarded("properties", "document_id"), placeholders), args...)
 		if err != nil {
 			return nil, fmt.Errorf("query graph node summaries: %w", err)
 		}
@@ -85,11 +86,11 @@ func (db *DB) graphEdgesByNodeIDs(ctx context.Context, nodeIDs []string, directi
 		query := ""
 		switch direction {
 		case "out":
-			query = fmt.Sprintf(`SELECT from_node_id, to_node_id FROM graph_edges WHERE from_node_id IN (%s)`, placeholders)
+			query = fmt.Sprintf(`SELECT from_node_id, to_node_id FROM graph_edges WHERE from_node_id IN (%s) ORDER BY id`, placeholders)
 		case "in":
-			query = fmt.Sprintf(`SELECT from_node_id, to_node_id FROM graph_edges WHERE to_node_id IN (%s)`, placeholders)
+			query = fmt.Sprintf(`SELECT from_node_id, to_node_id FROM graph_edges WHERE to_node_id IN (%s) ORDER BY id`, placeholders)
 		case "both", "":
-			query = fmt.Sprintf(`SELECT from_node_id, to_node_id FROM graph_edges WHERE from_node_id IN (%s) OR to_node_id IN (%s)`, placeholders, placeholders)
+			query = fmt.Sprintf(`SELECT from_node_id, to_node_id FROM graph_edges WHERE from_node_id IN (%s) OR to_node_id IN (%s) ORDER BY id`, placeholders, placeholders)
 			args = append(args, args[:len(chunk)]...)
 		default:
 			return nil, fmt.Errorf("invalid direction: %s", direction)

@@ -58,7 +58,14 @@ func backends(t *testing.T) []backend {
 		t.Fatalf("ping postgres: %v", err)
 	}
 	// A clean slate per run: these tests assert on counts.
-	for _, table := range []string{"graph_edges", "graph_nodes", "kg_triples", "kg_namespaces"} {
+	//
+	// graph_node_vectors is in the list because the dimension-cap test
+	// below rebuilds it at four different widths and leaves it at the
+	// last one — a dimensionless column. The table outlives the process, so the
+	// next `go test` run started with a vector column pgvector cannot index,
+	// and nearest-neighbour parity failed on every second run for a reason
+	// nothing in that test mentions.
+	for _, table := range []string{"graph_edges", "graph_nodes", "graph_node_vectors", "kg_triples", "kg_namespaces"} {
 		if _, err := db.Exec("DROP TABLE IF EXISTS " + table + " CASCADE"); err != nil {
 			t.Fatalf("reset %s: %v", table, err)
 		}
@@ -220,10 +227,14 @@ func TestTheDimensionCapIsReportedNotHidden(t *testing.T) {
 		{"0 (dimension not yet known)", 0, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			table := fmt.Sprintf("graph_node_vectors")
+			const table = "graph_node_vectors"
 			if _, err := db.Exec("DROP TABLE IF EXISTS " + table + " CASCADE"); err != nil {
 				t.Fatalf("reset: %v", err)
 			}
+			// And take it away again. What this test leaves behind is a vector
+			// column of whatever width the last case used, which is a fixture
+			// for nobody and a trap for the next test that opens this database.
+			t.Cleanup(func() { _, _ = db.Exec("DROP TABLE IF EXISTS " + table + " CASCADE") })
 			cfg := core.DefaultConfig()
 			g := NewGraphStoreOn(db, sqldialect.For(sqldialect.Postgres), testHost{cfg: cfg})
 			capability := g.initPgVector(context.Background(), tc.dim)

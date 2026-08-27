@@ -316,11 +316,15 @@ func (s *PostgresStore) Search(ctx context.Context, query []float32, opts Search
 		clause = " WHERE " + strings.Join(where, " AND ")
 	}
 	args = append(args, topK)
+	// pgSearchColumns and scanPgScored rather than a third hand-written
+	// projection: this one had drifted from the other two and dropped the
+	// collection name, so a plain vector search returned rows whose Collection
+	// was empty while the same rows from the keyword arm carried it.
 	q := fmt.Sprintf(`
-		SELECT id, collection_id, content, doc_id, metadata, acl, 1 - (vector <=> $1) AS score
+		SELECT %s, 1 - (vector <=> $1) AS score
 		FROM embeddings%s
 		ORDER BY vector <=> $1
-		LIMIT $%d`, clause, len(args))
+		LIMIT $%d`, pgSearchColumns, clause, len(args))
 
 	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -330,25 +334,9 @@ func (s *PostgresStore) Search(ctx context.Context, query []float32, opts Search
 
 	var out []ScoredEmbedding
 	for rows.Next() {
-		var (
-			e        ScoredEmbedding
-			docID    sql.NullString
-			metadata []byte
-			acl      []byte
-		)
-		if err := rows.Scan(&e.ID, &e.CollectionID, &e.Content, &docID, &metadata, &acl, &e.Score); err != nil {
+		e, err := scanPgScored(rows)
+		if err != nil {
 			return nil, err
-		}
-		e.DocID = docID.String
-		if len(metadata) > 0 {
-			if err := json.Unmarshal(metadata, &e.Metadata); err != nil {
-				return nil, err
-			}
-		}
-		if len(acl) > 0 {
-			if err := json.Unmarshal(acl, &e.ACL); err != nil {
-				return nil, err
-			}
 		}
 		// Applied here rather than in SQL: the threshold is on similarity and
 		// the ORDER BY is on distance, so a WHERE would have to restate the
@@ -546,7 +534,12 @@ func (s *PostgresStore) GetDocument(ctx context.Context, id string) (*Document, 
 		Scan(&doc.ID, &title, &source, &content, &doc.Version, &author,
 			&metadata, &acl, &doc.CreatedAt, &doc.UpdatedAt)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("document %q not found", id)
+		// wrapError(..., ErrNotFound), not a bare message: SaveKnowledge asks
+		// for the document to find out whether this is a create or an update,
+		// and reads the answer with errors.Is. A PostgreSQL-only spelling made
+		// "not found" indistinguishable from a real failure, so saving any new
+		// knowledge returned an error instead of writing it.
+		return nil, wrapError("get_document", ErrNotFound)
 	}
 	if err != nil {
 		return nil, err

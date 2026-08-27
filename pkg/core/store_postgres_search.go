@@ -285,7 +285,16 @@ func (s *PostgresStore) SearchWithAdvancedFilter(ctx context.Context, query []fl
 
 // pgSearchColumns is the projection every arm uses, so a row looks the same
 // whichever arm produced it.
-const pgSearchColumns = `id, collection_id, content, doc_id, metadata, acl`
+const pgSearchColumns = `id, collection_id, content, doc_id, metadata, acl, ` +
+	// The collection NAME, not just its id. SQLite's search joins collections
+	// and fills it in; PostgreSQL projected only the id, so every scored row
+	// came back with an empty Collection. Callers that route on the name —
+	// cortex_query reports it, and retrieval filters by it — saw null where
+	// SQLite saw "graphrag_chunks".
+	//
+	// A correlated subquery rather than a LEFT JOIN so the two arms above keep
+	// their unqualified column names and their plans.
+	`COALESCE((SELECT name FROM collections WHERE collections.id = embeddings.collection_id), '') AS collection_name`
 
 // optionWhere renders the parts of SearchOptions that are conditions rather
 // than scoring: the collection and the metadata equality filter.
@@ -388,10 +397,12 @@ func scanPgScored(rows *sql.Rows) (ScoredEmbedding, error) {
 		metadata []byte
 		acl      []byte
 	)
-	if err := rows.Scan(&e.ID, &e.CollectionID, &e.Content, &docID, &metadata, &acl, &e.Score); err != nil {
+	var collectionName sql.NullString
+	if err := rows.Scan(&e.ID, &e.CollectionID, &e.Content, &docID, &metadata, &acl, &collectionName, &e.Score); err != nil {
 		return e, err
 	}
 	e.DocID = docID.String
+	e.Collection = collectionName.String
 	if len(metadata) > 0 {
 		if err := json.Unmarshal(metadata, &e.Metadata); err != nil {
 			return e, err

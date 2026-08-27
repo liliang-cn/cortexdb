@@ -440,6 +440,7 @@ func (g *GraphStore) GetEdgesBatch(ctx context.Context, edgeIDs []string) ([]*Gr
 		SELECT id, from_node_id, to_node_id, edge_type, weight, properties, vector, created_at
 		FROM graph_edges
 		WHERE id IN (%s)
+		ORDER BY id
 	`, strings.Join(placeholders, ","))
 
 	rows, err := g.query(ctx, query, args...)

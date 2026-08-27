@@ -126,7 +126,7 @@ func TestJSONTextSpeaksEachDatabase(t *testing.T) {
 	if got := For(SQLite).JSONText("properties", "valid_from"); got != `json_extract(properties, '$.valid_from')` {
 		t.Errorf("SQLite JSONText = %s", got)
 	}
-	if got := For(Postgres).JSONText("properties", "valid_from"); got != `(NULLIF(properties, '')::jsonb ->> 'valid_from')` {
+	if got := For(Postgres).JSONText("properties", "valid_from"); got != `(NULLIF(properties::text, '')::jsonb ->> 'valid_from')` {
 		t.Errorf("PostgreSQL JSONText = %s", got)
 	}
 	// The NULLIF is not decoration: an edge stored without properties holds the

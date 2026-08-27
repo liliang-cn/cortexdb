@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
-
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
@@ -256,14 +254,15 @@ func (db *DB) ReembedMemoryVectors(ctx context.Context, opts ReembedOptions) (*R
 					fmt.Sprintf("memory %s: embedder returned %d dimensions, want %d", p.id, len(vectors[i]), targetDim))
 				continue
 			}
-			encoded, err := encoding.EncodeVector(vectors[i])
+			encoded, err := encodeMemoryVector(db.Dialect(), vectors[i])
 			if err != nil {
 				report.Failed++
 				report.Errors = append(report.Errors, fmt.Sprintf("memory %s: encode vector: %v", p.id, err))
 				continue
 			}
 			if _, err := db.exec(ctx,
-				`UPDATE messages SET vector = ? WHERE id = ?`, encoded, p.id); err != nil {
+				`UPDATE messages SET vector = ? WHERE id = ?`,
+				memoryVectorArg(db.Dialect(), encoded), p.id); err != nil {
 				report.Failed++
 				report.Errors = append(report.Errors, fmt.Sprintf("memory %s: write vector: %v", p.id, err))
 				continue

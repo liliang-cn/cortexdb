@@ -65,10 +65,7 @@ func (db *DB) graphEdgeIDsByDocumentTx(ctx context.Context, querier graphStringQ
 	rows, err := db.querierQuery(ctx, querier, `
 		SELECT id
 		FROM graph_edges
-		WHERE CASE
-		        WHEN json_valid(properties) = 1 THEN json_extract(properties, '$.document_id')
-		        ELSE NULL
-		      END = ?
+		WHERE `+db.dialect.JSONTextGuarded("properties", "document_id")+` = ?
 		ORDER BY id ASC
 	`, documentID)
 	if err != nil {

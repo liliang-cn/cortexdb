@@ -13,9 +13,9 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
+	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 )
 
 // memorySemanticFloor is the cosine similarity below which a semantic hit is
@@ -68,7 +68,7 @@ func (db *DB) SaveMemory(ctx context.Context, req MemorySaveRequest) (*MemorySav
 			content = excluded.content,
 			vector = excluded.vector,
 			metadata = excluded.metadata
-	`, req.MemoryID, bucketID, role, req.Content, vectorBytes, metadataJSON); err != nil {
+	`, req.MemoryID, bucketID, role, req.Content, memoryVectorArg(db.Dialect(), vectorBytes), metadataJSON); err != nil {
 		return nil, fmt.Errorf("save memory: %w", err)
 	}
 
@@ -133,7 +133,7 @@ func (db *DB) UpdateMemory(ctx context.Context, req MemoryUpdateRequest) (*Memor
 		UPDATE messages
 		SET content = ?, vector = ?, metadata = ?
 		WHERE id = ?
-	`, content, vectorBytes, metadataJSON, req.MemoryID); err != nil {
+	`, content, memoryVectorArg(db.Dialect(), vectorBytes), metadataJSON, req.MemoryID); err != nil {
 		return nil, fmt.Errorf("update memory: %w", err)
 	}
 
@@ -422,7 +422,7 @@ func (db *DB) embedMemoryContent(ctx context.Context, content string) ([]byte, e
 		log.Printf("cortexdb: memory save proceeding without vector (embed failed: %v)", err)
 		return nil, nil
 	}
-	vectorBytes, err := encoding.EncodeVector(vec)
+	vectorBytes, err := encodeMemoryVector(db.Dialect(), vec)
 	if err != nil {
 		return nil, fmt.Errorf("encode memory vector: %w", err)
 	}
@@ -486,18 +486,8 @@ func (db *DB) searchMemoryLexical(ctx context.Context, bucketID, query string, k
 	var firstErr error
 
 	for idx, searchQuery := range queries {
-		// CJK text needs the trigram companion index; see core.CJKAwareIndex.
-		index := core.CJKAwareIndex("messages_fts", searchQuery)
-		rows, err := db.query(ctx, `
-			SELECT m.id, m.session_id, s.user_id, m.role, m.content, m.metadata, m.created_at, bm25(`+index+`)
-			FROM `+index+`
-			JOIN messages m ON m.rowid = `+index+`.rowid
-			JOIN sessions s ON s.id = m.session_id
-			WHERE `+index+` MATCH ?
-			  AND m.session_id = ?
-			ORDER BY bm25(`+index+`)
-			LIMIT ?
-		`, searchQuery, bucketID, topK*4)
+		lexSQL, lexArgs := memoryLexicalQuery(db.Dialect(), searchQuery, bucketID, topK*4)
+		rows, err := db.query(ctx, lexSQL, lexArgs...)
 		if err != nil {
 			if firstErr == nil {
 				firstErr = fmt.Errorf("search memory lexical: %w", err)
@@ -1045,13 +1035,113 @@ func (db *DB) recordMemoryRecalls(ctx context.Context, hits []MemorySearchHit) {
 		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
+
+	// Written as a whole column rather than patched in SQL.
+	//
+	// It used to be a json_set with two paths at once — SQLite's own spelling,
+	// which PostgreSQL does not have — and the errors here are discarded by
+	// design, so on PostgreSQL this wrote nothing and said nothing about it.
+	// Every memory's recall_count stayed at zero and the usage report showed a
+	// brain nobody had ever read from.
+	//
+	// A dialect-aware json_set would not have been enough either: this column
+	// is TEXT on SQLite and JSONB on PostgreSQL, so even the guarded
+	// expression built for graph properties is wrong here. Marshalling the map
+	// the search already returned sidesteps the column type entirely. Two
+	// concurrent recalls of the same memory can lose a count, which is the
+	// right trade for accounting that must never fail a search.
 	for _, hit := range hits {
+		metadata := make(map[string]any, len(hit.Memory.Metadata)+2)
+		for k, v := range hit.Memory.Metadata {
+			metadata[k] = v
+		}
+		metadata["recall_count"] = memoryRecallCount(hit.Memory.Metadata) + 1
+		metadata["last_recalled_at"] = now
+
+		encoded, err := json.Marshal(metadata)
+		if err != nil {
+			continue
+		}
 		// Best-effort by design: usage accounting must never fail a search.
-		_, _ = db.exec(ctx, `
-			UPDATE messages SET metadata = json_set(
-				COALESCE(NULLIF(metadata, ''), '{}'),
-				'$.recall_count', COALESCE(json_extract(metadata, '$.recall_count'), 0) + 1,
-				'$.last_recalled_at', ?
-			) WHERE id = ?`, now, hit.Memory.ID)
+		_, _ = db.exec(ctx,
+			`UPDATE messages SET metadata = ? WHERE id = ?`, string(encoded), hit.Memory.ID)
+	}
+}
+
+// memoryLexicalQuery builds the lexical lookup over stored messages, returning
+// the same columns whichever backend answers it.
+//
+// The chunk side of retrieval already had this split (see ftsSearchQuery);
+// memory did not, and asked PostgreSQL for `messages_fts MATCH ?` — an FTS5
+// virtual table that does not exist there and a MATCH operator PostgreSQL does
+// not have. Every memory search, and every recall that reads memory, failed
+// with a bare "syntax error at or near MATCH".
+func memoryLexicalQuery(d sqldialect.Dialect, query, bucketID string, limit int) (string, []any) {
+	columns := `m.id, m.session_id, s.user_id, m.role, m.content, m.metadata, m.created_at`
+
+	if d != nil && d.Kind() == sqldialect.Postgres {
+		cond, condArgs, _ := core.PostgresLexicalCondition("m.content", query)
+		rank, rankArgs := core.PostgresLexicalRank("m.content", query)
+
+		args := append([]any{}, rankArgs...)
+		args = append(args, condArgs...)
+		args = append(args, bucketID, limit)
+		return `
+			SELECT ` + columns + `, ` + rank + ` as score
+			FROM messages m
+			JOIN sessions s ON s.id = m.session_id
+			WHERE ` + cond + ` AND m.session_id = ?
+			ORDER BY score, m.id
+			LIMIT ?
+		`, args
+	}
+
+	// A one- or two-character CJK query produces no trigram, so MATCH finds
+	// nothing however much of the corpus contains it. The chunk path has had
+	// this fallback for a while; memory was still returning an empty list for
+	// "风控".
+	if core.BelowTrigramFloor(query) {
+		return `
+			SELECT ` + columns + `, 0 as score
+			FROM messages m
+			JOIN sessions s ON s.id = m.session_id
+			WHERE m.content LIKE ? ESCAPE '\' AND m.session_id = ?
+			ORDER BY m.id
+			LIMIT ?
+		`, []any{core.SubstringPattern(query), bucketID, limit}
+	}
+
+	// CJK text needs the trigram companion index; see core.CJKAwareIndex.
+	index := core.CJKAwareIndex("messages_fts", query)
+	return `
+		SELECT ` + columns + `, bm25(` + index + `) as score
+		FROM ` + index + `
+		JOIN messages m ON m.rowid = ` + index + `.rowid
+		JOIN sessions s ON s.id = m.session_id
+		WHERE ` + index + ` MATCH ? AND m.session_id = ?
+		ORDER BY score
+		LIMIT ?
+	`, []any{query, bucketID, limit}
+}
+
+// memoryRecallCount reads the running recall count out of a memory's metadata.
+//
+// The value has been through JSON, so it is a float64 here whatever it was
+// written as; anything else — absent, null, a string from an older writer —
+// counts as zero rather than failing the update.
+func memoryRecallCount(metadata map[string]any) int {
+	switch v := metadata["recall_count"].(type) {
+	case float64:
+		if v < 0 {
+			return 0
+		}
+		return int(v)
+	case int:
+		if v < 0 {
+			return 0
+		}
+		return v
+	default:
+		return 0
 	}
 }

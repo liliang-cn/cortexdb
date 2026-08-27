@@ -8,7 +8,6 @@ import (
 	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 	"log"
 	"sort"
-	"strings"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
@@ -481,34 +480,7 @@ func ftsSearchQuery(d sqldialect.Dialect, query string, opts TextSearchOptions) 
 	// it changes.
 	if d != nil && d.Kind() == sqldialect.Postgres {
 		cond, lexArgs, _ := core.PostgresLexicalCondition("e.content", query)
-
-		// Ranked by how many of the query's terms a row contains.
-		//
-		// Ordering by id was worse than no ranking at all: it HAD one, an
-		// arbitrary one, so the wrong chunk came first and the model above
-		// answered from it — which reads as a retrieval that found nothing
-		// useful rather than as a sort order nobody chose. bm25 has no
-		// counterpart here, but "matched three terms of four" is a real signal.
-		// Negated so lower is better, the convention the FTS5 branch's bm25
-		// already sets and what the caller's ORDER BY expects.
-		rank := "0"
-		var rankArgs []any
-		if core.ContainsCJK(query) {
-			// Only the CJK arm binds LIKE patterns, one per term. The word arm
-			// binds the query itself for plainto_tsquery, which a LIKE would
-			// misread.
-			terms := make([]string, 0, len(lexArgs))
-			for range lexArgs {
-				terms = append(terms, `(CASE WHEN e.content LIKE ? ESCAPE '\' THEN 1 ELSE 0 END)`)
-			}
-			if len(terms) > 0 {
-				rank = "-(" + strings.Join(terms, " + ") + ")"
-				rankArgs = append(rankArgs, lexArgs...)
-			}
-		} else {
-			rank = "-ts_rank_cd(to_tsvector('simple', e.content), plainto_tsquery('simple', ?))"
-			rankArgs = append(rankArgs, lexArgs...)
-		}
+		rank, rankArgs := core.PostgresLexicalRank("e.content", query)
 
 		args := append([]any{}, rankArgs...)
 		args = append(args, lexArgs...)

@@ -164,16 +164,10 @@ func (db *DB) loadExplicitRelationEdges(ctx context.Context, relationTypes []str
 		SELECT id, from_node_id, to_node_id, edge_type, weight, properties
 		FROM graph_edges
 		WHERE edge_type IN (%s)
-		  AND CASE
-		        WHEN json_valid(properties) = 1 THEN COALESCE(json_extract(properties, '$.inferred'), 0)
-		        ELSE 0
-		      END != 1
-	`, strings.Join(placeholders, ","))
+		  AND %s != 1
+	`, strings.Join(placeholders, ","), db.dialect.JSONFlag("properties", "inferred"))
 	if strings.TrimSpace(documentID) != "" {
-		query += ` AND CASE
-		        WHEN json_valid(properties) = 1 THEN json_extract(properties, '$.document_id')
-		        ELSE NULL
-		      END = ?`
+		query += ` AND ` + db.dialect.JSONTextGuarded("properties", "document_id") + ` = ?`
 		args = append(args, documentID)
 	}
 	query += ` ORDER BY id ASC`
@@ -222,21 +216,12 @@ func (db *DB) inferredEdgeIDs(ctx context.Context, documentID string, ruleIDs []
 	query := `
 		SELECT id
 		FROM graph_edges
-		WHERE CASE
-		        WHEN json_valid(properties) = 1 THEN COALESCE(json_extract(properties, '$.inferred'), 0)
-		        ELSE 0
-		      END = 1
-		  AND CASE
-		        WHEN json_valid(properties) = 1 THEN json_extract(properties, '$.provenance')
-		        ELSE NULL
-		      END = 'rule'
+		WHERE ` + db.dialect.JSONFlag("properties", "inferred") + ` = 1
+		  AND ` + db.dialect.JSONTextGuarded("properties", "provenance") + ` = 'rule'
 	`
 	args := make([]any, 0, len(ruleIDs)+1)
 	if strings.TrimSpace(documentID) != "" {
-		query += ` AND CASE
-		        WHEN json_valid(properties) = 1 THEN json_extract(properties, '$.document_id')
-		        ELSE NULL
-		      END = ?`
+		query += ` AND ` + db.dialect.JSONTextGuarded("properties", "document_id") + ` = ?`
 		args = append(args, documentID)
 	}
 	if len(ruleIDs) > 0 {
@@ -245,10 +230,8 @@ func (db *DB) inferredEdgeIDs(ctx context.Context, documentID string, ruleIDs []
 			placeholders[i] = "?"
 			args = append(args, ruleID)
 		}
-		query += fmt.Sprintf(` AND CASE
-		        WHEN json_valid(properties) = 1 THEN json_extract(properties, '$.rule_id')
-		        ELSE NULL
-		      END IN (%s)`, strings.Join(placeholders, ","))
+		query += fmt.Sprintf(` AND %s IN (%s)`,
+			db.dialect.JSONTextGuarded("properties", "rule_id"), strings.Join(placeholders, ","))
 	}
 	query += ` ORDER BY id ASC`
 

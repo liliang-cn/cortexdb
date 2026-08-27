@@ -518,19 +518,26 @@ func (g *GraphStore) UpsertEdge(ctx context.Context, edge *GraphEdge) error {
 	return err
 }
 
-// GetEdges retrieves edges for a node
+// GetEdges retrieves edges for a node.
+//
+// Ordered by id, which matters more than it looks: this feeds Neighbors, and
+// Neighbors feeds graph-mode retrieval. Without an ORDER BY, SQLite happens to
+// return insertion order while PostgreSQL returns whatever the plan produced —
+// so the same question could retrieve a different set of chunks on the two
+// backends, and a different set on PostgreSQL from one run to the next once
+// the table had been updated.
 func (g *GraphStore) GetEdges(ctx context.Context, nodeID string, direction string) ([]*GraphEdge, error) {
 	var query string
 	switch direction {
 	case "out":
 		query = `SELECT id, from_node_id, to_node_id, edge_type, weight, properties, vector, created_at
-				FROM graph_edges WHERE from_node_id = ?`
+				FROM graph_edges WHERE from_node_id = ? ORDER BY id`
 	case "in":
 		query = `SELECT id, from_node_id, to_node_id, edge_type, weight, properties, vector, created_at
-				FROM graph_edges WHERE to_node_id = ?`
+				FROM graph_edges WHERE to_node_id = ? ORDER BY id`
 	case "both", "":
 		query = `SELECT id, from_node_id, to_node_id, edge_type, weight, properties, vector, created_at
-				FROM graph_edges WHERE from_node_id = ? OR to_node_id = ?`
+				FROM graph_edges WHERE from_node_id = ? OR to_node_id = ? ORDER BY id`
 	default:
 		return nil, fmt.Errorf("invalid direction: %s (use 'in', 'out', or 'both')", direction)
 	}

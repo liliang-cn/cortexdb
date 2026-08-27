@@ -138,14 +138,20 @@ func (db *DB) resolveObjectSetByTypes(ctx context.Context, objectTypes []string)
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(objectTypes)), ",")
 	args := make([]any, 0, len(objectTypes))
 	for _, objectType := range objectTypes {
-		args = append(args, objectType)
+		// Lowered here to match the LOWER(node_type) below; an IN list cannot
+		// carry the function on its own side.
+		args = append(args, strings.ToLower(objectType))
 	}
 
-	// NOCASE because node_type is only canonicalised on ontology-validated
-	// writes: rows written before a schema was activated keep whatever
-	// spelling they arrived with, and they are the same objects.
+	// Case-insensitively because node_type is only canonicalised on
+	// ontology-validated writes: rows written before a schema was activated
+	// keep whatever spelling they arrived with, and they are the same objects.
+	//
+	// LOWER() on both sides rather than COLLATE NOCASE, which is SQLite's own
+	// and which PostgreSQL refuses outright — `collation "nocase" for encoding
+	// "UTF8" does not exist`, which took out every object-set resolution.
 	rows, err := db.query(ctx,
-		`SELECT id FROM graph_nodes WHERE node_type COLLATE NOCASE IN (`+placeholders+`)`, args...)
+		`SELECT id FROM graph_nodes WHERE LOWER(node_type) IN (`+placeholders+`)`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("resolve object set by type: %w", err)
 	}
@@ -495,10 +501,10 @@ func (db *DB) linkedNodeIDs(ctx context.Context, linkTypeAPIName string, nodeIDs
 
 	rows, err := db.query(ctx, `
 		SELECT to_node_id AS other FROM graph_edges
-		WHERE edge_type = ? COLLATE NOCASE AND from_node_id IN (`+placeholders+`)
+		WHERE LOWER(edge_type) = LOWER(?) AND from_node_id IN (`+placeholders+`)
 		UNION
 		SELECT from_node_id AS other FROM graph_edges
-		WHERE edge_type = ? COLLATE NOCASE AND to_node_id IN (`+placeholders+`)
+		WHERE LOWER(edge_type) = LOWER(?) AND to_node_id IN (`+placeholders+`)
 	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("search around: %w", err)

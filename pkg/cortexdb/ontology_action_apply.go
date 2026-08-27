@@ -443,7 +443,7 @@ func (db *DB) applyLinkRule(ctx context.Context, scope *actionScope, rule Ontolo
 		// spelled edge behind.
 		if _, err := db.exec(ctx, `
 			DELETE FROM graph_edges
-			WHERE edge_type = ? COLLATE NOCASE
+			WHERE LOWER(edge_type) = LOWER(?)
 			  AND ((from_node_id = ? AND to_node_id = ?) OR (from_node_id = ? AND to_node_id = ?))
 		`, linkType.APIName, fromID, toID, toID, fromID); err != nil {
 			return ActionEdit{}, fmt.Errorf("action delete link: %w", err)
@@ -476,9 +476,14 @@ func ontologyReferenceNodeID(objectTypeAPIName string, value string) string {
 }
 
 func (db *DB) ontologyNodeExists(ctx context.Context, nodeID string) (bool, error) {
+	// COUNT rather than EXISTS. The two databases disagree about what EXISTS
+	// returns — SQLite gives 0 or 1, PostgreSQL gives a boolean — so scanning
+	// it into an int failed on PostgreSQL with a driver-level type error, and
+	// took every ontology action down with it. COUNT(*) is an integer on both,
+	// and over a primary key it costs the same lookup.
 	var exists int
 	err := db.queryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM graph_nodes WHERE id = ?)`, nodeID).Scan(&exists)
+		`SELECT COUNT(*) FROM graph_nodes WHERE id = ?`, nodeID).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("check object exists: %w", err)
 	}
@@ -559,21 +564,28 @@ func (db *DB) ensureActionAuditTable(ctx context.Context) error {
 		return nil
 	}
 
-	if _, err := db.exec(ctx, `
-	CREATE TABLE IF NOT EXISTS ontology_action_audit (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		action_api_name TEXT NOT NULL,
-		actor TEXT,
-		parameters TEXT NOT NULL,
-		edits TEXT NOT NULL,
-		applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-	);
-	CREATE INDEX IF NOT EXISTS idx_ontology_action_audit_action ON ontology_action_audit(action_api_name);
-	`); err != nil {
-		// Deliberately not latched, for the same reason as the ontology
-		// schema table: one cancelled context must not disable the audit
-		// trail for the rest of this DB's lifetime.
-		return err
+	// Two statements, run separately. Whether a driver accepts several in one
+	// Exec depends on which protocol it picks, and an audit table that exists
+	// on one backend and not the other is the kind of difference that is only
+	// noticed when someone asks who changed something.
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS ontology_action_audit (
+			id ` + db.Dialect().AutoIncrementPK() + `,
+			action_api_name TEXT NOT NULL,
+			actor TEXT,
+			parameters TEXT NOT NULL,
+			edits TEXT NOT NULL,
+			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_ontology_action_audit_action ON ontology_action_audit(action_api_name)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := db.exec(ctx, stmt); err != nil {
+			// Deliberately not latched, for the same reason as the ontology
+			// schema table: one cancelled context must not disable the audit
+			// trail for the rest of this DB's lifetime.
+			return err
+		}
 	}
 	db.actionAuditReady = true
 	return nil

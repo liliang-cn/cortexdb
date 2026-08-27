@@ -157,7 +157,28 @@ func (s *SQLiteStore) searchWithHNSW(ctx context.Context, query []float32, opts 
 		return nil, fmt.Errorf("failed to fetch candidates: %w", err)
 	}
 
-	return s.processCandidates(query, candidates, opts)
+	results, err := s.processCandidates(query, candidates, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	// The index searches the whole store; the collection and metadata filters
+	// are applied to what it returns. That is a post-filter, and a post-filter
+	// silently loses rows: a search scoped to a collection whose rows are not
+	// in the global k nearest comes back short, or empty, while the same query
+	// unscoped returns plenty. The bigger the store, the smaller the scoped
+	// collection's chance of surviving — so it fails worst exactly where it
+	// matters, on a shared brain holding several collections.
+	//
+	// PostgreSQL does not have this: the filter is in the WHERE clause, so the
+	// index is asked the question that was actually asked. Here the honest
+	// fallback is a linear pass, which fetchCandidates already scopes to the
+	// collection — bounded by that collection's size, not the store's.
+	if len(results) < opts.TopK && (opts.Collection != "" || len(opts.Filter) > 0) {
+		return s.searchLinear(ctx, query, opts)
+	}
+
+	return results, nil
 }
 
 // searchWithIVF performs vector search using IVF index

@@ -489,7 +489,7 @@ func (db *DB) checkOntologyCardinality(ctx context.Context, linkType OntologyLin
 func (db *DB) countOntologyLinks(ctx context.Context, linkTypeAPIName string, nodeID string, excludeNodeID string) (int, error) {
 	row := db.queryRow(ctx, `
 		SELECT COUNT(*) FROM graph_edges
-		WHERE edge_type = ? COLLATE NOCASE
+		WHERE LOWER(edge_type) = LOWER(?)
 		  AND (from_node_id = ? OR to_node_id = ?)
 		  AND from_node_id <> ? AND to_node_id <> ?
 	`, linkTypeAPIName, nodeID, nodeID, excludeNodeID, excludeNodeID)

@@ -53,6 +53,61 @@ type Dialect interface {
 	// here, the same query works on both.
 	JSONText(column, key string) string
 
+	// JSONTextGuarded reads a top-level string field and yields NULL when the
+	// column holds no JSON at all.
+	//
+	// The guard is not decoration. `properties` is a TEXT column and an edge
+	// written without any carries the empty string; SQLite's json_extract
+	// raises "malformed JSON" on it and PostgreSQL's ::jsonb raises "invalid
+	// input syntax". Both fail the whole query over one such row, so every
+	// call site used to wrap the read in `CASE WHEN json_valid(...)`, which is
+	// SQLite-only syntax and the reason graph retrieval did not run on
+	// PostgreSQL at all.
+	//
+	// What the two guards test is not identical: SQLite asks whether the text
+	// parses, PostgreSQL only whether it is non-empty. They coincide for every
+	// row this codebase can write — properties come from json.Marshal — and a
+	// genuinely malformed row is corruption that should surface as an error
+	// rather than be silently read as NULL.
+	JSONTextGuarded(column, key string) string
+
+	// JSONFlag reads a boolean-ish field as 1 or 0, guarded the same way.
+	//
+	// Separate from JSONTextGuarded because the two databases disagree about
+	// what a JSON `true` reads back as: SQLite's json_extract gives the
+	// integer 1, PostgreSQL's ->> gives the text 'true'. A call site comparing
+	// the raw read against 1 is correct on SQLite and quietly false on
+	// PostgreSQL — inferred edges would have looked explicit, and every
+	// inference rule would have re-derived them on top of themselves.
+	JSONFlag(column, key string) string
+
+	// JSONArrayContains tests whether a JSON array field contains a value,
+	// as an expression carrying exactly one `?` placeholder for it.
+	//
+	// SQLite reaches for json_each and a correlated subquery; PostgreSQL has
+	// a containment operator. Neither spelling survives on the other, and the
+	// SQLite one failed on PostgreSQL with "syntax error at end of input" —
+	// an error that names nothing, because the parser gave up at `json_each`.
+	JSONArrayContains(column, key string) string
+
+	// AutoIncrementPK is the column definition for a surrogate integer key
+	// the database assigns.
+	//
+	// SQLite spells it INTEGER PRIMARY KEY AUTOINCREMENT, which PostgreSQL
+	// rejects at the parser. The one place this appears is the ontology action
+	// audit table, created lazily on the first ontology_action_apply — so on
+	// PostgreSQL that DDL failed, the table never existed, and every action
+	// apply failed with it. Nothing caught it because the action tests run on
+	// SQLite and the PostgreSQL tool coverage only listed action types.
+	AutoIncrementPK() string
+
+	// JSONSet writes a JSON value into a top-level field, as an expression
+	// carrying one `?` placeholder for the new value (itself JSON text).
+	//
+	// SQLite's json_set and PostgreSQL's jsonb_set differ in name, in how the
+	// path is spelled, and in whether the result needs casting back to text.
+	JSONSet(column, key string) string
+
 	// IsDuplicateColumn reports whether err is "this column already exists",
 	// which an idempotent ALTER TABLE ADD COLUMN must swallow.
 	//
@@ -106,6 +161,31 @@ func (sqliteDialect) Kind() Kind { return SQLite }
 func (sqliteDialect) JSONText(column, key string) string {
 	return fmt.Sprintf("json_extract(%s, '$.%s')", column, jsonKey(key))
 }
+func (sqliteDialect) JSONTextGuarded(column, key string) string {
+	return fmt.Sprintf("CASE WHEN json_valid(%s) = 1 THEN json_extract(%s, '$.%s') ELSE NULL END",
+		column, column, jsonKey(key))
+}
+
+func (sqliteDialect) JSONFlag(column, key string) string {
+	return fmt.Sprintf(
+		"CASE WHEN json_valid(%s) = 1 AND json_extract(%s, '$.%s') IN (1, 'true') THEN 1 ELSE 0 END",
+		column, column, jsonKey(key))
+}
+
+func (sqliteDialect) JSONArrayContains(column, key string) string {
+	return fmt.Sprintf(
+		"EXISTS (SELECT 1 FROM json_each(json_extract(%s, '$.%s')) je WHERE je.value = ?)",
+		column, jsonKey(key))
+}
+
+func (sqliteDialect) AutoIncrementPK() string {
+	return "INTEGER PRIMARY KEY AUTOINCREMENT"
+}
+
+func (sqliteDialect) JSONSet(column, key string) string {
+	return fmt.Sprintf("json_set(%s, '$.%s', json(?))", column, jsonKey(key))
+}
+
 func (sqliteDialect) Rebind(q string) string { return q }
 func (sqliteDialect) BlobType() string       { return "BLOB" }
 func (sqliteDialect) BoolType() string       { return "INTEGER" }
@@ -118,8 +198,15 @@ type postgresDialect struct{}
 func (postgresDialect) Kind() Kind       { return Postgres }
 func (postgresDialect) BlobType() string { return "BYTEA" }
 
-// ->> rather than -> so the result is text and not a quoted JSON scalar; the
-// cast is there because `properties` is a TEXT column, not jsonb.
+// ->> rather than -> so the result is text and not a quoted JSON scalar.
+//
+// The ::text before NULLIF is not redundant. These helpers are pointed at two
+// different column types: graph_nodes.properties is TEXT on both backends,
+// while messages.metadata is TEXT on SQLite and jsonb on PostgreSQL. NULLIF of
+// a jsonb against ” is an error, not a mismatch — and the one caller that hit
+// it discards its errors by design, so recall accounting on PostgreSQL wrote
+// nothing and reported nothing for as long as it existed. Casting to text
+// first makes the helper indifferent to which of the two it was given.
 //
 // NULLIF guards the cast. A row whose properties column is the empty string —
 // which is what an edge written without any gets — makes ”::jsonb an error in
@@ -128,7 +215,46 @@ func (postgresDialect) BlobType() string { return "BYTEA" }
 // error ("invalid input syntax for type json") names neither the column nor
 // the row.
 func (postgresDialect) JSONText(column, key string) string {
-	return fmt.Sprintf("(NULLIF(%s, '')::jsonb ->> '%s')", column, jsonKey(key))
+	return fmt.Sprintf("(NULLIF(%s::text, '')::jsonb ->> '%s')", column, jsonKey(key))
+}
+
+func (postgresDialect) JSONTextGuarded(column, key string) string {
+	return fmt.Sprintf("CASE WHEN NULLIF(%s::text, '') IS NOT NULL THEN (NULLIF(%s::text, '')::jsonb ->> '%s') ELSE NULL END",
+		column, column, jsonKey(key))
+}
+
+func (postgresDialect) JSONFlag(column, key string) string {
+	return fmt.Sprintf(
+		"CASE WHEN NULLIF(%s::text, '') IS NOT NULL AND (NULLIF(%s::text, '')::jsonb ->> '%s') IN ('true', '1') THEN 1 ELSE 0 END",
+		column, column, jsonKey(key))
+}
+
+func (postgresDialect) JSONArrayContains(column, key string) string {
+	// to_jsonb(?::text) rather than a bare literal: the argument arrives as a
+	// Go string, and @> on jsonb needs a jsonb operand, not text.
+	return fmt.Sprintf(
+		"(NULLIF(%s::text, '') IS NOT NULL AND (NULLIF(%s::text, '')::jsonb -> '%s') @> to_jsonb(?::text))",
+		column, column, jsonKey(key))
+}
+
+func (postgresDialect) AutoIncrementPK() string {
+	return "BIGSERIAL PRIMARY KEY"
+}
+
+func (postgresDialect) JSONSet(column, key string) string {
+	// COALESCE, because jsonb_set of NULL is NULL: a row whose properties are
+	// empty would silently lose the field being written rather than gain it.
+	//
+	// The result is left as jsonb rather than cast back to text, because the
+	// two columns this is aimed at have different types on PostgreSQL —
+	// graph_nodes.properties is TEXT, messages.metadata is jsonb — and only
+	// one direction has an assignment cast. jsonb into a text column is
+	// allowed; text into a jsonb column is not, and it failed with "column is
+	// of type jsonb but expression is of type text" at the one call site that
+	// discards its errors, so recall accounting on PostgreSQL wrote nothing
+	// and reported nothing.
+	return fmt.Sprintf("jsonb_set(COALESCE(NULLIF(%s::text, '')::jsonb, '{}'::jsonb), '{%s}', ?::jsonb)",
+		column, jsonKey(key))
 }
 
 func (postgresDialect) IsDuplicateColumn(err error) bool {

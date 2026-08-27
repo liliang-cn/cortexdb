@@ -73,7 +73,8 @@ func (db *DB) ListGraphAll(ctx context.Context, req GraphListAllRequest) (*Graph
 	// Edges first: they give every node its degree.
 	edgeRows, err := db.query(ctx,
 		`SELECT from_node_id, COALESCE(edge_type,''), to_node_id
-		 FROM graph_edges WHERE edge_type NOT IN (?, ?)`,
+		 FROM graph_edges WHERE edge_type NOT IN (?, ?)
+		 ORDER BY from_node_id, to_node_id, edge_type`,
 		graphListSkipEdgeTypes...)
 	if err != nil {
 		return nil, err
@@ -98,8 +99,12 @@ func (db *DB) ListGraphAll(ctx context.Context, req GraphListAllRequest) (*Graph
 	_ = edgeRows.Close()
 
 	nodeRows, err := db.query(ctx,
+		// Ordered so the listing is the same graph twice, not just the same
+		// nodes: this is what a caller renders, and an unordered read gives
+		// PostgreSQL licence to hand back a different arrangement each time.
 		`SELECT id, COALESCE(content,''), COALESCE(node_type,'')
-		 FROM graph_nodes WHERE node_type != 'chunk'`)
+		 FROM graph_nodes WHERE node_type != 'chunk'
+		 ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}

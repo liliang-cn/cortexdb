@@ -2,7 +2,6 @@ package cortexdb
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -57,17 +56,16 @@ func (t *GraphRAGToolbox) DeleteDocumentGraph(ctx context.Context, req ToolDelet
 		return nil, fmt.Errorf("init graph schema: %w", err)
 	}
 	resp := &ToolDeleteDocumentGraphResponse{DryRun: req.DryRun}
-	sqldb := t.db.SQL()
-
 	// 1. Relation edges asserted by this document. Their ids and properties
 	// both carry the document id (relationEdgeID appends :doc:<id>), but the
 	// property is the query key: the id format has changed before and old rows
 	// keep their old ids.
-	// json_valid guards every JSON predicate here: edges and nodes written
-	// without properties carry an empty string, and json_extract on one is an
-	// error, not a miss.
-	edgeIDs, err := collectIDs(ctx, sqldb,
-		`SELECT id FROM graph_edges WHERE json_valid(properties) AND json_extract(properties, '$.document_id') = ?`, documentID)
+	// Every JSON predicate here goes through the dialect. The guard matters —
+	// edges and nodes written without properties carry an empty string, and
+	// reading a JSON field out of one is an error rather than a miss — and so
+	// does the spelling, which is not the same on the two backends.
+	edgeIDs, err := collectIDs(ctx, t.db,
+		`SELECT id FROM graph_edges WHERE `+docIDIs(t.db), documentID)
 	if err != nil {
 		return nil, fmt.Errorf("find relation edges: %w", err)
 	}
@@ -80,12 +78,9 @@ func (t *GraphRAGToolbox) DeleteDocumentGraph(ctx context.Context, req ToolDelet
 	}
 	var doomed []string
 	var detached []detachment
-	rows, err := sqldb.QueryContext(ctx, `
+	rows, err := t.db.query(ctx, `
 		SELECT id, properties FROM graph_nodes
-		WHERE json_valid(properties) AND EXISTS (
-			SELECT 1 FROM json_each(json_extract(graph_nodes.properties, '$.source_document_ids')) je
-			WHERE je.value = ?
-		)`, documentID)
+		WHERE `+t.db.Dialect().JSONArrayContains("graph_nodes.properties", "source_document_ids"), documentID)
 	if err != nil {
 		return nil, fmt.Errorf("find entity provenance: %w", err)
 	}
@@ -120,13 +115,13 @@ func (t *GraphRAGToolbox) DeleteDocumentGraph(ctx context.Context, req ToolDelet
 	// 3. The document's own nodes: its chunks (real and stub) and the document
 	// node itself. Matched by property, and the document node also by its
 	// derived id for graphs written before the property existed.
-	chunkIDs, err := collectIDs(ctx, sqldb,
-		`SELECT id FROM graph_nodes WHERE node_type = 'chunk' AND json_valid(properties) AND json_extract(properties, '$.document_id') = ?`, documentID)
+	chunkIDs, err := collectIDs(ctx, t.db,
+		`SELECT id FROM graph_nodes WHERE node_type = 'chunk' AND `+docIDIs(t.db), documentID)
 	if err != nil {
 		return nil, fmt.Errorf("find chunk nodes: %w", err)
 	}
-	docNodeIDs, err := collectIDs(ctx, sqldb,
-		`SELECT id FROM graph_nodes WHERE node_type = 'document' AND ((json_valid(properties) AND json_extract(properties, '$.document_id') = ?) OR id = ?)`,
+	docNodeIDs, err := collectIDs(ctx, t.db,
+		`SELECT id FROM graph_nodes WHERE node_type = 'document' AND ((`+docIDIs(t.db)+`) OR id = ?)`,
 		documentID, graphDocumentNodeID(documentID))
 	if err != nil {
 		return nil, fmt.Errorf("find document node: %w", err)
@@ -151,8 +146,9 @@ func (t *GraphRAGToolbox) DeleteDocumentGraph(ctx context.Context, req ToolDelet
 		if err != nil {
 			return nil, fmt.Errorf("encode remaining sources of %s: %w", d.id, err)
 		}
-		if _, err := sqldb.ExecContext(ctx,
-			`UPDATE graph_nodes SET properties = json_set(properties, '$.source_document_ids', json(?)), updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		if _, err := t.db.exec(ctx,
+			`UPDATE graph_nodes SET properties = `+t.db.Dialect().JSONSet("properties", "source_document_ids")+
+				`, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
 			string(remainingJSON), d.id); err != nil {
 			return nil, fmt.Errorf("detach %s: %w", d.id, err)
 		}
@@ -174,8 +170,13 @@ func (t *GraphRAGToolbox) DeleteDocumentGraph(ctx context.Context, req ToolDelet
 }
 
 // collectIDs runs a single-column id query and returns the ids.
-func collectIDs(ctx context.Context, sqldb *sql.DB, query string, args ...any) ([]string, error) {
-	rows, err := sqldb.QueryContext(ctx, query, args...)
+// collectIDs runs a one-column query against whichever backend db speaks.
+//
+// It takes the *DB rather than the raw *sql.DB because the raw handle skips
+// Rebind: on PostgreSQL a `?` that never became `$1` is a syntax error, and
+// this file's queries are all parameterised.
+func collectIDs(ctx context.Context, db *DB, query string, args ...any) ([]string, error) {
+	rows, err := db.query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -189,4 +190,10 @@ func collectIDs(ctx context.Context, sqldb *sql.DB, query string, args ...any) (
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+// docIDIs is the predicate "this row's properties name documentID", written
+// once because four queries in this file need it and each one spelled it out.
+func docIDIs(db *DB) string {
+	return db.Dialect().JSONTextGuarded("properties", "document_id") + " = ?"
 }
