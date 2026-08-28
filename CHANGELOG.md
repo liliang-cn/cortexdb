@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.82.2] - 2026-08-28
+
+### Fixed
+
+- **Tests no longer name their databases after a clock that cannot count that
+  fast.** Nothing in the shipped library changed; this is the test suite, and it had
+  been failing about one run in six for a reason that looked like a fault in the
+  store:
+
+      open lexical evaluation db: failed to initialize store:
+      vectorstore: init: failed to enable foreign keys: database is locked (5) (SQLITE_BUSY)
+
+  Two `t.Parallel()` tests both built their path as
+  `fmt.Sprintf("test_evaluation_lexical_%d.db", time.Now().UnixNano())`. The name
+  says nanoseconds; the clock underneath does not have to tick that fast, and on
+  darwin/arm64 it ticks once per microsecond — two goroutines reading it together get
+  the same number about three times in four. That is not two databases but one file
+  opened by two connection pools, and the loser reports SQLITE_BUSY at Open. When the
+  two missed each other at Open they collided over the data instead, one test's rows
+  landing in the other's assertions.
+
+  `internal/testname.Nano` replaces the call at all 150 sites: still an int64, still
+  ordered, still roughly the wall clock, but never handed out twice in a process, and
+  seeded with the pid because `go test ./...` runs packages in parallel. The
+  evaluation fixture also moves into `t.TempDir()` — it had been writing its database
+  next to the source and removing only half of it, leaving the `-wal` and `-shm`
+  behind run after run.
+
+  Measured both ways: with the old naming, 4 of 25 runs fail; with this, 0 of 25,
+  five clean runs of the full suite on each backend, and a clean `-race`.
+
 ## [2.82.1] - 2026-08-28
 
 ### Fixed
