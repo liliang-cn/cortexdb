@@ -7,10 +7,12 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 func TestStreamSearch(t *testing.T) {
-	dbPath := fmt.Sprintf("/tmp/test_stream_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_stream_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	config := DefaultConfig()
@@ -78,7 +80,7 @@ func TestStreamSearch(t *testing.T) {
 }
 
 func TestStreamSearchWithEarlyTermination(t *testing.T) {
-	dbPath := fmt.Sprintf("/tmp/test_stream_early_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_stream_early_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	config := DefaultConfig()
@@ -136,7 +138,7 @@ func TestStreamSearchWithEarlyTermination(t *testing.T) {
 }
 
 func TestParallelStreamSearch(t *testing.T) {
-	dbPath := fmt.Sprintf("/tmp/test_parallel_stream_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_parallel_stream_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	config := DefaultConfig()
@@ -322,7 +324,7 @@ func TestCollectTopKFromStream(t *testing.T) {
 }
 
 func TestIncrementalIndex(t *testing.T) {
-	dbPath := fmt.Sprintf("/tmp/test_incremental_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_incremental_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	config := DefaultConfig()
@@ -391,7 +393,7 @@ func TestIncrementalIndex(t *testing.T) {
 }
 
 func TestStreamSearchContextCancellation(t *testing.T) {
-	dbPath := fmt.Sprintf("/tmp/test_stream_cancel_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_stream_cancel_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	config := DefaultConfig()
@@ -458,7 +460,7 @@ func TestStreamSearchContextCancellation(t *testing.T) {
 }
 
 func BenchmarkStreamSearch(b *testing.B) {
-	dbPath := fmt.Sprintf("/tmp/bench_stream_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/bench_stream_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	config := DefaultConfig()
@@ -503,7 +505,7 @@ func BenchmarkStreamSearch(b *testing.B) {
 }
 
 func TestStreamingWithProgress(t *testing.T) {
-	dbPath := fmt.Sprintf("/tmp/test_progress_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_progress_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	config := DefaultConfig()

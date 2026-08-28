@@ -6,6 +6,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -26,7 +28,7 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 func TestNewSystem(t *testing.T) {
-	dbPath := fmt.Sprintf("test_hindsight_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_hindsight_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: 128})
@@ -57,9 +59,9 @@ func TestMemoryTypes(t *testing.T) {
 	}
 
 	expected := []MemoryType{
-		WorldMemory,      // "world"
-		BankMemory,       // "bank"
-		OpinionMemory,    // "opinion"
+		WorldMemory,       // "world"
+		BankMemory,        // "bank"
+		OpinionMemory,     // "opinion"
 		ObservationMemory, // "observation"
 	}
 
@@ -173,7 +175,7 @@ func TestDispositionValidation(t *testing.T) {
 }
 
 func TestBankManagement(t *testing.T) {
-	dbPath := fmt.Sprintf("test_banks_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_banks_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: 128})
@@ -267,7 +269,7 @@ func TestBankManagement(t *testing.T) {
 }
 
 func TestRetain(t *testing.T) {
-	dbPath := fmt.Sprintf("test_retain_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_retain_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: 64})
@@ -339,10 +341,10 @@ func TestRetain(t *testing.T) {
 
 	t.Run("RetainObservationMemory", func(t *testing.T) {
 		mem := &Memory{
-			BankID:    "agent-1",
-			Type:      ObservationMemory,
-			Content:   "Users prefer concise answers",
-			Vector:    make([]float32, 64),
+			BankID:     "agent-1",
+			Type:       ObservationMemory,
+			Content:    "Users prefer concise answers",
+			Vector:     make([]float32, 64),
 			Confidence: 0.75,
 			Metadata: map[string]any{
 				"observation_type": "preference",
@@ -378,7 +380,7 @@ func TestRetain(t *testing.T) {
 }
 
 func TestRecall(t *testing.T) {
-	dbPath := fmt.Sprintf("test_recall_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_recall_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: 64})
@@ -485,8 +487,8 @@ func TestRecall(t *testing.T) {
 			BankID:      "agent-1",
 			QueryVector: queryVec,
 			Strategy: &RecallStrategy{
-				Memory:  true,
-				TopK:    10,
+				Memory: true,
+				TopK:   10,
 			},
 			TopK: 10,
 		}
@@ -506,7 +508,7 @@ func TestRecall(t *testing.T) {
 }
 
 func TestRecallWithStrategies(t *testing.T) {
-	dbPath := fmt.Sprintf("test_strategies_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_strategies_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: 64})
@@ -635,7 +637,7 @@ func TestRecallWithStrategies(t *testing.T) {
 }
 
 func TestReflect(t *testing.T) {
-	dbPath := fmt.Sprintf("test_reflect_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_reflect_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: 64})
@@ -737,7 +739,7 @@ func TestReflect(t *testing.T) {
 }
 
 func TestObserve(t *testing.T) {
-	dbPath := fmt.Sprintf("test_observe_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_observe_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: 64})
@@ -810,7 +812,7 @@ func TestObserve(t *testing.T) {
 }
 
 func TestObservationManagement(t *testing.T) {
-	dbPath := fmt.Sprintf("test_observation_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_observation_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: 64})
@@ -829,12 +831,12 @@ func TestObservationManagement(t *testing.T) {
 
 	t.Run("AddObservation", func(t *testing.T) {
 		obs := &Observation{
-			BankID:         "agent-1",
-			Content:        "Jamie prefers brevity",
-			Vector:         make([]float32, 64),
-			Confidence:     0.9,
+			BankID:          "agent-1",
+			Content:         "Jamie prefers brevity",
+			Vector:          make([]float32, 64),
+			Confidence:      0.9,
 			ObservationType: PreferenceObservation,
-			Reasoning:      "Multiple interactions show this pattern",
+			Reasoning:       "Multiple interactions show this pattern",
 		}
 
 		err := sys.AddObservation(ctx, obs)
@@ -850,10 +852,10 @@ func TestObservationManagement(t *testing.T) {
 	t.Run("GetObservations", func(t *testing.T) {
 		// Add another observation
 		obs := &Observation{
-			BankID:         "agent-1",
-			Content:        "Users like Python",
-			Vector:         make([]float32, 64),
-			Confidence:     0.8,
+			BankID:          "agent-1",
+			Content:         "Users like Python",
+			Vector:          make([]float32, 64),
+			Confidence:      0.8,
 			ObservationType: PatternObservation,
 		}
 		sys.AddObservation(ctx, obs)
@@ -912,7 +914,7 @@ func TestDefaultStrategy(t *testing.T) {
 }
 
 func TestSystemClose(t *testing.T) {
-	dbPath := fmt.Sprintf("test_close_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_close_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: 64})

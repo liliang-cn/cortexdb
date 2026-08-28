@@ -6,7 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 type keywordEmbedder struct {
@@ -81,7 +82,7 @@ func (fixtureExtractor) Extract(_ context.Context, text string) (*GraphExtractio
 }
 
 func TestGraphRAGInsertAndSearch(t *testing.T) {
-	dbPath := fmt.Sprintf("test_graphrag_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_graphrag_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath), WithEmbedder(newKeywordEmbedder(
@@ -185,7 +186,7 @@ func TestSplitGraphRAGTextCapsUnspacedCJKChunks(t *testing.T) {
 }
 
 func TestGraphRAGRequiresEmbedder(t *testing.T) {
-	dbPath := fmt.Sprintf("test_graphrag_no_embedder_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_graphrag_no_embedder_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -210,7 +211,7 @@ func TestGraphRAGRequiresEmbedder(t *testing.T) {
 }
 
 func TestGraphRAGDefaultExtractor(t *testing.T) {
-	dbPath := fmt.Sprintf("test_graphrag_default_extractor_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_graphrag_default_extractor_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath), WithEmbedder(newKeywordEmbedder("alice", "acme", "graph")))
@@ -238,7 +239,7 @@ func TestGraphRAGDefaultExtractor(t *testing.T) {
 }
 
 func TestGraphRAGSearchCanDisableGraphExpansion(t *testing.T) {
-	dbPath := fmt.Sprintf("test_graphrag_disable_graph_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_graphrag_disable_graph_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath), WithEmbedder(newKeywordEmbedder(
@@ -316,7 +317,7 @@ func TestGraphRAGQueryDefaultsCanDisableRerank(t *testing.T) {
 }
 
 func TestGraphRAGContextPackingAndDiversity(t *testing.T) {
-	dbPath := fmt.Sprintf("test_graphrag_packing_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_graphrag_packing_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath), WithEmbedder(newKeywordEmbedder(

@@ -7,12 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
 func openTemporalTestDB(t *testing.T) (*cortexdb.DB, context.Context) {
 	t.Helper()
-	dbPath := fmt.Sprintf("test_temporal_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_temporal_%d.db", testname.Nano())
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)

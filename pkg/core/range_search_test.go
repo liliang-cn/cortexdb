@@ -6,11 +6,12 @@ import (
 	"math"
 	"os"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 func TestRangeSearch(t *testing.T) {
-	dbPath := fmt.Sprintf("/tmp/test_range_search_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_range_search_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	config := DefaultConfig()
@@ -168,7 +169,7 @@ func TestRangeSearch(t *testing.T) {
 
 	t.Run("EmptyDatabase", func(t *testing.T) {
 		// Create a new store with no data
-		dbPath2 := fmt.Sprintf("/tmp/test_range_empty_%d.db", time.Now().UnixNano())
+		dbPath2 := fmt.Sprintf("/tmp/test_range_empty_%d.db", testname.Nano())
 		defer func() { _ = os.Remove(dbPath2) }()
 
 		store2, _ := NewWithConfig(Config{
@@ -191,7 +192,7 @@ func TestRangeSearch(t *testing.T) {
 }
 
 func TestRangeSearchWithCosineDistance(t *testing.T) {
-	dbPath := fmt.Sprintf("/tmp/test_range_cosine_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_range_cosine_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	config := DefaultConfig()
@@ -282,7 +283,7 @@ func TestRangeSearchWithCosineDistance(t *testing.T) {
 }
 
 func TestRangeSearchSortOrder(t *testing.T) {
-	dbPath := fmt.Sprintf("/tmp/test_range_sort_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_range_sort_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, _ := NewWithConfig(Config{

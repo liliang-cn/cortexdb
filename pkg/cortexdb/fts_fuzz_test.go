@@ -6,7 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 // FuzzLexicalSearchNeverErrors throws arbitrary text at the lexical memory and
@@ -14,7 +15,7 @@ import (
 // (the "no such column" class), no SQL error, no panic. Seeded with the
 // operator characters that historically broke MATCH.
 func FuzzLexicalSearchNeverErrors(f *testing.F) {
-	dbPath := fmt.Sprintf("fuzz_fts_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("fuzz_fts_%d.db", testname.Nano())
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		f.Fatalf("open: %v", err)

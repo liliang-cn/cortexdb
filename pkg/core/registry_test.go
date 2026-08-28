@@ -6,7 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 // The whole point of the registry: one DSN decides the backend, and a path
@@ -24,7 +25,7 @@ func TestADSNPicksTheBackend(t *testing.T) {
 		}
 	}
 
-	path := fmt.Sprintf("test_registry_%d.db", time.Now().UnixNano())
+	path := fmt.Sprintf("test_registry_%d.db", testname.Nano())
 	defer os.Remove(path)
 
 	store, err := OpenStore(path, Config{VectorDim: 4})
@@ -51,7 +52,7 @@ func TestADSNPicksTheBackend(t *testing.T) {
 // Registration must not be silently replaceable, or which backend a process
 // uses depends on package initialisation order.
 func TestARegisteredNameCannotBeQuietlyReplaced(t *testing.T) {
-	name := fmt.Sprintf("test-backend-%d", time.Now().UnixNano())
+	name := fmt.Sprintf("test-backend-%d", testname.Nano())
 	factory := func(string, Config) (Store, error) { return nil, nil }
 
 	if err := RegisterStore(name, factory); err != nil {
@@ -76,7 +77,7 @@ func TestARegisteredNameCannotBeQuietlyReplaced(t *testing.T) {
 // Opening through the registry has to produce a store that actually works,
 // not just one of the right type.
 func TestAStoreOpenedByDSNWorks(t *testing.T) {
-	path := fmt.Sprintf("test_registry_live_%d.db", time.Now().UnixNano())
+	path := fmt.Sprintf("test_registry_live_%d.db", testname.Nano())
 	defer os.Remove(path)
 
 	store, err := OpenStore(path, Config{VectorDim: 4})

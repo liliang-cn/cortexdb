@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 // Two collections, one query. The collection a caller names must be the only one they get back,
 // and a caller who names none must not be quietly confined to whichever collection ingest writes
 // into by default.
 func TestSearchHonoursTheCollectionAskedForAndNothingMore(t *testing.T) {
-	dbPath := fmt.Sprintf("test_collection_scope_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_collection_scope_%d.db", testname.Nano())
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open db: %v", err)

@@ -6,11 +6,12 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 func TestApplyInferenceRulesAndCleanup(t *testing.T) {
-	dbPath := fmt.Sprintf("test_inference_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_inference_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -102,7 +103,7 @@ func TestApplyInferenceRulesAndCleanup(t *testing.T) {
 }
 
 func TestUpsertRelationsStoresInferenceProvenance(t *testing.T) {
-	dbPath := fmt.Sprintf("test_inference_provenance_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_inference_provenance_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -182,7 +183,7 @@ func TestUpsertRelationsStoresInferenceProvenance(t *testing.T) {
 }
 
 func TestApplyInferenceRulesPreservesReservedProvenanceFields(t *testing.T) {
-	dbPath := fmt.Sprintf("test_inference_reserved_fields_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_inference_reserved_fields_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))

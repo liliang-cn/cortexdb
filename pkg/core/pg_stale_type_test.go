@@ -8,10 +8,10 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 func TestIsStaleTypeCacheIsNarrow(t *testing.T) {
@@ -105,7 +105,7 @@ func TestSearchSurvivesTheVectorTypeBeingReplaced(t *testing.T) {
 	}
 	defer admin.Close()
 
-	dbName := fmt.Sprintf("cortexdb_staletype_%d", time.Now().UnixNano())
+	dbName := fmt.Sprintf("cortexdb_staletype_%d", testname.Nano())
 	if _, err := admin.ExecContext(ctx, `CREATE DATABASE `+dbName); err != nil {
 		t.Fatalf("create database: %v", err)
 	}

@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
 func TestSPARQLSubquery(t *testing.T) {
-	dbPath := fmt.Sprintf("test_subquery_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_subquery_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)
@@ -81,7 +81,7 @@ func TestSPARQLSubquery(t *testing.T) {
 }
 
 func TestSPARQLSubqueryDistinctLimit(t *testing.T) {
-	dbPath := fmt.Sprintf("test_subquery_limit_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_subquery_limit_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)

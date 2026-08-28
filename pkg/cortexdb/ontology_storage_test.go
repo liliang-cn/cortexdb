@@ -6,12 +6,13 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 func openOntologyTestDB(t *testing.T) *DB {
 	t.Helper()
-	dbPath := fmt.Sprintf("test_ontology_v2_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_ontology_v2_%d.db", testname.Nano())
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open db: %v", err)

@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 // top_k is optional in the tool schema, and an MCP caller — a model deciding which arguments to
@@ -14,7 +15,7 @@ import (
 // held dozens of matches. Every other test in this package passes TopK explicitly, which is exactly
 // why nothing caught it.
 func TestSearchTextWithoutTopKStillReturnsWhatMatched(t *testing.T) {
-	dbPath := fmt.Sprintf("test_default_topk_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_default_topk_%d.db", testname.Nano())
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open db: %v", err)

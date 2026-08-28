@@ -7,10 +7,12 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 func TestDocumentManagement(t *testing.T) {
-	dbPath := fmt.Sprintf("/tmp/test_doc_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_doc_%d.db", testname.Nano())
 	defer os.Remove(dbPath)
 
 	store, _ := New(dbPath, 128)
@@ -87,7 +89,7 @@ func TestDocumentManagement(t *testing.T) {
 }
 
 func TestChatMemory(t *testing.T) {
-	dbPath := fmt.Sprintf("/tmp/test_chat_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_chat_%d.db", testname.Nano())
 	defer os.Remove(dbPath)
 
 	store, _ := New(dbPath, 128)
@@ -158,7 +160,7 @@ func TestChatMemory(t *testing.T) {
 }
 
 func TestACLSearch(t *testing.T) {
-	dbPath := fmt.Sprintf("/tmp/test_acl_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_acl_%d.db", testname.Nano())
 	defer os.Remove(dbPath)
 
 	store, _ := New(dbPath, 4)
@@ -202,7 +204,7 @@ func TestACLSearch(t *testing.T) {
 }
 
 func TestHybridSearch(t *testing.T) {
-	dbPath := fmt.Sprintf("/tmp/test_hybrid_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_hybrid_%d.db", testname.Nano())
 	defer os.Remove(dbPath)
 
 	store, _ := New(dbPath, 4)

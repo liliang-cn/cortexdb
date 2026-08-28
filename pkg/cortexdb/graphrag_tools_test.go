@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 func TestGraphRAGToolsTypedFlowWithoutEmbedder(t *testing.T) {
-	dbPath := fmt.Sprintf("test_graphrag_tools_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_graphrag_tools_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -272,7 +273,7 @@ func TestGraphRAGToolsTypedFlowWithoutEmbedder(t *testing.T) {
 }
 
 func TestGraphRAGToolsDispatcherAndDefinitions(t *testing.T) {
-	dbPath := fmt.Sprintf("test_graphrag_tools_dispatch_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_graphrag_tools_dispatch_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))

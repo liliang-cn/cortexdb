@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 // TestLexicalSearchHandlesFTSOperatorChars guards against a regression where a
@@ -14,7 +15,7 @@ import (
 // and knowledge lexical paths flow through lexicalSearchQueries, so both must
 // tolerate arbitrary natural-language input.
 func TestLexicalSearchHandlesFTSOperatorChars(t *testing.T) {
-	dbPath := fmt.Sprintf("test_fts_sanitize_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_fts_sanitize_%d.db", testname.Nano())
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)

@@ -6,14 +6,14 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
 func openResolveTestDB(t *testing.T) (*cortexdb.DB, context.Context) {
 	t.Helper()
-	dbPath := fmt.Sprintf("test_resolve_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_resolve_%d.db", testname.Nano())
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -35,7 +35,7 @@ func TestResolveEntitiesDeterministicMerge(t *testing.T) {
 	tools := db.GraphRAGTools()
 
 	if _, err := tools.UpsertEntities(ctx, cortexdb.ToolUpsertEntitiesRequest{Entities: []cortexdb.ToolEntityInput{
-		{Name: "CortexDB", Type: "project"}, // -> entity:cortexdb
+		{Name: "CortexDB", Type: "project"},  // -> entity:cortexdb
 		{Name: "Cortex DB", Type: "project"}, // -> entity:cortex_db (same key)
 		{Name: "SQLite", Type: "tool"},
 	}}); err != nil {

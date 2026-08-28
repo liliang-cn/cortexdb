@@ -7,11 +7,12 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 func TestExtractConversation(t *testing.T) {
-	dbPath := fmt.Sprintf("test_extract_conv_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_extract_conv_%d.db", testname.Nano())
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)

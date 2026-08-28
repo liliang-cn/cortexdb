@@ -7,13 +7,13 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
 func TestRDFTripleLifecycle(t *testing.T) {
-	dbPath := fmt.Sprintf("test_rdf_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_rdf_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 32)
@@ -110,7 +110,7 @@ func TestRDFTripleLifecycle(t *testing.T) {
 }
 
 func TestRDFTripleBatchPartialFailure(t *testing.T) {
-	dbPath := fmt.Sprintf("test_rdf_partial_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_rdf_partial_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)
@@ -165,7 +165,7 @@ func TestRDFTripleBatchPartialFailure(t *testing.T) {
 }
 
 func TestRDFImportRoundTrip(t *testing.T) {
-	dbPath := fmt.Sprintf("test_rdf_roundtrip_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_rdf_roundtrip_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)
@@ -202,7 +202,7 @@ func TestRDFImportRoundTrip(t *testing.T) {
 }
 
 func TestRDFImportTurtleAndExportTriG(t *testing.T) {
-	dbPath := fmt.Sprintf("test_rdf_turtle_trig_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_rdf_turtle_trig_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)

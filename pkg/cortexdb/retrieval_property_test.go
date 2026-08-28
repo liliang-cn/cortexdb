@@ -7,7 +7,8 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 // TestPropertyDistinctiveTokenIsFindable asserts a core retrieval invariant
@@ -15,7 +16,7 @@ import (
 // token is retrieved by lexical search for that token. This guards tokenizer /
 // FTS indexing regressions (including CJK and punctuation-adjacent content).
 func TestPropertyDistinctiveTokenIsFindable(t *testing.T) {
-	dbPath := fmt.Sprintf("test_prop_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_prop_%d.db", testname.Nano())
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)

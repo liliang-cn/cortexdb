@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 func TestHNSWSimple(t *testing.T) {
 	// Create temporary database
-	dbPath := fmt.Sprintf("/tmp/test_hnsw_simple_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_hnsw_simple_%d.db", testname.Nano())
 	defer func() {
 		if err := os.Remove(dbPath); err != nil {
 			// Ignore cleanup errors in tests

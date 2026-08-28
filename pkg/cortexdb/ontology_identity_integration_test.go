@@ -6,7 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 func TestUpsertEntitiesUsesPrimaryKeyIdentity(t *testing.T) {
@@ -212,7 +213,7 @@ func TestValidateExtractedGraphDataRejectsNodeIDDisagreeingWithItsType(t *testin
 
 func openOntologyKnowledgeTestDB(t *testing.T) *DB {
 	t.Helper()
-	dbPath := fmt.Sprintf("test_ontology_knowledge_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_ontology_knowledge_%d.db", testname.Nano())
 	db, err := Open(DefaultConfig(dbPath), WithEmbedder(newKeywordEmbedder("ba117", "departs", "heathrow")))
 	if err != nil {
 		t.Fatalf("open db: %v", err)

@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 // A collection is how a caller says "only this book". Hybrid search runs a vector arm and a
@@ -13,7 +14,7 @@ import (
 // unless it is restricted the collection asked for is silently ignored and the caller is handed
 // another tenant's text as if it were their own.
 func TestHybridSearchKeywordArmStaysInsideTheCollection(t *testing.T) {
-	dbPath := fmt.Sprintf("/tmp/test_hybrid_collection_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_hybrid_collection_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := New(dbPath, 4)

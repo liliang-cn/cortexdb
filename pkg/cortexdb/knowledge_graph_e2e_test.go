@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
@@ -26,7 +26,7 @@ const (
 // -> export, reopen a fresh DB, import, and confirm the round-trip preserves
 // both explicit data and queryability.
 func TestKnowledgeGraphE2E(t *testing.T) {
-	dbPath := fmt.Sprintf("test_kg_e2e_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_kg_e2e_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	ctx := context.Background()
@@ -207,7 +207,7 @@ ASK { ex:alice ex:knows+ ex:carol . }
 	}
 
 	// Fresh DB, import the serialized graph.
-	dbPath2 := fmt.Sprintf("test_kg_e2e_roundtrip_%d.db", time.Now().UnixNano())
+	dbPath2 := fmt.Sprintf("test_kg_e2e_roundtrip_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath2) }()
 	db2, err := Open(DefaultConfig(dbPath2))
 	if err != nil {
@@ -269,7 +269,7 @@ func equalStrings(a, b []string) bool {
 // DeepSeek) reject null for the required array, which breaks agents that expose
 // the CortexDB toolbox (e.g. via AgentGo).
 func TestGraphRAGToolSchemasNoNullRequired(t *testing.T) {
-	dbPath := fmt.Sprintf("test_kg_schema_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_kg_schema_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -305,7 +305,7 @@ func shaclMentions(report KnowledgeGraphSHACLReport, focusValue string) bool {
 // typed literal, and a language literal, exports Turtle, imports the text into
 // a fresh DB, and confirms every term type survives via SPARQL + Find.
 func TestKnowledgeGraphTurtleRoundTrip(t *testing.T) {
-	dbPath := fmt.Sprintf("test_kg_turtle_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_kg_turtle_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 	ctx := context.Background()
 
@@ -338,7 +338,7 @@ func TestKnowledgeGraphTurtleRoundTrip(t *testing.T) {
 	}
 
 	// Import the Turtle text into a clean DB via the external parser.
-	dbPath2 := fmt.Sprintf("test_kg_turtle_rt_%d.db", time.Now().UnixNano())
+	dbPath2 := fmt.Sprintf("test_kg_turtle_rt_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath2) }()
 	dst, err := Open(DefaultConfig(dbPath2))
 	if err != nil {
@@ -391,7 +391,7 @@ func TestKnowledgeGraphTurtleRoundTrip(t *testing.T) {
 // fresh DB, and confirms the graph names are preserved (a triple lands in the
 // correct named graph, not the default graph).
 func TestKnowledgeGraphTriGRoundTrip(t *testing.T) {
-	dbPath := fmt.Sprintf("test_kg_trig_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_kg_trig_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 	ctx := context.Background()
 
@@ -420,7 +420,7 @@ func TestKnowledgeGraphTriGRoundTrip(t *testing.T) {
 		t.Fatalf("close src: %v", err)
 	}
 
-	dbPath2 := fmt.Sprintf("test_kg_trig_rt_%d.db", time.Now().UnixNano())
+	dbPath2 := fmt.Sprintf("test_kg_trig_rt_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath2) }()
 	dst, err := Open(DefaultConfig(dbPath2))
 	if err != nil {

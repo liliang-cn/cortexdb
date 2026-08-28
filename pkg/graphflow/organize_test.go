@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
@@ -15,7 +15,7 @@ import (
 // memories (which have no graph presence) gain entity nodes and entity↔entity
 // co-occurrence relations after an organize pass — deterministically, no LLM.
 func TestOrganizeFromBrainBuildsEntityGraphFromMemories(t *testing.T) {
-	dbPath := fmt.Sprintf("test_organize_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_organize_%d.db", testname.Nano())
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)

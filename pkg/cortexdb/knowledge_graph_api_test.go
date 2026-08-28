@@ -6,13 +6,13 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
 func TestKnowledgeGraphAPI(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_graph_api_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_knowledge_graph_api_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -131,7 +131,7 @@ SELECT ?name WHERE {
 }
 
 func TestKnowledgeGraphToolboxCall(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_graph_toolbox_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_knowledge_graph_toolbox_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -162,7 +162,7 @@ func TestKnowledgeGraphToolboxCall(t *testing.T) {
 }
 
 func TestKnowledgeGraphInferenceAPI(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_graph_inference_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_knowledge_graph_inference_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -248,7 +248,7 @@ func TestKnowledgeGraphInferenceAPI(t *testing.T) {
 }
 
 func TestKnowledgeGraphInferenceIncrementalAPI(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_graph_inference_incremental_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_knowledge_graph_inference_incremental_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -293,7 +293,7 @@ func TestKnowledgeGraphInferenceIncrementalAPI(t *testing.T) {
 }
 
 func TestKnowledgeGraphSHACLValidateAPI(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_graph_shacl_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_knowledge_graph_shacl_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -334,7 +334,7 @@ func TestKnowledgeGraphSHACLValidateAPI(t *testing.T) {
 }
 
 func TestKnowledgeGraphSHACLAdvancedValidateAPI(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_graph_shacl_advanced_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_knowledge_graph_shacl_advanced_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))

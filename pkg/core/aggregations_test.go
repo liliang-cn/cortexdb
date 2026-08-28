@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 func TestAggregations(t *testing.T) {
-	dbPath := fmt.Sprintf("/tmp/test_aggregations_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_aggregations_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	config := DefaultConfig()
@@ -431,7 +432,7 @@ func abs(x float64) float64 {
 }
 
 func BenchmarkAggregations(b *testing.B) {
-	dbPath := fmt.Sprintf("/tmp/bench_aggregations_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/bench_aggregations_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, _ := NewWithConfig(Config{

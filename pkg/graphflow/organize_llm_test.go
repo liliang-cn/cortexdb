@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
@@ -30,7 +30,7 @@ func (f *organizeFakeLLM) GenerateJSON(_ context.Context, _ string, userPrompt s
 // wrapped in a <think> block and prose), writes typed entity nodes, and creates
 // the stated relation edge with the model's relation type.
 func TestOrganizeFromBrainLLMDistillsTypedGraph(t *testing.T) {
-	dbPath := fmt.Sprintf("test_organize_llm_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_organize_llm_%d.db", testname.Nano())
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)

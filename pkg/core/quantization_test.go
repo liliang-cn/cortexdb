@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 func TestQuantizationIntegration(t *testing.T) {
-	dbPath := fmt.Sprintf("/tmp/test_quant_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_quant_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	ctx := context.Background()

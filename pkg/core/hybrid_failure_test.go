@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 // A lexical-only search whose one arm cannot run must fail, not return nothing.
@@ -16,7 +17,7 @@ import (
 // That is the shape of failure that cost a day of hunting through databases for a bug that was in the
 // query, and it is unfalsifiable from outside: every caller sees success.
 func TestLexicalOnlySearchFailsLoudlyWhenItsOnlyArmCannotRun(t *testing.T) {
-	dbPath := fmt.Sprintf("test_hybrid_failure_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_hybrid_failure_%d.db", testname.Nano())
 	store, err := New(dbPath, 3)
 	if err != nil {
 		t.Fatalf("new store: %v", err)
@@ -69,7 +70,7 @@ func TestLexicalOnlySearchFailsLoudlyWhenItsOnlyArmCannotRun(t *testing.T) {
 // With a vector arm still answering, the same breakage degrades instead of failing: half an answer beats
 // none. It is logged rather than silent, because vector-only results look exactly like ordinary ones.
 func TestHybridSearchDegradesWhenTheKeywordArmBreaksButTheVectorArmAnswers(t *testing.T) {
-	dbPath := fmt.Sprintf("test_hybrid_degrade_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_hybrid_degrade_%d.db", testname.Nano())
 	store, err := New(dbPath, 3)
 	if err != nil {
 		t.Fatalf("new store: %v", err)

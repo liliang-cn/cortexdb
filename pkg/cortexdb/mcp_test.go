@@ -8,13 +8,13 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestMCPServerToolFlow(t *testing.T) {
-	dbPath := fmt.Sprintf("test_mcp_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_mcp_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))

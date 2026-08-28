@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
 func TestRefreshRDFSInferencesAndExplain(t *testing.T) {
-	dbPath := fmt.Sprintf("test_rdfs_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_rdfs_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)
@@ -140,7 +140,7 @@ func TestRefreshRDFSInferencesAndExplain(t *testing.T) {
 }
 
 func TestRefreshRDFSInferencesIncremental(t *testing.T) {
-	dbPath := fmt.Sprintf("test_rdfs_incremental_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_rdfs_incremental_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)

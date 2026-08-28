@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 // `collection` is a top-level parameter of the same call and also lives at plan.filters.collection,
 // so a model reaches for plan.collection — and with additionalProperties:false that was a hard
 // schema rejection, costing a whole model round trip on a scoped search before it guessed again.
 func TestPlanCollectionShorthandIsAccepted(t *testing.T) {
-	dbPath := fmt.Sprintf("test_plan_collection_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_plan_collection_%d.db", testname.Nano())
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open db: %v", err)

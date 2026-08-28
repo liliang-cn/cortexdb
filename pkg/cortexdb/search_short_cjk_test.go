@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 // Two characters is an ordinary Chinese word, and a lesson is usually about one: 乘法, 分数, 面积.
 // The trigram index cannot hold a token that short, so MATCH finds none of them however many
 // chunks contain the term — the search reports nothing rather than reporting it cannot look.
 func TestShortCJKQueryStillFindsTheTermInTheCorpus(t *testing.T) {
-	dbPath := fmt.Sprintf("test_short_cjk_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_short_cjk_%d.db", testname.Nano())
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open db: %v", err)

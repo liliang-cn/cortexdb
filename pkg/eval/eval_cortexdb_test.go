@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"github.com/liliang-cn/cortexdb/v2/pkg/eval"
 )
@@ -20,7 +20,7 @@ func TestLexicalRetrievalQuality(t *testing.T) {
 		t.Fatalf("load dataset: %v", err)
 	}
 
-	dbPath := fmt.Sprintf("test_eval_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_eval_%d.db", testname.Nano())
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)

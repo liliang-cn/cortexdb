@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 // One suite, both stores.
@@ -26,7 +26,7 @@ type storeUnderTest struct {
 func storesUnderTest(t *testing.T) []storeUnderTest {
 	t.Helper()
 
-	path := fmt.Sprintf("test_parity_%d.db", time.Now().UnixNano())
+	path := fmt.Sprintf("test_parity_%d.db", testname.Nano())
 	lite, err := New(path, 4)
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)

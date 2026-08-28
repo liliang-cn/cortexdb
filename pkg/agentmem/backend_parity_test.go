@@ -13,6 +13,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/agentmem"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
@@ -45,7 +46,7 @@ func backendsUnderTest(t *testing.T) []backendUnderTest {
 
 func openSQLiteStore(t *testing.T) *agentmem.Store {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), fmt.Sprintf("parity_%d.db", time.Now().UnixNano()))
+	path := filepath.Join(t.TempDir(), fmt.Sprintf("parity_%d.db", testname.Nano()))
 	cfg := cortexdb.DefaultConfig(path)
 	cfg.Dimensions = 4
 	db, err := cortexdb.Open(cfg)
@@ -84,7 +85,7 @@ func openPostgresStore(t *testing.T, dsn string) *agentmem.Store {
 		admin.Close()
 		t.Fatalf("postgres extension: %v", err)
 	}
-	schema := fmt.Sprintf("agentmem_test_%d", time.Now().UnixNano())
+	schema := fmt.Sprintf("agentmem_test_%d", testname.Nano())
 	if _, err := admin.ExecContext(ctx, `CREATE SCHEMA `+schema); err != nil {
 		admin.Close()
 		t.Fatalf("postgres schema: %v", err)

@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
 func TestGraphBasicOperations(t *testing.T) {
-	dbPath := fmt.Sprintf("test_graph_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_graph_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 3)
@@ -148,7 +148,7 @@ func TestGraphBasicOperations(t *testing.T) {
 }
 
 func TestGraphTraversal(t *testing.T) {
-	dbPath := fmt.Sprintf("test_traversal_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_traversal_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 3)
@@ -256,7 +256,7 @@ func TestGraphTraversal(t *testing.T) {
 }
 
 func TestHybridSearch(t *testing.T) {
-	dbPath := fmt.Sprintf("test_hybrid_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_hybrid_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 3)

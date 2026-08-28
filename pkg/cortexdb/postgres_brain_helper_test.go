@@ -7,9 +7,9 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 // openPostgresBrain gives a test its own brain on PostgreSQL, or skips it.
@@ -36,7 +36,7 @@ func openPostgresBrain(t *testing.T, dims int) *DB {
 		admin.Close()
 		t.Fatalf("extension: %v", err)
 	}
-	schema := fmt.Sprintf("brain_test_%d", time.Now().UnixNano())
+	schema := fmt.Sprintf("brain_test_%d", testname.Nano())
 	if _, err := admin.ExecContext(ctx, `CREATE SCHEMA `+schema); err != nil {
 		admin.Close()
 		t.Fatalf("schema: %v", err)

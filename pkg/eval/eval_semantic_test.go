@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"github.com/liliang-cn/cortexdb/v2/pkg/eval"
 )
@@ -94,7 +95,7 @@ func TestSemanticRetrievalQuality(t *testing.T) {
 	}
 	emb := &httpEmbedder{base: base, key: key, model: model, dim: dim, c: &http.Client{Timeout: 30 * time.Second}}
 
-	dbPath := fmt.Sprintf("test_semeval_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_semeval_%d.db", testname.Nano())
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath), cortexdb.WithEmbedder(emb))
 	if err != nil {
 		t.Fatalf("open: %v", err)

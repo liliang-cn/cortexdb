@@ -2,10 +2,8 @@ package cortexdb
 
 import (
 	"context"
-	"fmt"
-	"os"
+	"path/filepath"
 	"testing"
-	"time"
 )
 
 type evaluationCorpusDocument struct {
@@ -57,7 +55,13 @@ func newEvaluationCorpus() []evaluationCorpusDocument {
 func newLexicalEvaluationFixture(t testing.TB) *evaluationFixture {
 	t.Helper()
 
-	dbPath := fmt.Sprintf("test_evaluation_lexical_%d.db", time.Now().UnixNano())
+	// t.TempDir(), not the package directory. A unique name is enough to stop
+	// two parallel fixtures opening one file, but the database was also being
+	// written next to the source and only half cleaned up: cleanup removed the
+	// .db and left the -wal and -shm beside it, run after run. TempDir is
+	// removed whole, by the test framework, including the files this code does
+	// not know the names of.
+	dbPath := filepath.Join(t.TempDir(), "evaluation_lexical.db")
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open lexical evaluation db: %v", err)
@@ -76,7 +80,7 @@ func newLexicalEvaluationFixture(t testing.TB) *evaluationFixture {
 func newVectorEvaluationFixture(t testing.TB) *evaluationFixture {
 	t.Helper()
 
-	dbPath := fmt.Sprintf("test_evaluation_vector_%d.db", time.Now().UnixNano())
+	dbPath := filepath.Join(t.TempDir(), "evaluation_vector.db")
 	db, err := Open(DefaultConfig(dbPath), WithEmbedder(newKeywordEmbedder(
 		"alice", "acme", "works", "headquartered", "berlin", "beta", "labs", "madrid",
 	)))
@@ -102,9 +106,8 @@ func (f *evaluationFixture) cleanup(t testing.TB) {
 	if f.db != nil {
 		_ = f.db.Close()
 	}
-	if f.dbPath != "" {
-		_ = os.Remove(f.dbPath)
-	}
+	// The file itself is inside t.TempDir(), which the framework removes along
+	// with the -wal and -shm this used to leave behind.
 }
 
 func (f *evaluationFixture) seedLexical(t testing.TB, ctx context.Context) {

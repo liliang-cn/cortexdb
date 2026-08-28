@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
@@ -14,7 +15,7 @@ import (
 // query must return an error, never panic — the parser/executor is a large
 // surface and untrusted input (agent- or user-authored queries) reaches it.
 func FuzzExecuteSPARQL(f *testing.F) {
-	dbPath := fmt.Sprintf("fuzz_sparql_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("fuzz_sparql_%d.db", testname.Nano())
 	store, err := core.New(dbPath, 16)
 	if err != nil {
 		f.Fatalf("store: %v", err)

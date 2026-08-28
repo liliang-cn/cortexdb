@@ -24,9 +24,9 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 // newPostgresDimStore returns an initialised store in a schema of its own.
@@ -39,7 +39,7 @@ func newPostgresDimStore(t *testing.T, vectorDim int) (*PostgresStore, *sql.DB) 
 		t.Skip("CORTEXDB_TEST_POSTGRES unset — PostgreSQL dimension bookkeeping is NOT covered by this run")
 	}
 	ctx := context.Background()
-	schema := fmt.Sprintf("cortexdb_dims_%d", time.Now().UnixNano())
+	schema := fmt.Sprintf("cortexdb_dims_%d", testname.Nano())
 
 	admin, err := sql.Open("pgx", raw)
 	if err != nil {

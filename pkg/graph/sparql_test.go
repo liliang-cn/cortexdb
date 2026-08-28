@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
 func TestExecuteSPARQLSelectAndAsk(t *testing.T) {
-	dbPath := fmt.Sprintf("test_sparql_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_sparql_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)
@@ -123,7 +123,7 @@ SELECT ?g WHERE {
 }
 
 func TestExecuteSPARQLOptionalUnionAndOrderBy(t *testing.T) {
-	dbPath := fmt.Sprintf("test_sparql_advanced_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_sparql_advanced_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)
@@ -189,7 +189,7 @@ ORDER BY DESC(?name)
 }
 
 func TestExecuteSPARQLConstructDistinctOffsetAndCompare(t *testing.T) {
-	dbPath := fmt.Sprintf("test_sparql_construct_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_sparql_construct_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)
@@ -264,7 +264,7 @@ WHERE {
 }
 
 func TestExecuteSPARQLDescribeValuesAndRegex(t *testing.T) {
-	dbPath := fmt.Sprintf("test_sparql_describe_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_sparql_describe_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)
@@ -344,7 +344,7 @@ DESCRIBE ex:alice
 }
 
 func TestExecuteSPARQLMinus(t *testing.T) {
-	dbPath := fmt.Sprintf("test_sparql_minus_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_sparql_minus_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)
@@ -390,7 +390,7 @@ SELECT ?person WHERE {
 }
 
 func TestExecuteSPARQLUpdates(t *testing.T) {
-	dbPath := fmt.Sprintf("test_sparql_updates_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_sparql_updates_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)
@@ -586,7 +586,7 @@ WHERE {
 }
 
 func TestExecuteSPARQLGroupByHavingCountAndBind(t *testing.T) {
-	dbPath := fmt.Sprintf("test_sparql_groupby_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_sparql_groupby_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)
@@ -713,7 +713,7 @@ SELECT (?a + ?b AS ?sum) (IF((?a + ?b > 12) && !(?a < 10), "big", COALESCE(?miss
 }
 
 func TestExecuteSPARQLExistsAndNotExists(t *testing.T) {
-	dbPath := fmt.Sprintf("test_sparql_exists_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_sparql_exists_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)
@@ -779,7 +779,7 @@ SELECT ?person WHERE {
 }
 
 func TestExecuteSPARQLPropertyPaths(t *testing.T) {
-	dbPath := fmt.Sprintf("test_sparql_paths_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_sparql_paths_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)

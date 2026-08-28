@@ -6,7 +6,8 @@ import (
 	"math"
 	"os"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 // MockEmbedder for testing
@@ -58,7 +59,7 @@ func (m *MockEmbedder) normalize(vec []float32) []float32 {
 }
 
 func TestEmbedderIntegration(t *testing.T) {
-	dbPath := fmt.Sprintf("test_embedder_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_embedder_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	dim := 4
@@ -138,7 +139,7 @@ func TestEmbedderIntegration(t *testing.T) {
 }
 
 func TestSearchTextOnly(t *testing.T) {
-	dbPath := fmt.Sprintf("test_textonly_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_textonly_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))

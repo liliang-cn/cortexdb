@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"testing"
-	"time"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/agentmem"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
@@ -14,7 +14,7 @@ import (
 func newStore(t *testing.T) (*agentmem.Store, func()) {
 	t.Helper()
 	dir := t.TempDir()
-	path := filepath.Join(dir, fmt.Sprintf("agentmem_%d.db", time.Now().UnixNano()))
+	path := filepath.Join(dir, fmt.Sprintf("agentmem_%d.db", testname.Nano()))
 	cdb, err := cortexdb.Open(cortexdb.DefaultConfig(path))
 	if err != nil {
 		t.Fatalf("open cortexdb: %v", err)

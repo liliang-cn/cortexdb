@@ -22,6 +22,7 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 // chatTestDSN puts the connection in its own schema, so nothing here can reach
@@ -59,7 +60,7 @@ func openChatPG(t *testing.T, dim int) *PostgresStore {
 	}
 	defer admin.Close()
 
-	schema := fmt.Sprintf("chat_test_%d", time.Now().UnixNano())
+	schema := fmt.Sprintf("chat_test_%d", testname.Nano())
 	if _, err := admin.ExecContext(ctx, `CREATE SCHEMA `+schema); err != nil {
 		t.Fatalf("create schema: %v", err)
 	}

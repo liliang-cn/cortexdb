@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
 func TestSHACLValidation(t *testing.T) {
-	dbPath := fmt.Sprintf("test_shacl_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_shacl_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)
@@ -103,7 +103,7 @@ func TestSHACLValidation(t *testing.T) {
 }
 
 func TestSHACLAdvancedPropertyConstraints(t *testing.T) {
-	dbPath := fmt.Sprintf("test_shacl_advanced_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_shacl_advanced_%d.db", testname.Nano())
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)

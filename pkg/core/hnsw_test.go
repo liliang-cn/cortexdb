@@ -8,11 +8,13 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 func TestHNSWIntegration(t *testing.T) {
 	// Create temporary database
-	dbPath := fmt.Sprintf("/tmp/test_hnsw_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_hnsw_%d.db", testname.Nano())
 	defer func() {
 		if err := os.Remove(dbPath); err != nil {
 			// Ignore cleanup errors in tests
@@ -93,7 +95,7 @@ func TestHNSWIntegration(t *testing.T) {
 
 	// Test with HNSW disabled (linear search fallback)
 	t.Run("without_hnsw", func(t *testing.T) {
-		dbPath2 := fmt.Sprintf("/tmp/test_no_hnsw_%d.db", time.Now().UnixNano())
+		dbPath2 := fmt.Sprintf("/tmp/test_no_hnsw_%d.db", testname.Nano())
 		defer func() { _ = os.Remove(dbPath2) }()
 
 		config := DefaultConfig()
@@ -151,7 +153,7 @@ func TestHNSWIntegration(t *testing.T) {
 }
 
 func TestHNSWRebuild(t *testing.T) {
-	dbPath := fmt.Sprintf("/tmp/test_hnsw_rebuild_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_hnsw_rebuild_%d.db", testname.Nano())
 	defer func() {
 		if err := os.Remove(dbPath); err != nil {
 			// Ignore cleanup errors in tests
@@ -233,7 +235,7 @@ func TestHNSWPerformance(t *testing.T) {
 		t.Skip("Skipping performance test in short mode")
 	}
 
-	dbPath := fmt.Sprintf("/tmp/test_hnsw_perf_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/test_hnsw_perf_%d.db", testname.Nano())
 	defer func() {
 		if err := os.Remove(dbPath); err != nil {
 			// Ignore cleanup errors in tests
@@ -325,7 +327,7 @@ func TestHNSWPerformance(t *testing.T) {
 }
 
 func generateTestVectors(n, dim int) [][]float32 {
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(testname.Nano()))
 	vectors := make([][]float32, n)
 	for i := 0; i < n; i++ {
 		vec := make([]float32, dim)
@@ -350,7 +352,7 @@ func generateTestVectors(n, dim int) [][]float32 {
 
 // Benchmark tests
 func BenchmarkHNSWSearch(b *testing.B) {
-	dbPath := fmt.Sprintf("/tmp/bench_hnsw_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/bench_hnsw_%d.db", testname.Nano())
 	defer func() {
 		if err := os.Remove(dbPath); err != nil {
 			// Ignore cleanup errors in tests
@@ -398,7 +400,7 @@ func BenchmarkHNSWSearch(b *testing.B) {
 }
 
 func BenchmarkLinearSearch(b *testing.B) {
-	dbPath := fmt.Sprintf("/tmp/bench_linear_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("/tmp/bench_linear_%d.db", testname.Nano())
 	defer func() {
 		if err := os.Remove(dbPath); err != nil {
 			// Ignore cleanup errors in tests

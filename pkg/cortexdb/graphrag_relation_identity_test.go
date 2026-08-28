@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 // An edge is identified by what it connects and what it means. Before this, the identity included the
@@ -112,7 +113,7 @@ func TestUpsertRelationsMergesChunkIDsOfARepeatedEdge(t *testing.T) {
 
 func relationTestStore(t *testing.T) (*DB, *GraphRAGToolbox, context.Context) {
 	t.Helper()
-	path := fmt.Sprintf("test_relation_identity_%d.db", time.Now().UnixNano())
+	path := fmt.Sprintf("test_relation_identity_%d.db", testname.Nano())
 	db, err := Open(DefaultConfig(path))
 	if err != nil {
 		t.Fatalf("open db: %v", err)

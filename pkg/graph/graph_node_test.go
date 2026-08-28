@@ -3,14 +3,15 @@ package graph
 import (
 	"context"
 	"fmt"
-	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"os"
 	"testing"
-	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/testname"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
 func setupTestGraph(t testing.TB) (*core.SQLiteStore, *GraphStore, func()) {
-	dbPath := fmt.Sprintf("test_graph_%d.db", time.Now().UnixNano())
+	dbPath := fmt.Sprintf("test_graph_%d.db", testname.Nano())
 
 	store, err := core.New(dbPath, 3)
 	if err != nil {
