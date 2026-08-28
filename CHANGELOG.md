@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.82.1] - 2026-08-28
+
+### Fixed
+
+- **A search survives the `vector` type being replaced under a live connection.**
+  `vector` is not a built-in: its OID is assigned when the extension is created and a
+  new one is assigned if it is ever dropped and created again — a restore, an
+  extension reinstall, a test suite sharing the database. pgx caches prepared
+  statements per connection and a statement's descriptor names its parameter and
+  result type OIDs, so a connection that prepared a vector query beforehand then asks
+  the server about an OID that is gone:
+
+      ERROR: cache lookup failed for type 91164 (SQLSTATE XX000)
+
+  It reaches only the statements carrying the vector type in their descriptor — a
+  bound parameter or an operator operand — which is the vector search path and
+  nothing else. The error is raised while the server resolves the types, before the
+  statement runs, and pgx drops the offending cache entry on the way out, so the
+  reads now retry once and succeed. Once rather than in a loop, because a second
+  failure means something other than a replaced type. Matched on SQLSTATE *and*
+  message text: XX000 is PostgreSQL's catch-all internal error and 0A000 covers every
+  unsupported feature, so either code alone would swallow failures that have to reach
+  the caller.
+
+  Worth knowing alongside it, because the two arrive together: `DROP EXTENSION vector
+  CASCADE` also drops every vector *column*. The tables survive and
+  `embeddings.vector` does not, so an extension reinstall needs the columns put back
+  whatever this retry does.
+
 ## [2.82.0] - 2026-08-27
 
 ### Added
