@@ -2,6 +2,53 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.87.0] - 2026-08-29
+
+### Fixed
+
+- **`CREATE EXTENSION IF NOT EXISTS` is not protection against a concurrent creation.**
+  It checks and inserts in two steps, so two connections running it at the same moment
+  both pass the guard and one loses in the catalogue with `duplicate key value violates
+  unique constraint pg_extension_name_index` — an error naming a system index and nothing
+  the caller did. Opening two brains on one PostgreSQL database at once is ordinary and
+  each initialises its extensions on the way up, so this is reachable in production, not
+  only under a parallel test run. `PostgresStore.Init` returned "pgvector is required by
+  the PostgreSQL store" and refused to start; `GraphStore.initPgVector` recorded "pgvector
+  unavailable" and did exact scans for the life of that store, having taken a momentary
+  collision for a deployment fact; and the lexical DDL, run as one list whose loop broke
+  on first error, lost both indexes and left CJK search linear without saying so.
+
+  `sqldialect.EnsureExtension` replaces all three. It does not try to recognise the race
+  by SQLSTATE or error text — on any failure it asks the catalogue whether the extension
+  is present, which is the only question whose answer does not depend on a server's
+  wording. A managed instance that refuses `CREATE EXTENSION` still gets an error,
+  because there the extension really is absent.
+
+  The race only exists while the extension is absent, which is why it presented as
+  unreproducible flakiness: a database set up once by hand never opens the window.
+  Dropping the extension first makes it fire on every run.
+
+### Changed
+
+- **`PostgresLexicalDDL` no longer returns the `CREATE EXTENSION` statement**; the
+  extension is named by the new `PostgresLexicalExtension` and should be created with
+  `sqldialect.EnsureExtension` before running the index DDL. Creating an extension is not
+  the same kind of operation as creating an index and cannot be one statement in a list.
+
+- **`pg_trgm` is now created by the test suite** rather than assumed. Nothing in this
+  module ever created it: the trigram index worked only because some earlier run had
+  installed it by hand, and a database without it failed with `operator class
+  "gin_trgm_ops" does not exist`, which names the index and not the missing extension.
+
+### Added
+
+- **`internal/pgtest`**, one place for PostgreSQL test isolation. Every PostgreSQL test
+  read one DSN and most shared one schema, so a package's `DROP TABLE ... CASCADE`
+  reached into whatever else `go test ./...` had running. It hands out a schema per test
+  (`Open`/`DSN`) or a database per test (`Database`, for the database-wide operations a
+  schema cannot isolate), creates the extensions under an advisory lock, and drops what
+  it made. Two packages had already worked around this by hand; both now use the helper.
+
 ## [2.86.0] - 2026-08-29
 
 ### Added
