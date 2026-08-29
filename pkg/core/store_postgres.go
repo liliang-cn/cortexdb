@@ -27,6 +27,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 )
 
 // ErrPostgresStoreUnimplemented is returned by the parts of Store this backend
@@ -65,7 +67,11 @@ func NewPostgresStore(db *sql.DB, config Config) *PostgresStore {
 func (s *PostgresStore) Indexed() (bool, string) { return s.indexed, s.why }
 
 func (s *PostgresStore) Init(ctx context.Context) error {
-	if _, err := s.db.ExecContext(ctx, `CREATE EXTENSION IF NOT EXISTS vector`); err != nil {
+	// EnsureExtension rather than the CREATE directly: two stores opening the
+	// same database at once both pass IF NOT EXISTS and one loses in the
+	// catalogue, which used to surface here as "pgvector is required" and stop
+	// a perfectly good process from starting.
+	if err := sqldialect.EnsureExtension(ctx, s.db, "vector"); err != nil {
 		return fmt.Errorf("pgvector is required by the PostgreSQL store: %w", err)
 	}
 
@@ -159,9 +165,11 @@ func (s *PostgresStore) Init(ctx context.Context) error {
 	// words and a pg_trgm GIN for CJK substrings. Non-fatal — a managed
 	// instance may refuse CREATE EXTENSION to this account, and the same
 	// queries still answer without them, just linearly.
-	for _, stmt := range PostgresLexicalDDL("embeddings", "content") {
-		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
-			break
+	if err := sqldialect.EnsureExtension(ctx, s.db, PostgresLexicalExtension); err == nil {
+		for _, stmt := range PostgresLexicalDDL("embeddings", "content") {
+			if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+				break
+			}
 		}
 	}
 

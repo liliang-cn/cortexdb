@@ -4,13 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
-	"strings"
 	"testing"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/pgtest"
 	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 )
 
@@ -23,36 +22,20 @@ import (
 // string the real code builds and running it against a real database is the
 // difference between "should work" and "does".
 func TestTheAsOfQueryRunsOnPostgres(t *testing.T) {
-	dsn := os.Getenv("CORTEXDB_TEST_POSTGRES")
-	if dsn == "" {
-		t.Skip("CORTEXDB_TEST_POSTGRES unset — the PostgreSQL form of the as-of query is NOT covered by this run")
-	}
-	ctx := context.Background()
-
 	// Its own schema, because `go test ./...` runs packages in parallel and
 	// pkg/graph's tests are using a graph_edges of their own in the same
 	// database. Dropping a table out from under another package is a failure
 	// that only appears in the full run and passes on every retry of the one
 	// package — the worst kind to leave lying around.
-	admin, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("open: %v", err)
+	//
+	// This used to build the schema here under a fixed name, which two
+	// concurrent runs of this package would have shared. The helper names it
+	// per test and drops it afterwards.
+	db := pgtest.Open(t, "graphflow")
+	if db == nil {
+		t.Skip(pgtest.EnvDSN + " unset — the PostgreSQL form of the as-of query is NOT covered by this run")
 	}
-	if _, err := admin.ExecContext(ctx, `DROP SCHEMA IF EXISTS graphflow_test CASCADE; CREATE SCHEMA graphflow_test`); err != nil {
-		admin.Close()
-		t.Fatalf("schema: %v", err)
-	}
-	admin.Close()
-
-	sep := "?"
-	if strings.Contains(dsn, "?") {
-		sep = "&"
-	}
-	db, err := sql.Open("pgx", dsn+sep+"search_path=graphflow_test")
-	if err != nil {
-		t.Fatalf("open scoped: %v", err)
-	}
-	defer db.Close()
+	ctx := context.Background()
 	// The columns the query touches, with properties as TEXT exactly as the
 	// graph schema declares it — the ->> cast has to survive that.
 	if _, err := db.ExecContext(ctx, `CREATE TABLE graph_edges (

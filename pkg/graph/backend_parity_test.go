@@ -2,13 +2,12 @@ package graph
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
-	"os"
 	"testing"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/pgtest"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 )
@@ -45,32 +44,22 @@ func backends(t *testing.T) []backend {
 	t.Cleanup(cleanup)
 	out := []backend{{name: "sqlite", store: sqliteGraph}}
 
-	dsn := os.Getenv("CORTEXDB_TEST_POSTGRES")
-	if dsn == "" {
-		t.Log("CORTEXDB_TEST_POSTGRES is unset — PostgreSQL parity NOT covered by this run")
+	// A schema of this test's own, which is both the clean slate these
+	// count-asserting tests need and the isolation the full run needs: dropping
+	// tables in a shared schema reached into whatever else `go test ./...` had
+	// running against the same database.
+	//
+	// It also retires a trap. The dimension-cap test below rebuilds
+	// graph_node_vectors at four widths and used to leave it at the last one, a
+	// dimensionless column that outlived the process — so the next `go test`
+	// began with a vector column pgvector cannot index, and nearest-neighbour
+	// parity failed on every second run for a reason nothing in that test
+	// mentions. A per-test schema cannot outlive the test.
+	db := pgtest.Open(t, "graph")
+	if db == nil {
+		t.Log(pgtest.EnvDSN + " is unset — PostgreSQL parity NOT covered by this run")
 		return out
 	}
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("open postgres: %v", err)
-	}
-	if err := db.PingContext(context.Background()); err != nil {
-		t.Fatalf("ping postgres: %v", err)
-	}
-	// A clean slate per run: these tests assert on counts.
-	//
-	// graph_node_vectors is in the list because the dimension-cap test
-	// below rebuilds it at four different widths and leaves it at the
-	// last one — a dimensionless column. The table outlives the process, so the
-	// next `go test` run started with a vector column pgvector cannot index,
-	// and nearest-neighbour parity failed on every second run for a reason
-	// nothing in that test mentions.
-	for _, table := range []string{"graph_edges", "graph_nodes", "graph_node_vectors", "kg_triples", "kg_namespaces"} {
-		if _, err := db.Exec("DROP TABLE IF EXISTS " + table + " CASCADE"); err != nil {
-			t.Fatalf("reset %s: %v", table, err)
-		}
-	}
-	t.Cleanup(func() { db.Close() })
 
 	cfg := core.DefaultConfig()
 	cfg.VectorDim = 4
@@ -206,15 +195,10 @@ func TestNearestNeighboursAgreeAcrossBackends(t *testing.T) {
 // way must still work — exact search is a real answer — and must say that it
 // is unindexed, because the symptom otherwise is only latency.
 func TestTheDimensionCapIsReportedNotHidden(t *testing.T) {
-	dsn := os.Getenv("CORTEXDB_TEST_POSTGRES")
-	if dsn == "" {
-		t.Skip("CORTEXDB_TEST_POSTGRES unset")
+	db := pgtest.Open(t, "graph_dims")
+	if db == nil {
+		t.Skip(pgtest.EnvDSN + " unset — the pgvector dimension cap is NOT covered by this run")
 	}
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	defer db.Close()
 
 	for _, tc := range []struct {
 		name        string
@@ -227,16 +211,21 @@ func TestTheDimensionCapIsReportedNotHidden(t *testing.T) {
 		{"0 (dimension not yet known)", 0, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			const table = "graph_node_vectors"
-			if _, err := db.Exec("DROP TABLE IF EXISTS " + table + " CASCADE"); err != nil {
+			// Each case needs the column rebuilt at its own width; the schema
+			// itself is dropped with the test, so nothing survives to trap the
+			// next one.
+			if _, err := db.Exec("DROP TABLE IF EXISTS graph_node_vectors CASCADE"); err != nil {
 				t.Fatalf("reset: %v", err)
 			}
-			// And take it away again. What this test leaves behind is a vector
-			// column of whatever width the last case used, which is a fixture
-			// for nobody and a trap for the next test that opens this database.
-			t.Cleanup(func() { _, _ = db.Exec("DROP TABLE IF EXISTS " + table + " CASCADE") })
 			cfg := core.DefaultConfig()
 			g := NewGraphStoreOn(db, sqldialect.For(sqldialect.Postgres), testHost{cfg: cfg})
+			// initPgVector adds a column to graph_nodes, so graph_nodes has to
+			// be there. It used to be, because this test ran in a schema some
+			// other test had already built — which is the coupling that made
+			// the failure appear only in a full run.
+			if err := g.createGraphSchema(context.Background()); err != nil {
+				t.Fatalf("graph schema: %v", err)
+			}
 			capability := g.initPgVector(context.Background(), tc.dim)
 
 			if !capability.Enabled {

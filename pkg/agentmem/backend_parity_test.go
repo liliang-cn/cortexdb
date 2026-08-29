@@ -2,7 +2,6 @@ package agentmem_test
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"math"
 	"os"
@@ -13,6 +12,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/pgtest"
 	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/agentmem"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
@@ -64,42 +64,15 @@ func openSQLiteStore(t *testing.T) *agentmem.Store {
 	return store
 }
 
-// openPostgresStore gives this package its own schema.
-//
-// `go test ./...` runs packages in parallel against one database, and CREATE
-// EXTENSION / CREATE TABLE IF NOT EXISTS are not atomic in PostgreSQL: two
-// packages initialising at the same moment race and one loses with "duplicate
-// key value violates unique constraint pg_type_typname_nsp_index", which names
-// nothing a reader could act on. The failure only appears in a full run, never
-// when this package is tested alone, which is the worst way for it to appear.
-// public stays in the search_path so the vector type resolves.
-func openPostgresStore(t *testing.T, dsn string) *agentmem.Store {
+// openPostgresStore gives this package its own schema, through the helper that
+// now does this for every PostgreSQL test in the module. It used to hand-roll
+// the schema and create the extension itself, and creating it outside the
+// helper's lock was the last thing in the suite that could still lose the
+// CREATE EXTENSION race.
+func openPostgresStore(t *testing.T, _ string) *agentmem.Store {
 	t.Helper()
-	ctx := context.Background()
 
-	admin, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("postgres open admin: %v", err)
-	}
-	if _, err := admin.ExecContext(ctx, `CREATE EXTENSION IF NOT EXISTS vector`); err != nil {
-		admin.Close()
-		t.Fatalf("postgres extension: %v", err)
-	}
-	schema := fmt.Sprintf("agentmem_test_%d", testname.Nano())
-	if _, err := admin.ExecContext(ctx, `CREATE SCHEMA `+schema); err != nil {
-		admin.Close()
-		t.Fatalf("postgres schema: %v", err)
-	}
-	t.Cleanup(func() {
-		_, _ = admin.ExecContext(context.Background(), `DROP SCHEMA `+schema+` CASCADE`)
-		admin.Close()
-	})
-
-	sep := "?"
-	if strings.Contains(dsn, "?") {
-		sep = "&"
-	}
-	cfg := cortexdb.DefaultConfig(dsn + sep + "search_path=" + schema + ",public")
+	cfg := cortexdb.DefaultConfig(pgtest.DSN(t, "agentmem"))
 	cfg.Dimensions = 4
 	db, err := cortexdb.Open(cfg)
 	if err != nil {

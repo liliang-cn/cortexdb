@@ -2,13 +2,13 @@ package core
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"os"
 	"testing"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/liliang-cn/cortexdb/v2/internal/pgtest"
 	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
@@ -40,19 +40,14 @@ func storesUnderTest(t *testing.T) []storeUnderTest {
 	})
 	out := []storeUnderTest{{name: "sqlite", store: lite}}
 
-	dsn := os.Getenv("CORTEXDB_TEST_POSTGRES")
-	if dsn == "" {
-		t.Log("CORTEXDB_TEST_POSTGRES unset — the PostgreSQL store is NOT covered by this run")
+	// A schema of this test's own. Dropping embeddings, documents and
+	// collections in a shared one reached into whatever else the full run had
+	// open against the same database — and those are the tables most of this
+	// module writes.
+	db := pgtest.Open(t, "core_parity")
+	if db == nil {
+		t.Log(pgtest.EnvDSN + " unset — the PostgreSQL store is NOT covered by this run")
 		return out
-	}
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("postgres: %v", err)
-	}
-	for _, table := range []string{"embeddings", "documents", "collections"} {
-		if _, err := db.Exec("DROP TABLE IF EXISTS " + table + " CASCADE"); err != nil {
-			t.Fatalf("reset %s: %v", table, err)
-		}
 	}
 	cfg := DefaultConfig()
 	cfg.VectorDim = 4
@@ -202,15 +197,10 @@ func TestUpsertReplacesOnBothStores(t *testing.T) {
 // indistinguishable from "nothing matched", which is how a missing backend
 // becomes a silent wrong answer.
 func TestUnimplementedPartsNameThemselves(t *testing.T) {
-	dsn := os.Getenv("CORTEXDB_TEST_POSTGRES")
-	if dsn == "" {
-		t.Skip("CORTEXDB_TEST_POSTGRES unset")
+	db := pgtest.Open(t, "core_unimpl")
+	if db == nil {
+		t.Skip(pgtest.EnvDSN + " unset — the unimplemented surface is NOT covered by this run")
 	}
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	defer db.Close()
 	pg := NewPostgresStore(db, DefaultConfig())
 	ctx := context.Background()
 

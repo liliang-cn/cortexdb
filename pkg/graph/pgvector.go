@@ -64,7 +64,10 @@ func (g *GraphStore) initPgVector(ctx context.Context, dim int) vectorCapability
 		return vectorCapability{Reason: "not a PostgreSQL backend"}
 	}
 
-	if _, err := g.db.ExecContext(ctx, `CREATE EXTENSION IF NOT EXISTS vector`); err != nil {
+	// A lost CREATE EXTENSION race used to be recorded here as "pgvector
+	// unavailable" and believed for the life of this store, so a momentary
+	// collision at startup demoted every later search to an exact scan.
+	if err := sqldialect.EnsureExtension(ctx, g.db, "vector"); err != nil {
 		return vectorCapability{Reason: "pgvector unavailable: " + err.Error()}
 	}
 

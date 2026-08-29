@@ -3,9 +3,10 @@ package core
 import (
 	"context"
 	"database/sql"
-	"os"
 	"strings"
 	"testing"
+
+	"github.com/liliang-cn/cortexdb/v2/internal/pgtest"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -24,18 +25,12 @@ var lexicalCorpus = []string{
 
 func openLexicalPG(t *testing.T) *sql.DB {
 	t.Helper()
-	dsn := os.Getenv("CORTEXDB_TEST_POSTGRES")
-	if dsn == "" {
-		t.Skip("CORTEXDB_TEST_POSTGRES unset — PostgreSQL lexical search NOT covered by this run")
-	}
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("open: %v", err)
+	db := pgtest.Open(t, "core_fts")
+	if db == nil {
+		t.Skip(pgtest.EnvDSN + " unset — PostgreSQL lexical search NOT covered by this run")
 	}
 	ctx := context.Background()
-	if _, err := db.ExecContext(ctx, `DROP TABLE IF EXISTS lex_docs`); err != nil {
-		t.Fatalf("reset: %v", err)
-	}
+	// No DROP first: the schema is this test's own and starts empty.
 	if _, err := db.ExecContext(ctx, `CREATE TABLE lex_docs (id serial PRIMARY KEY, content text NOT NULL)`); err != nil {
 		t.Fatalf("create: %v", err)
 	}

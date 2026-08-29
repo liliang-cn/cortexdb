@@ -29,16 +29,27 @@ import (
 	"strings"
 )
 
-// PostgresLexicalDDL returns the statements that make lexical search on a
+// PostgresLexicalExtension is what the trigram index below needs installed.
+//
+// It is named separately rather than returned as the first statement of
+// PostgresLexicalDDL because creating an extension is not the same kind of
+// operation as creating an index: CREATE EXTENSION IF NOT EXISTS loses a race
+// against a concurrent creation, so it has to go through
+// sqldialect.EnsureExtension, which checks the catalogue instead of trusting
+// the guard. Run as one statement in a list whose loop broke on first error,
+// a lost race silently cost both indexes below.
+const PostgresLexicalExtension = "pg_trgm"
+
+// PostgresLexicalDDL returns the index statements that make lexical search on a
 // column fast, in the order they must run.
 //
-// pg_trgm is a contrib extension: present in the standard images, but a
-// managed instance may refuse CREATE EXTENSION to this account. The caller
-// should treat a failure as "unindexed, still correct" rather than fatal —
-// every query below works without any of these, just linearly.
+// Create PostgresLexicalExtension first. pg_trgm is a contrib extension:
+// present in the standard images, but a managed instance may refuse CREATE
+// EXTENSION to this account. The caller should treat a failure as "unindexed,
+// still correct" rather than fatal — every query below works without any of
+// these, just linearly.
 func PostgresLexicalDDL(table, column string) []string {
 	return []string{
-		`CREATE EXTENSION IF NOT EXISTS pg_trgm`,
 		// The word index, for text with spaces in it.
 		fmt.Sprintf(
 			`CREATE INDEX IF NOT EXISTS idx_%[1]s_%[2]s_tsv ON %[1]s USING gin (to_tsvector('simple', %[2]s))`,
