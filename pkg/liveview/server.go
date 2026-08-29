@@ -172,9 +172,19 @@ func (s *Server) WatchesCalls() bool { return s.activity }
 
 // Close stops serving and releases the brain.
 func (s *Server) Close() error {
-	shutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	// Shutdown stops the listener at once and then waits for handlers to
+	// finish. Every open page is holding an SSE stream that only ends when its
+	// request context does, so that wait always runs to the deadline — two
+	// seconds of nothing, on every settings change, with the caller's lock
+	// held. Close the connections instead: the listener is already shut, and a
+	// stream to a view that is going away has nothing left to say.
+	shutCtx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 	defer cancel()
-	_ = s.http.Shutdown(shutCtx)
+	if err := s.http.Shutdown(shutCtx); err != nil {
+		// Deadline reached with streams still attached, which is the normal
+		// case rather than a fault. Close forces them down.
+		_ = s.http.Close()
+	}
 	if s.src.Close != nil {
 		return s.src.Close()
 	}

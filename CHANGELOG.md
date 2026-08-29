@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.84.1] - 2026-08-29
+
+### Fixed
+
+- **Closing a live view no longer waits on the streams it is closing.** `Shutdown` stops
+  the listener at once and then waits for handlers to finish, and every open page is
+  holding an SSE stream that ends only when its request context does — so the wait always
+  ran to its deadline. Two seconds of nothing on every close, with the caller's lock held,
+  and the timeout swallowed so it looked like a clean shutdown.
+
+  Measured: 2.00s before, 0.25s after. It surfaced downstream as an application's view of
+  one graph still answering while it was switching to another.
+
 ## [2.84.0] - 2026-08-29
 
 ### Added

@@ -325,3 +325,34 @@ func mustJSON(t *testing.T, data string, v any) {
 		t.Fatalf("decode frame %q: %v", data, err)
 	}
 }
+
+// Closing a view must not wait on the streams it is closing.
+//
+// Shutdown stops the listener at once and then waits for handlers, and every
+// open page holds an SSE stream that ends only when its request context does.
+// So Shutdown always ran to its deadline — seconds of nothing on every close,
+// with the caller's lock held, and the timeout swallowed so it looked clean.
+func TestCloseDoesNotWaitOnAnOpenStream(t *testing.T) {
+	f := &fakeSource{}
+	f.set([]Node{{ID: "a", Label: "A"}}, nil)
+	sv, err := Start(context.Background(), f.source(), 0, time.Second, false)
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	url := sv.URL()
+
+	frames, stop := openStream(t, url+"/api/stream")
+	defer stop()
+	nextFrame(t, frames, "snapshot")
+
+	start := time.Now()
+	if cerr := sv.Close(); cerr != nil {
+		t.Fatalf("close: %v", cerr)
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Errorf("Close took %v with one stream open — it is waiting for streams that never end", took)
+	}
+	if _, err := http.Get(url + "/api/graph"); err == nil {
+		t.Error("the listener is still accepting after Close")
+	}
+}
