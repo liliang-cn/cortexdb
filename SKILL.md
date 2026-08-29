@@ -212,6 +212,30 @@ report, _ := db.ValidateKnowledgeGraphSHACL(ctx, cortexdb.KnowledgeGraphSHACLVal
 _ = report
 ```
 
+### What is actually in the graph, by type
+
+`db.Graph()` reports the graph's own vocabulary, so an ontology or drift check
+never has to query `graph_nodes` / `graph_edges` directly. Raw SQL against those
+tables is pinned to one schema and one dialect and fails silently when either
+moves; these go through the same dialect-aware path as the rest of the package
+and are covered by the SQLite/PostgreSQL parity suite.
+
+```go
+nodeTypes, _ := db.Graph().NodeTypeCounts(ctx) // map[string]int, untyped under ""
+edgeTypes, _ := db.Graph().EdgeTypeCounts(ctx)
+
+// Which type shapes the edges really have — how a declared relation is wrong.
+shapes, _ := db.Graph().EdgeShapes(ctx, "uses")
+// []EdgeShape{{EdgeType, FromType, ToType, Count}}
+
+// Which nodes those edges run through — what is wrong.
+pairs, _ := db.Graph().EdgeEndpointPairs(ctx, "uses")
+// []EdgeEndpointPair{{EdgeType, From, To EdgeEndpoint{ID, NodeType, Content}, Count}}
+```
+
+Both edge queries take optional edge types, matched exactly as stored; passing
+none reports the whole graph.
+
 ## Ontology
 
 `pkg/cortexdb` models a Palantir-style ontology on the same file. One schema is

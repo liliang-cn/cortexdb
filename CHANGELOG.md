@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.85.0] - 2026-08-29
+
+### Added
+
+- **The graph can be asked what is in it, by type.** `GetGraphStatistics` reports how
+  many nodes there are and never what kind, so a caller checking its graph against a
+  declared vocabulary had nowhere to go but SQL of its own against `graph_nodes` and
+  `graph_edges`. That is the worst place to leave a caller: its query is pinned to this
+  schema and to one database's dialect, neither of which is promised to it, and when the
+  graph layer learned to run on PostgreSQL as well as SQLite nothing in such a query
+  would have failed loudly — it still parses, still returns rows, and simply stops
+  describing the graph. Four methods on `Graph()` cover what those callers were writing:
+  `NodeTypeCounts` and `EdgeTypeCounts` for the breakdown by type, `EdgeShapes` for the
+  type shapes the edges actually have — how a declared relation is wrong — and
+  `EdgeEndpointPairs` for the nodes those edges run through, which is what is wrong.
+  Untyped nodes are counted under `""` rather than dropped, so the counts still sum to
+  the node count. Both edge queries take optional edge types and push the filter into
+  SQL. All four go through the dialect-aware path and are covered by the parity suite,
+  which asks both databases the same question and compares the answers field by field.
+
 ## [2.84.4] - 2026-08-29
 
 ### Added
