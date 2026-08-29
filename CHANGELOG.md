@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.84.2] - 2026-08-29
+
+### Fixed
+
+- **The live view can be mounted behind a reverse proxy.** Its page opened the event
+  stream at an absolute `/api/stream`, which leaves whatever prefix the page was served
+  under and lands on whatever the host serves at `/api`. The stream is now asked for
+  relative to the page, so a view mounted at `/graph/` finds it at `/graph/api/stream`.
+
+  This is what the package doc already told embedders to do — the view binds loopback and
+  has no authentication, so an application that needs it reachable further should put its
+  own authenticated proxy in front. It just could not actually be done until now.
+
 ## [2.84.1] - 2026-08-29
 
 ### Fixed

@@ -641,7 +641,12 @@ function setLive(connected, activity){
 
 var retry = 800;
 function connect(){
-  var es = new EventSource("/api/stream");
+  // Relative, not "/api/stream". The page is embedded behind reverse proxies —
+  // an application putting an authenticated front door on a view that has none
+  // of its own — and an absolute path would leave the mount point and land on
+  // whatever the host serves at /api. Relative means the stream is always found
+  // next to the page that asked for it, wherever that page is mounted.
+  var es = new EventSource("api/stream");
   es.addEventListener("snapshot", function(m){
     var p = JSON.parse(m.data);
     retry = 800;

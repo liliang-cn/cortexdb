@@ -61,7 +61,7 @@ func TestLiveServerServesPageAndGraph(t *testing.T) {
 	sv := startTestServer(t, f, true)
 
 	page := httpGet(t, sv.URL()+"/")
-	for _, want := range []string{"ForceGraph3D", "UnrealBloomPass", "/api/stream"} {
+	for _, want := range []string{"ForceGraph3D", "UnrealBloomPass", `EventSource("api/stream")`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page is missing %q", want)
 		}
@@ -354,5 +354,18 @@ func TestCloseDoesNotWaitOnAnOpenStream(t *testing.T) {
 	}
 	if _, err := http.Get(url + "/api/graph"); err == nil {
 		t.Error("the listener is still accepting after Close")
+	}
+}
+
+// The page is embedded behind reverse proxies — an application putting an
+// authenticated front door on a view that has none of its own. An absolute
+// stream path would leave the mount point and land on whatever the host serves
+// at /api, so the page must ask for the stream relative to itself.
+func TestThePageAsksForItsStreamRelatively(t *testing.T) {
+	if strings.Contains(pageHTML, `EventSource("/api/`) {
+		t.Error("the page opens its stream at an absolute path, so it cannot be mounted under a prefix")
+	}
+	if !strings.Contains(pageHTML, `EventSource("api/stream")`) {
+		t.Error("the page does not open a relative stream")
 	}
 }
