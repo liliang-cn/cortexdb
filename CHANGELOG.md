@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.86.0] - 2026-08-29
+
+### Added
+
+- **The graph can be asked what is unreachable, and what things are called.** 2.85.0
+  gave the graph a census by type and stopped one caller writing SQL for it; the same
+  caller had four more queries against `graph_nodes`, and two of them are questions this
+  library should answer. `Connectivity` counts the nodes no edge touches alongside the
+  total, from one statement so the two describe one graph — a large share of orphans
+  means writes landed and their edges did not, which is the state a store reaches when
+  an ingest's edges are rejected or when entities accumulate across re-ingests with
+  nothing joining them, and it is invisible in every count that only grows. It is
+  distinct from `GraphStatistics.ConnectedComponents`, which asks how the reachable part
+  is divided rather than how much is reachable at all. `NodeLabels` lists nodes with
+  their type and label, narrowed by id prefix and minimum label length: which spellings
+  a vocabulary produced, whether one concept arrived under two names, which labels are
+  long enough to match text against.
+
+- **`EntityNodeIDPrefix`**, exported beside `EntityNodeID`. The caller listing entity
+  nodes was matching `id LIKE 'entity:%'`, and reaching into this library's naming is
+  worse than reaching into its tables — nothing would have failed if the namespacing
+  changed. The five places inside `pkg/cortexdb` that spelled the prefix themselves now
+  use the constant.
+
+### Notes
+
+- `NodeLabelQuery.IDPrefix` is matched literally: `%` and `_` in a prefix are escaped
+  rather than treated as wildcards, since a caller passing an id convention is passing a
+  literal. Without the escaping the test for it fails on both backends.
+
+- The two `pkg/core` PostgreSQL lexical tests fail under `go test ./...` and pass under
+  `-p 1`. The packages share one database and `pkg/graph`'s harness truncates it per
+  run, so adding parity tests anywhere makes the collision likelier. Pre-existing.
+
 ## [2.85.0] - 2026-08-29
 
 ### Added
