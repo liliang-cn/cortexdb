@@ -369,3 +369,38 @@ func TestThePageAsksForItsStreamRelatively(t *testing.T) {
 		t.Error("the page does not open a relative stream")
 	}
 }
+
+// The canvas is a fixed pixel buffer and does not reflow with its container the
+// way the HUD does. Without this the frame grows around a picture that stays
+// the size the window was when the page loaded.
+func TestThePageFollowsItsContainer(t *testing.T) {
+	if !strings.Contains(pageHTML, "ResizeObserver") {
+		t.Error("the page does not observe its container, so an embedded view never resizes")
+	}
+	if !strings.Contains(pageHTML, ".width(w).height(h)") {
+		t.Error("the renderer is never resized")
+	}
+	if !strings.Contains(pageHTML, "setSize(w, h)") {
+		t.Error("the bloom pass is never resized, so the glow stays at the old resolution")
+	}
+	// Sizing the bloom pass to the window would be wrong for an embedded page,
+	// whose frame is routinely a fraction of the window it sits in.
+	if strings.Contains(pageHTML, "new Vector2(window.innerWidth, window.innerHeight)") {
+		t.Error("the bloom pass is sized to the window rather than the container")
+	}
+}
+
+// EventSource has close(), not Close(). This was broken by a rename applied
+// across the package's Go files, which reached into the JavaScript in this one
+// — the reconnect path then threw instead of closing the stream, and nothing
+// compiled differently to say so.
+func TestTheStreamIsClosedWithAMethodThatExists(t *testing.T) {
+	for _, wrong := range []string{"es.Close()", ".Close();"} {
+		if strings.Contains(pageHTML, wrong) {
+			t.Errorf("the page calls %s — JavaScript has no such method here", wrong)
+		}
+	}
+	if !strings.Contains(pageHTML, "es.close()") {
+		t.Error("the reconnect path does not close the stream it is replacing")
+	}
+}

@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.84.3] - 2026-08-29
+
+### Fixed
+
+- **The scene follows its container.** The HUD is positioned in CSS and reflowed on its
+  own; the WebGL canvas is a fixed pixel buffer and did not, so maximising the window
+  grew the frame around a picture still the size the window had been at load. It is
+  observed with a ResizeObserver on the element rather than a window resize listener,
+  because an embedded page shares a window with panels that can be collapsed — that
+  changes the container's width with no window resize to hear.
+
+- **The glow resizes too, and is sized to the container in the first place.** The bloom
+  pass keeps its own render targets and was built once from `window.innerWidth`. Embedded,
+  that is the wrong size from the start, and it stayed wrong afterwards.
+
+- **The reconnect path closes the stream with a method that exists.** `es.Close()` should
+  be `es.close()`; a rename applied across the package's Go files reached into the
+  JavaScript held in one of them, and nothing failed to compile to say so. The error
+  handler threw instead of closing, on the path that runs when the connection drops.
+
 ## [2.84.2] - 2026-08-29
 
 ### Fixed

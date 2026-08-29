@@ -659,7 +659,7 @@ function connect(){
   es.addEventListener("delta", function(m){ applyDelta(JSON.parse(m.data)); });
   es.addEventListener("activity", function(m){ onActivity(JSON.parse(m.data)); });
   es.onerror = function(){
-    es.Close();
+    es.close();
     setLive(false, activityLive);
     // Backing off matters: the server is this machine's MCP process, and a page
     // left open overnight after it exited should not spend the night hammering
@@ -672,6 +672,38 @@ connect();
 // If the stream never arrives at all, show the scene anyway rather than a
 // spinner that spins forever.
 setTimeout(boot, 12000);
+
+/* ---------- following the container ----------
+   The HUD is positioned in CSS and reflows on its own; the WebGL canvas is a
+   fixed pixel buffer and does not. Left alone it keeps whatever size the window
+   had when the page loaded, so maximising the window grows the frame around a
+   picture that stays put in the corner.
+
+   Observed on the element rather than listening for window resize, because the
+   two are not the same event. This page is embedded — in a panel that shares a
+   window with a sidebar someone can collapse — and that changes the container's
+   width with no window resize to hear. */
+var resizeQueued = false;
+function fitToContainer(){
+  if(resizeQueued) return;
+  resizeQueued = true;
+  requestAnimationFrame(function(){
+    resizeQueued = false;
+    var el = document.getElementById("scene");
+    var w = el.clientWidth, h = el.clientHeight;
+    if(w < 2 || h < 2) return;   // hidden panel: nothing to size to
+    G.width(w).height(h);
+    // The bloom pass keeps its own render targets and is sized once at
+    // construction, so it has to be told too — otherwise the glow stays at the
+    // old resolution and smears across the new one.
+    if(window.__bloom && window.__bloom.setSize) window.__bloom.setSize(w, h);
+  });
+}
+if(window.ResizeObserver){
+  new ResizeObserver(fitToContainer).observe(document.getElementById("scene"));
+} else {
+  window.addEventListener("resize", fitToContainer);
+}
 </script>
 
 <script type="importmap">
@@ -692,9 +724,18 @@ try {
   // of whatever is most common — the picture goes to fog and the type colours
   // stop being readable. A high threshold means only what is genuinely bright
   // glows: the hubs, and whatever the brain just touched.
-  const bloom = new UnrealBloomPass(new Vector2(window.innerWidth, window.innerHeight), 1.15, 0.5, 0.18);
+  // Sized to the container, not the window: this page is embedded, and its
+  // frame is routinely a fraction of the window it sits in.
+  const scene = document.getElementById("scene");
+  const bloom = new UnrealBloomPass(
+    new Vector2(scene.clientWidth || window.innerWidth, scene.clientHeight || window.innerHeight),
+    1.15, 0.5, 0.18);
   const composer = G.postProcessingComposer();
   composer.addPass(bloom);
+  // Handed to the resize path above, which runs in the classic script and
+  // cannot see this module's scope.
+  window.__bloom = bloom;
+  fitToContainer();
   const btn = document.getElementById("glow");
   btn.addEventListener("click", () => {
     glowOn = !glowOn;
