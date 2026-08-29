@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -103,5 +104,25 @@ func TestRemoteBridgeRejectsBadToken(t *testing.T) {
 	defer cancel()
 	if _, err := rpcv1.NewToolsServiceClient(conn).ListTools(ctx, &rpcv1.ListToolsRequest{}); err == nil {
 		t.Fatalf("expected an authentication error with a wrong token")
+	}
+}
+
+// A node's label is often the first line of the text it came from, and that
+// text has newlines in it. They used to survive into every view that printed
+// the label, breaking the layout of whatever panel was showing it.
+func TestClipLabelCollapsesWhitespace(t *testing.T) {
+	got := clipLabel("Situation: 帮我记住\n\tTools used")
+	if strings.ContainsAny(got, "\n\t") {
+		t.Errorf("clipLabel kept a line break: %q", got)
+	}
+	if got != "Situation: 帮我记住 Tools used" {
+		t.Errorf("clipLabel = %q", got)
+	}
+}
+
+func TestClipLabelClipsByRunesNotBytes(t *testing.T) {
+	got := clipLabel(strings.Repeat("记", 60))
+	if r := []rune(got); len(r) != 49 { // 48 kept plus the ellipsis
+		t.Errorf("clipLabel returned %d runes, want 49", len(r))
 	}
 }

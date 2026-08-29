@@ -37,6 +37,14 @@ func main() {
 		return
 	}
 
+	// `--graph-3d [--port N] [--interval 2s] [--no-open]` serves the brain as a
+	// live 3D view on 127.0.0.1 and stays up until interrupted. Structure only
+	// — see runGraphLive for why, and for the tool that also shows queries.
+	if len(os.Args) > 1 && os.Args[1] == "--graph-3d" {
+		runGraphLive(os.Args[2:])
+		return
+	}
+
 	// `--memory-html [out]` renders every stored memory to a self-contained,
 	// interactive HTML dashboard (cards grouped by scope, live search) and prints
 	// its path. Used by /cortexdb-memory-view.
@@ -211,6 +219,8 @@ func main() {
 	// offers, so an agent sees one contract in both modes.
 	server := db.NewMCPServer(cortexdb.MCPServerOptions{})
 	addRenderGraphHTMLTool(server)
+	addServeGraph3DTool(server)
+	addSideGraphTools(server, sideGraphs_)
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("run mcp stdio server: %v", err)
 	}

@@ -8,9 +8,8 @@ import (
 	"html/template"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/liveview"
 	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graphflow"
 )
@@ -50,7 +49,7 @@ func renderGraphHTML(ctx context.Context, outDir string, organize bool) (*graphH
 		// skipped — it rewrites the graph, and a read-only view of someone
 		// else's brain should not mutate it from whichever machine rendered it.
 		var err error
-		nodes, edges, err = fetchGraphRemote(ctx, addr, token, 0)
+		nodes, edges, err = fetchGraphRemote(ctx, addr, token, 0, false)
 		if err != nil {
 			return nil, err
 		}
@@ -134,118 +133,15 @@ func runGraphHTML(outDir string, organize bool) {
 	fmt.Println(res.Path)
 }
 
-type graphNodeView struct {
-	ID    string `json:"id"`
-	Label string `json:"label"`
-	Type  string `json:"type"`
-}
+// The live view owns the graph types and the query that fills them, and the
+// static renderer borrows both. One reader, one shape: two copies of "what
+// counts as a node" would drift, and the first symptom would be two pictures of
+// the same brain that disagree.
+type graphNodeView = liveview.Node
+type graphEdgeView = liveview.Edge
 
-type graphEdgeView struct {
-	Source string `json:"source"`
-	Target string `json:"target"`
-	Label  string `json:"label"`
-}
-
-// loadBrainGraph reads meaningful nodes/edges from the live GraphRAG graph
-// (everything except chunk nodes; edges excluding structural has_chunk/next).
-// For large graphs it keeps the most-connected core: nodes are ranked by degree
-// and capped, so the view shows the densely-linked hub instead of an arbitrary
-// truncation with dangling edges.
 func loadBrainGraph(ctx context.Context, sqlDB *sql.DB) ([]graphNodeView, []graphEdgeView, error) {
-	const (
-		maxNodes = 600
-		maxScan  = 50000
-	)
-
-	// 1. Meaningful edges, and degree per node.
-	edgeRows, err := sqlDB.QueryContext(ctx,
-		`SELECT from_node_id, COALESCE(edge_type,''), to_node_id FROM graph_edges WHERE edge_type NOT IN ('has_chunk','next')`)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer func() { _ = edgeRows.Close() }()
-	type rawEdge struct{ from, etype, to string }
-	rawEdges := make([]rawEdge, 0)
-	degree := make(map[string]int)
-	for edgeRows.Next() {
-		var e rawEdge
-		if err := edgeRows.Scan(&e.from, &e.etype, &e.to); err != nil {
-			return nil, nil, err
-		}
-		rawEdges = append(rawEdges, e)
-		degree[e.from]++
-		degree[e.to]++
-	}
-	if err := edgeRows.Err(); err != nil {
-		return nil, nil, err
-	}
-
-	// 2. All non-chunk nodes (bounded), tagged with degree.
-	nodeRows, err := sqlDB.QueryContext(ctx,
-		`SELECT id, COALESCE(content,''), COALESCE(node_type,'') FROM graph_nodes WHERE node_type != 'chunk' LIMIT ?`, maxScan)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer func() { _ = nodeRows.Close() }()
-	type rawNode struct {
-		view graphNodeView
-		deg  int
-	}
-	all := make([]rawNode, 0)
-	for nodeRows.Next() {
-		var id, content, ntype string
-		if err := nodeRows.Scan(&id, &content, &ntype); err != nil {
-			return nil, nil, err
-		}
-		label := content
-		if strings.TrimSpace(label) == "" {
-			label = trimNodePrefix(id)
-		}
-		if r := []rune(label); len(r) > 48 {
-			label = string(r[:48]) + "…"
-		}
-		all = append(all, rawNode{view: graphNodeView{ID: id, Label: label, Type: ntype}, deg: degree[id]})
-	}
-	if err := nodeRows.Err(); err != nil {
-		return nil, nil, err
-	}
-
-	// 3. Keep the most-connected nodes.
-	sort.SliceStable(all, func(i, j int) bool {
-		if all[i].deg != all[j].deg {
-			return all[i].deg > all[j].deg
-		}
-		return all[i].view.ID < all[j].view.ID
-	})
-	if len(all) > maxNodes {
-		all = all[:maxNodes]
-	}
-	shown := make(map[string]struct{}, len(all))
-	nodes := make([]graphNodeView, 0, len(all))
-	for _, n := range all {
-		shown[n.view.ID] = struct{}{}
-		nodes = append(nodes, n.view)
-	}
-
-	// 4. Edges among the shown nodes.
-	edges := make([]graphEdgeView, 0)
-	for _, e := range rawEdges {
-		if _, ok := shown[e.from]; !ok {
-			continue
-		}
-		if _, ok := shown[e.to]; !ok {
-			continue
-		}
-		edges = append(edges, graphEdgeView{Source: e.from, Target: e.to, Label: e.etype})
-	}
-	return nodes, edges, nil
-}
-
-func trimNodePrefix(id string) string {
-	if i := strings.IndexByte(id, ':'); i >= 0 && i+1 < len(id) {
-		return id[i+1:]
-	}
-	return id
+	return liveview.LoadLocal(ctx, sqlDB)
 }
 
 func writeBrainGraphHTML(path string, nodes []graphNodeView, edges []graphEdgeView) error {

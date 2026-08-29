@@ -54,11 +54,14 @@ type GraphListAllResponse struct {
 
 const defaultGraphListLimit = 2000
 
-// structural edge types carry document layout, not meaning between entities.
-var graphListSkipEdgeTypes = []any{"has_chunk", "next"}
+// has_chunk carries document layout, never meaning between entities, so it is
+// skipped by name. "next" is not: it is the obvious name for one thing
+// following another, and skipping the type outright meant a caller who modelled
+// a sequence got its nodes back with every link between them missing. Chunk
+// endpoints are what make an edge structural, so those are filtered instead.
 
 // ListGraphAll returns the meaningful entity graph: every non-chunk node and
-// the edges between them, excluding structural (has_chunk/next) edges. When the
+// the edges between them, excluding edges that only wire chunks. When the
 // node count exceeds the limit it keeps the most-connected core, which is what
 // makes a large graph readable rather than an arbitrary slice of it.
 func (db *DB) ListGraphAll(ctx context.Context, req GraphListAllRequest) (*GraphListAllResponse, error) {
@@ -72,10 +75,14 @@ func (db *DB) ListGraphAll(ctx context.Context, req GraphListAllRequest) (*Graph
 
 	// Edges first: they give every node its degree.
 	edgeRows, err := db.query(ctx,
-		`SELECT from_node_id, COALESCE(edge_type,''), to_node_id
-		 FROM graph_edges WHERE edge_type NOT IN (?, ?)
-		 ORDER BY from_node_id, to_node_id, edge_type`,
-		graphListSkipEdgeTypes...)
+		`SELECT e.from_node_id, COALESCE(e.edge_type,''), e.to_node_id
+		 FROM graph_edges e
+		 JOIN graph_nodes f ON f.id = e.from_node_id
+		 JOIN graph_nodes t ON t.id = e.to_node_id
+		 WHERE e.edge_type != 'has_chunk'
+		   AND COALESCE(f.node_type,'') != 'chunk'
+		   AND COALESCE(t.node_type,'') != 'chunk'
+		 ORDER BY e.from_node_id, e.to_node_id, e.edge_type`)
 	if err != nil {
 		return nil, err
 	}

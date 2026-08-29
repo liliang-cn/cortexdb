@@ -2,6 +2,114 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.83.0] - 2026-08-29
+
+### Added
+
+- **The brain as something you watch, not something you re-render.** `render_graph_html`
+  writes a file and is finished; the picture is true for the instant it was taken.
+  The new `serve_graph_3d` tool holds a page open instead — a rotatable WebGL scene
+  on `127.0.0.1` that keeps up with the brain on its own.
+
+  Two things move on it, and they arrive by different routes:
+
+  - **Structure** — nodes and relations appearing or disappearing. There is no change
+    feed to subscribe to, and the graph can be written by any machine sharing it, so
+    the server re-reads it every two seconds and streams the difference. Only the
+    difference: the layout keeps every node that did not change exactly where it had
+    settled, and reheats only when something new actually arrives.
+  - **Activity** — a query running, something being saved, a relation being drawn.
+    A query changes nothing in the graph, so no amount of polling can ever show one.
+    These are observed as they happen, from inside the MCP server handling the call,
+    and the nodes they named light up on the page while the answer is still being
+    written.
+
+  That second half is why the view is served from the MCP process rather than a
+  side-car. Both modes get it from one hook — `AddReceivingMiddleware` on the
+  `*mcp.Server` — which is the only point local mode (tools registered from the
+  library) and shared-brain mode (tools proxied over gRPC) have in common. Neither
+  the library's tool surface nor the gRPC proxy had to learn that a view exists.
+
+  On the page: glow is a real bloom pass, so brightness is earned — a hub with forty
+  edges is drawn bigger and blooms wider, and a node the brain just touched blooms
+  because it went white. Links carry moving light, and **Trace path** takes two nodes
+  and lights the chain between them while everything else falls away. The camera
+  orbits on a toggle and yields the moment you drag it.
+
+  Also `--graph-3d` on the command line, for a view without an agent attached. It
+  polls, so it sees structure and not queries — and says so on the page, because a
+  ticker that never moves is otherwise indistinguishable from a broken one.
+
+  The listener binds `127.0.0.1` and there is deliberately no flag to widen it: the
+  page is every entity anyone stored, with no authentication in front of it.
+
+- **A place to put a graph that is not the brain.** Four tools — `side_graph_write`,
+  `side_graph_read`, `side_graph_list`, `side_graph_drop` — write nodes and edges into a
+  named graph kept in its own local database, and `serve_graph_3d` takes a `graph` name
+  so each one can be watched in 3D on its own port.
+
+  The brain is what is known. A run's steps, the plan behind them and what each was
+  expected to do are none of that: they happened once, most are wrong by tomorrow, and
+  there are thousands of them. A few thousand step nodes on top of a few thousand real
+  ones and the graph stops being readable.
+
+  This is the mechanism and not the policy. Nothing in the implementation mentions runs,
+  steps or expectations — CortexDB does not know what those are. It gives a caller more
+  than one graph and gets out of the way; what belongs in which is the caller's decision.
+
+  Two things follow from how the store actually works, rather than from preference:
+
+  - A side graph is a **separate database file**, because `graph_nodes` and `graph_edges`
+    have no tenancy column. There is no namespace to scope by, so "another graph" can
+    only honestly mean another store. It also makes a side graph disposable by deleting
+    one file, which is most of the point.
+  - Side graphs are **always local**, even when the brain is shared. These tools are
+    registered beside the renderers rather than proxied over gRPC, so scratch work never
+    travels to the machine everyone else reads, and no server needs upgrading to use
+    them. The brain is shared; your working notes are yours.
+
+  A graph name becomes a filename, so it is checked against an allowlist
+  (`^[a-z0-9][a-z0-9_-]{0,63}$`) rather than a blocklist — that list is never finished.
+  `..`, `a/b`, `.hidden`, `a.db` and a name with a NUL in it are all refused.
+
+### Fixed
+
+- **Node labels no longer carry line breaks into the views that print them.** A label
+  is usually the first line of the text it came from, and that text has newlines in
+  it. `clipLabel` collapses whitespace before clipping, which also fixes the same
+  ragged output in the static renderer.
+
+- **`next` edges are no longer dropped by name.** Both graph readers skipped the type
+  outright, alongside `has_chunk`, as structural. But `next` is also the obvious name for
+  one thing following another — a plan's steps, a trace — and a caller who modelled a
+  sequence got its nodes back with every link between them silently missing. What makes
+  an edge structural is that it wires chunks, so the endpoints decide now, not the label.
+  Chunk wiring stops inflating degree too, which is what decides who survives a truncated
+  listing.
+
+  Both read paths changed: the local SQL the views use, and `ListGraphAll`, which is what
+  a shared brain answers with — so a shared deployment needs this version on the *server*
+  before its own view shows those edges.
+
+- **The shared-brain truncation note stopped repeating forever.** `fetchGraphRemote`
+  prints "showing the 2000 most-connected of 4015 nodes" — useful once from a one-shot
+  render, and nothing but noise from a poller calling it every two seconds.
+
+### Performance
+
+- **The live view runs at 59fps on a 2000-node, 5892-edge brain, up from 17.** Measured
+  on the page, not estimated. Almost all of it was one thing: an arrowhead on every
+  link is a separate cone mesh, and 5892 of them cost three quarters of the frame
+  budget. Arrowheads and flow particles are now spent only where they say something —
+  the traced path, and links the brain just wrote — on any graph large enough for the
+  difference to matter.
+
+  Two layout fixes came with it. Repulsion had no maximum range, so the handful of
+  nodes with no edges drifted until the interesting part was a speck in the middle of
+  empty space; capping the range keeps the graph together and is cheaper besides. And
+  framing now ignores the far tail, because fitting everything means mostly framing
+  the gap between the outliers and the rest.
+
 ## [2.82.2] - 2026-08-28
 
 ### Fixed

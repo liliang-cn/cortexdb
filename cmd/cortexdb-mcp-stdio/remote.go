@@ -71,6 +71,8 @@ func runRemoteMCPStdio(ctx context.Context, addr, token string) error {
 	// the caller wants the rendered file on its own filesystem. See
 	// graph_html_tool.go.
 	addRenderGraphHTMLTool(server)
+	addServeGraph3DTool(server)
+	addSideGraphTools(server, sideGraphs_)
 	return server.Run(ctx, &mcp.StdioTransport{})
 }
 
