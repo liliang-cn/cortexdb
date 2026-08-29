@@ -404,3 +404,16 @@ func TestTheStreamIsClosedWithAMethodThatExists(t *testing.T) {
 		t.Error("the reconnect path does not close the stream it is replacing")
 	}
 }
+
+// An application embedding this page has its own search box, and searching it
+// is asking about the same things these nodes are. It cannot reach into this
+// document — different origin, behind the embedder's proxy — so it sends a
+// message instead.
+func TestThePageTakesAHighlightFromItsEmbedder(t *testing.T) {
+	if !strings.Contains(pageHTML, `"cortexdb:highlight"`) {
+		t.Error("the page does not listen for a highlight from its embedder")
+	}
+	if !strings.Contains(pageHTML, `addEventListener("message"`) {
+		t.Error("no message listener at all")
+	}
+}

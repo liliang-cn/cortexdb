@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.84.4] - 2026-08-29
+
+### Added
+
+- **The page takes a highlight from whoever embedded it.** An application mounting this
+  view has its own search box, and searching it asks about the same things these nodes
+  are. It cannot reach into the page — different origin, behind its own proxy — so it
+  posts `{type: "cortexdb:highlight", query}` and the page puts that in the Find box a
+  person would have typed into. Unknown messages are ignored, so an embedder speaking a
+  later dialect gets a page that works rather than one that throws.
+
 ## [2.84.3] - 2026-08-29
 
 ### Fixed

@@ -558,6 +558,23 @@ function closeDetail(){ document.getElementById("detail").classList.remove("on")
 document.getElementById("q").addEventListener("input", function(){
   query = this.value.trim().toLowerCase(); repaint();
 });
+
+/* An embedder driving the search.
+   The page is mounted in an application that has its own search box and its own
+   reason to search — recalling a memory is asking about the same things these
+   nodes are. Rather than make it reach into this document (which it cannot, on
+   a different origin behind a proxy), it sends a message and this puts the
+   query in the same box a person would type into.
+   Unknown messages are ignored: an embedder that speaks a later dialect than
+   this page understands should get a page that works, not one that throws. */
+window.addEventListener("message", function(ev){
+  var msg = ev.data;
+  if(!msg || msg.type !== "cortexdb:highlight") return;
+  var q = typeof msg.query === "string" ? msg.query : "";
+  document.getElementById("q").value = q;
+  query = q.trim().toLowerCase();
+  repaint();
+});
 document.getElementById("type").addEventListener("change", function(){
   var t = this.value;
   G.nodeVisibility(function(n){ return !t || (n.type||"(untyped)") === t; });
