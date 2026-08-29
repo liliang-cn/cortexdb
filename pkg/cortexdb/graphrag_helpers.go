@@ -489,7 +489,7 @@ func graphEntityNodeID(name string) string {
 	if id == "" {
 		id = "entity"
 	}
-	return "entity:" + id
+	return EntityNodeIDPrefix + id
 }
 
 func buildGraphRAGContext(chunks []GraphRAGChunkResult) string {

@@ -119,6 +119,14 @@ func (t *GraphRAGToolbox) loadToolChunks(ctx context.Context, scoreMap map[strin
 	return chunks, nil
 }
 
+// EntityNodeIDPrefix is what every entity node's id starts with.
+//
+// Exported for the same reason as EntityNodeID: the namespacing is otherwise an
+// internal detail, and a consumer that wants "the entity nodes" — to pass as
+// graph.NodeLabelQuery.IDPrefix, say — would have to hardcode the convention
+// and go stale silently if it ever changed.
+const EntityNodeIDPrefix = "entity:"
+
 // EntityNodeID returns the normalized graph node id that cortexdb stores an
 // entity under, given its raw id or name. Consumers that need to map a chunk or
 // source id to its entity node (e.g. to seed ExpandGraph) should use this rather
@@ -128,10 +136,10 @@ func EntityNodeID(idOrName string) string {
 }
 
 func resolveEntityNodeID(id string, name string) string {
-	if strings.HasPrefix(id, "entity:") {
+	if strings.HasPrefix(id, EntityNodeIDPrefix) {
 		return id
 	}
-	if strings.HasPrefix(name, "entity:") {
+	if strings.HasPrefix(name, EntityNodeIDPrefix) {
 		return name
 	}
 	if strings.TrimSpace(id) != "" {

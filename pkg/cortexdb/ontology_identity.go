@@ -139,7 +139,7 @@ func (db *DB) lookupOntologyRelationEndpointNodeID(ctx context.Context, compiled
 	if compiled == nil {
 		return resolveEntityNodeID("", endpoint), nil
 	}
-	if strings.HasPrefix(endpoint, "entity:") {
+	if strings.HasPrefix(endpoint, EntityNodeIDPrefix) {
 		return endpoint, nil
 	}
 	nodeID, ok, err := db.findOntologyNodeByName(ctx, compiled, endpoint)

@@ -165,12 +165,12 @@ func isWeakPredicate(predicate string) bool {
 	return ok
 }
 
-func isEntityNodeID(id string) bool { return strings.HasPrefix(id, "entity:") }
+func isEntityNodeID(id string) bool { return strings.HasPrefix(id, EntityNodeIDPrefix) }
 
 // entityLabelFromID derives a readable label from an entity node id when the
 // node has no stored content (e.g. "entity:apollo_plan" -> "apollo plan").
 func entityLabelFromID(id string) string {
-	s := strings.TrimPrefix(id, "entity:")
+	s := strings.TrimPrefix(id, EntityNodeIDPrefix)
 	s = strings.ReplaceAll(s, "_", " ")
 	return strings.TrimSpace(s)
 }

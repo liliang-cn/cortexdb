@@ -274,3 +274,173 @@ func TestVocabularyQueriesOnAnEmptyGraph(t *testing.T) {
 		})
 	}
 }
+
+// The seed graph has one node — `loose` — that no edge touches.
+func TestConnectivityCountsTheNodesNoEdgeTouches(t *testing.T) {
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			ctx := context.Background()
+			seedVocabularyGraph(t, b.store)
+
+			got, err := b.store.Connectivity(ctx)
+			if err != nil {
+				t.Fatalf("Connectivity: %v", err)
+			}
+			if want := (Connectivity{Nodes: 4, Orphans: 1}); got != want {
+				t.Errorf("Connectivity = %+v, want %+v", got, want)
+			}
+		})
+	}
+}
+
+// An edge arriving at a node makes it reachable just as much as one leaving:
+// the check is whether anything joins it, not which way.
+func TestConnectivityCountsAnIncomingEdgeAsReaching(t *testing.T) {
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			ctx := context.Background()
+			seedVocabularyGraph(t, b.store)
+			// `flag` is reached only by e3, and only as the target.
+			if err := b.store.UpsertEdge(ctx, &GraphEdge{
+				ID: "e5", FromNodeID: "svc", ToNodeID: "loose", EdgeType: "uses", Weight: 1,
+			}); err != nil {
+				t.Fatalf("UpsertEdge: %v", err)
+			}
+			got, err := b.store.Connectivity(ctx)
+			if err != nil {
+				t.Fatalf("Connectivity: %v", err)
+			}
+			if got.Orphans != 0 {
+				t.Errorf("orphans = %d, want 0 — every node is now joined", got.Orphans)
+			}
+		})
+	}
+}
+
+// An empty graph must answer zero rather than fail: SUM over no rows is NULL,
+// and a health check that errors on a fresh store reports a defect instead of
+// an empty graph.
+func TestConnectivityOnAnEmptyGraph(t *testing.T) {
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			ctx := context.Background()
+			if err := b.store.InitGraphSchema(ctx); err != nil {
+				t.Fatalf("schema: %v", err)
+			}
+			got, err := b.store.Connectivity(ctx)
+			if err != nil {
+				t.Fatalf("Connectivity: %v", err)
+			}
+			if got != (Connectivity{}) {
+				t.Errorf("Connectivity = %+v, want zero", got)
+			}
+		})
+	}
+}
+
+func TestNodeLabelsReturnTypeAndLabelForEveryNode(t *testing.T) {
+	want := []NodeLabel{
+		{ID: "flag", NodeType: "command", Content: "--verbose"},
+		{ID: "loose", NodeType: "", Content: "nobody typed this"},
+		{ID: "pool", NodeType: "resource", Content: "connection pool"},
+		{ID: "svc", NodeType: "service", Content: "api service"},
+	}
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			ctx := context.Background()
+			seedVocabularyGraph(t, b.store)
+
+			got, err := b.store.NodeLabels(ctx, NodeLabelQuery{})
+			if err != nil {
+				t.Fatalf("NodeLabels: %v", err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("NodeLabels =\n %+v\nwant\n %+v", got, want)
+			}
+		})
+	}
+}
+
+// The filters are what let a caller ask for one writer's nodes, and for labels
+// long enough to be worth matching text against.
+func TestNodeLabelsNarrowByPrefixAndLength(t *testing.T) {
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			ctx := context.Background()
+			seedVocabularyGraph(t, b.store)
+			if err := b.store.UpsertNode(ctx, &GraphNode{
+				ID: "entity:tank", Vector: []float32{1, 1, 0, 0}, NodeType: "pool", Content: "tank",
+			}); err != nil {
+				t.Fatalf("UpsertNode: %v", err)
+			}
+
+			got, err := b.store.NodeLabels(ctx, NodeLabelQuery{IDPrefix: "entity:"})
+			if err != nil {
+				t.Fatalf("NodeLabels: %v", err)
+			}
+			if len(got) != 1 || got[0].ID != "entity:tank" {
+				t.Fatalf("prefix = %+v, want only the entity node", got)
+			}
+
+			// "tank" and "--verbose" are shorter than "connection pool".
+			long, err := b.store.NodeLabels(ctx, NodeLabelQuery{MinContentLength: 15})
+			if err != nil {
+				t.Fatalf("NodeLabels: %v", err)
+			}
+			for _, l := range long {
+				if len([]rune(l.Content)) < 15 {
+					t.Errorf("%q is shorter than the minimum asked for", l.Content)
+				}
+			}
+			if len(long) != 2 {
+				t.Errorf("long labels = %+v, want the two 15-character ones", long)
+			}
+		})
+	}
+}
+
+// An underscore is LIKE's single-character wildcard, so a prefix carrying one
+// would match ids that merely resemble it — a caller passing an id convention
+// is passing a literal, not a pattern.
+func TestNodeLabelsTreatAPrefixAsLiteralNotAPattern(t *testing.T) {
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			ctx := context.Background()
+			seedVocabularyGraph(t, b.store)
+			for _, n := range []*GraphNode{
+				{ID: "a_b:real", Vector: []float32{1, 0, 0, 0}, Content: "the literal one"},
+				{ID: "axb:other", Vector: []float32{0, 1, 0, 0}, Content: "the wildcard one"},
+			} {
+				if err := b.store.UpsertNode(ctx, n); err != nil {
+					t.Fatalf("UpsertNode %s: %v", n.ID, err)
+				}
+			}
+
+			got, err := b.store.NodeLabels(ctx, NodeLabelQuery{IDPrefix: "a_b:"})
+			if err != nil {
+				t.Fatalf("NodeLabels: %v", err)
+			}
+			if len(got) != 1 || got[0].ID != "a_b:real" {
+				t.Errorf("prefix a_b: matched %+v, want only the literal id", got)
+			}
+		})
+	}
+}
+
+func TestNodeLabelsOnAnEmptyGraph(t *testing.T) {
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			ctx := context.Background()
+			if err := b.store.InitGraphSchema(ctx); err != nil {
+				t.Fatalf("schema: %v", err)
+			}
+			got, err := b.store.NodeLabels(ctx, NodeLabelQuery{IDPrefix: "entity:"})
+			if err != nil {
+				t.Fatalf("NodeLabels: %v", err)
+			}
+			if len(got) != 0 {
+				t.Errorf("NodeLabels = %+v, want none", got)
+			}
+		})
+	}
+}

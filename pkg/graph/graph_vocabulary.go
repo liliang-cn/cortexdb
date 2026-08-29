@@ -199,3 +199,122 @@ func edgeTypeFilter(column string, edgeTypes []string) (string, []any) {
 	}
 	return " WHERE " + column + " IN (" + strings.TrimSuffix(strings.Repeat("?,", len(args)), ",") + ")", args
 }
+
+// Connectivity is how much of the graph an edge can reach.
+type Connectivity struct {
+	Nodes   int `json:"nodes"`
+	Orphans int `json:"orphans"`
+}
+
+// Connectivity counts the nodes no edge touches, alongside the total.
+//
+// A large share of orphans means writes landed and their edges did not — the
+// state a store reaches when an ingest's edges are rejected, or when entities
+// accumulate across re-ingests with nothing joining them. Retrieval still finds
+// these nodes and expansion never leaves them, so the graph half of GraphRAG
+// quietly stops contributing while every count still grows.
+//
+// Both numbers come from one statement so they describe one graph. Asked
+// separately, a write between them yields a share that was never true — and
+// this is a health check, whose whole output is that ratio.
+//
+// Distinct from GraphStatistics.ConnectedComponents, which asks how the
+// reachable part is divided; this asks how much of the graph is reachable at
+// all.
+func (g *GraphStore) Connectivity(ctx context.Context) (Connectivity, error) {
+	var c Connectivity
+	err := g.queryRow(ctx, `
+		SELECT COUNT(*),
+		       COALESCE(SUM(CASE WHEN NOT EXISTS (
+		           SELECT 1 FROM graph_edges e
+		            WHERE e.from_node_id = n.id OR e.to_node_id = n.id
+		       ) THEN 1 ELSE 0 END), 0)
+		  FROM graph_nodes n`).Scan(&c.Nodes, &c.Orphans)
+	if err != nil {
+		return Connectivity{}, fmt.Errorf("graph connectivity: %w", err)
+	}
+	return c, nil
+}
+
+// NodeLabel is a node's identity together with what it is called.
+type NodeLabel struct {
+	ID       string `json:"id"`
+	NodeType string `json:"node_type"`
+	Content  string `json:"content"`
+}
+
+// NodeLabelQuery narrows NodeLabels. A zero query returns every node.
+type NodeLabelQuery struct {
+	// IDPrefix keeps only nodes whose id starts with it. Node ids are
+	// namespaced by what wrote them, so this is how a caller asks for one
+	// writer's nodes without knowing how to recognise them from content.
+	// Matched literally: % and _ in the prefix are not wildcards.
+	IDPrefix string
+	// MinContentLength drops nodes whose label is shorter than this, counted
+	// in characters. 1 excludes the unlabelled.
+	MinContentLength int
+	// Limit caps the rows returned. 0 means no cap.
+	Limit int
+}
+
+// NodeLabels lists nodes with their type and label.
+//
+// The question behind it is "what is in here, called what" — which spellings a
+// vocabulary actually produced, whether one concept arrived under two names,
+// which labels are long enough to match text against. Callers were reading
+// graph_nodes for it directly, and pairing a schema they are not promised with
+// an id convention they are not promised either.
+//
+// Ordered by id so two runs over one graph agree, and so a caller paging with
+// Limit sees a stable sequence rather than whichever rows the planner returned
+// first.
+func (g *GraphStore) NodeLabels(ctx context.Context, q NodeLabelQuery) ([]NodeLabel, error) {
+	var where []string
+	var args []any
+	if q.IDPrefix != "" {
+		// ESCAPE is spelled out because a prefix is caller data: an id
+		// convention containing _ — which is a single-character wildcard —
+		// would otherwise match ids that merely resemble it.
+		where = append(where, `id LIKE ? ESCAPE '\'`)
+		args = append(args, escapeLikePrefix(q.IDPrefix)+"%")
+	}
+	if q.MinContentLength > 0 {
+		where = append(where, `LENGTH(COALESCE(content, '')) >= ?`)
+		args = append(args, q.MinContentLength)
+	}
+	sqlText := `SELECT id, COALESCE(node_type, ''), COALESCE(content, '') FROM graph_nodes`
+	if len(where) > 0 {
+		sqlText += " WHERE " + strings.Join(where, " AND ")
+	}
+	sqlText += " ORDER BY id"
+	if q.Limit > 0 {
+		sqlText += " LIMIT ?"
+		args = append(args, q.Limit)
+	}
+
+	rows, err := g.query(ctx, sqlText, args...)
+	if err != nil {
+		return nil, fmt.Errorf("node labels: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []NodeLabel
+	for rows.Next() {
+		var l NodeLabel
+		if err := rows.Scan(&l.ID, &l.NodeType, &l.Content); err != nil {
+			return nil, fmt.Errorf("node labels: %w", err)
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
+// escapeLikePrefix makes a literal string safe to use as a LIKE prefix under
+// ESCAPE '\'. The backslash goes first: escaping it afterwards would escape the
+// backslashes this function just introduced.
+func escapeLikePrefix(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, "%", `\%`)
+	s = strings.ReplaceAll(s, "_", `\_`)
+	return s
+}

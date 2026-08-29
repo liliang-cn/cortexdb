@@ -585,7 +585,7 @@ func (b *KnowledgeMemory) resolveEntityInputs(ctx context.Context, entityIDs, en
 				continue
 			}
 			if node.NodeType == "entity" {
-				names = append(names, strings.TrimPrefix(node.ID, "entity:"))
+				names = append(names, strings.TrimPrefix(node.ID, EntityNodeIDPrefix))
 			}
 		}
 	}

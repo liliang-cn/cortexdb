@@ -469,7 +469,7 @@ func (db *DB) actionTargetNodeID(scope *actionScope, rule OntologyActionRule) (s
 // that already is one is passed through: node IDs are derived from the primary
 // key, so re-deriving one would mangle it.
 func ontologyReferenceNodeID(objectTypeAPIName string, value string) string {
-	if strings.HasPrefix(value, "entity:") {
+	if strings.HasPrefix(value, EntityNodeIDPrefix) {
 		return value
 	}
 	return ontologyNodeID(objectTypeAPIName, value)
