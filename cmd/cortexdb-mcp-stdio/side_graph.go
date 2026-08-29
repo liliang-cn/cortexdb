@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/liliang-cn/cortexdb/v2/internal/liveview"
 	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/liveview"
 )
 
 // Side graphs — a place to put a graph that is not the brain.

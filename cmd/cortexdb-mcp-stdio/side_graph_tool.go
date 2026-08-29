@@ -9,7 +9,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/liliang-cn/cortexdb/v2/internal/liveview"
+	"github.com/liliang-cn/cortexdb/v2/pkg/liveview"
 )
 
 // The side-graph tools.

@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/liliang-cn/cortexdb/v2/internal/liveview"
+	"github.com/liliang-cn/cortexdb/v2/pkg/liveview"
 	"os"
 	"os/signal"
 	"strconv"

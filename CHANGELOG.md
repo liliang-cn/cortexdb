@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.84.0] - 2026-08-29
+
+### Added
+
+- **The live 3D view is a package now, not just a tool.** `pkg/liveview` — moved out of
+  `internal/`, where it had been for exactly one release. Nothing about it changed except
+  that other modules can import it: it was internal because the only consumer was the MCP
+  server, and that stopped being true the moment an application wanted to put the graph
+  on one of its own screens.
+
+  A caller supplies a `Source` — anything that reads nodes and edges — so an embedder that
+  already knows which brain it talks to can say so directly with `LoadRemote`, rather than
+  setting environment variables for `OpenSource` to read back.
+
+  The listener still binds `127.0.0.1` and still has no option to widen it. The page is
+  the whole graph with nothing in front of it; an embedder that needs it reachable further
+  should put its own authenticated proxy there.
+
 ## [2.83.0] - 2026-08-29
 
 ### Added

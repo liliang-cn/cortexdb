@@ -9,9 +9,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/liliang-cn/cortexdb/v2/internal/liveview"
 	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graphflow"
+	"github.com/liliang-cn/cortexdb/v2/pkg/liveview"
 )
 
 // runGraphHTML organizes the brain (extract entities/relations from memories +

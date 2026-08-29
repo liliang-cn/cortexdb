@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/liliang-cn/cortexdb/v2/internal/liveview"
 	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/liveview"
 	rpcv1 "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1"
 )
 

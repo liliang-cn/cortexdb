@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"github.com/liliang-cn/cortexdb/v2/internal/liveview"
+	"github.com/liliang-cn/cortexdb/v2/pkg/liveview"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
