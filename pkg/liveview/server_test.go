@@ -405,6 +405,30 @@ func TestTheStreamIsClosedWithAMethodThatExists(t *testing.T) {
 	}
 }
 
+// The four corner panels sit on top of the scene they describe. In a narrow
+// window — a phone, or the graph framed inside another application — they meet
+// in the middle and cover the graph, so each has to be foldable, and the fold
+// has to survive a reload.
+func TestEveryCornerPanelFolds(t *testing.T) {
+	for _, id := range []string{"head", "tools", "legend", "feed"} {
+		if !strings.Contains(pageHTML, `id="`+id+`" data-label=`) {
+			t.Errorf("panel %q has no data-label, so folded it would name nothing", id)
+		}
+		// The folded rules are written per id on purpose: each panel sets its
+		// own width, padding and display through an id selector, and a bare
+		// .panel.folded can never outrank one of those.
+		if !strings.Contains(pageHTML, "#"+id+".folded>.bd") {
+			t.Errorf("panel %q has no id-level rule hiding its body when folded", id)
+		}
+	}
+	if strings.Count(pageHTML, `class="fold"`) != 4 {
+		t.Error("expected exactly four fold buttons, one per corner panel")
+	}
+	if !strings.Contains(pageHTML, "localStorage.setItem(FOLD_KEY") {
+		t.Error("folding is not remembered, so it has to be redone on every load")
+	}
+}
+
 // An application embedding this page has its own search box, and searching it
 // is asking about the same things these nodes are. It cannot reach into this
 // document — different origin, behind the embedder's proxy — so it sends a

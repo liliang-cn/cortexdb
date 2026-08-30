@@ -36,7 +36,7 @@ const pageHTML = `<!DOCTYPE html>
   .panel{position:fixed;z-index:10;background:rgba(8,13,26,.86);border:1px solid #1b2740;
     border-radius:10px;backdrop-filter:blur(10px);box-shadow:0 8px 30px rgba(0,0,0,.5)}
   #head{top:14px;left:14px;padding:11px 14px;min-width:250px}
-  #head h1{font-size:13px;font-weight:600;color:#e8eefc;letter-spacing:.2px}
+  #head h1{font-size:13px;font-weight:600;color:#e8eefc;letter-spacing:.2px;padding-right:16px}
   #counts{font-size:11px;color:#64748b;margin-top:5px}
   #counts b{color:#7dd3fc;font-weight:600}
   .badge{display:inline-flex;align-items:center;gap:5px;font-size:10px;padding:2px 7px;border-radius:20px;
@@ -46,7 +46,8 @@ const pageHTML = `<!DOCTYPE html>
   .badge.cold .led{background:#475569;box-shadow:none;animation:none}
   .led{animation:blink 2s ease-in-out infinite}
   @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
-  #tools{top:14px;right:14px;padding:11px;width:222px;display:flex;flex-direction:column;gap:8px}
+  #tools{top:14px;right:14px;padding:11px;width:222px}
+  #tools .bd{display:flex;flex-direction:column;gap:8px}
   #tools h3{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#4b5b76;font-weight:600}
   #tools input,#tools select{width:100%;padding:6px 9px;background:#060b16;border:1px solid #23324f;
     border-radius:6px;color:#dbe6f7;font-size:12px;font-family:inherit}
@@ -63,6 +64,7 @@ const pageHTML = `<!DOCTYPE html>
   .li{display:flex;align-items:center;gap:7px;margin-bottom:4px;color:#94a3b8}
   .dot{width:9px;height:9px;border-radius:50%;flex:none}
   #feed{bottom:14px;right:14px;width:330px;max-height:40vh;padding:10px 12px;display:flex;flex-direction:column}
+  #feed .bd{display:flex;flex-direction:column;min-height:0;flex:1}
   #feed h3{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#4b5b76;margin-bottom:7px;flex:none}
   #feeditems{overflow:auto;display:flex;flex-direction:column-reverse;gap:1px}
   .ev{display:flex;gap:8px;align-items:baseline;padding:3px 0;font-size:11px;
@@ -73,6 +75,26 @@ const pageHTML = `<!DOCTYPE html>
   .ev .t{color:#cbd5e1;word-break:break-word}
   .ev .m{color:#475569;font-size:10px}
   .ev.failed .t{color:#f87171;text-decoration:line-through}
+  /* Four panels sit in the four corners of a scene they are also covering. On
+     a narrow window — a phone, or the graph framed inside another app — they
+     meet in the middle and there is more chrome than graph. Each one folds to
+     a chip that names what it is hiding, so the view can be cleared without
+     losing the way back. */
+  .fold{position:absolute;top:5px;right:5px;z-index:1;width:22px;height:22px;flex:none;padding:0;
+    background:none;border:none;color:#3f4d66;font-size:15px;line-height:20px;cursor:pointer}
+  .fold:hover{background:none;color:#cbd5e1}
+  .fold::before{content:"–"}
+  /* Written per panel, not as one .panel.folded rule: each panel sets its own
+     width, padding and display through an id selector, and a class can never
+     outrank one of those. */
+  #head.folded>.fold::before,#tools.folded>.fold::before,
+  #legend.folded>.fold::before,#feed.folded>.fold::before{content:"+"}
+  #head.folded>.bd,#tools.folded>.bd,#legend.folded>.bd,#feed.folded>.bd{display:none}
+  #head.folded,#tools.folded,#legend.folded,#feed.folded{
+    display:block;width:auto;min-width:0;max-height:none;overflow:visible;padding:5px 30px 5px 11px}
+  #head.folded::before,#tools.folded::before,#legend.folded::before,#feed.folded::before{
+    content:attr(data-label);font-size:10px;text-transform:uppercase;
+    letter-spacing:.06em;color:#4b5b76;white-space:nowrap}
   #detail{top:14px;right:250px;width:280px;padding:12px;display:none}
   #detail.on{display:block}
   #detail .t{font-size:14px;font-weight:600;color:#e8eefc;word-break:break-word;padding-right:16px}
@@ -81,6 +103,13 @@ const pageHTML = `<!DOCTYPE html>
   #detail .r{margin-top:9px}
   #detail .k{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#4b5b76}
   #detail .v{font-size:12px;color:#cbd5e1;word-break:break-word}
+  /* Below this the corner panels stop clearing each other: the title card runs
+     under the controls, and the feed is wider than what is left. Folding takes
+     care of the two that fold themselves; these two are the ones that stay. */
+  @media (max-width:760px){
+    #head{min-width:0;max-width:calc(100vw - 262px)}
+    #feed{width:auto;max-width:calc(100vw - 28px)}
+  }
   #boot{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;
     flex-direction:column;gap:14px;background:#04060d;transition:opacity .45s}
   #boot.gone{opacity:0;pointer-events:none}
@@ -93,28 +122,40 @@ const pageHTML = `<!DOCTYPE html>
 <body>
 <div id="scene"></div>
 
-<div class="panel" id="head">
-  <h1>CortexDB — live brain</h1>
-  <div id="counts"><b id="n">0</b> nodes · <b id="e">0</b> edges</div>
-  <div class="badge" id="live"><span class="led"></span><span id="livetext">connecting</span></div>
+<div class="panel" id="head" data-label="CortexDB">
+  <button class="fold" type="button" title="Collapse"></button>
+  <div class="bd">
+    <h1>CortexDB — live brain</h1>
+    <div id="counts"><b id="n">0</b> nodes · <b id="e">0</b> edges</div>
+    <div class="badge" id="live"><span class="led"></span><span id="livetext">connecting</span></div>
+  </div>
 </div>
 
-<div class="panel" id="tools">
-  <h3>Find</h3>
-  <input id="q" placeholder="Highlight by name…" autocomplete="off">
-  <h3>Type</h3>
-  <select id="type"><option value="">All types</option></select>
-  <h3>Path</h3>
-  <div class="row"><button id="pathbtn">Trace path</button><button id="clearpath">Clear</button></div>
-  <div id="pathinfo"></div>
-  <h3>View</h3>
-  <div class="row"><button id="spin">Orbit</button><button id="fit">Fit</button></div>
-  <div class="row"><button id="glow" class="on">Glow</button><button id="flow" class="on">Flow</button></div>
+<div class="panel" id="tools" data-label="Controls">
+  <button class="fold" type="button" title="Collapse"></button>
+  <div class="bd">
+    <h3>Find</h3>
+    <input id="q" placeholder="Highlight by name…" autocomplete="off">
+    <h3>Type</h3>
+    <select id="type"><option value="">All types</option></select>
+    <h3>Path</h3>
+    <div class="row"><button id="pathbtn">Trace path</button><button id="clearpath">Clear</button></div>
+    <div id="pathinfo"></div>
+    <h3>View</h3>
+    <div class="row"><button id="spin">Orbit</button><button id="fit">Fit</button></div>
+    <div class="row"><button id="glow" class="on">Glow</button><button id="flow" class="on">Flow</button></div>
+  </div>
 </div>
 
-<div class="panel" id="legend"><h3>Node types</h3><div id="legenditems"></div></div>
+<div class="panel" id="legend" data-label="Node types">
+  <button class="fold" type="button" title="Collapse"></button>
+  <div class="bd"><h3>Node types</h3><div id="legenditems"></div></div>
+</div>
 
-<div class="panel" id="feed"><h3>Activity</h3><div id="feeditems"></div></div>
+<div class="panel" id="feed" data-label="Activity">
+  <button class="fold" type="button" title="Collapse"></button>
+  <div class="bd"><h3>Activity</h3><div id="feeditems"></div></div>
+</div>
 
 <div class="panel" id="detail"><span class="x" onclick="closeDetail()">&times;</span>
   <div class="t" id="dt"></div><div id="db"></div></div>
@@ -629,6 +670,49 @@ document.getElementById("scene").addEventListener("pointerdown", function(){
   if(spinning) setSpin(false);
 });
 document.getElementById("scene").addEventListener("wheel", function(){ userMovedCamera = true; }, {passive:true});
+
+/* ---------- folding the panels ----------
+
+   Which panels are folded is remembered per browser, because someone who wants
+   the legend out of the way wants it out of the way on the next look too.
+   With nothing remembered yet the choice is made from the size of the window:
+   on a desktop everything fits and everything opens, and below that the two
+   panels that carry no controls fold themselves, since a window narrow enough
+   for them to overlap the graph is one where they were covering it. */
+var FOLD_KEY = "cortexdb.liveview.folded";
+function foldable(){ return Array.prototype.slice.call(document.querySelectorAll(".panel[data-label]")); }
+function saveFolds(){
+  var ids = foldable().filter(function(p){ return p.classList.contains("folded"); })
+                      .map(function(p){ return p.id; });
+  try { localStorage.setItem(FOLD_KEY, ids.join(",")); } catch(e){}
+}
+function restoreFolds(){
+  var stored = null;
+  try { stored = localStorage.getItem(FOLD_KEY); } catch(e){}
+  var ids;
+  if(stored === null){
+    // 760px is where #tools (222px, right) and #head (250px, left) stop
+    // clearing each other with the graph still worth looking at between them.
+    ids = window.innerWidth < 760 ? ["legend", "feed"] : [];
+  } else {
+    ids = stored ? stored.split(",") : [];
+  }
+  foldable().forEach(function(p){
+    var folded = ids.indexOf(p.id) >= 0;
+    p.classList.toggle("folded", folded);
+    var b = p.querySelector(".fold");
+    if(b) b.title = folded ? "Expand" : "Collapse";
+  });
+}
+foldable().forEach(function(p){
+  p.querySelector(".fold").addEventListener("click", function(ev){
+    ev.stopPropagation();
+    var folded = p.classList.toggle("folded");
+    this.title = folded ? "Expand" : "Collapse";
+    saveFolds();
+  });
+});
+restoreFolds();
 
 /* ---------- the stream ---------- */
 var booted = false;
