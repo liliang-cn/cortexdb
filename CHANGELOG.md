@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.88.0] - 2026-08-30
+
+### Added
+
+- **The live view's panels fold.** Four panels sit in the four corners of the scene they
+  describe. On a wide window they have room; in a narrow one — a phone, or the view framed
+  inside another application — they meet in the middle and there is more chrome than graph.
+  Embedded in a 440px panel the title card ran under the controls and the legend and the
+  activity feed took the bottom third between them.
+
+  Each panel now folds to a chip in its corner naming what it is hiding, so the view can be
+  cleared without losing the way back. What is folded is remembered per browser; with
+  nothing remembered yet the choice comes from the window, and below 760px the two panels
+  carrying no controls start folded — a window narrow enough for them to overlap the graph
+  is one where they were covering it.
+
+### Fixed
+
+- **The title card no longer runs under the controls on a narrow window.** Below 760px it
+  is bounded to the room left beside them and wraps instead of sliding underneath.
+
 ## [2.87.0] - 2026-08-29
 
 ### Fixed
