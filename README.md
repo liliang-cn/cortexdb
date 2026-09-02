@@ -8,6 +8,10 @@ A pure-Go, single-file AI memory and knowledge graph. One SQLite file holds vect
 go get github.com/liliang-cn/cortexdb/v2
 ```
 
+[![The live 3D view of a CortexDB brain](docs/assets/live-3d-openclaw-cluster.png)](docs/assets/live-3d-openclaw-cluster.png)
+
+<sub>`serve_graph_3d` on a real shared brain — the one behind an OpenClaw cluster: 2000 entities, 5953 relations, node types the agents wrote themselves. It is served from inside the MCP server handling the calls, so the graph lights up as tools touch it.</sub>
+
 ```go
 db, _ := cortexdb.Open(cortexdb.DefaultConfig("brain.db"))
 defer db.Close()
