@@ -10,7 +10,9 @@ go get github.com/liliang-cn/cortexdb/v2
 
 [![CortexDB 大脑的实时 3D 视图](docs/assets/live-3d-openclaw-cluster.png)](docs/assets/live-3d-openclaw-cluster.png)
 
-<sub>`serve_graph_3d` 跑在一个真实共享大脑上 —— OpenClaw 集群背后的那个：2000 个实体、5953 条关系，节点类型是 agent 自己写进去的。它由处理这些调用的 MCP 服务端内部提供，所以工具每碰一次图谱，图就亮一次。</sub>
+![同一个大脑，Orbit 转起来](docs/assets/live-3d-orbit.gif)
+
+<sub>`serve_graph_3d` 跑在一个真实共享大脑上 —— OpenClaw 集群背后的那个：2000 个实体、5953 条关系，节点类型是 agent 自己写进去的。它由处理这些调用的 MCP 服务端内部提供，所以工具每碰一次图谱，图就亮一次。（[Orbit 的 MP4 版](docs/assets/live-3d-orbit.mp4)）</sub>
 
 ```go
 db, _ := cortexdb.Open(cortexdb.DefaultConfig("brain.db"))
