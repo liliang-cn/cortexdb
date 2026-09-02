@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.90.0] - 2026-09-02
+
+### Added
+
+- **`GraphFilter.Contains`** matches a property's text case-insensitively, ANDed with
+  everything else on the filter. `Properties` is how a caller names a batch it already
+  knows; this is how a search enters the graph at all. The fold is spelled `LOWER()` on
+  both sides rather than left to `LIKE` — SQLite folds ASCII case and PostgreSQL does not
+  — and the needle is escaped, because `_` and `%` are ordinary characters in a name and
+  unescaped they are wildcards: searching a schema for `user_id` also matched `userxid`,
+  and searching for a literal `%` returned every node in the store.
+
+- **`ListNodes`** is `GetAllNodes` without the vector column. A vector is the largest
+  thing on a node, and enumerating the types in a 400k-node import through `GetAllNodes`
+  moves a gigabyte of embeddings across the driver and decodes every one of them in order
+  to count names. Nodes come back with a nil `Vector` rather than an empty one.
+
+  `ListNodes`, `GetAllNodes` and `CountNodes` share one WHERE builder, so a list and the
+  count printed beside it cannot come to disagree about which rows matched.
+
 ## [2.89.0] - 2026-09-02
 
 ### Added
