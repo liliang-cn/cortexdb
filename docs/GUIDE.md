@@ -143,6 +143,46 @@ If you want a graph database's query language over this data, export to it —
 `knowledge_graph_export` emits N-Triples/Turtle/TriG — and keep CortexDB as the
 system of record.
 
+### The seam that does fit: external retrieval lanes
+
+A search engine you already run — Meilisearch, Weaviate, anything that can rank
+text — cannot be a brain, but it does have recall this one lacks. That is a
+different question from storage, and it has its own interface:
+
+```go
+type QuerySource interface {
+    Name() string
+    Search(ctx context.Context, req QuerySourceRequest) ([]QuerySourceHit, error)
+}
+
+db, _ := cortexdb.Open(cfg, cortexdb.WithQuerySource(mySource))
+resp, _ := db.Query(ctx, cortexdb.QueryRequest{
+    Query: "rollbak",
+    Prefetch: []cortexdb.QueryPrefetch{
+        {Name: "lexical", Kind: cortexdb.QueryPrefetchLexical, Query: "rollbak"},
+        {Kind: cortexdb.QueryPrefetchSource, Source: "meilisearch"},
+    },
+})
+```
+
+A source returns **ids and scores**. Content, metadata, collection and doc id
+come from the brain, and three things follow from that, each of them a test:
+
+- A source cannot inject text CortexDB never stored.
+- An id the brain does not have is dropped, not fabricated into a result. Stale
+  external indexes are the normal case, not an exception.
+- The lane's candidates still pass the request's filter and still go through the
+  same fusion as the built-in lanes, carrying the lane's name in `source_scores`.
+
+A lane that errors fails the query rather than quietly shrinking the result set —
+a retrieval path that disappears silently changes what a search means without
+saying so.
+
+`examples/17_query_source` implements this against a real Meilisearch using only
+`net/http` — no SDK enters `pkg/`, the same rule that keeps LLM clients out. It
+also shows the honest reason to do it: a typo, `rollbak`, which FTS5 correctly
+does not match and a typo-tolerant engine does.
+
 ## KnowledgeMemory — the brain facade
 
 `db.KnowledgeMemory()` is the highest-level API: one call fuses episodic memory, durable knowledge, and the knowledge graph, and returns a paste-ready context pack with source attribution.

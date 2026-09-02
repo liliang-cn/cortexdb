@@ -128,6 +128,42 @@ BLOB→BYTEA、"duplicate column" 错误文本、JSON 取值），SQL 文本原�
 如果想用图数据库的查询语言处理这些数据，就导出过去 —— `knowledge_graph_export`
 输出 N-Triples/Turtle/TriG —— 并让 CortexDB 继续做事实来源。
 
+### 真正合适的接口：外部召回通道
+
+你已经在跑的搜索引擎 —— Meilisearch、Weaviate，任何能给文本排序的东西 ——
+当不了大脑，但确实有这个大脑没有的召回能力。这和"存储"是两个问题，它有自己的接口：
+
+```go
+type QuerySource interface {
+    Name() string
+    Search(ctx context.Context, req QuerySourceRequest) ([]QuerySourceHit, error)
+}
+
+db, _ := cortexdb.Open(cfg, cortexdb.WithQuerySource(mySource))
+resp, _ := db.Query(ctx, cortexdb.QueryRequest{
+    Query: "rollbak",
+    Prefetch: []cortexdb.QueryPrefetch{
+        {Name: "lexical", Kind: cortexdb.QueryPrefetchLexical, Query: "rollbak"},
+        {Kind: cortexdb.QueryPrefetchSource, Source: "meilisearch"},
+    },
+})
+```
+
+source 返回的是 **id 和分数**。内容、元数据、collection、doc id 全部来自大脑本身。
+由此推出三件事，每一件都有对应的测试：
+
+- source **无法**注入 CortexDB 从未存过的文本。
+- 大脑里没有的 id 会被丢弃，而不是凭空造成一条结果。外部索引过期是常态，不是异常。
+- 通道给出的候选照样过请求的 filter，照样走和内建 lane 相同的融合，并在
+  `source_scores` 里带上通道名。
+
+通道报错会让整个查询失败，而不是悄悄让结果集变少 —— 一条静默消失的召回路径
+会在不声不响之间改变"搜索"的含义。
+
+`examples/17_query_source` 用**纯 `net/http`** 对接了真实的 Meilisearch —— 不往
+`pkg/` 里引任何 SDK，和把 LLM 客户端挡在外面是同一条规矩。它也给出了这么做的
+诚实理由：一个拼错的词 `rollbak`，FTS5 正确地匹配不到，而带容错的引擎能匹配到。
+
 ## KnowledgeMemory —— 大脑 facade
 
 `db.KnowledgeMemory()` 是最高层 API：一次调用融合 episodic memory、durable knowledge 和知识图谱，返回一个可直接粘贴、带来源归属的 context pack。

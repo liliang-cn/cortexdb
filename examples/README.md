@@ -193,6 +193,21 @@ Palantir-style ontology, end to end and fully offline.
 
 Use this when you want typed, governed, auditable writes rather than free-form entity upserts.
 
+## 17_query_source
+
+An external search engine as one retrieval lane, without becoming the storage.
+
+- implements `cortexdb.QuerySource` against Meilisearch with nothing but `net/http`
+- registers it with `WithQuerySource` and asks for it as a `source` prefetch
+- fuses it with CortexDB's own lexical lane; every result names the lanes that found it
+- shows what the lane actually buys: a typo (`rollbak`) that FTS5 correctly cannot match
+- shows the limit: after a row is deleted here, the stale external index still names it
+  and CortexDB drops it — a source names candidates, it never supplies content
+
+Needs a Meilisearch (the file's header has the one-line `docker run`). Use this when a
+team already has a search cluster whose recall you want, and you are deciding whether
+that means replacing CortexDB's storage. It does not.
+
 ## Rule of Thumb
 
 ```text
@@ -210,4 +225,5 @@ Need scale/CDC analytics checks?       -> 13_scale_analytics
 Need real semantic vector retrieval?   -> 14_semantic_rag
 Need vector + lexical + graph fusion?  -> 15_cortex_query
 Need typed, governed, audited writes?   -> 16_ontology
+Have a search cluster to fuse in?       -> 17_query_source
 ```

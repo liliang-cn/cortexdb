@@ -25,11 +25,14 @@ type DB struct {
 	store core.BrainStore
 	// dialect is the SQL this store speaks, for the sibling packages that
 	// build their own queries against SQL().
-	dialect                  sqldialect.Dialect
-	graph                    *graph.GraphStore
-	embedder                 Embedder         // Optional embedder for text operations
-	reranker                 Reranker         // Optional cross-encoder reranker for retrieval
-	queryTransformer         QueryTransformer // Optional pre-retrieval query rewriter (rewrite + HyDE)
+	dialect          sqldialect.Dialect
+	graph            *graph.GraphStore
+	embedder         Embedder         // Optional embedder for text operations
+	reranker         Reranker         // Optional cross-encoder reranker for retrieval
+	queryTransformer QueryTransformer // Optional pre-retrieval query rewriter (rewrite + HyDE)
+	// querySources are external retrieval lanes, registered by name. They
+	// name candidates; this brain still owns the content. See query_source.go.
+	querySources             map[string]QuerySource
 	KnowledgeMemoryReflector KnowledgeMemoryReflector
 	// Guards one-time creation of the ontology v2 table. A mutex plus a flag
 	// rather than sync.Once, because Once latches on panic-free completion

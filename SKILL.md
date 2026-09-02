@@ -140,6 +140,15 @@ db, _ := cortexdb.Open(cortexdb.DefaultConfig("postgres://u:pw@host:5432/cortex"
   across `pkg/core`, `pkg/graph`, `pkg/cortexdb`, `pkg/agentmem`; without it the
   run prints 59 skips naming what is uncovered. Most are parity tests — one body,
   both databases, same answer required — because the failure mode is silent.
+- External retrieval lanes are a *different* seam from storage:
+  `cortexdb.QuerySource` (`Name()` + `Search()`) registered with
+  `WithQuerySource`, asked for as `QueryPrefetch{Kind: QueryPrefetchSource,
+  Source: "<name>"}`. A source returns **ids and scores only** — content is
+  hydrated from the brain, ids the brain lacks are dropped, candidates still
+  pass the filter and the normal fusion, and a source error fails the query
+  rather than silently shrinking the result set. `db.QuerySources()` lists the
+  registered ones. Adapters live outside `pkg/` (see
+  `examples/17_query_source`, Meilisearch over plain `net/http`).
 - **Not** storage backends: Neo4j, Qdrant and similar. The graph is
   `graph_nodes`/`graph_edges` in the same database and the same transaction as
   the vectors, with SPARQL/RDFS/SHACL implemented over that SQL. `pkg/sqldialect`

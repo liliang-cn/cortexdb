@@ -17,6 +17,9 @@ const (
 	QueryPrefetchLexical = "lexical"
 	QueryPrefetchHybrid  = "hybrid"
 	QueryPrefetchGraph   = "graph"
+	// QueryPrefetchSource routes a lane to a registered external retrieval
+	// system. See query_source.go — it names candidates, it does not supply them.
+	QueryPrefetchSource = "source"
 
 	QueryFusionRRF         = "rrf"
 	QueryFusionWeightedRRF = "weighted_rrf"
@@ -59,6 +62,8 @@ type QueryPrefetch struct {
 	MaxHops          int       `json:"max_hops,omitempty"`
 	Keywords         []string  `json:"keywords,omitempty"`
 	AlternateQueries []string  `json:"alternate_queries,omitempty"`
+	// Source names the registered QuerySource for a Kind of "source".
+	Source string `json:"source,omitempty"`
 }
 
 // QueryFilter is a small payload filter model for embeddings metadata plus a
@@ -163,6 +168,11 @@ func (db *DB) Query(ctx context.Context, req QueryRequest) (*QueryResponse, erro
 			continue
 		}
 		name := strings.TrimSpace(prefetch.Name)
+		if name == "" && strings.TrimSpace(prefetch.Kind) == QueryPrefetchSource {
+			// A source lane is already named by the system it asks, and that
+			// is the name worth seeing in source_scores.
+			name = strings.TrimSpace(prefetch.Source)
+		}
 		if name == "" {
 			name = fmt.Sprintf("%s_%d", strings.TrimSpace(prefetch.Kind), i+1)
 		}
@@ -300,6 +310,8 @@ func (db *DB) runQueryPrefetch(ctx context.Context, req QueryRequest, prefetch Q
 			entityNames = req.EntityNames
 		}
 		return db.runGraphQueryPrefetch(ctx, entityNames, limit, prefetch.MaxHops)
+	case QueryPrefetchSource:
+		return db.runQuerySourcePrefetch(ctx, req, prefetch, limit)
 	default:
 		return nil, fmt.Errorf("unsupported query prefetch kind %q", kind)
 	}
