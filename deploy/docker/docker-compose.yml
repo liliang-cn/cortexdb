@@ -1,0 +1,41 @@
+# One CortexDB brain, as a long-running service.
+#
+#   cp deploy/docker/.env.example deploy/docker/.env   # then edit the token
+#   docker compose -f deploy/docker/docker-compose.yml up -d --build
+#   docker compose -f deploy/docker/docker-compose.yml exec cortexdb cortexdb-grpc -health
+#
+# Everything is overridable through deploy/docker/.env — the port included.
+# CORTEXDB_GRPC_PORT moves the listener, the published port and the healthcheck
+# together, because they all read CORTEXDB_GRPC_ADDR.
+
+services:
+  cortexdb:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: cortexdb-grpc:local
+    container_name: cortexdb
+    environment:
+      CORTEXDB_PATH: /data/cortexdb.db
+      CORTEXDB_GRPC_ADDR: 0.0.0.0:${CORTEXDB_GRPC_PORT:-47821}
+      # The token is the entire access control. Set it in .env.
+      CORTEXDB_GRPC_TOKEN: ${CORTEXDB_GRPC_TOKEN:-}
+      # Optional embedder; without it the brain runs in lexical mode.
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CORTEXDB_EMBED_MODEL: ${CORTEXDB_EMBED_MODEL:-}
+      CORTEXDB_EMBED_DIM: ${CORTEXDB_EMBED_DIM:-}
+    ports:
+      # Published on loopback by default. Set CORTEXDB_BIND_HOST=0.0.0.0 (or a
+      # LAN / Tailscale address) to serve other machines — and set a token
+      # first, because the transport is plaintext.
+      - "${CORTEXDB_BIND_HOST:-127.0.0.1}:${CORTEXDB_GRPC_PORT:-47821}:${CORTEXDB_GRPC_PORT:-47821}"
+    volumes:
+      - cortexdb-data:/data
+    restart: unless-stopped
+    extra_hosts:
+      # Lets OPENAI_BASE_URL point at an Ollama running on the host.
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  cortexdb-data:

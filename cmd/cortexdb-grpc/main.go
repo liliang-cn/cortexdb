@@ -9,6 +9,10 @@
 //	OPENAI_API_KEY       API key for the embeddings endpoint
 //	CORTEXDB_EMBED_MODEL embedding model name (default text-embedding-3-small)
 //	CORTEXDB_EMBED_DIM   embedding dimension (default 1536)
+//
+// `cortexdb-grpc -health` probes a server already running at -addr instead of
+// starting one, so the same binary is its own liveness check. See deploy/ for
+// systemd units and container images that use it.
 package main
 
 import (
@@ -41,8 +45,21 @@ func main() {
 		dbPath = flag.String("db", envOr("CORTEXDB_PATH", cortexdb.DefaultDBPath()), "SQLite database path")
 		addr   = flag.String("addr", envOr("CORTEXDB_GRPC_ADDR", "127.0.0.1:47821"), "listen address")
 		token  = flag.String("token", os.Getenv("CORTEXDB_GRPC_TOKEN"), "bearer token (empty disables auth)")
+		health = flag.Bool("health", false, "probe a server already running at -addr, print its status and exit")
 	)
 	flag.Parse()
+
+	// The probe opens no database: it is meant to run beside a live server as a
+	// container HEALTHCHECK or a systemd health command, where a second process
+	// touching the same SQLite file would be the wrong thing to do.
+	if *health {
+		line, err := probeHealth(context.Background(), *addr, *token)
+		if err != nil {
+			log.Fatalf("unhealthy: %v", err)
+		}
+		log.Print(line)
+		return
+	}
 
 	var opts []cortexdb.Option
 	if baseURL := os.Getenv("OPENAI_BASE_URL"); baseURL != "" {

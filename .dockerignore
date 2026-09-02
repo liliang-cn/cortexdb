@@ -10,9 +10,12 @@ clients/target
 docs/assets
 docs/.playwright-mcp
 .playwright-mcp
-*.db
-*.db-shm
-*.db-wal
+# Test databases litter pkg/ during a run. A bare *.db only matches the context
+# root — Docker's patterns do not cross a / — so these must be **-prefixed or
+# the context balloons to gigabytes.
+**/*.db
+**/*.db-shm
+**/*.db-wal
 **/__pycache__
 **/.venv
 **/*.pyc

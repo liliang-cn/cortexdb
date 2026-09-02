@@ -15,11 +15,15 @@ services:
   cortexdb:
     build:
       context: ../..
-      dockerfile: deploy/agents-demo/Dockerfile.cortexdb
+      # The same image the deploy/docker/ service uses — one Dockerfile, so the
+      # demo cannot drift away from what people actually run.
+      dockerfile: deploy/docker/Dockerfile
     image: cortexdb-grpc:demo
-    command: >-
-      -addr 0.0.0.0:47821 -db /data/agent.db
     environment:
+      # Configured through the environment, not `command:`, so the image's
+      # built-in healthcheck reads the same address the server binds.
+      CORTEXDB_PATH: /data/agent.db
+      CORTEXDB_GRPC_ADDR: 0.0.0.0:47821
       OPENAI_BASE_URL: http://host.docker.internal:11434/v1
       CORTEXDB_EMBED_MODEL: embeddinggemma
       CORTEXDB_EMBED_DIM: "768"

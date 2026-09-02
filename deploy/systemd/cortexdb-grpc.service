@@ -1,0 +1,71 @@
+# cortexdb-grpc — the shared brain, as a system service.
+#
+#   install -m 0755 cortexdb-grpc /usr/local/bin/
+#   useradd --system --home-dir /var/lib/cortexdb --shell /usr/sbin/nologin cortexdb
+#   install -d -m 0750 -o root -g root /etc/cortexdb
+#   install -m 0640 -o root -g cortexdb cortexdb-grpc.env /etc/cortexdb/cortexdb-grpc.env
+#   install -m 0644 cortexdb-grpc.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now cortexdb-grpc
+#
+# Configuration lives entirely in the environment file — see
+# cortexdb-grpc.env.example. Do not put the token on the ExecStart line: the
+# command line of a running process is world-readable.
+
+[Unit]
+Description=CortexDB gRPC server (shared memory and knowledge graph)
+Documentation=https://github.com/liliang-cn/cortexdb
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=cortexdb
+Group=cortexdb
+
+# StateDirectory creates and chowns /var/lib/cortexdb on first start, and is
+# the one path this unit may write to. Point CORTEXDB_PATH somewhere else and
+# you must add it to ReadWritePaths below.
+StateDirectory=cortexdb
+# The brain holds whatever the agents remembered. Default modes would leave the
+# database world-readable to every account on the host, which `systemd-analyze
+# security` flags and which is wrong for this data.
+StateDirectoryMode=0700
+UMask=0077
+WorkingDirectory=/var/lib/cortexdb
+EnvironmentFile=/etc/cortexdb/cortexdb-grpc.env
+ExecStart=/usr/local/bin/cortexdb-grpc
+
+Restart=always
+RestartSec=2s
+# SQLite in WAL mode recovers from an abrupt stop, but a clean shutdown
+# checkpoints the WAL, so give the server room to close the database.
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+LimitNOFILE=65535
+
+# Hardening. Everything here is standard for a network service that owns one
+# directory; if you extend the unit (a bind-mounted database, a local embedder
+# over a unix socket) relax the matching line rather than dropping the block.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

@@ -28,7 +28,8 @@ pkg/graph
   Low-level graph engine: property graph, RDF triples/quads, SPARQL, RDFS, SHACL.
 
 pkg/core
-  SQLite storage, embeddings, FTS5, vector indexes, chat/session primitives.
+  Storage engine (SQLite by default, PostgreSQL + pgvector by DSN), embeddings, FTS5,
+  vector indexes, chat/session primitives.
 ```
 
 Default recommendation:
@@ -112,6 +113,39 @@ _, _ = quick.Add(ctx, []float32{0.1, 0.2, 0.9}, "SQLite is a single-file databas
 hits, _ := quick.Search(ctx, []float32{0.1, 0.2, 0.8}, 3)
 _ = hits
 ```
+
+## Storage Backend (SQLite or PostgreSQL)
+
+The DSN chooses the backend. Nothing else changes:
+
+```go
+db, _ := cortexdb.Open(cortexdb.DefaultConfig("/var/lib/cortexdb/brain.db"))        // SQLite (default)
+db, _ := cortexdb.Open(cortexdb.DefaultConfig("postgres://u:pw@host:5432/cortex"))  // PostgreSQL + pgvector
+```
+
+- A bare path still means a SQLite file, so existing configuration is unaffected.
+- `PostgresStore` satisfies the same `BrainStore` contract as `SQLiteStore`:
+  vectors, hybrid search, memory, RDF graph, SPARQL, ontology and the tool
+  surface all run on either. `db.Dialect().Kind()` reports which.
+- The registry (`core.RegisterStore` / `core.OpenBrainStore`) is compile-time,
+  not a plugin system — storage is the hot path, and a process boundary would
+  add an IPC round trip per search and make transactions impossible.
+- Real differences: lexical search maps FTS5 `unicode61` → `tsvector @@
+  plainto_tsquery('simple')` and the CJK trigram companion → `LIKE` + `pg_trgm`
+  (`pkg/core/fts_postgres.go` carries the table); pgvector refuses to index past
+  2000 dimensions, so a wider model falls back to an exact scan and says so;
+  pgvector itself is optional and a missing extension degrades to the in-Go scan.
+- PostgreSQL tests are opt-in and loudly skipped:
+  `CORTEXDB_TEST_POSTGRES="postgres://..." go test ./...` turns on 104 tests
+  across `pkg/core`, `pkg/graph`, `pkg/cortexdb`, `pkg/agentmem`; without it the
+  run prints 59 skips naming what is uncovered. Most are parity tests — one body,
+  both databases, same answer required — because the failure mode is silent.
+- **Not** storage backends: Neo4j, Qdrant and similar. The graph is
+  `graph_nodes`/`graph_edges` in the same database and the same transaction as
+  the vectors, with SPARQL/RDFS/SHACL implemented over that SQL. `pkg/sqldialect`
+  is dialect adaptation (placeholders, BLOB→BYTEA, error text, JSON accessors),
+  not a query builder — it does not reach Cypher. Export with
+  `knowledge_graph_export` instead and keep CortexDB as the system of record.
 
 ## Knowledge and Memory
 
@@ -641,6 +675,12 @@ The full facade is also served over gRPC for non-Go callers:
   `CORTEXDB_GRPC_ADDR` default `127.0.0.1:47821`, `CORTEXDB_GRPC_TOKEN` enables
   bearer auth, `OPENAI_BASE_URL`/`OPENAI_API_KEY`/`CORTEXDB_EMBED_MODEL`/
   `CORTEXDB_EMBED_DIM` wire an OpenAI-compatible embedder; unset → lexical mode).
+  Flags override the environment, which overrides the defaults. `-health`
+  probes a server already running at `-addr` and exits non-zero when it is not
+  serving, so the binary is its own liveness check; a wildcard listen address is
+  probed on loopback. Running it as a service: `deploy/` has the systemd unit,
+  the container image (whose `HEALTHCHECK` is `cortexdb-grpc -health`) and the
+  compose file, plus backup/upgrade notes.
 - Proto contract: `proto/cortexdb/v1/` — services `KnowledgeService`,
   `MemoryService`, `KnowledgeGraphService`, `GraphRagService`, `ToolsService`
   (generic `CallTool(name, json)` over the same toolbox as MCP), `AdminService`.

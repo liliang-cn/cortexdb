@@ -49,10 +49,84 @@ pkg/graphflow  语料 → 抽取 → build → analyze → report → export（H
 pkg/importflow 导入 CSV / SQL dump / 线上 Postgres-MySQL 到 RAG + KG（DDL → 图谱）。
 pkg/connector  importflow 之上的隐私闸门：PII 脱敏、人工签字方案、可逆金库、CDC 同步。
 pkg/graph      底层 RDF/SPARQL/RDFS/SHACL + property graph。
-pkg/core       SQLite 存储、embeddings、FTS5、向量索引（HNSW/IVF/Flat）。
+pkg/core       存储引擎（默认 SQLite，按 DSN 可换 PostgreSQL + pgvector）、embeddings、FTS5、
+               向量索引（HNSW/IVF/Flat）。
 ```
 
 配套包：`pkg/eval`（检索质量评测 harness）、`pkg/rpcserver`（`cmd/cortexdb-grpc` 背后的 gRPC facade）、`pkg/agentmem` + `pkg/hindsight`（独立的 SQL agent memory bank，带 disposition 加权反思）、`pkg/semantic-router`（基于 embedding 的查询路由）、`pkg/quantization`（标量/二值向量压缩）、`pkg/geo`（地理空间索引）。
+
+## 存储后端 —— SQLite 或 PostgreSQL
+
+SQLite 是默认，也是这个库存在的理由：一个文件，不用起服务。当"一个文件"不再是
+合适的形态时 —— 多台应用服务器共享一个大脑，或者数据库归运维统一备份和复制 ——
+同一个大脑可以跑在 PostgreSQL + pgvector 上。**换后端只有 DSN 这一件事**：
+
+```go
+db, _ := cortexdb.Open(cortexdb.DefaultConfig("/var/lib/cortexdb/brain.db"))          // SQLite
+db, _ := cortexdb.Open(cortexdb.DefaultConfig("postgres://u:pw@host:5432/cortex"))    // PostgreSQL + pgvector
+```
+
+裸路径一直表示 SQLite 文件，现在依然如此 —— 已有配置不用知道这些改动也照常工作。
+store 之上的一切都没变：向量、混合检索、记忆、RDF 图谱、SPARQL、ontology 和工具面
+在两个后端上都跑，`PostgresStore` 满足与 SQLite 版本相同的 `BrainStore` 契约。
+
+注册表（`core.RegisterStore`）**刻意是编译期的，不是插件系统**。存储是热路径 ——
+每次召回都经过它 —— 进程边界意味着每次搜索多一次 IPC 往返和序列化，而且事务无从谈起。
+它和 agent-go 的 `RegisterMemoryStore` 是同一个形状：已经会在那边换记忆后端的人，
+在这里不用学任何新东西，变的只有 DSN。
+
+### 真正的差异
+
+三处，而且都写在代码里，不是脚注：
+
+| 查询 | SQLite | PostgreSQL |
+| --- | --- | --- |
+| 非 CJK 全文 | FTS5 `unicode61` MATCH | `tsvector @@ plainto_tsquery('simple')` |
+| CJK，3 字及以上 | FTS5 trigram 伴随表 | `LIKE`，由 `pg_trgm` 加速 |
+| CJK，1–2 字 | `LIKE`，无索引 | `LIKE`，无索引 |
+
+最后一行不是 PostgreSQL 的短板 —— 两个字的词在任何一边都产生不出 trigram。同样的
+弱点落在同样的位置，这才使它可预期。用 `'simple'` 而不是 `'english'` 是有意的：
+`unicode61` 不做词干还原也不去停用词，一个偷偷做词干化的后端会让同一个查询
+因为跑在哪里而返回不同的行。
+
+- **pgvector 索引不了 2000 维以上。** 4096 维的模型依然可用、结果依然正确 ——
+  只是退化成精确扫描，随表线性增长。store 会在日志里说明这件事，而不是让你从
+  延迟曲线里推断。
+- **pgvector 是可选的。** CortexDB 连接用的账号未必有 `CREATE EXTENSION` 权限。
+  扩展缺失时，图谱的向量检索降级回原本就有的 Go 内扫描并提示一次，而不是拒绝启动。
+
+### 用验证代替相信
+
+PostgreSQL 覆盖是 opt-in 的，而且**跳过时会大声说** —— 一次全绿永远不会被误当成
+它并不具备的覆盖：
+
+```bash
+docker run -d --name cortexpg -e POSTGRES_PASSWORD=cortex -e POSTGRES_DB=cortex \
+  -p 127.0.0.1:43516:5432 pgvector/pgvector:pg16
+CORTEXDB_TEST_POSTGRES="postgres://postgres:cortex@127.0.0.1:43516/cortex?sslmode=disable" \
+  go test ./...
+```
+
+这会打开 `pkg/core`、`pkg/graph`、`pkg/cortexdb`、`pkg/agentmem` 里的
+**104 个 PostgreSQL 测试**；不设这个变量，同一次运行会打印 59 处显式 skip，
+并指名哪些没有被覆盖。其中大部分是 parity 测试：一份测试体，在两个数据库上各跑一遍，
+断言它们给出相同答案。这才是要紧的那道闸 —— 因为这里的失效方式是静默的：
+可移植的 SQL 照样能解析、照样返回行，只是不再返回对的行。
+
+### 什么不算存储后端
+
+Neo4j、Qdrant 之类不在这个名单上，不是因为没顾上。这里的图就是两张表 ——
+`graph_nodes` 和 `graph_edges` —— 和向量、分块、agent 记忆在同一个数据库里，
+共用一个事务边界。SPARQL、RDFS 推理和 SHACL 校验都实现在这套 SQL 之上。把图搬到
+Neo4j 意味着：图与向量分家且两者之间没有事务；GraphRAG 的"先检索再沿边扩展"变成
+两次网络往返 + 应用层拼接；现有的 SPARQL/RDFS/SHACL 实现整套作废，改用 Cypher 重写。
+`pkg/sqldialect` 在这里也帮不上忙：它只处理四件真实差异（占位符重绑定、
+BLOB→BYTEA、"duplicate column" 错误文本、JSON 取值），SQL 文本原地保留 ——
+它是方言适配，不是查询构造器，够不到 Cypher。
+
+如果想用图数据库的查询语言处理这些数据，就导出过去 —— `knowledge_graph_export`
+输出 N-Triples/Turtle/TriG —— 并让 CortexDB 继续做事实来源。
 
 ## KnowledgeMemory —— 大脑 facade
 
@@ -246,6 +320,12 @@ export CORTEXDB_GRPC_TOKEN="<同一个 token>"
 **token 就是全部的访问控制**：拿到它就有完整读写权。embedder 和 LLM 配置在
 服务端，不在客户端。`--graph-html` 同样读共享大脑；其余一次性模式
 （`--export-memory`、`--learn-path`）仍作用于本地数据库。
+
+手动跑起来足够试用；要让它常驻，[`deploy/`](../deploy/) 里有加固过的 systemd
+unit、healthcheck 就是服务端二进制自己（`cortexdb-grpc -health`）的容器镜像和
+compose 文件，以及配套的备份、升级和端口覆盖说明。**所有端口都有默认值，也都可以
+覆盖**：`CORTEXDB_GRPC_ADDR`（或 `-addr`）改服务端口，`CORTEXDB_LIVE_PORT`
+改实时图谱视图端口。
 
 图谱视图也是一个 MCP 工具 `render_graph_html`。它是唯一**不**代理到共享大脑的
 工具：图谱数据从远端读，但 HTML 在 MCP 服务所在的机器上渲染和落盘 —— 调用方需要

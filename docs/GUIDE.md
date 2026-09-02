@@ -49,10 +49,99 @@ pkg/graphflow  Corpus → extract → build → analyze → report → export (H
 pkg/importflow Import CSV / SQL dumps / live Postgres-MySQL into RAG + KG (DDL → graph).
 pkg/connector  Privacy gate over importflow: PII masking, signed plan, reversible vault, CDC sync.
 pkg/graph      Low-level RDF/SPARQL/RDFS/SHACL + property graph.
-pkg/core       SQLite storage, embeddings, FTS5, vector indexes (HNSW/IVF/Flat).
+pkg/core       Storage engine (SQLite by default, PostgreSQL + pgvector by DSN), embeddings, FTS5,
+               vector indexes (HNSW/IVF/Flat).
 ```
 
 Supporting packages: `pkg/eval` (retrieval-quality harness), `pkg/rpcserver` (the gRPC facade behind `cmd/cortexdb-grpc`), `pkg/agentmem` + `pkg/hindsight` (a standalone SQL-backed agent memory bank with disposition-weighted reflection), `pkg/semantic-router` (embedding-based query routing), `pkg/quantization` (scalar/binary vector compression), `pkg/geo` (geospatial indexing).
+
+## Storage backends — SQLite or PostgreSQL
+
+SQLite is the default and the reason this library exists: one file, no service.
+When one file stops being the right shape — several application servers sharing
+a brain, a database your operations team already backs up and replicates — the
+same brain runs on PostgreSQL + pgvector. The DSN is the whole switch:
+
+```go
+db, _ := cortexdb.Open(cortexdb.DefaultConfig("/var/lib/cortexdb/brain.db"))          // SQLite
+db, _ := cortexdb.Open(cortexdb.DefaultConfig("postgres://u:pw@host:5432/cortex"))    // PostgreSQL + pgvector
+```
+
+A bare path has always meant a SQLite file, so it still does — an existing
+configuration keeps working without being told any of this. Everything above the
+store is unchanged: vectors, hybrid search, memory, the RDF graph, SPARQL,
+ontology and the tool surface all run on either backend, and `PostgresStore`
+satisfies the same `BrainStore` contract the SQLite one does.
+
+The registry (`core.RegisterStore`) is deliberately **compile-time, not a plugin
+system**. Storage is the hot path — every recall goes through it — and a process
+boundary would cost an IPC round trip and serialization per search, on top of
+making transactions impossible. It is the same shape as agent-go's
+`RegisterMemoryStore`, so a host that already knows how to swap a memory store
+there has nothing new to learn: only the DSN changes.
+
+### What actually differs
+
+Three things, and they are in the code rather than in a footnote:
+
+| Query | SQLite | PostgreSQL |
+| --- | --- | --- |
+| non-CJK full text | FTS5 `unicode61` MATCH | `tsvector @@ plainto_tsquery('simple')` |
+| CJK, 3+ characters | FTS5 trigram companion | `LIKE`, accelerated by `pg_trgm` |
+| CJK, 1–2 characters | `LIKE`, unindexed | `LIKE`, unindexed |
+
+The last row is not a PostgreSQL limitation — a two-character word produces no
+trigrams on either side. Same weakness in the same place, which is what makes it
+predictable. `'simple'` rather than `'english'` on purpose: `unicode61` does not
+stem or drop stopwords, and a backend that quietly stemmed would return
+different rows for the same query depending on where it ran.
+
+- **pgvector will not index past 2000 dimensions.** A 4096-dimensional model
+  still works and still returns correct results — as an exact scan, linear in
+  table size. The store says so in its log rather than leaving you to infer it
+  from a latency graph.
+- **pgvector is optional.** The account CortexDB connects with may not be
+  allowed to `CREATE EXTENSION`. A missing extension degrades the graph's vector
+  search to the in-Go scan that was already there and says so once, rather than
+  refusing to start.
+
+### Proving it, rather than believing it
+
+PostgreSQL coverage is opt-in and *loudly* skipped, so a green run can never be
+mistaken for coverage it does not have:
+
+```bash
+docker run -d --name cortexpg -e POSTGRES_PASSWORD=cortex -e POSTGRES_DB=cortex \
+  -p 127.0.0.1:43516:5432 pgvector/pgvector:pg16
+CORTEXDB_TEST_POSTGRES="postgres://postgres:cortex@127.0.0.1:43516/cortex?sslmode=disable" \
+  go test ./...
+```
+
+That turns on **104 PostgreSQL tests** across `pkg/core`, `pkg/graph`,
+`pkg/cortexdb` and `pkg/agentmem`; without the variable the same run prints 59
+explicit skips naming what is not covered. Most of them are parity tests: one
+body, run against both databases, asserting they answer the same. That is the
+guard that matters, because the failure mode here is silent — portable SQL that
+still parses and still returns rows, just not the right ones.
+
+### What is not a storage backend
+
+Neo4j, Qdrant and friends are not on this list, and not because nobody got to
+them. The graph here is two tables — `graph_nodes` and `graph_edges` — in the
+same database as the vectors, the chunks and the agent memory, inside one
+transaction boundary. SPARQL, RDFS inference and SHACL validation are
+implemented on top of that SQL. Moving the graph to Neo4j would split it from
+the vectors with no transaction across the two, turn GraphRAG's
+retrieve-then-expand into two network round trips joined in application code,
+and discard the SPARQL/RDFS/SHACL implementation for a Cypher rewrite.
+`pkg/sqldialect` does not help there either: it handles four real differences
+(placeholder rebinding, BLOB→BYTEA, "duplicate column" error text, JSON
+accessors) and leaves the SQL text in place — it is dialect adaptation, not a
+query builder, and it does not reach as far as Cypher.
+
+If you want a graph database's query language over this data, export to it —
+`knowledge_graph_export` emits N-Triples/Turtle/TriG — and keep CortexDB as the
+system of record.
 
 ## KnowledgeMemory — the brain facade
 
@@ -249,6 +338,13 @@ Tailscale. **The token is the access control**: anyone holding it has full
 read/write access. Embedder and LLM settings live on the server, not the
 clients. `--graph-html` reads the shared brain too; the remaining one-shot modes
 (`--export-memory`, `--learn-path`) still act on a local database.
+
+Running it by hand is fine for a trial; to keep it up, [`deploy/`](../deploy/)
+has a hardened systemd unit, a container image whose healthcheck is the server
+binary itself (`cortexdb-grpc -health`), and a compose file — plus the backup,
+upgrade and port-override notes that go with them. Every port has a default and
+every default is overridable: `CORTEXDB_GRPC_ADDR` (or `-addr`) moves the
+server, `CORTEXDB_LIVE_PORT` moves the live graph view.
 
 The graph view is also an MCP tool, `render_graph_html`. It is the one tool that
 is **not** proxied to the shared brain: the graph is read remotely, but the HTML

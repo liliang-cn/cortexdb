@@ -22,6 +22,7 @@ fmt.Println(rec.ContextPack.Text) // paste-ready context pack with source attrib
 - **KnowledgeMemory brain facade** — `Recall` / `Remember` / `Reflect` / `Consolidate` / `PromoteToKnowledge` / context packs; fused retrieval across episodic memory, durable knowledge, and GraphRAG chunks; relational answers returned as **graph facts** (`Alice —uses→ Apollo`) read from edges, reliable even with no embedder; deterministic no-LLM `extract_conversation`; memories can carry inline entities/relations so one call stores and graphs them.
 - **Composable retrieval** — `cortex_query`: vector / lexical / hybrid / graph prefetch lanes fused by RRF, weighted RRF, or DBSF, with metadata filters and per-source score debugging; an `Authorize` callback gates every candidate (RBAC/ABAC at the retrieval layer); pluggable reranker.
 - **Vector + lexical engine** — FTS5, HNSW / IVF / Flat indexes, scalar & binary quantization, geospatial indexing, semantic query routing.
+- **Swappable storage** — SQLite by default; a `postgres://` DSN moves the same brain to **PostgreSQL + pgvector**, with vectors, hybrid search, memory and the RDF graph all running on either. Compile-time backend registry, not a plugin system (storage is the hot path). 104 opt-in PostgreSQL tests, mostly parity: one test body, both databases, same answer required.
 - **Knowledge graph** — RDF triples/quads on the same file: a practical SPARQL subset (updates, OPTIONAL/UNION/VALUES, aggregates, subqueries, property paths), RDFS-lite materialized inference, SHACL-lite validation, N-Triples/Turtle/TriG I/O; property-graph `apply_inference` materializes two-hop relation compositions with provenance; entities track asserting documents, and `delete_document_graph` is deletion shaped like ingest.
 - **Ontology (Palantir-style)** — typed object/link/interface types with primary keys and cardinality, an object-set algebra (union / intersect / filter / `search_around`), governed **action types** with audit trail, generated typed agent tools, and a breaking-change schema diff; `strict` or `vocabulary` enforcement.
 - **Pipelines** — `memoryflow` (transcript → recall → wake-up → promotion), `graphflow` (corpus → graph → HTML report), `importflow` (CSV / SQL dumps / live Postgres-MySQL → RAG + KG), `connector` (PII masking, signed plans, reversible vault, CDC sync).
@@ -36,6 +37,8 @@ codex plugin marketplace add liliang-cn/cortexdb && codex plugin add cortexdb@co
 ```
 
 Lexical mode by default, one global brain at `~/.cortexdb/cortexdb.db`, slash commands (`/remember`, `/recall`, `/cortexdb-graph`) and an auto-recall hook. Point many agents and machines at one `cortexdb-grpc` (`CORTEXDB_REMOTE=host:port` + token) and Claude Code, Codex, [OpenClaw](https://github.com/liliang-cn/openclaw-cortexdb-memory) and [Hermes](https://github.com/liliang-cn/hermes-cortexdb-memory) share the **same** memory and graph. Typed clients: `cargo add cortexdb-client` · `pip install cortexdb-client` · `npm install cortexdb-client`.
+
+To keep that server up, [`deploy/`](deploy/) has a hardened systemd unit and a container image whose healthcheck is the server binary itself (`cortexdb-grpc -health`). Every port has a default and every default is overridable.
 
 ## More
 
