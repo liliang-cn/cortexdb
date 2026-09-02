@@ -58,6 +58,18 @@ type GraphFilter struct {
 	// pkg/sqldialect is what keeps a row with no properties at all from
 	// failing the whole query rather than simply not matching.
 	Properties map[string]string `json:"properties,omitempty"`
+	// Contains narrows to nodes whose property holds this text somewhere in
+	// it, compared case-insensitively and ANDed with everything else.
+	//
+	// Separate from Properties because the two are different questions and
+	// only one of them can use an index: Properties is how a caller names a
+	// batch it already knows, Contains is how a search enters the graph at
+	// all. Folding them into one map would make every batch scope a LIKE.
+	//
+	// The value is matched literally — % and _ in it mean those characters,
+	// not wildcards — because the text comes from whoever typed the query and
+	// a name with an underscore in it is ordinary.
+	Contains map[string]string `json:"contains,omitempty"`
 	// Limit caps the rows a query returns. Zero means no cap, which is what
 	// every caller before this field got and still gets.
 	//

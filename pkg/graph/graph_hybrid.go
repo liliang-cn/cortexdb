@@ -471,10 +471,40 @@ func (g *GraphStore) nodeWhere(filter *GraphFilter) (string, []interface{}) {
 		args = append(args, filter.Properties[k])
 	}
 
+	ckeys := make([]string, 0, len(filter.Contains))
+	for k, v := range filter.Contains {
+		if v != "" {
+			ckeys = append(ckeys, k)
+		}
+	}
+	sort.Strings(ckeys)
+	for _, k := range ckeys {
+		// LOWER on both sides rather than relying on LIKE: SQLite's LIKE folds
+		// ASCII case by default and PostgreSQL's does not, so the same filter
+		// would be case-insensitive on one database and case-sensitive on the
+		// other — a difference that shows up as a search finding nothing in
+		// production and everything in the tests.
+		clauses = append(clauses,
+			"LOWER("+g.dialect.JSONTextGuarded("properties", k)+") LIKE LOWER(?) ESCAPE '\\'")
+		args = append(args, "%"+likeLiteral(filter.Contains[k])+"%")
+	}
+
 	if len(clauses) == 0 {
 		return "", nil
 	}
 	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+// likeLiteral escapes the three characters LIKE reads as syntax.
+//
+// The text being matched is whatever a person typed into a search box. A name
+// with an underscore in it is ordinary — column names and identifiers are full
+// of them — and unescaped it is LIKE's single-character wildcard, so searching
+// for "user_id" would also match "userxid". The backslash goes first, or it
+// would escape the escapes added after it.
+func likeLiteral(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
+	return r.Replace(s)
 }
 
 // CountNodes reports how many nodes match a filter, ignoring its Limit.
@@ -497,4 +527,54 @@ func (g *GraphStore) CountNodes(ctx context.Context, filter *GraphFilter) (int, 
 		return 0, fmt.Errorf("cortexdb: count nodes: %w", err)
 	}
 	return n, nil
+}
+
+// ListNodes is GetAllNodes without the vectors.
+//
+// The projection is the whole of it, and it is not a micro-optimisation. A
+// vector is the largest column on a node — 768 floats is three kilobytes — and
+// GetAllNodes selects it, decodes it, and hands it to a caller that mostly
+// wants to know what things are called. Enumerating the types in a
+// four-hundred-thousand-node import through GetAllNodes moves a gigabyte of
+// embeddings across the driver and decodes every one of them to count names.
+//
+// It shares nodeWhere with GetAllNodes and CountNodes, so all three are always
+// about the same rows: a list, a count and a filtered read that disagreed
+// about what matched would be worse than any one of them alone.
+//
+// Nodes come back with a nil Vector. That is the honest shape — a zero-length
+// vector read from a store that holds one would be a lie about the record, and
+// a caller who needs it has GetAllNodes or GetNode.
+func (g *GraphStore) ListNodes(ctx context.Context, filter *GraphFilter) ([]*GraphNode, error) {
+	if err := g.InitGraphSchema(ctx); err != nil {
+		return nil, err
+	}
+	where, args := g.nodeWhere(filter)
+	query := `SELECT id, content, node_type, properties, created_at, updated_at FROM graph_nodes` + where
+	if filter != nil && filter.Limit > 0 {
+		query += ` ORDER BY id LIMIT ?`
+		args = append(args, filter.Limit)
+	}
+	rows, err := g.query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("cortexdb: list nodes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var nodes []*GraphNode
+	for rows.Next() {
+		var node GraphNode
+		var propertiesJSON sql.NullString
+		if err := rows.Scan(&node.ID, &node.Content, &node.NodeType, &propertiesJSON,
+			&node.CreatedAt, &node.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if propertiesJSON.Valid && propertiesJSON.String != "" {
+			if err := json.Unmarshal([]byte(propertiesJSON.String), &node.Properties); err != nil {
+				return nil, fmt.Errorf("cortexdb: list nodes: node %s: decode properties: %w", node.ID, err)
+			}
+		}
+		nodes = append(nodes, &node)
+	}
+	return nodes, rows.Err()
 }

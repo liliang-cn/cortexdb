@@ -204,3 +204,126 @@ func TestAnUnfilteredReadIsUnchanged(t *testing.T) {
 		t.Fatalf("the type filter returned %d of 6 nodes", len(byType))
 	}
 }
+
+// seedNames writes nodes whose "name" property is what a search would look
+// for, including two the LIKE metacharacters would confuse.
+func seedNames(t *testing.T, ctx context.Context, g *GraphStore) {
+	t.Helper()
+	seed := []GraphNode{
+		{ID: "n1", Vector: []float32{1, 0}, NodeType: "Person", Properties: map[string]interface{}{"run": "r", "name": "Maurice Ravel"}},
+		{ID: "n2", Vector: []float32{0, 1}, NodeType: "Person", Properties: map[string]interface{}{"run": "r", "name": "RAVEL Quartet"}},
+		{ID: "n3", Vector: []float32{1, 1}, NodeType: "Person", Properties: map[string]interface{}{"run": "r", "name": "Claude Debussy"}},
+		{ID: "n4", Vector: []float32{0, 0}, NodeType: "Column", Properties: map[string]interface{}{"run": "r", "name": "user_id"}},
+		{ID: "n5", Vector: []float32{1, 2}, NodeType: "Column", Properties: map[string]interface{}{"run": "r", "name": "userxid"}},
+		{ID: "n6", Vector: []float32{2, 1}, NodeType: "Person", Properties: map[string]interface{}{"run": "other", "name": "Maurice Ravel"}},
+	}
+	for i := range seed {
+		if err := g.UpsertNode(ctx, &seed[i]); err != nil {
+			t.Fatalf("seed %s: %v", seed[i].ID, err)
+		}
+	}
+}
+
+func TestContainsIsCaseInsensitiveAndScoped(t *testing.T) {
+	_, g, cleanup := setupTestGraph(t)
+	defer cleanup()
+	ctx := context.Background()
+	seedNames(t, ctx, g)
+
+	got, err := g.ListNodes(ctx, &GraphFilter{
+		Properties: map[string]string{"run": "r"},
+		Contains:   map[string]string{"name": "ravel"},
+	})
+	if err != nil {
+		t.Fatalf("ListNodes: %v", err)
+	}
+	// Both spellings, because the fold is on both sides; and not n6, which is
+	// the same name in a different batch — the two filters AND.
+	if len(got) != 2 || !ids(got)["n1"] || !ids(got)["n2"] {
+		t.Fatalf("got %v, want exactly n1 and n2", ids(got))
+	}
+}
+
+func TestAnUnderscoreInASearchIsNotAWildcard(t *testing.T) {
+	_, g, cleanup := setupTestGraph(t)
+	defer cleanup()
+	ctx := context.Background()
+	seedNames(t, ctx, g)
+
+	// LIKE reads _ as "any one character", so unescaped this matches userxid
+	// too — and a caller searching a schema for a column named user_id is the
+	// ordinary case, not an exotic one.
+	got, err := g.ListNodes(ctx, &GraphFilter{Contains: map[string]string{"name": "user_id"}})
+	if err != nil {
+		t.Fatalf("ListNodes: %v", err)
+	}
+	if len(got) != 1 || !ids(got)["n4"] {
+		t.Fatalf("got %v, want exactly n4; an unescaped _ matched userxid", ids(got))
+	}
+}
+
+func TestAPercentInASearchMatchesItself(t *testing.T) {
+	_, g, cleanup := setupTestGraph(t)
+	defer cleanup()
+	ctx := context.Background()
+	seedNames(t, ctx, g)
+
+	// Unescaped, "%" is "anything", so this would return every node in the
+	// store rather than the none that actually carry it.
+	got, err := g.ListNodes(ctx, &GraphFilter{Contains: map[string]string{"name": "%"}})
+	if err != nil {
+		t.Fatalf("ListNodes: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("searching for a literal %% returned %d nodes", len(got))
+	}
+}
+
+func TestListNodesAgreesWithCountNodes(t *testing.T) {
+	_, g, cleanup := setupTestGraph(t)
+	defer cleanup()
+	ctx := context.Background()
+	seedNames(t, ctx, g)
+
+	f := &GraphFilter{Properties: map[string]string{"run": "r"}, Contains: map[string]string{"name": "ravel"}}
+	list, err := g.ListNodes(ctx, f)
+	if err != nil {
+		t.Fatalf("ListNodes: %v", err)
+	}
+	total, err := g.CountNodes(ctx, f)
+	if err != nil {
+		t.Fatalf("CountNodes: %v", err)
+	}
+	// The three methods share one WHERE builder so that this cannot drift. A
+	// count that disagreed with the list beside it reads as authoritative and
+	// is the more believed of the two.
+	if total != len(list) {
+		t.Fatalf("CountNodes = %d but ListNodes returned %d", total, len(list))
+	}
+}
+
+func TestListNodesReturnsNoVector(t *testing.T) {
+	_, g, cleanup := setupTestGraph(t)
+	defer cleanup()
+	ctx := context.Background()
+	seedNames(t, ctx, g)
+
+	got, err := g.ListNodes(ctx, &GraphFilter{Properties: map[string]string{"run": "r"}})
+	if err != nil {
+		t.Fatalf("ListNodes: %v", err)
+	}
+	if len(got) == 0 {
+		t.Fatal("nothing to check")
+	}
+	for _, n := range got {
+		// Nil rather than empty: a zero-length vector read out of a store that
+		// holds a real one is a lie about the record, and a caller cannot tell
+		// it from a node that genuinely has none.
+		if n.Vector != nil {
+			t.Fatalf("node %s came back with a vector; the projection is the point of this method", n.ID)
+		}
+		if n.Properties["name"] == "" {
+			t.Fatalf("node %s lost its properties along with its vector", n.ID)
+		}
+	}
+}
