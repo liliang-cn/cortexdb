@@ -42,6 +42,29 @@ type GraphFilter struct {
 	NodeTypes []string `json:"node_types,omitempty"`
 	EdgeTypes []string `json:"edge_types,omitempty"`
 	MaxDepth  int      `json:"max_depth,omitempty"`
+	// Properties scopes a query to nodes whose properties JSON carries every
+	// one of these top-level string fields with these values.
+	//
+	// It exists because a store this one shares with everything else on the
+	// machine had no way to ask for one importer's rows. node_type was the
+	// only filter, and a type name is not a batch: an importer that wrote a
+	// thousand Person nodes on Tuesday and a thousand more on Friday could
+	// not ask for either set, only for all two thousand. Every writer that
+	// cared already stamped a batch onto properties — alchemy's connector
+	// writes "run" — and nothing could read it back.
+	//
+	// The fields are ANDed, and each is compared as text: properties is a
+	// JSON object serialized by json.Marshal, and the guarded read in
+	// pkg/sqldialect is what keeps a row with no properties at all from
+	// failing the whole query rather than simply not matching.
+	Properties map[string]string `json:"properties,omitempty"`
+	// Limit caps the rows a query returns. Zero means no cap, which is what
+	// every caller before this field got and still gets.
+	//
+	// A cap alone would be worse than none: a caller shown 100 of 4000 rows
+	// with nothing saying so reports 100. CountNodes answers the other half,
+	// and the two are meant to be used together.
+	Limit int `json:"limit,omitempty"`
 }
 
 // HybridQuery represents a combined vector and graph query

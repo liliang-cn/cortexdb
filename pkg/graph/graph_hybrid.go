@@ -9,6 +9,7 @@ import (
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"math"
 	"sort"
+	"strings"
 )
 
 // HybridSearch performs a combined vector and graph search
@@ -236,19 +237,16 @@ func (g *GraphStore) SimilarityInGraph(ctx context.Context, nodeID string, opts 
 
 // GetAllNodes retrieves all nodes with optional filtering
 func (g *GraphStore) GetAllNodes(ctx context.Context, filter *GraphFilter) ([]*GraphNode, error) {
-	query := `SELECT id, vector, content, node_type, properties, created_at, updated_at FROM graph_nodes`
-	args := []interface{}{}
-
-	if filter != nil && len(filter.NodeTypes) > 0 {
-		query += ` WHERE node_type IN (`
-		for i := range filter.NodeTypes {
-			if i > 0 {
-				query += `,`
-			}
-			query += `?`
-			args = append(args, filter.NodeTypes[i])
-		}
-		query += `)`
+	where, args := g.nodeWhere(filter)
+	query := `SELECT id, vector, content, node_type, properties, created_at, updated_at FROM graph_nodes` + where
+	if filter != nil && filter.Limit > 0 {
+		// Ordered only when capped. A window into a table has to be the same
+		// window twice or paging through it is a lie, and SQLite's unordered
+		// row order is not a promise. An uncapped scan keeps the order — and
+		// the cost — it had before this field existed, because every caller
+		// of it reads the whole table anyway and a sort would be pure tax.
+		query += ` ORDER BY id LIMIT ?`
+		args = append(args, filter.Limit)
 	}
 
 	rows, err := g.query(ctx, query, args...)
@@ -428,4 +426,75 @@ func (g *GraphStore) collectGraphDistances(ctx context.Context, startNodeID stri
 	}
 
 	return graphResults, nil
+}
+
+// nodeWhere builds the WHERE clause GetAllNodes and CountNodes share.
+//
+// They share it because the two answers have to be about the same rows. A
+// count computed from a different predicate than the list it accompanies is
+// worse than no count: it reads as authoritative and disagrees with what the
+// caller can see.
+//
+// The property keys are sorted so the same filter produces the same SQL text
+// twice — map iteration order is random in Go, and a query string that varies
+// run to run defeats every statement cache the drivers keep.
+func (g *GraphStore) nodeWhere(filter *GraphFilter) (string, []interface{}) {
+	if filter == nil {
+		return "", nil
+	}
+	var clauses []string
+	var args []interface{}
+
+	if len(filter.NodeTypes) > 0 {
+		holes := make([]string, len(filter.NodeTypes))
+		for i, t := range filter.NodeTypes {
+			holes[i] = "?"
+			args = append(args, t)
+		}
+		clauses = append(clauses, "node_type IN ("+strings.Join(holes, ",")+")")
+	}
+
+	keys := make([]string, 0, len(filter.Properties))
+	for k := range filter.Properties {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		// Guarded rather than raw: properties is a TEXT column and a node
+		// written without any carries the empty string, on which SQLite's
+		// json_extract raises "malformed JSON" and PostgreSQL's ::jsonb
+		// raises "invalid input syntax". Either kills the whole query over
+		// one unrelated row. Guarded, such a row yields NULL, which fails the
+		// comparison and is exactly right — a node with no properties is not
+		// a node in anybody's batch.
+		clauses = append(clauses, g.dialect.JSONTextGuarded("properties", k)+" = ?")
+		args = append(args, filter.Properties[k])
+	}
+
+	if len(clauses) == 0 {
+		return "", nil
+	}
+	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+// CountNodes reports how many nodes match a filter, ignoring its Limit.
+//
+// It is the other half of GraphFilter.Limit and it is not optional decoration.
+// A caller that asks for 100 nodes and is handed 100 has learned nothing about
+// whether there were 100 or 4000, and the honest failure — "showing 100 of
+// 4000" — is unavailable without this. Callers that report a total to a person
+// or to a model should ask for both.
+//
+// Limit is ignored on purpose: a count that stopped at the cap would always
+// equal the cap, which is the exact non-answer this method exists to replace.
+func (g *GraphStore) CountNodes(ctx context.Context, filter *GraphFilter) (int, error) {
+	if err := g.InitGraphSchema(ctx); err != nil {
+		return 0, err
+	}
+	where, args := g.nodeWhere(filter)
+	var n int
+	if err := g.queryRow(ctx, `SELECT COUNT(*) FROM graph_nodes`+where, args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("cortexdb: count nodes: %w", err)
+	}
+	return n, nil
 }
