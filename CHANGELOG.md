@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.89.0] - 2026-09-02
+
+### Added
+
+- **A read can now name the batch it wants.** `GraphFilter` gains `Properties` and `Limit`,
+  and `GetAllNodes` honours both. `graph_nodes` is shared by everything on the machine, and
+  the only filter a read had was `node_type` — but a type name is not a batch. An importer
+  that wrote a thousand `Person` nodes on Tuesday and a thousand more on Friday could ask
+  for all two thousand or for none, even though it had stamped which run each row belonged
+  to on the way in.
+
+  `Properties` matches top-level string fields in a node's `properties` JSON, ANDed, read
+  through the guarded dialect helper: `properties` is a TEXT column, a node written without
+  any carries the empty string, and an unguarded read of that raises "malformed JSON" on
+  SQLite and "invalid input syntax" on PostgreSQL — failing the whole statement over one
+  unrelated row, so a caller asking about their own batch would be told their batch was
+  empty.
+
+- **`CountNodes`** reports how many rows match a filter, deliberately ignoring its `Limit`.
+  It is the other half of a cap: a caller handed 100 rows has learned nothing about whether
+  there were 100 or 4000, and a count that stopped at the cap would always equal the cap.
+
+  Both fields are additive. A filter whose new fields are zero produces the query it
+  produced before, and a capped read is ordered by id while an uncapped one keeps the cost
+  it had.
+
 ## [2.88.0] - 2026-08-30
 
 ### Added
