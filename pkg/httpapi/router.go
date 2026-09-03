@@ -40,6 +40,43 @@ func (rt *router) handle(method, path string, h http.HandlerFunc) {
 // handleTool registers the handler for POST /v1/tools/{name}.
 func (rt *router) handleTool(h http.HandlerFunc) { rt.tool = h }
 
+// registered lists every route the router will dispatch to, the tool endpoint
+// included under its template path.
+//
+// It reads the dispatch tables themselves rather than a list maintained beside
+// them, which is the whole value: the coverage test walks this, so a route that
+// registerRoutes adds and the access table does not classify cannot hide from
+// it. A list written by hand would only ever prove that somebody remembered to
+// update the list.
+func (rt *router) registered() []route {
+	var out []route
+	for path, byMethod := range rt.routes {
+		for method := range byMethod {
+			out = append(out, route{method: method, path: path})
+		}
+	}
+	if rt.tool != nil {
+		out = append(out, route{method: http.MethodPost, path: toolRoutePath})
+	}
+	slices.SortFunc(out, func(a, b route) int { return strings.Compare(a.String(), b.String()) })
+	return out
+}
+
+// wrapEach replaces every registered handler with wrap's result for that route,
+// so a wrapper can depend on which route it is guarding. Registration happens
+// first and wrapping second precisely so nothing can be registered afterwards
+// and miss the wrapper.
+func (rt *router) wrapEach(wrap func(rr route, h http.HandlerFunc) http.HandlerFunc) {
+	for path, byMethod := range rt.routes {
+		for method, h := range byMethod {
+			byMethod[method] = wrap(route{method: method, path: path}, h)
+		}
+	}
+	if rt.tool != nil {
+		rt.tool = wrap(route{method: http.MethodPost, path: toolRoutePath}, rt.tool)
+	}
+}
+
 func (rt *router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if name, ok := strings.CutPrefix(r.URL.Path, toolCallPrefix); ok {
 		rt.serveTool(w, r, name)
