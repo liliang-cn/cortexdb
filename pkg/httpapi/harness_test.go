@@ -14,12 +14,12 @@ import (
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
-// newTestServer serves the REST API over a real temp-file database.
+// newTestDB opens a real temp-file database.
 //
 // No embedder is wired: lexical retrieval is the path a first-time evaluator
 // hits, because nobody has an embedding endpoint configured before their first
 // curl. A round trip that only worked with vectors would prove the wrong thing.
-func newTestServer(t *testing.T, token string) *httptest.Server {
+func newTestDB(t *testing.T) (*cortexdb.DB, string) {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("httpapi_%d.db", testname.Nano()))
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))
@@ -27,8 +27,27 @@ func newTestServer(t *testing.T, token string) *httptest.Server {
 		t.Fatalf("open db: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+	return db, dbPath
+}
 
-	srv := httptest.NewServer(New(db, Options{Token: token, DBPath: dbPath}))
+// newTestServer serves the REST API behind the legacy single token.
+func newTestServer(t *testing.T, token string) *httptest.Server {
+	t.Helper()
+	return newPolicyServer(t, Options{Token: token})
+}
+
+// newPolicyServer serves the REST API under whatever policy opts describe.
+func newPolicyServer(t *testing.T, opts Options) *httptest.Server {
+	t.Helper()
+	db, dbPath := newTestDB(t)
+	if opts.DBPath == "" {
+		opts.DBPath = dbPath
+	}
+	handler, err := NewWithPolicy(db, opts)
+	if err != nil {
+		t.Fatalf("build server: %v", err)
+	}
+	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	return srv
 }
