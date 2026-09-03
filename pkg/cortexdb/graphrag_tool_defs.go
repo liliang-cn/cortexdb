@@ -6,11 +6,24 @@ import (
 	"fmt"
 )
 
+// ToolDefinitions returns the same catalogue as GraphRAGToolbox.Definitions
+// without needing an open database.
+//
+// The catalogue is static — names, descriptions, schemas and Mutates are
+// literals, and none of them is read off the store. Authorization needs it that
+// way: pkg/authz decides whether a key may run a named tool before any handler
+// runs, and a policy that could only answer once a database was open would be a
+// policy that fails open on the path where there is none.
+func ToolDefinitions() []ToolDefinition {
+	return (&GraphRAGToolbox{}).Definitions()
+}
+
 // Definitions returns the JSON-schema-like definitions for the available tools.
 func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 	definitions := []ToolDefinition{
 		{
 			Name:        "ingest_document",
+			Mutates:     true,
 			Description: "Store a document, split it into chunks, index it lexically, and create document/chunk graph nodes.",
 			InputSchema: toolObjectSchema(
 				[]string{"document_id", "content"},
@@ -27,6 +40,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 		},
 		{
 			Name:        "upsert_entities",
+			Mutates:     true,
 			Description: "Create entity nodes and connect chunks to those entities with mention edges.",
 			InputSchema: toolObjectSchema(
 				[]string{"entities"},
@@ -50,7 +64,12 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			),
 		},
 		{
-			Name:        "delete_entities",
+			Name: "delete_entities",
+			// dry_run makes this a read for one particular argument, which is
+			// exactly the thing authorization cannot see: it decides from the
+			// tool name, before the JSON is parsed. A tool that can write is a
+			// write.
+			Mutates:     true,
 			Description: "Delete entity nodes and every edge touching them. The counterpart to upsert_entities, for removing wrong or junk entities; use dry_run to see what would go first. Not reversible.",
 			InputSchema: toolObjectSchema(
 				[]string{"names"},
@@ -62,6 +81,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 		},
 		{
 			Name:        "delete_document_graph",
+			Mutates:     true,
 			Description: "Delete everything one document put in the graph: its chunk and document nodes, its relation edges, and the entities it alone asserted (entities other documents also assert are detached, not deleted). The counterpart to a document-scoped ingest; use dry_run to see what would go first. Not reversible.",
 			InputSchema: toolObjectSchema(
 				[]string{"document_id"},
@@ -73,6 +93,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 		},
 		{
 			Name:        "upsert_relations",
+			Mutates:     true,
 			Description: "Create relation edges between entity nodes.",
 			InputSchema: toolObjectSchema(
 				[]string{"relations"},
@@ -225,7 +246,12 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			),
 		},
 		{
-			Name:        "extract_conversation",
+			Name: "extract_conversation",
+			// Extraction itself is pure, but persist=true writes entities and
+			// relations into the graph and the summary into knowledge. Same
+			// rule as delete_entities: the argument that decides is invisible
+			// to the caller doing the authorizing.
+			Mutates:     true,
 			Description: "Extract key information from conversation text (or a stored session's messages): a summary, themes, entities, and co-occurrence relations. Deterministic (no LLM). Set persist=true to also write entities/relations into the graph and the summary into knowledge, making the conversation recallable and graph-queryable.",
 			InputSchema: toolObjectSchema(
 				nil,
@@ -268,7 +294,10 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			),
 		},
 		{
-			Name:        "vector_dimension_repair",
+			Name: "vector_dimension_repair",
+			// Reads like a report, and with dry_run (its default) that is all
+			// it is. Without it, it re-embeds rows and rewrites their vectors.
+			Mutates:     true,
 			Description: "Report vector-dimension drift and optionally re-embed rows whose vectors came from an older embedding model. Such rows cannot enter the vector index, so they silently stop being retrievable by similarity while lexical search still finds them. Run with dry_run first.",
 			InputSchema: toolObjectSchema(
 				nil,

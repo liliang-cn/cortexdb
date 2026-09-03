@@ -87,7 +87,12 @@ func generateActionTool(action OntologyActionType) ToolDefinition {
 	}
 
 	return ToolDefinition{
-		Name:        "action_" + toOntologySnakeCase(action.APIName),
+		Name: "action_" + toOntologySnakeCase(action.APIName),
+		// An action type exists to change the graph, and the audit trail it
+		// appends to is itself a write. These tools are generated per schema
+		// rather than listed in Definitions(), so no completeness test covers
+		// them — which is the reason to say it here rather than rely on one.
+		Mutates:     true,
 		Description: description,
 		InputSchema: toolObjectSchema(required, properties),
 	}
@@ -99,6 +104,9 @@ func generateObjectTypeListTool(objectType OntologyObjectType) ToolDefinition {
 		description = "List " + firstNonEmpty(objectType.PluralDisplayName, objectType.APIName+" objects") + "."
 	}
 	return ToolDefinition{
+		// Mutates stays false: this only resolves an object set and returns
+		// its members. Stated because the generated tools sit outside the
+		// completeness test that guards the static catalogue.
 		Name:        "list_" + toOntologySnakeCase(objectType.APIName),
 		Description: description,
 		InputSchema: toolObjectSchema(nil, map[string]any{

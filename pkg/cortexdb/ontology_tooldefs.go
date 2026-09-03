@@ -4,6 +4,7 @@ func ontologyToolDefinitions() []ToolDefinition {
 	return []ToolDefinition{
 		{
 			Name:        "ontology_save",
+			Mutates:     true,
 			Description: "Store or update an ontology schema: object types with typed properties and a mandatory primary key, and link types with per-side cardinality. Mark one schema active to make it the write-time validator.",
 			InputSchema: toolObjectSchema(
 				[]string{"schema"},
@@ -71,7 +72,11 @@ func ontologyToolDefinitions() []ToolDefinition {
 			InputSchema: toolObjectSchema(nil, map[string]any{}),
 		},
 		{
-			Name:        "ontology_action_apply",
+			Name: "ontology_action_apply",
+			// validate_only does not write, but the default does, and every
+			// applied action also appends to the audit trail. Classified by
+			// what the tool can do, not by the argument that might stop it.
+			Mutates:     true,
 			Description: "Run one action type. Set validate_only to check parameters and submission criteria without writing, or return_edits to get the graph edits back (the two are mutually exclusive). Every applied action is recorded in an audit trail.",
 			InputSchema: toolObjectSchema(
 				[]string{"action"},
@@ -86,6 +91,7 @@ func ontologyToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "ontology_delete",
+			Mutates:     true,
 			Description: "Delete one ontology schema by ID.",
 			InputSchema: toolObjectSchema(
 				[]string{"schema_id"},
