@@ -33,14 +33,14 @@ const (
 )
 
 func TestNoKeysConfiguredLeavesTheServerOpen(t *testing.T) {
-	ic := authInterceptor(nil)
+	ic := authInterceptor(nil, nil)
 	if _, err := ic(context.Background(), nil, methodInfo(healthMethod), passthrough); err != nil {
 		t.Fatalf("expected open access, got %v", err)
 	}
 }
 
 func TestTheLegacyTokenStillGrantsEverything(t *testing.T) {
-	ic := authInterceptor(authz.LegacyToken("s3cret"))
+	ic := authInterceptor(authz.LegacyToken("s3cret"), nil)
 	ctx := bearer("s3cret")
 	for _, method := range authz.ClassifiedMethods() {
 		// CallTool is the one method whose request the policy has to read: it
@@ -58,7 +58,7 @@ func TestTheLegacyTokenStillGrantsEverything(t *testing.T) {
 }
 
 func TestMissingAuthorizationMetadataIsUnauthenticated(t *testing.T) {
-	ic := authInterceptor(authz.LegacyToken("s3cret"))
+	ic := authInterceptor(authz.LegacyToken("s3cret"), nil)
 	_, err := ic(context.Background(), nil, methodInfo(healthMethod), passthrough)
 	if status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("want UNAUTHENTICATED, got %v", err)
@@ -66,7 +66,7 @@ func TestMissingAuthorizationMetadataIsUnauthenticated(t *testing.T) {
 }
 
 func TestAnAuthorizationHeaderWithoutTheBearerPrefixIsUnauthenticated(t *testing.T) {
-	ic := authInterceptor(authz.LegacyToken("s3cret"))
+	ic := authInterceptor(authz.LegacyToken("s3cret"), nil)
 	ctx := metadata.NewIncomingContext(context.Background(),
 		metadata.Pairs("authorization", "s3cret"))
 	_, err := ic(ctx, nil, methodInfo(healthMethod), passthrough)
@@ -76,7 +76,7 @@ func TestAnAuthorizationHeaderWithoutTheBearerPrefixIsUnauthenticated(t *testing
 }
 
 func TestAWrongTokenIsUnauthenticated(t *testing.T) {
-	ic := authInterceptor(authz.LegacyToken("s3cret"))
+	ic := authInterceptor(authz.LegacyToken("s3cret"), nil)
 	_, err := ic(bearer("nope"), nil, methodInfo(healthMethod), passthrough)
 	if status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("want UNAUTHENTICATED, got %v", err)
@@ -90,7 +90,7 @@ func TestAnUnclassifiedMethodIsDeniedRatherThanAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ic := authInterceptor(keys)
+	ic := authInterceptor(keys, nil)
 	_, err = ic(bearer("s"), nil, methodInfo("/cortexdb.v1.FutureService/DropEverything"), passthrough)
 	if status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("want PERMISSION_DENIED for an unclassified method, got %v", err)
@@ -116,7 +116,7 @@ func TestAReadOnlyKeyIsRefusedAWriteAndAllowedARead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ic := authInterceptor(keys)
+	ic := authInterceptor(keys, nil)
 
 	req := &rpcv1.SearchMemoryRequest{Query: "coffee", UserId: "hermes"}
 	if _, err := ic(bearer("ro"), req, methodInfo(searchMethod), passthrough); err != nil {
@@ -139,7 +139,7 @@ func TestAConfinedKeyIsDeniedARequestThatIsNotAProtoMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ic := authInterceptor(keys)
+	ic := authInterceptor(keys, nil)
 	_, err = ic(bearer("h"), "not a proto message", methodInfo(searchMethod), passthrough)
 	if status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("want PERMISSION_DENIED, got %v", err)
@@ -154,7 +154,7 @@ func TestTheScopeCheckReadsNestedRetrievalPlanFilters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ic := authInterceptor(keys)
+	ic := authInterceptor(keys, nil)
 
 	// Top-level user_id says hermes, but the plan the handler also consults
 	// names somebody else. Which of the two wins downstream is not something

@@ -74,7 +74,7 @@ func NewWithPolicy(db *cortexdb.DB, opts Options) (*grpc.Server, error) {
 			return nil, err
 		}
 	}
-	chain := append(append([]grpc.UnaryServerInterceptor{}, opts.Interceptors...), authInterceptor(keys))
+	chain := append(append([]grpc.UnaryServerInterceptor{}, opts.Interceptors...), authInterceptor(keys, db))
 	s := grpc.NewServer(grpc.ChainUnaryInterceptor(chain...))
 	Register(s, db, opts)
 	return s, nil

@@ -38,6 +38,9 @@ func saveResponseToProto(resp *cortexdb.KnowledgeSaveResponse) *rpcv1.SaveKnowle
 }
 
 func (s *knowledgeService) SaveKnowledge(ctx context.Context, req *rpcv1.SaveKnowledgeRequest) (*rpcv1.SaveKnowledgeResponse, error) {
+	if err := guardKnowledgeUpsert(ctx, s.db, req.GetKnowledgeId()); err != nil {
+		return nil, err
+	}
 	resp, err := s.db.SaveKnowledge(ctx, cortexdb.KnowledgeSaveRequest{
 		KnowledgeID:  req.GetKnowledgeId(),
 		Title:        req.GetTitle(),
@@ -58,6 +61,11 @@ func (s *knowledgeService) SaveKnowledge(ctx context.Context, req *rpcv1.SaveKno
 }
 
 func (s *knowledgeService) UpdateKnowledge(ctx context.Context, req *rpcv1.UpdateKnowledgeRequest) (*rpcv1.SaveKnowledgeResponse, error) {
+	// Collection is settable here, so without the guard a collection-confined
+	// key could move any document it can name into its own collection.
+	if err := guardKnowledgeUpsert(ctx, s.db, req.GetKnowledgeId()); err != nil {
+		return nil, err
+	}
 	in := cortexdb.KnowledgeUpdateRequest{
 		KnowledgeID: req.GetKnowledgeId(),
 		Metadata:    req.GetMetadata(),

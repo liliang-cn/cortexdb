@@ -60,20 +60,66 @@ func TestAReadOnlyKeyCanCallAReadToolButNotAWriteOne(t *testing.T) {
 }
 
 func TestAToolThatOnlyLooksLikeAQueryIsStillRefusedToAReadOnlyKey(t *testing.T) {
-	// knowledge_graph_query runs INSERT DATA and the DELETE forms as well as
-	// SELECT, and apply_inference materialises edges. Both read as questions
-	// and both write, which is exactly the pair a name heuristic gets wrong.
+	// apply_inference materialises edges: it reads as a question and writes,
+	// which is exactly what a name heuristic gets wrong.
+	//
+	// knowledge_graph_query used to be asserted here too, on the same
+	// reasoning — the SPARQL subset executes INSERT DATA and the DELETE forms,
+	// so statically it is a write. It moved to the test below once the policy
+	// gained a way to ask the executor's own parser which one arrived, because
+	// classifying every SPARQL call as a write costs a read-only key SELECT,
+	// and SELECT is most of what a read-only key wants a graph for.
 	conn := newPolicyConn(t, Options{Keys: readerAndWriter(t)})
 	client := rpcv1.NewToolsServiceClient(conn)
 
 	for name, args := range map[string]string{
-		"knowledge_graph_query": `{"query":"SELECT ?s WHERE { ?s ?p ?o }"}`,
-		"apply_inference":       `{"rules":[]}`,
+		"apply_inference": `{"rules":[]}`,
 	} {
 		_, err := client.CallTool(asKey("ro-secret"), &rpcv1.CallToolRequest{Name: name, ArgsJson: args})
 		if status.Code(err) != codes.PermissionDenied {
 			t.Errorf("a read-only key was allowed %s: %v", name, err)
 		}
+	}
+}
+
+// TestSPARQLIsClassifiedByWhatTheQueryActuallyDoes covers both entry points,
+// because refining only the tool would be theatre: a read-only key refused
+// SPARQL through CallTool would simply call QuerySparql instead.
+func TestSPARQLIsClassifiedByWhatTheQueryActuallyDoes(t *testing.T) {
+	conn := newPolicyConn(t, Options{Keys: readerAndWriter(t)})
+	tools := rpcv1.NewToolsServiceClient(conn)
+	graph := rpcv1.NewKnowledgeGraphServiceClient(conn)
+
+	const read = "SELECT ?s WHERE { ?s ?p ?o }"
+	const write = `INSERT DATA { <http://example.org/a> <http://example.org/b> "c" }`
+
+	if _, err := tools.CallTool(asKey("ro-secret"), &rpcv1.CallToolRequest{
+		Name: "knowledge_graph_query", ArgsJson: `{"query":"` + read + `"}`,
+	}); status.Code(err) == codes.PermissionDenied {
+		t.Errorf("a read-only key was refused a SELECT through the tool: %v", err)
+	}
+	if _, err := graph.QuerySparql(asKey("ro-secret"), &rpcv1.QuerySparqlRequest{Query: read}); status.Code(err) == codes.PermissionDenied {
+		t.Errorf("a read-only key was refused a SELECT through QuerySparql: %v", err)
+	}
+
+	if _, err := tools.CallTool(asKey("ro-secret"), &rpcv1.CallToolRequest{
+		Name: "knowledge_graph_query", ArgsJson: `{"query":"` + write + `"}`,
+	}); status.Code(err) != codes.PermissionDenied {
+		t.Errorf("a read-only key ran an INSERT through the tool: %v", err)
+	}
+	if _, err := graph.QuerySparql(asKey("ro-secret"), &rpcv1.QuerySparqlRequest{Query: write}); status.Code(err) != codes.PermissionDenied {
+		t.Errorf("a read-only key ran an INSERT through QuerySparql: %v", err)
+	}
+
+	// Unparseable is a write: a caller must not be able to smuggle an update
+	// past the policy by making it unparseable to the policy alone.
+	if _, err := graph.QuerySparql(asKey("ro-secret"), &rpcv1.QuerySparqlRequest{Query: "not sparql at all"}); status.Code(err) != codes.PermissionDenied {
+		t.Errorf("a read-only key was allowed a query the parser rejected: %v", err)
+	}
+
+	// And the read-write key is unaffected either way.
+	if _, err := graph.QuerySparql(asKey("rw-secret"), &rpcv1.QuerySparqlRequest{Query: write}); status.Code(err) == codes.PermissionDenied {
+		t.Errorf("a read-write key was refused an INSERT: %v", err)
 	}
 }
 
@@ -128,7 +174,7 @@ func TestACallToolRequestTheInterceptorCannotReadIsDenied(t *testing.T) {
 	// The interceptor's contract is that it can read the request. A CallTool it
 	// cannot read is a tool call nobody can classify, so it is refused rather
 	// than handed to the toolbox to sort out.
-	ic := authInterceptor(readerAndWriter(t))
+	ic := authInterceptor(readerAndWriter(t), nil)
 	_, err := ic(bearer("op-secret"), "not a proto message",
 		methodInfo(authz.CallToolMethod), passthrough)
 	if status.Code(err) != codes.PermissionDenied {

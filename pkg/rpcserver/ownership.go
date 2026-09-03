@@ -2,6 +2,7 @@ package rpcserver
 
 import (
 	"context"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -226,4 +227,56 @@ func guardKnowledge(ctx context.Context, db *cortexdb.DB, id string) (record cor
 		return cortexdb.KnowledgeRecord{}, false, withheld("knowledge", id)
 	}
 	return resp.Knowledge, true, nil
+}
+
+// An upsert is a write to whatever id it names, and ids on a shared brain are
+// guessable strings. Without this, a key confined to user_id="hermes" could
+// SaveMemory with somebody else's id and the ON CONFLICT DO UPDATE behind it
+// would overwrite that row *and* re-home it into hermes's bucket — the row's
+// owner becomes the caller, so the theft also hides itself. Verified against a
+// running server before this existed: openclaw's memory came back as
+// user_id="hermes" with hermes's content.
+//
+// The rule is the mirror of guardMemory: an id that names an existing row the
+// caller may not have is refused; an id that names nothing is a create and is
+// allowed. Not-found is therefore success here, not a withholding, which is
+// the one place the two guards differ.
+func guardMemoryUpsert(ctx context.Context, db *cortexdb.DB, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return nil
+	}
+	_, _, err := guardMemory(ctx, db, id)
+	if err == nil {
+		return nil
+	}
+	// guardMemory collapses "missing" and "forbidden" into one answer so a
+	// reader cannot probe the id space. A writer must tell them apart, and can
+	// do so safely: it is about to create the row either way, so learning that
+	// the id was free tells it nothing it will not know a moment later.
+	if status.Code(err) == codes.NotFound {
+		if _, gerr := db.GetMemory(ctx, cortexdb.MemoryGetRequest{MemoryID: id}); gerr != nil {
+			return nil
+		}
+	}
+	return err
+}
+
+// guardKnowledgeUpsert is guardMemoryUpsert for documents. UpdateKnowledge
+// needs it too, and for a second reason: it can set Collection, so without this
+// a collection-confined key could move any document it can name into its own
+// collection.
+func guardKnowledgeUpsert(ctx context.Context, db *cortexdb.DB, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return nil
+	}
+	_, _, err := guardKnowledge(ctx, db, id)
+	if err == nil {
+		return nil
+	}
+	if status.Code(err) == codes.NotFound {
+		if _, gerr := db.GetKnowledge(ctx, cortexdb.KnowledgeGetRequest{KnowledgeID: id}); gerr != nil {
+			return nil
+		}
+	}
+	return err
 }

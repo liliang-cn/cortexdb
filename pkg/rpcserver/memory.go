@@ -33,6 +33,10 @@ func memoryRecordToProto(r cortexdb.MemoryRecord) *rpcv1.MemoryRecord {
 }
 
 func (s *memoryService) SaveMemory(ctx context.Context, req *rpcv1.SaveMemoryRequest) (*rpcv1.SaveMemoryResponse, error) {
+	// An upsert onto an id the caller does not own is a delete plus a theft.
+	if err := guardMemoryUpsert(ctx, s.db, req.GetMemoryId()); err != nil {
+		return nil, err
+	}
 	resp, err := s.db.SaveMemory(ctx, cortexdb.MemorySaveRequest{
 		MemoryID:   req.GetMemoryId(),
 		UserID:     req.GetUserId(),

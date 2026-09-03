@@ -151,18 +151,20 @@ func main() {
 // startHTTP serves the REST API, the metrics endpoint and expvar on one
 // listener.
 //
-// It refuses to start alongside a key file, and that refusal is the point.
-// pkg/httpapi authenticates with a single bearer token; it does not yet
-// understand scoped keys. Serving it anyway would mean a deployment that
-// carefully confined each agent over gRPC handing the same data out unscoped —
-// or, with -token unset, unauthenticated — on another port. A door that
-// silently ignores the lock is worse than no second door.
+// It used to refuse to start alongside a key file, because pkg/httpapi knew
+// only a single bearer token and serving it beside a confined gRPC port would
+// have handed out unscoped — or with no token set, unauthenticated — exactly
+// what the other port confines. httpapi now reads the same policy, so the two
+// doors take the same key and the refusal is gone. Both ports are handed the
+// identical Options, which is the property worth keeping: a deployment must not
+// be securable to two different degrees depending on which one you knock on.
 func startHTTP(addr string, db *cortexdb.DB, metrics *observability.Registry, token, keyFile, dbPath string) {
-	if keyFile != "" {
-		log.Fatalf("-http-addr cannot be used with -keys: the REST API enforces a single bearer token and does not yet understand scoped keys, so it would serve unscoped what gRPC confines")
+	handler, err := httpapi.NewWithPolicy(db, httpapi.Options{Token: token, KeyFile: keyFile, DBPath: dbPath})
+	if err != nil {
+		log.Fatalf("http api key policy: %v", err)
 	}
 	mux := http.NewServeMux()
-	mux.Handle("/v1/", httpapi.New(db, httpapi.Options{Token: token, DBPath: dbPath}))
+	mux.Handle("/v1/", handler)
 	mux.Handle("/metrics", metrics.Handler())
 	mux.Handle("/debug/vars", expvar.Handler())
 	go func() {

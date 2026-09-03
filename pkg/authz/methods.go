@@ -75,6 +75,12 @@ var methods = map[string]Method{
 	// ValidateShacl and the Explain* calls only compute over what is stored.
 	//
 	// QuerySparql is a write, which its name denies. CortexDB's SPARQL subset
+	// executes updates, so this is the only safe static answer. rpcserver
+	// narrows it to a read per call when the executor's own parser says the
+	// query does not mutate — see sparql_access.go. The narrowing lives there
+	// rather than here because it needs the graph store; this table stays the
+	// answer for anything that cannot ask.
+	//
 	// executes INSERT DATA, DELETE DATA, DELETE WHERE and DELETE/INSERT/WHERE
 	// alongside SELECT and ASK, and nothing between this table and
 	// GraphStore.ExecuteSPARQL looks at which one arrived — so classifying it

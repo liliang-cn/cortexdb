@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/authz"
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
 // nestedScanDepth bounds the walk for nested copies of a scope field. Nothing
@@ -25,7 +26,7 @@ const nestedScanDepth = 4
 // method, and the key's scope decides whether it may touch the rows the request
 // names. A nil or empty key set disables authentication, which is what an unset
 // token has always meant.
-func authInterceptor(keys *authz.KeySet) grpc.UnaryServerInterceptor {
+func authInterceptor(keys *authz.KeySet, db *cortexdb.DB) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		if !keys.Enabled() {
 			return handler(ctx, req)
@@ -44,7 +45,17 @@ func authInterceptor(keys *authz.KeySet) grpc.UnaryServerInterceptor {
 		// AuthorizeCall rather than AuthorizeMethod: the interceptor can read
 		// the request, so it can tell the policy which tool a CallTool names
 		// and get the classification of that tool instead of the blanket one.
-		if err := key.AuthorizeCall(info.FullMethod, requestToolName(req)); err != nil {
+		//
+		// sparqlAccess is the same idea one level deeper, and the only place a
+		// classification is computed rather than looked up: SPARQL is statically
+		// a write because the subset executes updates, and this narrows it to a
+		// read when the executor's own parser says the query does not mutate.
+		// It can only narrow, so a failure anywhere in it leaves the write.
+		if name, refined, ok := sparqlAccess(ctx, db, info.FullMethod, req); ok {
+			if err := key.AuthorizeOperation(name, refined); err != nil {
+				return nil, status.Error(codes.PermissionDenied, err.Error())
+			}
+		} else if err := key.AuthorizeCall(info.FullMethod, requestToolName(req)); err != nil {
 			return nil, status.Error(codes.PermissionDenied, err.Error())
 		}
 		// authorizeRequestRows is key.AuthorizeRows plus the one case it cannot
