@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.92.1] - 2026-09-03
+
+### Changed
+
+- **`pkg/liveview` `?spin=N`** is a pace, not a switch: `spin=1` is the Orbit
+  button's own pace (a turn every forty-six seconds, which on a dense graph
+  reads as standing still), `spin=4` a turn every twelve. Any positive value
+  starts the orbit.
+
 ## [2.92.0] - 2026-09-03
 
 The live view could be embedded but not configured: an application putting the

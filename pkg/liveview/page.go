@@ -187,7 +187,9 @@ var userMovedCamera = false;
    once here and applied where the switch lives:
 
      ?panels=0   no control panels, the graph alone
-     ?spin=1     orbit from the start (the Orbit button, pressed for you)
+     ?spin=N     orbit from the start (the Orbit button, pressed for you), at
+                 N times the button's pace - spin=1 is the pace the button
+                 gives, spin=4 is a turn every twelve seconds
      ?glow=0     bloom off        ?flow=0   link particles off
      ?bg=RRGGBB  background colour, for a page shown through a shape
      ?fit=0      never re-frame the camera after the first fit
@@ -687,8 +689,9 @@ function setSpin(on){
   var cam = G.cameraPosition();
   var radius = Math.hypot(cam.x, cam.z) || 400;
   spinAngle = Math.atan2(cam.x, cam.z);
+  var pace = 0.0022 * (Number(OPTS.spin) > 0 ? Number(OPTS.spin) : 1);
   spinTimer = setInterval(function(){
-    spinAngle += 0.0022;
+    spinAngle += pace;
     var c = G.cameraPosition();
     G.cameraPosition({x: radius*Math.sin(spinAngle), y: c.y, z: radius*Math.cos(spinAngle)});
   }, 16);
@@ -760,7 +763,7 @@ function boot(){
   });
   // The orbit starts after the last fit, or the fit would snap the camera
   // back out of the circle it had begun.
-  if(OPTS.spin === "1") setTimeout(function(){ if(!userMovedCamera) setSpin(true); }, fits[fits.length - 1] + 900);
+  if(Number(OPTS.spin) > 0) setTimeout(function(){ if(!userMovedCamera) setSpin(true); }, fits[fits.length - 1] + 900);
 }
 
 function setLive(connected, activity){
