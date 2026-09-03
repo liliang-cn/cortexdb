@@ -197,6 +197,109 @@ func (x *InfoResponse) GetHasEmbedder() bool {
 	return false
 }
 
+// BackupRequest names the destination *relative to the server's backup
+// directory*. Absolute paths and any path climbing out with ".." are refused:
+// this RPC writes a complete copy of the brain onto the server's filesystem, and
+// the caller choosing where is a different thing from the caller reading and
+// writing rows, even though one bearer token grants both.
+type BackupRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BackupRequest) Reset() {
+	*x = BackupRequest{}
+	mi := &file_cortexdb_v1_admin_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BackupRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BackupRequest) ProtoMessage() {}
+
+func (x *BackupRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cortexdb_v1_admin_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BackupRequest.ProtoReflect.Descriptor instead.
+func (*BackupRequest) Descriptor() ([]byte, []int) {
+	return file_cortexdb_v1_admin_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *BackupRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type BackupResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// path is where the file actually landed, absolute, so the operator does not
+	// have to reconstruct the server's backup directory to find it.
+	Path          string `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	SizeBytes     int64  `protobuf:"varint,2,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BackupResponse) Reset() {
+	*x = BackupResponse{}
+	mi := &file_cortexdb_v1_admin_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BackupResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BackupResponse) ProtoMessage() {}
+
+func (x *BackupResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cortexdb_v1_admin_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BackupResponse.ProtoReflect.Descriptor instead.
+func (*BackupResponse) Descriptor() ([]byte, []int) {
+	return file_cortexdb_v1_admin_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *BackupResponse) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *BackupResponse) GetSizeBytes() int64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
 var File_cortexdb_v1_admin_proto protoreflect.FileDescriptor
 
 const file_cortexdb_v1_admin_proto_rawDesc = "" +
@@ -209,10 +312,17 @@ const file_cortexdb_v1_admin_proto_rawDesc = "" +
 	"\fInfoResponse\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12\x17\n" +
 	"\adb_path\x18\x02 \x01(\tR\x06dbPath\x12!\n" +
-	"\fhas_embedder\x18\x03 \x01(\bR\vhasEmbedder2\x8e\x01\n" +
+	"\fhas_embedder\x18\x03 \x01(\bR\vhasEmbedder\"#\n" +
+	"\rBackupRequest\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\"C\n" +
+	"\x0eBackupResponse\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\x02 \x01(\x03R\tsizeBytes2\xd1\x01\n" +
 	"\fAdminService\x12A\n" +
 	"\x06Health\x12\x1a.cortexdb.v1.HealthRequest\x1a\x1b.cortexdb.v1.HealthResponse\x12;\n" +
-	"\x04Info\x12\x18.cortexdb.v1.InfoRequest\x1a\x19.cortexdb.v1.InfoResponseB4Z2github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1;rpcv1b\x06proto3"
+	"\x04Info\x12\x18.cortexdb.v1.InfoRequest\x1a\x19.cortexdb.v1.InfoResponse\x12A\n" +
+	"\x06Backup\x12\x1a.cortexdb.v1.BackupRequest\x1a\x1b.cortexdb.v1.BackupResponseB4Z2github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1;rpcv1b\x06proto3"
 
 var (
 	file_cortexdb_v1_admin_proto_rawDescOnce sync.Once
@@ -226,20 +336,24 @@ func file_cortexdb_v1_admin_proto_rawDescGZIP() []byte {
 	return file_cortexdb_v1_admin_proto_rawDescData
 }
 
-var file_cortexdb_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_cortexdb_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_cortexdb_v1_admin_proto_goTypes = []any{
 	(*HealthRequest)(nil),  // 0: cortexdb.v1.HealthRequest
 	(*HealthResponse)(nil), // 1: cortexdb.v1.HealthResponse
 	(*InfoRequest)(nil),    // 2: cortexdb.v1.InfoRequest
 	(*InfoResponse)(nil),   // 3: cortexdb.v1.InfoResponse
+	(*BackupRequest)(nil),  // 4: cortexdb.v1.BackupRequest
+	(*BackupResponse)(nil), // 5: cortexdb.v1.BackupResponse
 }
 var file_cortexdb_v1_admin_proto_depIdxs = []int32{
 	0, // 0: cortexdb.v1.AdminService.Health:input_type -> cortexdb.v1.HealthRequest
 	2, // 1: cortexdb.v1.AdminService.Info:input_type -> cortexdb.v1.InfoRequest
-	1, // 2: cortexdb.v1.AdminService.Health:output_type -> cortexdb.v1.HealthResponse
-	3, // 3: cortexdb.v1.AdminService.Info:output_type -> cortexdb.v1.InfoResponse
-	2, // [2:4] is the sub-list for method output_type
-	0, // [0:2] is the sub-list for method input_type
+	4, // 2: cortexdb.v1.AdminService.Backup:input_type -> cortexdb.v1.BackupRequest
+	1, // 3: cortexdb.v1.AdminService.Health:output_type -> cortexdb.v1.HealthResponse
+	3, // 4: cortexdb.v1.AdminService.Info:output_type -> cortexdb.v1.InfoResponse
+	5, // 5: cortexdb.v1.AdminService.Backup:output_type -> cortexdb.v1.BackupResponse
+	3, // [3:6] is the sub-list for method output_type
+	0, // [0:3] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -256,7 +370,7 @@ func file_cortexdb_v1_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cortexdb_v1_admin_proto_rawDesc), len(file_cortexdb_v1_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

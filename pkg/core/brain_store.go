@@ -83,3 +83,30 @@ type BrainStore interface {
 // SQLiteStore is one, which is the claim DB has been relying on all along
 // without anywhere to write it down.
 var _ BrainStore = (*SQLiteStore)(nil)
+
+// Backupper is a store that can copy itself. It is deliberately not part of
+// BrainStore.
+//
+// BrainStore is the set of methods DB must have to be a brain at all: without
+// UpdateDocument or GetDB there is nothing to run. Backup is not like that. A
+// brain on PostgreSQL is perfectly complete without it, because backing up
+// PostgreSQL is pg_dump or a base backup — a job for the operations team and
+// its retention policy, not something this process should imitate by writing a
+// file next to a database it does not own. Folding Backup into BrainStore would
+// make every backend either implement that pretence or carry a permanent
+// "not supported" stub, and the compile error that greets the next backend
+// would be asking it for a capability it may have no business having.
+//
+// So it is optional, and callers type-assert. The cost is that the failure moves
+// from compile time to run time; the payment for that is an error that names the
+// backend, so an operator reading it learns which one it is and where its
+// backups actually come from.
+type Backupper interface {
+	// Backup writes a consistent copy of the whole store to path. It must not
+	// require quiescing writers: a backup that needs the server stopped is a
+	// different operational thing, and callers of this one are not stopping it.
+	Backup(ctx context.Context, path string) error
+}
+
+// SQLiteStore is one. PostgresStore is deliberately not.
+var _ Backupper = (*SQLiteStore)(nil)
