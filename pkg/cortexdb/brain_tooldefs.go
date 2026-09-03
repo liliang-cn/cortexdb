@@ -4,6 +4,7 @@ func KnowledgeMemoryFacadeToolDefinitions() []ToolDefinition {
 	definitions := []ToolDefinition{
 		{
 			Name:        "knowledge_memory_remember",
+			Mutates:     true,
 			Description: "Store one episodic memory item in the CortexDB KnowledgeMemory facade. Prefer this over memory_save when you want to build a higher-level memory/knowledge workflow.",
 			InputSchema: toolObjectSchema(
 				[]string{"memory_id", "content"},
@@ -95,6 +96,7 @@ func KnowledgeMemoryFacadeToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "knowledge_memory_promote_to_knowledge",
+			Mutates:     true,
 			Description: "Promote one or more memory items into durable knowledge, preserving source memory provenance.",
 			InputSchema: toolObjectSchema(
 				[]string{"memory_ids"},
@@ -167,7 +169,14 @@ func KnowledgeMemoryFacadeToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
-			Name:        "knowledge_memory_reflect",
+			Name: "knowledge_memory_reflect",
+			// The deterministic fallback only recalls and summarizes, but a
+			// configured KnowledgeMemoryReflector is an arbitrary caller-
+			// supplied implementation holding the context, and nothing in the
+			// interface stops it writing. Whether reflection mutates is
+			// therefore not decidable from this repository, and an undecidable
+			// tool is a write.
+			Mutates:     true,
 			Description: "Recall from the KnowledgeMemory and synthesize a structured reflection. If a KnowledgeMemoryReflector is configured, it is used; otherwise CortexDB falls back to deterministic consolidation.",
 			InputSchema: toolObjectSchema(
 				[]string{"recall"},
@@ -212,7 +221,10 @@ func KnowledgeMemoryFacadeToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
-			Name:        "knowledge_memory_consolidate",
+			Name: "knowledge_memory_consolidate",
+			// Reads like reflect with extra reporting; it persists a summary
+			// memory on every call and can promote that into knowledge too.
+			Mutates:     true,
 			Description: "Reflect over recalled KnowledgeMemory context, persist a summary memory, and optionally promote that summary into durable knowledge.",
 			InputSchema: toolObjectSchema(
 				[]string{"reflect"},

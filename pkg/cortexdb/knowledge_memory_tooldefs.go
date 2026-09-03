@@ -6,6 +6,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 	return []ToolDefinition{
 		{
 			Name:        "knowledge_save",
+			Mutates:     true,
 			Description: "Store or replace a durable knowledge item. This is the preferred high-level write API for documents, notes, facts, and structured knowledge.",
 			InputSchema: toolObjectSchema(
 				[]string{"knowledge_id", "content"},
@@ -26,6 +27,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "knowledge_update",
+			Mutates:     true,
 			Description: "Update a durable knowledge item. If content, title, collection, or metadata changes, the underlying chunks and graph artifacts are refreshed.",
 			InputSchema: toolObjectSchema(
 				[]string{"knowledge_id"},
@@ -84,6 +86,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "knowledge_delete",
+			Mutates:     true,
 			Description: "Delete a durable knowledge item and its chunk/document graph artifacts.",
 			InputSchema: toolObjectSchema(
 				[]string{"knowledge_id"},
@@ -94,6 +97,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "knowledge_graph_namespace_upsert",
+			Mutates:     true,
 			Description: "Register or update a namespace prefix used by the RDF knowledge graph.",
 			InputSchema: toolObjectSchema(
 				[]string{"prefix", "uri"},
@@ -110,6 +114,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "knowledge_graph_upsert",
+			Mutates:     true,
 			Description: "Insert or update RDF triples/quads in the embedded knowledge graph.",
 			InputSchema: toolObjectSchema(
 				[]string{"triples"},
@@ -130,6 +135,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "knowledge_graph_delete",
+			Mutates:     true,
 			Description: "Delete RDF triples/quads by IDs, explicit triples, or a pattern.",
 			InputSchema: toolObjectSchema(
 				nil,
@@ -142,6 +148,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "knowledge_graph_import",
+			Mutates:     true,
 			Description: "Import RDF content into the embedded knowledge graph.",
 			InputSchema: toolObjectSchema(
 				[]string{"content"},
@@ -162,7 +169,14 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
-			Name:        "knowledge_graph_query",
+			Name: "knowledge_graph_query",
+			// The one entry in this file whose name is actively misleading.
+			// CortexDB's SPARQL subset is not query-only: INSERT DATA,
+			// DELETE DATA, DELETE WHERE and DELETE/INSERT/WHERE all execute
+			// here, as the description below says in full. Reading the name
+			// and classifying it as a read would hand every read-only key a
+			// way to rewrite the graph.
+			Mutates:     true,
 			Description: "Execute a SPARQL SELECT/ASK/CONSTRUCT/DESCRIBE subset over the embedded knowledge graph.",
 			InputSchema: toolObjectSchema(
 				[]string{"query"},
@@ -182,7 +196,10 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
-			Name:        "knowledge_graph_infer_refresh",
+			Name: "knowledge_graph_infer_refresh",
+			// Recomputes and persists the RDFS-lite inferred triples. The
+			// _summary and _explain tools beside it only read what this wrote.
+			Mutates:     true,
 			Description: "Recompute persisted RDFS-lite inferred triples. Defaults to a full rebuild; can also run incrementally for affected triples, IDs, or a pattern.",
 			InputSchema: toolObjectSchema(
 				nil,
@@ -223,6 +240,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "memory_save",
+			Mutates:     true,
 			Description: "Store a memory item in a dedicated memory bucket. Use scope=user/session/global to control where the memory lives. Pass entities and relations to record what the memory is about in the same call, so it lands in the knowledge graph too.",
 			InputSchema: toolObjectSchema(
 				[]string{"memory_id", "content"},
@@ -245,6 +263,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "memory_update",
+			Mutates:     true,
 			Description: "Update a stored memory item.",
 			InputSchema: toolObjectSchema(
 				[]string{"memory_id"},
@@ -309,6 +328,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "memory_delete",
+			Mutates:     true,
 			Description: "Delete one memory item by ID.",
 			InputSchema: toolObjectSchema(
 				[]string{"memory_id"},

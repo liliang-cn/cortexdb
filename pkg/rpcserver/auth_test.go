@@ -43,7 +43,15 @@ func TestTheLegacyTokenStillGrantsEverything(t *testing.T) {
 	ic := authInterceptor(authz.LegacyToken("s3cret"))
 	ctx := bearer("s3cret")
 	for _, method := range authz.ClassifiedMethods() {
-		if _, err := ic(ctx, nil, methodInfo(method), passthrough); err != nil {
+		// CallTool is the one method whose request the policy has to read: it
+		// is authorized by the tool it names, so a nil request is refused for
+		// naming nothing. Every other method is decided from the table alone,
+		// which is why nil is enough for them.
+		var req any
+		if method == authz.CallToolMethod {
+			req = &rpcv1.CallToolRequest{Name: "ingest_document"}
+		}
+		if _, err := ic(ctx, req, methodInfo(method), passthrough); err != nil {
 			t.Errorf("legacy token refused %s: %v", method, err)
 		}
 	}

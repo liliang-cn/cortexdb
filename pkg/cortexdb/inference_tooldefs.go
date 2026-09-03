@@ -3,7 +3,11 @@ package cortexdb
 func inferenceToolDefinitions() []ToolDefinition {
 	return []ToolDefinition{
 		{
-			Name:        "apply_inference",
+			Name: "apply_inference",
+			// Inference sounds like a question about what is already there. It
+			// is not: the inferred edges are materialized into the graph, and
+			// delete_existing removes the previous ones first.
+			Mutates:     true,
 			Description: "Apply deterministic two-hop inference rules to explicit relation edges and materialize inferred edges with provenance.",
 			InputSchema: toolObjectSchema(
 				[]string{"rules"},

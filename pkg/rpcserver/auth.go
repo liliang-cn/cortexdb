@@ -41,7 +41,10 @@ func authInterceptor(keys *authz.KeySet) grpc.UnaryServerInterceptor {
 			// them apart tells a prober which guesses were once right.
 			return nil, status.Error(codes.Unauthenticated, "invalid token")
 		}
-		if err := key.AuthorizeMethod(info.FullMethod); err != nil {
+		// AuthorizeCall rather than AuthorizeMethod: the interceptor can read
+		// the request, so it can tell the policy which tool a CallTool names
+		// and get the classification of that tool instead of the blanket one.
+		if err := key.AuthorizeCall(info.FullMethod, requestToolName(req)); err != nil {
 			return nil, status.Error(codes.PermissionDenied, err.Error())
 		}
 		if err := key.AuthorizeRows(info.FullMethod, requestFieldLookup(req)); err != nil {
@@ -66,6 +69,32 @@ func bearerSecret(ctx context.Context) (string, error) {
 		return "", status.Error(codes.Unauthenticated, "invalid token")
 	}
 	return secret, nil
+}
+
+// requestToolName reads the tool name off a request, the same way the scope
+// check reads scope fields: through protoreflect, so no per-RPC wiring and no
+// dependency on the generated Go type.
+//
+// Anything it cannot read yields false, and authz.AuthorizeCall turns that into
+// a denial. That is the fail-closed direction — a CallTool whose name is
+// unreadable is a tool call nobody can classify, and letting it through would
+// mean the handler's own "unknown tool" is doing the security.
+func requestToolName(req any) authz.ToolNameLookup {
+	return func() (string, bool) {
+		msg, ok := req.(proto.Message)
+		if !ok || msg == nil {
+			return "", false
+		}
+		m := msg.ProtoReflect()
+		if !m.IsValid() {
+			return "", false
+		}
+		fd := m.Descriptor().Fields().ByName("name")
+		if fd == nil || fd.Kind() != protoreflect.StringKind || fd.IsList() || fd.IsMap() {
+			return "", false
+		}
+		return m.Get(fd).String(), true
+	}
 }
 
 // requestFieldLookup adapts a request message to authz.FieldLookup using

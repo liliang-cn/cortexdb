@@ -73,6 +73,15 @@ var methods = map[string]Method{
 	// RefreshInference materialises inferred triples and SaveOntologySchema
 	// can activate a schema, so both are writes despite reading like queries.
 	// ValidateShacl and the Explain* calls only compute over what is stored.
+	//
+	// QuerySparql is a write, which its name denies. CortexDB's SPARQL subset
+	// executes INSERT DATA, DELETE DATA, DELETE WHERE and DELETE/INSERT/WHERE
+	// alongside SELECT and ASK, and nothing between this table and
+	// GraphStore.ExecuteSPARQL looks at which one arrived — so classifying it
+	// as a read hands every read-only key a way to rewrite the graph in a
+	// string. Narrowing it back to a read for SELECT-only queries would mean
+	// the policy parsing SPARQL and agreeing with the executor's parser
+	// forever; the cost of getting that disagreement wrong is silent.
 	"/cortexdb.v1.KnowledgeGraphService/UpsertNamespace":       {Access: Write},
 	"/cortexdb.v1.KnowledgeGraphService/ListNamespaces":        {Access: Read},
 	"/cortexdb.v1.KnowledgeGraphService/UpsertKnowledgeGraph":  {Access: Write},
@@ -80,7 +89,7 @@ var methods = map[string]Method{
 	"/cortexdb.v1.KnowledgeGraphService/DeleteKnowledgeGraph":  {Access: Write},
 	"/cortexdb.v1.KnowledgeGraphService/ImportKnowledgeGraph":  {Access: Write},
 	"/cortexdb.v1.KnowledgeGraphService/ExportKnowledgeGraph":  {Access: Read},
-	"/cortexdb.v1.KnowledgeGraphService/QuerySparql":           {Access: Read},
+	"/cortexdb.v1.KnowledgeGraphService/QuerySparql":           {Access: Write},
 	"/cortexdb.v1.KnowledgeGraphService/ValidateShacl":         {Access: Read},
 	"/cortexdb.v1.KnowledgeGraphService/RefreshInference":      {Access: Write},
 	"/cortexdb.v1.KnowledgeGraphService/SummarizeInference":    {Access: Read},
@@ -99,15 +108,14 @@ var methods = map[string]Method{
 	"/cortexdb.v1.GraphRagService/SearchText":          {Access: Read},
 	"/cortexdb.v1.GraphRagService/HybridSearchText":    {Access: Read},
 
-	// ToolsService. ListTools hands back a static catalogue. CallTool is the
-	// one genuinely ambiguous entry in this table: it dispatches on a name
-	// with JSON arguments, so a single classification has to cover the whole
-	// toolbox, and the toolbox contains writes. It is a write, which means a
-	// read-only key cannot call any tool, including the read-only ones.
-	// Classifying per tool name would put a second, differently-shaped policy
-	// table next to this one and would have to be kept in step with the tool
-	// definitions by hand; being unable to use CallTool from a read-only key
-	// is the cheaper mistake.
+	// ToolsService. ListTools hands back a static catalogue. CallTool stays in
+	// the table as a write, but that value is only the answer for a caller who
+	// cannot say which tool: it is what AuthorizeMethod returns, and the whole
+	// toolbox is reachable through this one method, so the unrefined answer has
+	// to be the strict one. Callers that can read the request use AuthorizeCall
+	// instead, which decides from the named tool's ToolDefinition.Mutates —
+	// see tools.go. The refinement is what lets a read-only key run
+	// search_knowledge and knowledge_memory_recall, which it could not before.
 	"/cortexdb.v1.ToolsService/ListTools": {Access: Read, Rowless: true},
 	"/cortexdb.v1.ToolsService/CallTool":  {Access: Write},
 }
@@ -183,6 +191,16 @@ func (k Key) AuthorizeRows(fullMethod string, lookup FieldLookup) error {
 	}
 	if m.Rowless {
 		return nil
+	}
+	// Said explicitly rather than left to fall out of the generic rule below.
+	// It would: a CallTool request declares no user_id, so "carries no user_id
+	// field" already refuses it. But that is the request shape happening to
+	// save us, and the day somebody adds a user_id to CallToolRequest for
+	// convenience, confinement would start passing on the one RPC that reaches
+	// every tool while still being unable to see the arguments. See
+	// confinedCallToolDenial for why the arguments cannot be checked.
+	if fullMethod == CallToolMethod {
+		return confinedCallToolDenial(k)
 	}
 	if lookup == nil {
 		return fmt.Errorf("%w: key %q is confined and the request for %s could not be inspected",
