@@ -47,10 +47,14 @@ func authInterceptor(keys *authz.KeySet) grpc.UnaryServerInterceptor {
 		if err := key.AuthorizeCall(info.FullMethod, requestToolName(req)); err != nil {
 			return nil, status.Error(codes.PermissionDenied, err.Error())
 		}
-		if err := key.AuthorizeRows(info.FullMethod, requestFieldLookup(req)); err != nil {
+		// authorizeRequestRows is key.AuthorizeRows plus the one case it cannot
+		// answer: an RPC that names a row by id and carries no scope field. See
+		// ownership.go — those are waived here and enforced against the stored
+		// row by the handler, which is why the key travels on in the context.
+		if err := authorizeRequestRows(key, info.FullMethod, req); err != nil {
 			return nil, status.Error(codes.PermissionDenied, err.Error())
 		}
-		return handler(ctx, req)
+		return handler(withCallerKey(ctx, key), req)
 	}
 }
 

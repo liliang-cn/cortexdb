@@ -62,6 +62,11 @@ func (s *memoryService) UpdateMemory(ctx context.Context, req *rpcv1.UpdateMemor
 		v := int(*req.TtlSeconds)
 		in.TTLSeconds = &v
 	}
+	// The request names a row and nothing else, so the interceptor waived its
+	// scope check and this is where a confined key is held to it.
+	if _, _, err := guardMemory(ctx, s.db, req.GetMemoryId()); err != nil {
+		return nil, err
+	}
 	resp, err := s.db.UpdateMemory(ctx, in)
 	if err != nil {
 		return nil, toStatus(err)
@@ -70,11 +75,22 @@ func (s *memoryService) UpdateMemory(ctx context.Context, req *rpcv1.UpdateMemor
 }
 
 func (s *memoryService) GetMemory(ctx context.Context, req *rpcv1.GetMemoryRequest) (*rpcv1.GetMemoryResponse, error) {
-	resp, err := s.db.GetMemory(ctx, cortexdb.MemoryGetRequest{MemoryID: req.GetMemoryId()})
+	// A confined key gets its answer from the guard, which has already read the
+	// row to decide whether the caller may have it. Reading it a second time
+	// here would be the same row twice and a window in between where the two
+	// reads could disagree.
+	record, read, err := guardMemory(ctx, s.db, req.GetMemoryId())
 	if err != nil {
-		return nil, toStatus(err)
+		return nil, err
 	}
-	return &rpcv1.GetMemoryResponse{Memory: memoryRecordToProto(resp.Memory)}, nil
+	if !read {
+		resp, err := s.db.GetMemory(ctx, cortexdb.MemoryGetRequest{MemoryID: req.GetMemoryId()})
+		if err != nil {
+			return nil, toStatus(err)
+		}
+		record = resp.Memory
+	}
+	return &rpcv1.GetMemoryResponse{Memory: memoryRecordToProto(record)}, nil
 }
 
 func (s *memoryService) SearchMemory(ctx context.Context, req *rpcv1.SearchMemoryRequest) (*rpcv1.SearchMemoryResponse, error) {
@@ -109,6 +125,11 @@ func (s *memoryService) SearchMemory(ctx context.Context, req *rpcv1.SearchMemor
 }
 
 func (s *memoryService) DeleteMemory(ctx context.Context, req *rpcv1.DeleteMemoryRequest) (*rpcv1.DeleteMemoryResponse, error) {
+	// Before the delete, never after: the row has to still be there for the
+	// refusal to leave it there.
+	if _, _, err := guardMemory(ctx, s.db, req.GetMemoryId()); err != nil {
+		return nil, err
+	}
 	resp, err := s.db.DeleteMemory(ctx, cortexdb.MemoryDeleteRequest{MemoryID: req.GetMemoryId()})
 	if err != nil {
 		return nil, toStatus(err)
