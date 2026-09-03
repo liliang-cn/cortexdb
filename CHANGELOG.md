@@ -2,6 +2,105 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.91.0] - 2026-09-03
+
+CortexDB could be run as a service, but not operated as one, and its own headline —
+many agents on one shared brain — was enforced by a single token that gave every agent
+full read/write over every other agent's memory. This release is that gap.
+
+### Added
+
+- **A REST API** (`pkg/httpapi`, served by `cortexdb-grpc -http-addr`). Nineteen endpoints
+  over the *same facade calls* the gRPC handlers make, standard library only. `POST
+  /v1/tools/{name}` reaches the whole toolbox, so every current and future tool is
+  curlable. Existing gRPC users are unaffected; the point is that evaluating CortexDB no
+  longer starts with installing Go or generating a client.
+
+- **Scoped API keys** (`pkg/authz`). A key carries a clearance (read-only / read-write)
+  and a scope confining `user_id`, `scope`, `namespace`, `collection`. Both ports read the
+  same key file and a denial reads identically on either. The single `CORTEXDB_GRPC_TOKEN`
+  deployment keeps working unchanged, as one implicit full-access key.
+
+  Two design choices are load-bearing. Method classification is an explicit table with a
+  test that walks the registered gRPC service descriptors and fails on any method missing
+  from it — a `HasPrefix(method, "Delete")` heuristic would silently misclassify the next
+  RPC somebody adds, and a write passing as a read is the failure this exists to prevent.
+  It earned itself immediately: it caught `AdminService/Backup`, added in the same release
+  by different work. Row confinement rejects rather than narrows — a caller that asked for
+  something it may not have is told, not handed a quietly different answer.
+
+  This is not transport security. The gRPC transport is plaintext by design; scoped keys
+  reduce the blast radius between cooperating agents on a trusted network, and change
+  nothing for someone reading the wire.
+
+- **Observability** (`pkg/observability`, `rpcserver.MetricsInterceptor`). Prometheus text
+  format, expvar, and a tracing interface this repo owns with a no-op default — all
+  standard library, no `client_golang` and no OTel in `go.mod`, for the same reason no LLM
+  SDK is in `pkg/`. Labels are bounded to gRPC method and status code, asserted by a test
+  that walks the exposition and fails on any other label name. Metrics wrap authorization
+  rather than sitting inside it, so denials are counted: on a server whose new feature is
+  scoped keys, an empty `errors_total` under a brute-forced token was the wrong answer.
+
+- **`AdminService.Backup`** and `db.Backup`, confined to a configured backup directory
+  (absolute paths, `..` and re-entering traversals refused). `SQLiteStore.Backup` had
+  existed since long before and been reachable from nowhere. Backends declare it through
+  an optional `core.Backupper` rather than `BrainStore`: a brain on PostgreSQL is complete
+  without a self-backup, because its backups are `pg_dump` and a retention policy.
+
+- **`QuerySource`** (`pkg/cortexdb`): an external search engine — Meilisearch, Weaviate —
+  as one fused retrieval lane without becoming the storage. A source returns ids and
+  scores; content is hydrated from the brain, so a source cannot inject text CortexDB
+  never stored and a stale id is dropped rather than fabricated into a result.
+  `examples/17_query_source` implements it against a real Meilisearch in plain `net/http`.
+
+- **`deploy/`**: a hardened systemd unit, a container image whose `HEALTHCHECK` is the
+  server binary itself (`cortexdb-grpc -health`), a compose file, and the backup, upgrade
+  and port-override notes. Verified by installing it on Ubuntu 24.04 with systemd 255.
+
+- **`graph.SPARQLMutates`** reports whether a query would change the graph, by asking the
+  executor's own parser. It exists so authorization can tell a SPARQL read from a SPARQL
+  write without maintaining a second parser that has to agree with `ExecuteSPARQL` forever.
+
+- **`ToolDefinition.Mutates`**, set on all 61 tools, so `CallTool` is authorized by the
+  named tool rather than by a blanket classification. Without it a read-only key could
+  call no tool at all, including search — which made read-only useless for the MCP client
+  path, since it proxies everything through `CallTool`.
+
+### Fixed
+
+- **A confined key could overwrite and steal another user's rows by naming their id.**
+  `SaveMemory`, `SaveKnowledge` and `UpdateKnowledge` are upserts: the request carries the
+  caller's own `user_id`, so the scope check passed, while the id named somebody else's
+  row. For memory the `ON CONFLICT DO UPDATE` behind it also re-homed the row into the
+  caller's bucket, so the theft erased the owner field that would have caught it. Found by
+  demonstrating it against a running server. Present only in unreleased commits; no
+  released version enforced scopes at all.
+
+- **`SQLiteStore.Backup` interpolated its destination into `VACUUM INTO '%s'`.** The
+  driver executes multiple statements from one string, so a filename of
+  `x'; DROP TABLE embeddings; --` dropped the table and returned a nil error. Latent while
+  nothing exposed the path; the new backup RPC would have made it remotely reachable. Now
+  a bound parameter.
+
+- **`.dockerignore`'s `*.db-wal` did not cross a `/`**, so `pkg/`'s test databases were in
+  every build context: 3.34GB and 47.6s of it, now 214.82kB and 0.3s.
+
+### Changed
+
+- **`QuerySparql` and `knowledge_graph_query` are writes by default**, narrowed to reads
+  per call when the parser says the query does not mutate. CortexDB's SPARQL subset
+  executes `INSERT DATA` and the `DELETE` forms, so a tool named "query" can rewrite the
+  graph. A read-only key keeps `SELECT`, `ASK`, `CONSTRUCT` and `DESCRIBE`.
+
+- **A confined key can now reach its own rows by id.** `GetMemory`, `UpdateMemory`,
+  `DeleteMemory`, `GetKnowledge` and `DeleteKnowledge` check ownership against the stored
+  row instead of refusing outright. A forbidden row and a missing one answer identically,
+  so ids cannot be enumerated to map the brain.
+
+- **PostgreSQL + pgvector as a storage backend is documented**, which it was not. The
+  capability shipped earlier; a `postgres://` DSN moves the whole brain, and 104 opt-in
+  parity tests cover it.
+
 ## [2.90.0] - 2026-09-02
 
 ### Added
