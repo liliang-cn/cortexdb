@@ -15,9 +15,8 @@ import (
 	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
 )
 
-func methodInfo(name string) *grpc.UnaryServerInfo {
-	return &grpc.UnaryServerInfo{FullMethod: name}
-}
+// methodInfo lives in auth_test.go — same package, same one-line helper. Two
+// agents wrote it independently; one copy is enough.
 
 func failing(code codes.Code, msg string) grpc.UnaryHandler {
 	return func(context.Context, any) (any, error) { return nil, status.Error(code, msg) }

@@ -45,9 +45,15 @@ type Method struct {
 // descriptors and fails when a method is missing from it, so adding an RPC
 // without classifying it is a build failure rather than a hole.
 var methods = map[string]Method{
-	// AdminService — neither call reads a row.
+	// AdminService — Health and Info read no row. Backup reads all of them:
+	// it writes a complete copy of the brain to the server's disk, so it is a
+	// write by clearance and, more to the point, no confined key should be
+	// able to obtain every row it is confined away from by asking for a copy.
+	// Rowless is false so a confined key is refused it outright — the request
+	// carries a filename, not a user_id, and there is nothing to narrow.
 	"/cortexdb.v1.AdminService/Health": {Access: Read, Rowless: true},
 	"/cortexdb.v1.AdminService/Info":   {Access: Read, Rowless: true},
+	"/cortexdb.v1.AdminService/Backup": {Access: Write},
 
 	// KnowledgeService.
 	"/cortexdb.v1.KnowledgeService/SaveKnowledge":   {Access: Write},

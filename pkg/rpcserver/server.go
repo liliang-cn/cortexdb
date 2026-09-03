@@ -29,6 +29,18 @@ type Options struct {
 	// Keys is a pre-loaded policy, for callers that build one in process.
 	// It takes precedence over Token and KeyFile.
 	Keys *authz.KeySet
+	// Interceptors are chained BEFORE authorization, so they observe every
+	// call including the ones policy rejects. Metrics and tracing go here
+	// (see MetricsInterceptor).
+	//
+	// The ordering was the other way round first, on the reasoning that a
+	// denied call is not served work. Running it showed what that costs: with
+	// metrics inside the gate, a brute-forced token produces an empty
+	// errors_total and the operator of a server whose whole new feature is
+	// scoped keys cannot see a single denial. Labels here are bounded to
+	// method and status code, so counting unauthenticated traffic cannot blow
+	// up cardinality — it is exactly the signal you want.
+	Interceptors []grpc.UnaryServerInterceptor
 	// DBPath is reported by AdminService.Info.
 	DBPath string
 	// BackupDir confines AdminService.Backup: destinations are relative to it
@@ -62,7 +74,8 @@ func NewWithPolicy(db *cortexdb.DB, opts Options) (*grpc.Server, error) {
 			return nil, err
 		}
 	}
-	s := grpc.NewServer(grpc.UnaryInterceptor(authInterceptor(keys)))
+	chain := append(append([]grpc.UnaryServerInterceptor{}, opts.Interceptors...), authInterceptor(keys))
+	s := grpc.NewServer(grpc.ChainUnaryInterceptor(chain...))
 	Register(s, db, opts)
 	return s, nil
 }
