@@ -13,6 +13,20 @@ type ToolDefinition struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"input_schema"`
+	// Mutates reports whether calling this tool changes the brain.
+	//
+	// It exists so authorization can tell a read from a write through the
+	// generic CallTool entry point, which otherwise dispatches on an opaque
+	// name and forces every tool to be treated as a write — making a read-only
+	// key unable to call anything at all, including search.
+	//
+	// The declaration lives here, next to the tool, rather than in a table
+	// beside the policy: a second list would have to be hand-synced with this
+	// one, and the failure mode of that drifting is a write classified as a
+	// read. The zero value is false, so a definition that forgets to say is
+	// claimed to be a read — which is why TestEveryToolDeclaresWhetherItWrites
+	// exists to make forgetting impossible rather than merely unlikely.
+	Mutates bool `json:"mutates,omitempty"`
 }
 
 // GraphRAGToolbox exposes no-embedder-safe functions for external LLM orchestration.
