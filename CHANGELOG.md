@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.92.0] - 2026-09-03
+
+The live view could be embedded but not configured: an application putting the
+graph inside a dial got the graph and the five control panels drawn over it,
+with no way to ask for the graph alone. Every switch on those panels is now
+also a query parameter — `?panels=0`, `?spin=1`, `?glow=0`, `?flow=0`,
+`?bg=RRGGBB`, `?fit=0` — read once on load and applied where the switch lives.
+They set starting positions, not locks: a drag still stops the orbit and a
+button still flips its switch.
+
+### Added
+
+- **`pkg/liveview` URL options.** `panels=0` hides the control panels and the
+  boot splash; `spin=1` presses Orbit once the layout has settled; `glow=0` and
+  `flow=0` start with bloom and link particles off; `bg=RRGGBB` sets the scene
+  and page background; `fit=0` stops the camera re-framing after the first fit,
+  for an embedder whose frame must not jump.
+
 ## [2.91.0] - 2026-09-03
 
 CortexDB could be run as a service, but not operated as one, and its own headline —

@@ -33,6 +33,7 @@ const pageHTML = `<!DOCTYPE html>
   html,body{height:100%;overflow:hidden;background:#04060d;color:#c7d2e5;
     font:13px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif}
   #scene{position:absolute;inset:0}
+  .bare .panel,.bare #boot{display:none!important}
   .panel{position:fixed;z-index:10;background:rgba(8,13,26,.86);border:1px solid #1b2740;
     border-radius:10px;backdrop-filter:blur(10px);box-shadow:0 8px 30px rgba(0,0,0,.5)}
   #head{top:14px;left:14px;padding:11px 14px;min-width:250px}
@@ -173,10 +174,36 @@ var pathNodes = {}, pathLinks = {};
 var pickMode = false, pickA = null;
 var query = "";
 var linkTotal = 0;
-var glowOn = true, flowOn = true;
+var glowOn = true, flowOn = true; // set from OPTS once it exists, below
 var spinning = false, spinAngle = 0, spinTimer = null;
 var activityLive = false;
 var userMovedCamera = false;
+
+/* ---------- options from the URL ----------
+
+   The page is embedded by other applications — inside a dial, behind a mask,
+   in a side panel two hundred pixels wide — and an embedder cannot press the
+   buttons. So every switch the buttons flip is also a query parameter, read
+   once here and applied where the switch lives:
+
+     ?panels=0   no control panels, the graph alone
+     ?spin=1     orbit from the start (the Orbit button, pressed for you)
+     ?glow=0     bloom off        ?flow=0   link particles off
+     ?bg=RRGGBB  background colour, for a page shown through a shape
+     ?fit=0      never re-frame the camera after the first fit
+
+   Nothing here overrides a person: a drag still stops the orbit, and a button
+   still flips its switch. These are the starting positions, not locks. */
+var OPTS = (function(){
+  var q = {};
+  try { new URLSearchParams(location.search).forEach(function(v, k){ q[k] = v; }); } catch(e){}
+  return q;
+})();
+glowOn = OPTS.glow !== "0";
+flowOn = OPTS.flow !== "0";
+var BG = /^[0-9a-fA-F]{6}$/.test(OPTS.bg || "") ? "#" + OPTS.bg : "#04060d";
+if(OPTS.panels === "0") document.documentElement.classList.add("bare");
+if(OPTS.bg && BG !== "#04060d") document.body.style.background = BG;
 
 var NAMED = {entity:"#38bdf8", concept:"#a78bfa", memory:"#34d399", knowledge:"#fbbf24",
   document:"#fb923c", person:"#f472b6", project:"#60a5fa", organization:"#2dd4bf",
@@ -197,7 +224,7 @@ function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){
 
 /* ---------- the scene ---------- */
 G = ForceGraph3D()(document.getElementById("scene"))
-  .backgroundColor("#04060d")
+  .backgroundColor(BG)
   .showNavInfo(false)
   .nodeLabel(function(n){
     return "<div style='background:#0a1120;border:1px solid #23324f;border-radius:6px;padding:4px 9px;" +
@@ -642,6 +669,7 @@ document.getElementById("pathbtn").addEventListener("click", function(){
   document.getElementById("pathinfo").innerHTML = pickMode ? "pick the first node" : "";
 });
 document.getElementById("clearpath").addEventListener("click", function(){ clearPath(false); });
+document.getElementById("flow").classList.toggle("on", flowOn);
 document.getElementById("flow").addEventListener("click", function(){
   flowOn = !flowOn; this.classList.toggle("on", flowOn); repaint();
 });
@@ -726,9 +754,13 @@ function boot(){
   // first frame arrives, so an early fit frames a graph that is about to grow
   // out of shot. Fit again as it settles — and stop as soon as the view is
   // touched, because re-framing under someone's hand is worse than a loose fit.
-  [400, 1600, 3400, 6000].forEach(function(ms){
+  var fits = OPTS.fit === "0" ? [400] : [400, 1600, 3400, 6000];
+  fits.forEach(function(ms){
     setTimeout(function(){ if(!userMovedCamera) fitCore(700); }, ms);
   });
+  // The orbit starts after the last fit, or the fit would snap the camera
+  // back out of the circle it had begun.
+  if(OPTS.spin === "1") setTimeout(function(){ if(!userMovedCamera) setSpin(true); }, fits[fits.length - 1] + 900);
 }
 
 function setLive(connected, activity){
@@ -838,6 +870,8 @@ try {
   window.__bloom = bloom;
   fitToContainer();
   const btn = document.getElementById("glow");
+  bloom.enabled = glowOn;
+  btn.classList.toggle("on", glowOn);
   btn.addEventListener("click", () => {
     glowOn = !glowOn;
     bloom.enabled = glowOn;
