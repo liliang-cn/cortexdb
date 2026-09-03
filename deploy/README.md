@@ -168,8 +168,33 @@ on the server, not on the clients. Typed clients for other languages:
 ## Backup and upgrade
 
 The brain is one SQLite file (plus `-wal` and `-shm` while running). Copying
-just the `.db` of a live server gives you a torn backup; take a consistent one
-without stopping anything:
+just the `.db` of a live server gives you a torn backup. Ask the server for one
+instead — it is the process that owns the file, and it does not have to stop:
+
+```bash
+grpcurl -H "authorization: Bearer $CORTEXDB_GRPC_TOKEN" \
+  -d '{"path": "cortexdb-'"$(date +%F)"'.db"}' \
+  10.0.0.5:47821 cortexdb.v1.AdminService/Backup
+# {"path": "/var/lib/cortexdb/cortexdb-2026-09-03.db", "sizeBytes": "4227072"}
+```
+
+`path` is **relative to the server's backup directory**, which defaults to the
+directory holding the database — under `ProtectSystem=strict` that is the only
+place the unit can write anyway. Absolute paths and anything climbing out with
+`..` are refused: the token that reads and writes rows should not also decide
+where on the host a full copy of the brain lands. Subdirectories (`daily/mon.db`)
+are created as needed, at mode 0700, and an existing destination is refused
+rather than overwritten, so a schedule that reuses a name fails loudly instead
+of eating the previous run. The same RPC is on the typed clients
+(`AdminService.Backup`) if you would rather not install `grpcurl`.
+
+The copy is one self-contained file: `VACUUM INTO` runs in a read transaction,
+so everything committed to the `-wal` at that instant is folded in and nothing
+committed after it is. Restoring is copying that file into place — there is no
+`-wal` to remember.
+
+If the server is not running, or you would rather not go through it, the
+`sqlite3` CLI does the same thing from outside:
 
 ```bash
 sudo apt-get install -y sqlite3   # not installed by default on a server image
@@ -177,10 +202,13 @@ sudo -u cortexdb sqlite3 /var/lib/cortexdb/cortexdb.db \
   ".backup '/var/backups/cortexdb-$(date +%F).db'"
 ```
 
-Without the `sqlite3` CLI the equivalent is `systemctl stop cortexdb-grpc`, copy
-the `.db`, `-wal` and `-shm` together, then start it again — the three files are
-one backup, and taking only the first is the mistake that looks fine until you
-restore it.
+And with neither: `systemctl stop cortexdb-grpc`, copy the `.db`, `-wal` and
+`-shm` together, then start it again — those three files are one backup, and
+taking only the first is the mistake that looks fine until you restore it.
+
+A brain on PostgreSQL answers the RPC with `UNIMPLEMENTED` naming its backend,
+because its backups are `pg_dump` and whatever retention the database team
+already runs, not a file this process writes beside a database it does not own.
 
 Upgrading is: build the new binary, replace it, restart. The schema migrates
 forward on open. `TimeoutStopSec=30s` gives the server room to checkpoint the

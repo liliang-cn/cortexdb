@@ -470,7 +470,21 @@ func (s *SQLiteStore) ImportIndex(ctx context.Context, filepath string) error {
 	return wrapError("import_index", fmt.Errorf("no index enabled in config"))
 }
 
-// Backup creates a full backup of the database to a file
+// Backup writes a consistent copy of the whole database to filepath, without
+// stopping writers: VACUUM INTO runs inside a read transaction, so the copy
+// includes everything committed to the WAL at the moment it starts and nothing
+// committed after. That is the reason it is preferred over copying the file —
+// a .db taken on its own while the server runs is missing whatever is still in
+// the -wal, and looks fine until it is restored.
+//
+// SQLite refuses an existing destination, so this never overwrites a backup.
+//
+// The destination is a bound parameter rather than interpolated into the SQL.
+// VACUUM INTO takes an expression, so the driver accepts one, and it must: the
+// gRPC AdminService lets a remote caller choose this path, the driver executes
+// multiple statements from one string, and a quote in the filename would
+// otherwise let that caller append SQL of their own to a statement running
+// against the brain.
 func (s *SQLiteStore) Backup(ctx context.Context, filepath string) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -479,9 +493,7 @@ func (s *SQLiteStore) Backup(ctx context.Context, filepath string) error {
 		return wrapError("backup", ErrStoreClosed)
 	}
 
-	// Use SQLite backup API
-	_, err := s.db.ExecContext(ctx, fmt.Sprintf("VACUUM INTO '%s'", filepath))
-	if err != nil {
+	if _, err := s.db.ExecContext(ctx, "VACUUM INTO ?", filepath); err != nil {
 		return wrapError("backup", fmt.Errorf("failed to create backup: %w", err))
 	}
 

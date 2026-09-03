@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	AdminService_Health_FullMethodName = "/cortexdb.v1.AdminService/Health"
 	AdminService_Info_FullMethodName   = "/cortexdb.v1.AdminService/Info"
+	AdminService_Backup_FullMethodName = "/cortexdb.v1.AdminService/Backup"
 )
 
 // AdminServiceClient is the client API for AdminService service.
@@ -29,6 +30,9 @@ const (
 type AdminServiceClient interface {
 	Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error)
 	Info(ctx context.Context, in *InfoRequest, opts ...grpc.CallOption) (*InfoResponse, error)
+	// Backup snapshots the whole brain without stopping the server. Backends that
+	// are backed up by their own tooling (PostgreSQL) fail it with UNIMPLEMENTED.
+	Backup(ctx context.Context, in *BackupRequest, opts ...grpc.CallOption) (*BackupResponse, error)
 }
 
 type adminServiceClient struct {
@@ -59,12 +63,25 @@ func (c *adminServiceClient) Info(ctx context.Context, in *InfoRequest, opts ...
 	return out, nil
 }
 
+func (c *adminServiceClient) Backup(ctx context.Context, in *BackupRequest, opts ...grpc.CallOption) (*BackupResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BackupResponse)
+	err := c.cc.Invoke(ctx, AdminService_Backup_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AdminServiceServer is the server API for AdminService service.
 // All implementations must embed UnimplementedAdminServiceServer
 // for forward compatibility.
 type AdminServiceServer interface {
 	Health(context.Context, *HealthRequest) (*HealthResponse, error)
 	Info(context.Context, *InfoRequest) (*InfoResponse, error)
+	// Backup snapshots the whole brain without stopping the server. Backends that
+	// are backed up by their own tooling (PostgreSQL) fail it with UNIMPLEMENTED.
+	Backup(context.Context, *BackupRequest) (*BackupResponse, error)
 	mustEmbedUnimplementedAdminServiceServer()
 }
 
@@ -80,6 +97,9 @@ func (UnimplementedAdminServiceServer) Health(context.Context, *HealthRequest) (
 }
 func (UnimplementedAdminServiceServer) Info(context.Context, *InfoRequest) (*InfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Info not implemented")
+}
+func (UnimplementedAdminServiceServer) Backup(context.Context, *BackupRequest) (*BackupResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Backup not implemented")
 }
 func (UnimplementedAdminServiceServer) mustEmbedUnimplementedAdminServiceServer() {}
 func (UnimplementedAdminServiceServer) testEmbeddedByValue()                      {}
@@ -138,6 +158,24 @@ func _AdminService_Info_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AdminService_Backup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BackupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).Backup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_Backup_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).Backup(ctx, req.(*BackupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AdminService_ServiceDesc is the grpc.ServiceDesc for AdminService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -152,6 +190,10 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Info",
 			Handler:    _AdminService_Info_Handler,
+		},
+		{
+			MethodName: "Backup",
+			Handler:    _AdminService_Backup_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

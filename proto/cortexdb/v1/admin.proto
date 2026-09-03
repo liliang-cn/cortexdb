@@ -12,7 +12,23 @@ message InfoResponse {
   bool has_embedder = 3;
 }
 
+// BackupRequest names the destination *relative to the server's backup
+// directory*. Absolute paths and any path climbing out with ".." are refused:
+// this RPC writes a complete copy of the brain onto the server's filesystem, and
+// the caller choosing where is a different thing from the caller reading and
+// writing rows, even though one bearer token grants both.
+message BackupRequest { string path = 1; }
+message BackupResponse {
+  // path is where the file actually landed, absolute, so the operator does not
+  // have to reconstruct the server's backup directory to find it.
+  string path = 1;
+  int64 size_bytes = 2;
+}
+
 service AdminService {
   rpc Health(HealthRequest) returns (HealthResponse);
   rpc Info(InfoRequest) returns (InfoResponse);
+  // Backup snapshots the whole brain without stopping the server. Backends that
+  // are backed up by their own tooling (PostgreSQL) fail it with UNIMPLEMENTED.
+  rpc Backup(BackupRequest) returns (BackupResponse);
 }
