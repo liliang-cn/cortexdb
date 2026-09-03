@@ -85,11 +85,20 @@ func (s *knowledgeService) UpdateKnowledge(ctx context.Context, req *rpcv1.Updat
 }
 
 func (s *knowledgeService) GetKnowledge(ctx context.Context, req *rpcv1.GetKnowledgeRequest) (*rpcv1.GetKnowledgeResponse, error) {
-	resp, err := s.db.GetKnowledge(ctx, cortexdb.KnowledgeGetRequest{KnowledgeID: req.GetKnowledgeId()})
+	// See GetMemory: for a confined key the guard has already read the row, so
+	// re-reading it would be one query too many and one race too many.
+	record, read, err := guardKnowledge(ctx, s.db, req.GetKnowledgeId())
 	if err != nil {
-		return nil, toStatus(err)
+		return nil, err
 	}
-	return &rpcv1.GetKnowledgeResponse{Knowledge: knowledgeRecordToProto(resp.Knowledge)}, nil
+	if !read {
+		resp, err := s.db.GetKnowledge(ctx, cortexdb.KnowledgeGetRequest{KnowledgeID: req.GetKnowledgeId()})
+		if err != nil {
+			return nil, toStatus(err)
+		}
+		record = resp.Knowledge
+	}
+	return &rpcv1.GetKnowledgeResponse{Knowledge: knowledgeRecordToProto(record)}, nil
 }
 
 func (s *knowledgeService) SearchKnowledge(ctx context.Context, req *rpcv1.SearchKnowledgeRequest) (*rpcv1.SearchKnowledgeResponse, error) {
@@ -144,6 +153,10 @@ func (s *knowledgeService) SearchKnowledge(ctx context.Context, req *rpcv1.Searc
 }
 
 func (s *knowledgeService) DeleteKnowledge(ctx context.Context, req *rpcv1.DeleteKnowledgeRequest) (*rpcv1.DeleteKnowledgeResponse, error) {
+	// Before the delete, so a refusal leaves the document where it was.
+	if _, _, err := guardKnowledge(ctx, s.db, req.GetKnowledgeId()); err != nil {
+		return nil, err
+	}
 	resp, err := s.db.DeleteKnowledge(ctx, cortexdb.KnowledgeDeleteRequest{KnowledgeID: req.GetKnowledgeId()})
 	if err != nil {
 		return nil, toStatus(err)

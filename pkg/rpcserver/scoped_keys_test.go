@@ -141,25 +141,12 @@ func TestAReadOnlyKeyCannotDeleteSomebodyElsesMemory(t *testing.T) {
 	}
 }
 
-// TestAConfinedKeyCannotReachAMemoryByIdAlone documents a deliberate gap: the
-// id-addressed RPCs carry no user_id, so an interceptor cannot tell whose row
-// an id names without reading it first. Fail closed — a confined key is refused
-// rather than allowed on a guess.
-func TestAConfinedKeyCannotReachAMemoryByIdAlone(t *testing.T) {
-	conn := newPolicyConn(t, Options{Keys: hermesAndZeus(t)})
-	client := rpcv1.NewMemoryServiceClient(conn)
-
-	if _, err := client.SaveMemory(asKey("hermes-secret"), &rpcv1.SaveMemoryRequest{
-		MemoryId: "h2", UserId: "hermes", Scope: "user", Content: "Hermes's own note.",
-	}); err != nil {
-		t.Fatalf("hermes save: %v", err)
-	}
-	// Even its own row, because the request does not say whose it is.
-	_, err := client.GetMemory(asKey("hermes-secret"), &rpcv1.GetMemoryRequest{MemoryId: "h2"})
-	if status.Code(err) != codes.PermissionDenied {
-		t.Fatalf("want PERMISSION_DENIED on an id-only request, got %v", err)
-	}
-}
+// The gap this file used to document — a confined key refused every
+// id-addressed RPC, its own rows included, because the request does not say
+// whose row an id names — is closed. The handler reads the row and checks its
+// owner; see ownership.go and ownership_test.go, where
+// TestAConfinedKeyGetsItsOwnMemoryButNotAnothersAndCannotTellThemApart
+// replaces TestAConfinedKeyCannotReachAMemoryByIdAlone.
 
 func TestAConfinedKeyCanStillAskWhetherTheServerIsUp(t *testing.T) {
 	conn := newPolicyConn(t, Options{Keys: hermesAndZeus(t)})
