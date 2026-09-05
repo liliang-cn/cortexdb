@@ -48,6 +48,9 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 	}
 	addInferenceMCPTools(server, definitions, toolbox)
 	addOntologyMCPTools(server, definitions, toolbox)
+	// --- decision ledger (pkg/cortexdb/decision_tooldefs.go) ---
+	addDecisionMCPTools(server, definitions, db)
+	// --- end decision ledger ---
 
 	addGraphRAGMCPTool(server, definitions["ingest_document"], func(ctx context.Context, req ToolIngestDocumentRequest) (ToolIngestDocumentResponse, error) {
 		resp, err := toolbox.IngestDocument(ctx, req)

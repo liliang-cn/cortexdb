@@ -279,6 +279,55 @@ pairs, _ := db.Graph().EdgeEndpointPairs(ctx, "uses")
 Both edge queries take optional edge types, matched exactly as stored; passing
 none reports the whole graph.
 
+## Decision ledger
+
+`fact_provenance` and the knowledge contract say how a *fact* is known. The
+ledger says why an *action* was taken: which facts it rested on, who took it,
+what it replaced, and what else was decided the same way.
+
+A decision is a graph record, not a side table. It is a node `decision:<id>`
+typed `Decision`, whose content is the note and whose properties are `kind`,
+`actor`, `at`, `verdict`, `subject` plus the knowledge contract keys — so
+`contract_tally` counts a decision without being told about decisions, and
+`expand_graph`, `render_graph_html`, the live view and SPARQL all see it. Three
+edge types explain it: `based_on` (a premise), `about` (the subject) and
+`supersedes` (the decision it replaces).
+
+```go
+rec, err := db.RecordDecision(ctx, cortexdb.DecisionRecordRequest{
+    Kind:     cortexdb.DecisionKindReview, // load | review | action | assert (open vocabulary)
+    Actor:    "liliang",
+    Note:     "Held the ledger-svc release: riskd's rule source is unverified.",
+    Verdict:  "hold",
+    Subject:  "svc:ledger",
+    Premises: []string{"svc:riskd", "fact:ledger-depends-on-riskd"}, // node ids and edge ids
+})
+
+chain, _ := db.DecisionChain(ctx, rec.ID, 0)     // premises with each one's grade and source
+prior, _ := db.Precedents(ctx, cortexdb.PrecedentsQuery{Kind: "review", Subject: "svc:ledger"})
+mine, _ := db.DecisionsBy(ctx, "liliang", 20)
+_, _, _ = chain, prior, err
+```
+
+It fails closed and it fails before writing anything: an empty actor, an empty
+note, a premise or subject that does not exist, a supersedes target that is not
+a decision, or metadata `ValidateContract` refuses. By default a decision is
+stamped `_grade=verified`, `_producer=human`, `_by=<actor>` — a named actor
+signed it — and an agent recording its own decision says so with `Producer` and
+`Grade`.
+
+A premise that is a **fact** is an edge, and `graph_edges` declares a foreign
+key on `to_node_id`, enforced on both backends. So the `based_on` edge is
+anchored on the fact's subject node and names the fact in its own
+`premise_edge_id` property; `DecisionChain` resolves it back and reports the
+**edge's** grade, not the anchor node's.
+
+Tools (in-process and MCP), and the mirroring `cortexdb.v1.DecisionService`:
+
+- `decision_record` — writes (read-only keys are refused it)
+- `decision_chain` — reads
+- `decision_precedents` — reads
+
 ## Ontology
 
 `pkg/cortexdb` models a Palantir-style ontology on the same file. One schema is
@@ -614,6 +663,7 @@ Important tools:
 - KnowledgeMemory: `knowledge_memory_recall`, `knowledge_memory_build_context_pack`, `knowledge_memory_reflect`, `knowledge_memory_consolidate`
 - Ontology: `ontology_save`, `ontology_get`, `ontology_list`, `ontology_delete`, `ontology_diff`, `ontology_action_list`, `ontology_action_apply`, `object_set_resolve`
 - Inference: `apply_inference`
+- Decision ledger: `decision_record`, `decision_chain`, `decision_precedents`
 
 Separate workflow toolboxes:
 
