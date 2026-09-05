@@ -2,7 +2,9 @@ package graph
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -317,4 +319,243 @@ func escapeLikePrefix(s string) string {
 	s = strings.ReplaceAll(s, "%", `\%`)
 	s = strings.ReplaceAll(s, "_", `\_`)
 	return s
+}
+
+// Grouping and listing the graph by what is written on it, rather than by
+// type.
+//
+// NodeTypeCounts above answers "what kinds of thing are in here". These answer
+// "what do the records say about themselves" — the question a caller asks when
+// the interesting fact is not the node's type but a field its writer stamped
+// on: which import a record came from, which model proposed it, how well
+// established it is. GraphFilter.Properties could already narrow a search to
+// one such value; nothing could count them, and nothing could see edges at
+// all, so a caller wanting the breakdown wrote SQL over both tables itself —
+// with the schema and dialect exposure the block comment above this section
+// spends its length on.
+//
+// Domain-neutral on purpose: this layer knows that properties is a JSON object
+// with string fields, and nothing about what any particular key means.
+
+// PropertyCount is how many nodes and how many edges carry one value.
+//
+// Kept apart rather than summed because the two are not interchangeable to a
+// reader: an edge is an assertion about two things and a node is one thing, so
+// "40 records" over a graph of 4 nodes and 36 edges describes a different
+// graph than the reverse, and a caller that wants the total can add them.
+type PropertyCount struct {
+	Nodes int `json:"nodes"`
+	Edges int `json:"edges"`
+}
+
+// PropertyCounts groups every node and edge by one top-level property.
+//
+// Records that do not carry the property at all are counted under the empty
+// string, for the reason NodeTypeCounts gives about untyped nodes: "nothing
+// says" is a finding, and dropping it turns a caller's sum into a discrepancy
+// it has to go and explain. It is usually the most important number in the
+// result — a breakdown over the 3% of a shelf that was stamped looks exactly
+// like a breakdown over all of it.
+func (g *GraphStore) PropertyCounts(ctx context.Context, key string) (map[string]PropertyCount, error) {
+	if key == "" {
+		return nil, fmt.Errorf("property counts: no key")
+	}
+	out := map[string]PropertyCount{}
+	for _, t := range []struct {
+		table string
+		edge  bool
+	}{{"graph_nodes", false}, {"graph_edges", true}} {
+		// COALESCE around the guarded read, not inside it: the guard yields
+		// NULL both for a record with no properties at all and for one whose
+		// JSON lacks this key, and those are the same answer to this question.
+		expr := "COALESCE(" + g.dialect.JSONTextGuarded("properties", key) + ", '')"
+		rows, err := g.query(ctx, `
+			SELECT `+expr+`, COUNT(*)
+			  FROM `+t.table+`
+			 GROUP BY `+expr+`
+			 ORDER BY `+expr)
+		if err != nil {
+			return nil, fmt.Errorf("property counts over %s: %w", t.table, err)
+		}
+		for rows.Next() {
+			var value string
+			var n int
+			if err := rows.Scan(&value, &n); err != nil {
+				_ = rows.Close()
+				return nil, fmt.Errorf("property counts over %s: %w", t.table, err)
+			}
+			c := out[value]
+			if t.edge {
+				c.Edges += n
+			} else {
+				c.Nodes += n
+			}
+			out[value] = c
+		}
+		err = rows.Err()
+		_ = rows.Close()
+		if err != nil {
+			return nil, fmt.Errorf("property counts over %s: %w", t.table, err)
+		}
+	}
+	return out, nil
+}
+
+// PropertyRecord is one node or edge, with the properties the caller asked for.
+type PropertyRecord struct {
+	ID string `json:"id"`
+	// Edge distinguishes the two without a caller having to guess from the
+	// shape of the id.
+	Edge bool `json:"edge"`
+	// Type is node_type or edge_type.
+	Type string `json:"type"`
+	// Content is a node's label. Edges have none — they are named by their
+	// type and their ends.
+	Content string `json:"content,omitempty"`
+	// From and To are an edge's ends, empty on a node. Ids rather than labels:
+	// resolving them costs a second query per row, and a caller that wants the
+	// labels has GetNodesBatch.
+	From string `json:"from,omitempty"`
+	To   string `json:"to,omitempty"`
+	// Properties holds exactly the keys asked for. A key the record does not
+	// carry is absent rather than empty, so "nothing says" stays
+	// distinguishable from "says the empty string".
+	Properties map[string]string `json:"properties,omitempty"`
+}
+
+// PropertyRecordQuery narrows RecordsWithProperties. A zero query is refused
+// rather than returning the whole graph: an unfiltered read of both tables is
+// never what a caller of this API meant, and returning it makes the mistake
+// look like it worked until the graph is large.
+type PropertyRecordQuery struct {
+	// Where narrows to records carrying these properties. Keys are ANDed and
+	// the values within one key are ORed, which is the shape the questions
+	// actually take: "held or refused, from this import".
+	Where map[string][]string
+	// Fetch names the properties to return on each record. Empty returns the
+	// keys in Where, which is the common case and saves repeating them.
+	Fetch []string
+	// Limit caps the rows. 0 means no cap.
+	Limit int
+}
+
+// RecordsWithProperties lists the nodes and edges matching a property query.
+//
+// Ordered by id within each table and nodes before edges, so two reads of one
+// graph agree and a caller paging with Limit sees a stable sequence. Limit is
+// applied to each table and then to the merged result: a cap that returned
+// only nodes because they sorted first would hide every matching edge, which
+// on a shelf whose assertions are mostly edges is the whole answer.
+func (g *GraphStore) RecordsWithProperties(ctx context.Context, q PropertyRecordQuery) ([]PropertyRecord, error) {
+	if len(q.Where) == 0 {
+		return nil, fmt.Errorf("records with properties: no filter — refusing to read the whole graph")
+	}
+	fetch := q.Fetch
+	if len(fetch) == 0 {
+		for k := range q.Where {
+			fetch = append(fetch, k)
+		}
+	}
+	sort.Strings(fetch)
+
+	where, args := g.propertyWhere(q.Where)
+	var out []PropertyRecord
+	for _, t := range []struct {
+		table string
+		edge  bool
+	}{{"graph_nodes", false}, {"graph_edges", true}} {
+		cols := []string{"id"}
+		if t.edge {
+			cols = append(cols, "COALESCE(edge_type, '')", "''", "from_node_id", "to_node_id")
+		} else {
+			cols = append(cols, "COALESCE(node_type, '')", "COALESCE(content, '')", "''", "''")
+		}
+		for _, k := range fetch {
+			cols = append(cols, g.dialect.JSONTextGuarded("properties", k))
+		}
+		text := "SELECT " + strings.Join(cols, ", ") + " FROM " + t.table +
+			" WHERE " + where + " ORDER BY id"
+		a := append([]any{}, args...)
+		if q.Limit > 0 {
+			text += " LIMIT ?"
+			a = append(a, q.Limit)
+		}
+		rows, err := g.query(ctx, text, a...)
+		if err != nil {
+			return nil, fmt.Errorf("records with properties over %s: %w", t.table, err)
+		}
+		for rows.Next() {
+			rec := PropertyRecord{Edge: t.edge}
+			// Nullable because the guarded read yields NULL for a record
+			// missing the key, which must stay different from the empty
+			// string it would otherwise arrive as.
+			vals := make([]sql.NullString, len(fetch))
+			dest := []any{&rec.ID, &rec.Type, &rec.Content, &rec.From, &rec.To}
+			for i := range vals {
+				dest = append(dest, &vals[i])
+			}
+			if err := rows.Scan(dest...); err != nil {
+				_ = rows.Close()
+				return nil, fmt.Errorf("records with properties over %s: %w", t.table, err)
+			}
+			for i, k := range fetch {
+				if vals[i].Valid {
+					if rec.Properties == nil {
+						rec.Properties = map[string]string{}
+					}
+					rec.Properties[k] = vals[i].String
+				}
+			}
+			out = append(out, rec)
+		}
+		err = rows.Err()
+		_ = rows.Close()
+		if err != nil {
+			return nil, fmt.Errorf("records with properties over %s: %w", t.table, err)
+		}
+	}
+	if q.Limit > 0 && len(out) > q.Limit {
+		out = out[:q.Limit]
+	}
+	return out, nil
+}
+
+// propertyWhere renders the ANDed-keys, ORed-values filter.
+//
+// Keys are sorted so one query renders one SQL string, which is what lets a
+// prepared-statement cache do its job and what makes a failing query
+// reproducible from a log.
+func (g *GraphStore) propertyWhere(w map[string][]string) (string, []any) {
+	keys := make([]string, 0, len(w))
+	for k := range w {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var clauses []string
+	var args []any
+	for _, k := range keys {
+		expr := g.dialect.JSONTextGuarded("properties", k)
+		var ors []string
+		for _, v := range w[k] {
+			if v == "" {
+				// The empty string is how PropertyCounts reports "does not
+				// carry this key", so accept it here as the same question:
+				// show me the records nothing was stamped on.
+				ors = append(ors, "("+expr+" IS NULL OR "+expr+" = ?)")
+				args = append(args, "")
+				continue
+			}
+			ors = append(ors, expr+" = ?")
+			args = append(args, v)
+		}
+		if len(ors) == 0 {
+			continue
+		}
+		clauses = append(clauses, "("+strings.Join(ors, " OR ")+")")
+	}
+	if len(clauses) == 0 {
+		return "1=0", nil
+	}
+	return strings.Join(clauses, " AND "), args
 }
