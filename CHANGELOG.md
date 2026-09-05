@@ -2,6 +2,65 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.93.0] - 2026-09-05
+
+The knowledge contract: what a record must carry to be trusted and explained,
+and the three ways to read it back.
+
+### Added
+
+- **The contract itself** (`pkg/cortexdb/contract.go`, and the design in
+  `docs/superpowers/specs/2026-09-05-knowledge-contract-design.md`). Every
+  producer that writes into this store — alchemy, argus, DataIntelligence, the
+  memory tools — answers the same two questions about each record: how do I
+  know this, and how sure am I. Each answered in its own words and the
+  vocabularies shared none. This is the one vocabulary, as reserved
+  `_`-prefixed metadata keys on the maps the store already carries. No RPC
+  changed to add it.
+
+  `_grade` is closed and five-valued — `verified`, `self_consistent`,
+  `asserted`, `held`, `refused` — and answers only "by what kind of thing is
+  this established". The producer's own finer word rides in `_state`
+  untouched, which is what keeps `_grade` from flattening distinctions each
+  producer documents at length. `_why` is required whenever a record is held
+  or refused: a refusal without a reason is noise the reader will delete.
+  `ValidateContract` is a library call a producer makes before it writes; the
+  server stores what it is given.
+
+- **`ContractTally` and `NeedsAttention`** (`pkg/cortexdb/contract_query.go`)
+  read it back. The tally's two uncomfortable fields are why the type exists:
+  `Untagged` is every record nobody graded, which on a real shelf is the
+  largest number and whose omission turns a five-bar chart over 3% of the data
+  into one that looks like all of it; `Unknown` is every grade the contract
+  does not define, which means a producer is writing something wrong and must
+  not be folded in with producers writing nothing.
+
+- **`PropertyCounts` and `RecordsWithProperties`** (`pkg/graph`), the
+  domain-neutral half: group and list nodes *and edges* by any top-level
+  property. `GraphFilter.Properties` could already narrow a search to one
+  value; nothing could count them and nothing saw edges at all, so callers
+  wanting the breakdown wrote SQL over both tables themselves.
+
+- **`contract_tally` and `contract_needs_attention` over MCP**, both reads. A
+  tool that could write a grade would let something mark a record verified
+  with nothing having checked it.
+
+- **`ContractService` over gRPC** (`proto/cortexdb/v1/contract.proto`), for the
+  consumers that are not in this process: a Rust one and a separate Go one
+  that must not open the same database file.
+
+- **The live view says how much of what it shows stands on what.** A panel with
+  the tally and the records waiting for a person, on its own fifteen-second
+  timer through its own endpoint, and not fetched at all while folded — the
+  structure poll runs every two seconds and this is two aggregate scans.
+  `?contract=0` turns it off.
+
+### Fixed
+
+- **`scripts/gen-proto.sh` vendors the protos into the Node client too.** They
+  were copied by hand, which is how that copy came to be missing an RPC
+  `proto/` had had for a while: a vendored copy nothing syncs is a stale copy.
+
 ## [2.92.1] - 2026-09-03
 
 ### Changed
