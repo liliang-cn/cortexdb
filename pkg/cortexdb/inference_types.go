@@ -22,4 +22,8 @@ type ApplyInferenceRequest struct {
 type ApplyInferenceResponse struct {
 	CreatedEdgeIDs []string `json:"created_edge_ids"`
 	DeletedEdgeIDs []string `json:"deleted_edge_ids,omitempty"`
+	// UnchangedEdgeIDs are edges these rules re-derived that the same rule had
+	// already written. Reported rather than rewritten, so a second run of the
+	// same rules is a no-op that says so instead of a run that looks empty.
+	UnchangedEdgeIDs []string `json:"unchanged_edge_ids,omitempty"`
 }

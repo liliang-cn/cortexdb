@@ -47,6 +47,7 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		definitions[definition.Name] = definition
 	}
 	addInferenceMCPTools(server, definitions, toolbox)
+	addRuleMCPTools(server, definitions, toolbox)
 	addOntologyMCPTools(server, definitions, toolbox)
 
 	addGraphRAGMCPTool(server, definitions["ingest_document"], func(ctx context.Context, req ToolIngestDocumentRequest) (ToolIngestDocumentResponse, error) {

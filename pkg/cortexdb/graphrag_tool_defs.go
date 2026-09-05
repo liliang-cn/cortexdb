@@ -310,6 +310,9 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 		},
 	}
 	definitions = append(definitions, inferenceToolDefinitions()...)
+	// --- declared inference rules (pkg/cortexdb/rules_*.go) ---
+	definitions = append(definitions, ruleToolDefinitions()...)
+	// --- end declared inference rules ---
 	definitions = append(definitions, ontologyToolDefinitions()...)
 	definitions = append(definitions, KnowledgeMemoryToolDefinitions()...)
 	definitions = append(definitions, contractToolDefinitions()...)
@@ -319,6 +322,9 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 // Call dispatches a tool request from JSON input to a typed implementation.
 func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawMessage) (any, error) {
 	if resp, handled, err := t.callInferenceTool(ctx, name, input); handled {
+		return resp, err
+	}
+	if resp, handled, err := t.callRuleTool(ctx, name, input); handled {
 		return resp, err
 	}
 	if resp, handled, err := t.callOntologyTool(ctx, name, input); handled {
