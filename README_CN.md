@@ -29,6 +29,7 @@ fmt.Println(rec.ContextPack.Text) // 可直接粘贴的上下文包,带来源标
 - **可组合检索** — `cortex_query`:vector / lexical / hybrid / graph 四条预取通道,RRF、加权 RRF 或 DBSF 融合,带元数据过滤与逐源打分调试;`Authorize` 回调在检索层对每个候选做 RBAC/ABAC 门禁;可插拔重排器。
 - **向量 + 词法引擎** — FTS5、HNSW / IVF / Flat 索引、标量与二值量化、地理索引、语义查询路由。
 - **外部召回通道** — 你已经在跑的搜索集群（Meilisearch、Weaviate…）可以通过 `QuerySource` 成为参与融合的一条 lane，而不必成为存储：它只点名候选 id，内容仍归大脑所有，过期的 id 会被丢弃而不是被编造成结果。
+- **知识契约** — 每条记录都能回答*我怎么知道的*和*我多确定*：`_source`、`_chunk`、`_producer`，以及一个闭集里的 `_grade` —— `verified`（有名有姓的人留下的）、`self_consistent`（从已陈述的东西推导出来的）、`asserted`（模型或人说的，没人核过）、`held`、`refused`（被词汇表拒绝，附原因）。`contract_tally` 回答整个书架站在什么之上，未标注的行也算进去；`contract_needs_attention` 列出需要人看的；`fact_provenance` 引出事实所来自的原文。生产者写入前调 `ValidateContract`。[alchemy](https://github.com/liliang-cn/alchemy) 往这里入库的每张图都带契约 —— 它六个 sink 里唯一这么做的。
 - **可换存储后端** — 默认 SQLite；把 DSN 换成 `postgres://` 就把同一个大脑搬到 **PostgreSQL + pgvector**，向量、混合检索、记忆和 RDF 图谱在两个后端上都跑。注册表是编译期的，不是插件系统（存储是热路径）。104 个 opt-in 的 PostgreSQL 测试，大多是 parity 测试：一份测试体、两个数据库、必须给出相同答案。
 - **知识图谱** — 同一文件上的 RDF 三元组/四元组:实用 SPARQL 子集(更新、OPTIONAL/UNION/VALUES、聚合、子查询、属性路径)、RDFS-lite 物化推理、SHACL-lite 校验、N-Triples/Turtle/TriG 读写;属性图侧 `apply_inference` 物化两跳关系组合并带出处;实体记录断言文档,`delete_document_graph` 是按摄入形状做的删除。
 - **Ontology(Palantir 风格)** — 带主键与基数的对象/链接/接口类型,对象集代数(union / intersect / filter / `search_around`),带审计的受治理**动作类型**,自动生成的类型化 agent 工具,以及破坏性变更的 schema diff;`strict` 与 `vocabulary` 两种执行模式。

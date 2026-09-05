@@ -210,6 +210,65 @@ fmt.Println(rec.ContextPack.Text) // sections + memory/knowledge/chunk IDs + ent
 
 Underneath, text search takes an `Authorize` callback — a retrieval-layer security gate (RBAC/ABAC applied to every candidate; the search widens its recall until it can return TopK *authorized* rows) — and a pluggable `Reranker` for the recall→precision second stage.
 
+## The knowledge contract — how a record says how it knows
+
+A brain shared by several producers — an extraction pipeline, an agent's
+memory tools, a schema import — used to answer "how do I know this" in each
+producer's own words, which is the same as not answering. The contract is one
+vocabulary, carried in the metadata every record already has, and it is what
+makes an answer from this store auditable rather than merely confident.
+
+Keys, all under the `_` prefix (`pkg/cortexdb/contract.go` is the executable
+form; the normative text is `docs/superpowers/specs/2026-09-05-knowledge-contract-design.md`):
+
+| key | meaning |
+| --- | --- |
+| `_source` | where it came from — a URL, a file, a job, an engagement. Never a DSN or a path with credentials: the store is shared and a source string is read by everyone who can read the record |
+| `_chunk` | the chunk index within the source, `-1` when the producer did not chunk |
+| `_producer` | how it was made: `llm-extract`, `ddl`, `tabular`, `graph-import`, `human`, `measured`, `compiled` |
+| `_grade` | by what kind of thing its truth is established — the closed set below |
+| `_state`, `_why` | the producer's own word for where the record stands, and the reason a refusal carries |
+| `_by`, `_at` | who asserted it and when, required when `_producer` is `human` |
+| `_contradicts` | ids of the records this one cannot both-be-true with, written on both |
+
+The grades, weakest last:
+
+- **`verified`** — a named person's review kept it. Outranks a violation: a
+  reviewer who kept a record with the complaint in front of them made a
+  decision, and grading it `refused` would let a vocabulary overrule the human
+  it was escalated to.
+- **`self_consistent`** — derived deterministically from something that already
+  stated it (a `CREATE TABLE`, an existing graph, a table's own rows) and
+  checked against nothing outside itself.
+- **`asserted`** — a model or a person said so and nobody checked. The default
+  for a producer that says nothing, because arriving unchecked is the safe
+  direction to be wrong in.
+- **`held`** — waiting on a person.
+- **`refused`** — the vocabulary declined it; `_why` says which rule.
+
+Producers call `ValidateContract(meta)` before writing; a record that would
+fail it is refused at write, not discovered in a database browser later.
+
+Reading it back is three questions, each a method and a tool:
+
+```go
+tally, _ := db.ContractTally(ctx)              // contract_tally
+rows, _  := db.NeedsAttention(ctx, 20)         // contract_needs_attention
+prov, _  := db.FactProvenanceFor(ctx, edgeID, true) // fact_provenance, with the cited text
+```
+
+`ContractTally` counts nodes and edges alike — a graph's assertions are mostly
+edges, and a tally over nodes alone would report a shelf far better established
+than it is — and it reports `untagged` beside the five grades. On a shelf that
+predates the contract, or that one producer writes and another does not, that
+is the largest number, and a chart drawn without it describes 3% of the data
+while looking like all of it.
+
+`alchemy` writes the contract for every graph it loads into CortexDB, grading
+each record from its provenance and the ontology's findings, and writing
+`_contradicts` from the conflicts a reviewer resolved. It is the one of its six
+sinks that does; the other five store the graph and lose the reason.
+
 ## Knowledge Graph
 
 Embedded RDF on the same file: triples/quads, namespaces, N-Triples/Turtle/TriG I/O, a practical SPARQL subset (SELECT/ASK/CONSTRUCT/DESCRIBE, updates, OPTIONAL/UNION/MINUS/VALUES/BIND/FILTER, aggregates, subqueries, property paths `^p p|q p+ p*`), RDFS-lite materialized inference, and SHACL-lite validation.

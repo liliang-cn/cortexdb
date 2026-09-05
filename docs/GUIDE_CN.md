@@ -191,6 +191,57 @@ fmt.Println(rec.ContextPack.Text) // sections + memory/knowledge/chunk ID + enti
 
 再往下，text search 接受 `Authorize` 回调——检索层的安全闸门（对每个候选做 RBAC/ABAC 判定；检索会不断放宽召回，直到能返回 TopK 条**已授权**结果）——以及可插拔的 `Reranker`，完成 recall→precision 的第二阶段。
 
+## 知识契约 —— 一条记录怎么说明它凭什么
+
+一个被多个生产者共用的大脑 —— 抽取管线、agent 的记忆工具、schema 导入 ——
+以前各自用自己的措辞回答"我怎么知道这件事"，等于没回答。契约是一套词汇表，
+写在每条记录本来就有的 metadata 里；有了它，这个库给出的答案才是可审计的，
+而不只是自信的。
+
+键全部带 `_` 前缀（`pkg/cortexdb/contract.go` 是可执行形式；规范文本在
+`docs/superpowers/specs/2026-09-05-knowledge-contract-design.md`）：
+
+| 键 | 含义 |
+| --- | --- |
+| `_source` | 来源 —— URL、文件、job、engagement。绝不是 DSN 或带凭据的路径：库是共享的，来源字符串谁都读得到 |
+| `_chunk` | 在来源里的 chunk 序号，生产者没分块时为 `-1` |
+| `_producer` | 怎么产出的：`llm-extract`、`ddl`、`tabular`、`graph-import`、`human`、`measured`、`compiled` |
+| `_grade` | 它的真实性由哪一类东西确立 —— 下面的闭集 |
+| `_state`、`_why` | 生产者自己对记录状态的说法，以及一次拒绝所附的原因 |
+| `_by`、`_at` | 谁断言的、何时；`_producer` 为 `human` 时必填 |
+| `_contradicts` | 与这条不能同时为真的记录 id，两边都写 |
+
+五个 grade，越靠后越弱：
+
+- **`verified`** —— 有名有姓的人复核后留下的。压过违规：复核者把投诉摆在面前
+  仍然留下它，是一个决定；把它评成 `refused` 等于让词汇表推翻它被升级给的那个人。
+- **`self_consistent`** —— 从已经陈述的东西（`CREATE TABLE`、既有图、表自己的行）
+  确定性推导而来，没和自身之外的任何东西核对过。
+- **`asserted`** —— 模型或人说的，没人核过。什么都不说的生产者默认得到它，
+  因为"未经核实地到来"是犯错时安全的那个方向。
+- **`held`** —— 等人处理。
+- **`refused`** —— 词汇表拒绝了它，`_why` 说明是哪条规则。
+
+生产者写入前调 `ValidateContract(meta)`；过不了契约的记录在写入时就被拒，
+而不是事后在数据库浏览器里才被发现。
+
+读回来是三个问题，各对应一个方法和一个工具：
+
+```go
+tally, _ := db.ContractTally(ctx)              // contract_tally
+rows, _  := db.NeedsAttention(ctx, 20)         // contract_needs_attention
+prov, _  := db.FactProvenanceFor(ctx, edgeID, true) // fact_provenance，带引文原文
+```
+
+`ContractTally` 节点和边一起数 —— 图的断言大多是边，只数节点会把书架报得比实际
+可靠得多 —— 并在五个 grade 之外报出 `untagged`。在早于契约的书架上，或者一个
+生产者写、另一个不写的书架上，这是最大的那个数字；不画它的图表描述的是 3% 的
+数据，却看起来像全部。
+
+`alchemy` 往 CortexDB 入库的每张图都写契约：按各记录的 provenance 和本体的
+发现评 grade，并把复核者解决的冲突写成 `_contradicts`。它六个 sink 里只有这一个
+这么做；其余五个存下图、丢掉理由。
+
 ## 知识图谱
 
 同一文件内嵌 RDF：triples/quads、namespaces、N-Triples/Turtle/TriG 导入导出，实用 SPARQL 子集（SELECT/ASK/CONSTRUCT/DESCRIBE、更新语句、OPTIONAL/UNION/MINUS/VALUES/BIND/FILTER、聚合、子查询、property path `^p p|q p+ p*`），RDFS-lite 物化推理，以及 SHACL-lite 校验。
