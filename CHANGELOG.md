@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.95.0] - 2026-09-05
+
+### Added
+
+- **`rpcserver.AuthInterceptor`** — the policy `NewWithPolicy` installs, as a value a
+  process can put in a `grpc.Server` of its own. `Register` attaches the services;
+  this attaches the authorization; together they are `NewWithPolicy` without the
+  server it constructs. For the process that mounts `cortexdb.v1` beside other
+  services on one listener, where the alternatives were to rewrite the policy or to
+  drop it.
+
 ## [2.94.0] - 2026-09-05
 
 ### Added
