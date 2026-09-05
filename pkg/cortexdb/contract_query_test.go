@@ -237,3 +237,64 @@ func TestWhatTheReaderReturnsIsWhatTheValidatorAccepts(t *testing.T) {
 		}
 	}
 }
+
+// The MCP surface. The coverage test proves the tools are reachable; these
+// prove they answer.
+
+// A capped list must say what it is not showing. "50 things need a person" and
+// "50 of 900 need a person" are different situations, and the cap alone cannot
+// tell a reader which one it is looking at.
+func TestNeedsAttentionSaysWhatItIsNotShowing(t *testing.T) {
+	db := shelf(t)
+	ctx := context.Background()
+
+	full, err := db.NeedsAttentionTool(ctx, NeedsAttentionRequest{})
+	if err != nil {
+		t.Fatalf("NeedsAttentionTool: %v", err)
+	}
+	if full.Truncated {
+		t.Errorf("two records under a limit of 50 reported truncated")
+	}
+	if full.Total != 2 || len(full.Records) != 2 {
+		t.Fatalf("got %d records, total %d, want 2/2", len(full.Records), full.Total)
+	}
+
+	capped, err := db.NeedsAttentionTool(ctx, NeedsAttentionRequest{Limit: 1})
+	if err != nil {
+		t.Fatalf("NeedsAttentionTool: %v", err)
+	}
+	if !capped.Truncated {
+		t.Error("a capped answer did not say so")
+	}
+	if len(capped.Records) != 1 {
+		t.Errorf("limit 1 returned %d records", len(capped.Records))
+	}
+	// The true total, not the number returned — that is the half a reader acts
+	// on, and it comes from the tally rather than from the capped query.
+	if capped.Total != 2 {
+		t.Errorf("Total = %d, want the real 2", capped.Total)
+	}
+}
+
+// An agent asking a question of an empty shelf gets an answer, not an error.
+func TestTheToolsAnswerOnAnEmptyShelf(t *testing.T) {
+	db, err := Open(DefaultConfig(filepath.Join(t.TempDir(), "empty-tools.db")))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	ctx := context.Background()
+	if err := db.graph.InitGraphSchema(ctx); err != nil {
+		t.Fatalf("schema: %v", err)
+	}
+	if _, err := db.ContractTallyTool(ctx, ContractTallyRequest{}); err != nil {
+		t.Errorf("ContractTallyTool: %v", err)
+	}
+	got, err := db.NeedsAttentionTool(ctx, NeedsAttentionRequest{})
+	if err != nil {
+		t.Fatalf("NeedsAttentionTool: %v", err)
+	}
+	if len(got.Records) != 0 || got.Truncated || got.Total != 0 {
+		t.Errorf("an empty shelf answered %+v", got)
+	}
+}

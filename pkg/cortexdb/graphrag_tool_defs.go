@@ -312,6 +312,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 	definitions = append(definitions, inferenceToolDefinitions()...)
 	definitions = append(definitions, ontologyToolDefinitions()...)
 	definitions = append(definitions, KnowledgeMemoryToolDefinitions()...)
+	definitions = append(definitions, contractToolDefinitions()...)
 	return append(definitions, KnowledgeMemoryFacadeToolDefinitions()...)
 }
 
@@ -536,6 +537,18 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.db.ListAllMemoriesPaged(ctx, req)
+	case "contract_tally":
+		var req ContractTallyRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.db.ContractTallyTool(ctx, req)
+	case "contract_needs_attention":
+		var req NeedsAttentionRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.db.NeedsAttentionTool(ctx, req)
 	case "graph_list_all":
 		var req GraphListAllRequest
 		if err := json.Unmarshal(input, &req); err != nil {

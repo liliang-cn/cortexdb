@@ -87,6 +87,13 @@ var toolWrites = map[string]bool{
 	"memory_list_all": false,
 	"graph_list_all":  false,
 
+	// The knowledge contract. Both read: one counts what is on the shelf, the
+	// other lists what needs a person. Neither writes a grade — a producer
+	// grades its own records, and a reader that could re-grade them would be
+	// able to mark something verified without anything having checked it.
+	"contract_tally":           false,
+	"contract_needs_attention": false,
+
 	// KnowledgeMemory facade.
 	"knowledge_memory_remember":             true,
 	"knowledge_memory_promote_to_knowledge": true,
@@ -106,7 +113,7 @@ var toolWrites = map[string]bool{
 // table so that a tool added without a decision cannot slip through by sharing
 // a name with one already listed, and so that a tool quietly disappearing is
 // noticed too. Change it in the same commit that adds the tool and its row.
-const toolCount = 61
+const toolCount = 63
 
 // TestEveryToolDeclaresWhetherItWrites is the test the Mutates doc comment
 // promises: it makes forgetting impossible rather than merely unlikely.

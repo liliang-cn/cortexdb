@@ -410,6 +410,12 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *resp, nil
 	})
+	addGraphRAGMCPTool(server, definitions["contract_tally"], func(ctx context.Context, req ContractTallyRequest) (ContractTally, error) {
+		return db.ContractTallyTool(ctx, req)
+	})
+	addGraphRAGMCPTool(server, definitions["contract_needs_attention"], func(ctx context.Context, req NeedsAttentionRequest) (NeedsAttentionResponse, error) {
+		return db.NeedsAttentionTool(ctx, req)
+	})
 	addGraphRAGMCPTool(server, definitions["graph_list_all"], func(ctx context.Context, req GraphListAllRequest) (GraphListAllResponse, error) {
 		resp, err := db.ListGraphAll(ctx, req)
 		if err != nil || resp == nil {
