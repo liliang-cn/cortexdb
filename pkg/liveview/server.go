@@ -42,6 +42,15 @@ const DefaultInterval = 2 * time.Second
 type Source struct {
 	Describe string
 	Read     func(ctx context.Context) ([]Node, []Edge, error)
+	// Contract answers the knowledge contract's two questions about this
+	// store: how much of it stands on what, and what on it needs a person.
+	//
+	// Optional, and nil is a legitimate answer rather than an oversight: a
+	// source can be a graph that keeps no contract metadata at all — a side
+	// graph assembled in memory, say. The panel says so in words instead of
+	// drawing an empty chart over it, so nil never reads as "nothing here is
+	// graded", which is a different and much more common finding.
+	Contract func(ctx context.Context) (ContractReport, error)
 	Close    func() error
 }
 
@@ -55,7 +64,8 @@ func OpenSource(ctx context.Context) (*Source, error) {
 			Read: func(ctx context.Context) ([]Node, []Edge, error) {
 				return LoadRemote(ctx, addr, token, 0, true)
 			},
-			Close: func() error { return nil },
+			Contract: remoteContract(addr, token),
+			Close:    func() error { return nil },
 		}, nil
 	}
 
@@ -75,7 +85,8 @@ func OpenSource(ctx context.Context) (*Source, error) {
 		Read: func(ctx context.Context) ([]Node, []Edge, error) {
 			return LoadLocal(ctx, db.SQL())
 		},
-		Close: db.Close,
+		Contract: localContract(db),
+		Close:    db.Close,
 	}, nil
 }
 
@@ -126,6 +137,7 @@ func Start(ctx context.Context, src *Source, port int, interval time.Duration, a
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handlePage)
 	mux.HandleFunc("/api/graph", s.handleGraph)
+	mux.HandleFunc("/api/contract", s.handleContract)
 	mux.HandleFunc("/api/stream", s.handleStream)
 	s.http = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 
@@ -265,6 +277,36 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(s.payload())
+}
+
+// handleContract answers the contract panel.
+//
+// Read on demand rather than served from the hub: unlike structure it is not
+// diffed and never pushed, so there is nothing to hold between requests, and
+// the panel asks about once every fifteen seconds. It adds no listener and no
+// reach — it is the same store this process is already holding open, and the
+// page showing it is the same page already showing every node in it.
+//
+// A store this view cannot ask always returns 200 with a report that says why.
+// A failed fetch would leave the panel showing what it drew last, which after
+// an error is the previous answer presented as the current one.
+func (s *Server) handleContract(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+
+	rep := ContractReport{}
+	switch {
+	case s.src.Contract == nil:
+		rep = unavailableContract("this view's source keeps no knowledge contract")
+	default:
+		got, err := s.src.Contract(r.Context())
+		if err != nil {
+			rep = unavailableContract(err.Error())
+		} else {
+			rep = got
+		}
+	}
+	_ = json.NewEncoder(w).Encode(rep)
 }
 
 // handleStream is the live channel: one SSE connection per open page.

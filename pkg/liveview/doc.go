@@ -16,6 +16,17 @@
 //     one. These are reported by whoever handled the call, through
 //     [Server.Observe], and light up the nodes they named.
 //
+// A third thing on the page does not move, and says so by arriving differently.
+// The contract panel answers how much of this store stands on what, and what on
+// it is waiting for a person — the knowledge contract, read back through
+// [Source.Contract] as a [ContractReport]. It is two aggregate scans and a
+// filtered read over a shelf that changes when somebody reviews a record, so
+// the panel fetches it from /api/contract on its own slow timer
+// ([ContractInterval]) rather than riding the structure poll. A source that
+// keeps no contract leaves the hook nil, and the panel says that in words: a
+// store nobody can ask and a store nobody has graded are different findings,
+// and the second is the one a real machine is usually in.
+//
 // A caller supplies a [Source], which is anything that can read nodes and
 // edges. [OpenSource] builds one from the ambient CortexDB configuration
 // (CORTEXDB_REMOTE for a shared brain, CORTEXDB_PATH otherwise), and

@@ -89,11 +89,13 @@ const pageHTML = `<!DOCTYPE html>
      width, padding and display through an id selector, and a class can never
      outrank one of those. */
   #head.folded>.fold::before,#tools.folded>.fold::before,
-  #legend.folded>.fold::before,#feed.folded>.fold::before{content:"+"}
-  #head.folded>.bd,#tools.folded>.bd,#legend.folded>.bd,#feed.folded>.bd{display:none}
-  #head.folded,#tools.folded,#legend.folded,#feed.folded{
+  #legend.folded>.fold::before,#feed.folded>.fold::before,#contract.folded>.fold::before{content:"+"}
+  #head.folded>.bd,#tools.folded>.bd,#legend.folded>.bd,#feed.folded>.bd,
+  #contract.folded>.bd{display:none}
+  #head.folded,#tools.folded,#legend.folded,#feed.folded,#contract.folded{
     display:block;width:auto;min-width:0;max-height:none;overflow:visible;padding:5px 30px 5px 11px}
-  #head.folded::before,#tools.folded::before,#legend.folded::before,#feed.folded::before{
+  #head.folded::before,#tools.folded::before,#legend.folded::before,#feed.folded::before,
+  #contract.folded::before{
     content:attr(data-label);font-size:10px;text-transform:uppercase;
     letter-spacing:.06em;color:#4b5b76;white-space:nowrap}
   #detail{top:14px;right:250px;width:280px;padding:12px;display:none}
@@ -104,12 +106,61 @@ const pageHTML = `<!DOCTYPE html>
   #detail .r{margin-top:9px}
   #detail .k{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#4b5b76}
   #detail .v{font-size:12px;color:#cbd5e1;word-break:break-word}
+  /* The contract panel: how much of this shelf stands on what, and what on it
+     needs a person. Bottom-centre because the four corners are taken and a
+     tally is a chart — it wants width more than it wants a corner. Everything
+     else about it is its neighbours': the same chrome, the same fold, the same
+     remembered fold, the same one-switch-one-URL-option rule. */
+  #contract{bottom:14px;left:50%;transform:translateX(-50%);width:392px;max-height:44vh;
+    padding:10px 12px;display:flex;flex-direction:column}
+  #contract.off{display:none!important}
+  #contract .bd{display:flex;flex-direction:column;min-height:0;flex:1}
+  #contract h3{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#4b5b76;
+    margin-bottom:7px;flex:none;padding-right:16px}
+  #contract .scroll{overflow:auto;min-height:0}
+  #contract .sub{font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+    color:#4b5b76;margin:11px 0 5px}
+  #contract .say{font-size:11px;color:#94a3b8;line-height:1.55}
+  #contract .say b{color:#cbd5e1;font-weight:600}
+  #contract .foot{font-size:10px;color:#3f4d66;margin-top:6px;line-height:1.5}
+  .gr{display:grid;grid-template-columns:96px 1fr 84px;gap:8px;align-items:center;
+    margin-bottom:3px;font-size:11px}
+  .gr .gn{color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .gr .gb{height:9px;border-radius:2px;background:#0a1120;display:flex;overflow:hidden}
+  .gr .gb i{display:block;height:100%}
+  /* Nodes solid, edges hatched, one bar and one hue. They are counted apart
+     because an edge is an assertion about two things and a node is one thing;
+     they are drawn together because they are the same shelf, and two charts
+     would invite reading one of them and calling it the answer. */
+  .gr .gb i.ge,#ckey i.ge{background-image:repeating-linear-gradient(135deg,
+    rgba(4,6,13,.62) 0 2px,transparent 2px 4px)}
+  .gr .gc{color:#64748b;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  /* Untagged is a producer writing nothing; unknown is a producer writing
+     something the contract does not define. One is the shape of the shelf and
+     the other is somebody's bug, so they must not look alike. */
+  .gr.untagged .gn{color:#64748b;font-style:italic}
+  .gr.unknown .gn{color:#fca5a5}
+  .gr.unknown .gn::before{content:"⚠ "}
+  #ckey{font-size:10px;color:#3f4d66;margin:7px 0 2px;display:flex;gap:12px}
+  #ckey i{display:inline-block;width:15px;height:8px;border-radius:2px;background:#64748b;
+    margin-right:5px;vertical-align:-1px}
+  .att{padding:6px 0;border-bottom:1px solid rgba(30,41,59,.5);font-size:11px}
+  .att .ah{display:flex;gap:6px;align-items:baseline}
+  .att .ag{flex:none;font-size:9px;text-transform:uppercase;letter-spacing:.06em;
+    padding:1px 5px;border-radius:20px;border:1px solid currentColor}
+  .att.held .ag{color:#fbbf24}
+  .att.refused .ag{color:#f87171}
+  .att .an{color:#cbd5e1;word-break:break-word;flex:1;min-width:0}
+  .att .aw{color:#94a3b8;margin-top:3px;word-break:break-word}
+  .att .aw.missing{color:#f87171}
+  .att .am{color:#475569;font-size:10px;margin-top:2px;word-break:break-word}
   /* Below this the corner panels stop clearing each other: the title card runs
      under the controls, and the feed is wider than what is left. Folding takes
      care of the two that fold themselves; these two are the ones that stay. */
   @media (max-width:760px){
     #head{min-width:0;max-width:calc(100vw - 262px)}
     #feed{width:auto;max-width:calc(100vw - 28px)}
+    #contract{width:auto;max-width:calc(100vw - 28px)}
   }
   #boot{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;
     flex-direction:column;gap:14px;background:#04060d;transition:opacity .45s}
@@ -158,6 +209,12 @@ const pageHTML = `<!DOCTYPE html>
   <div class="bd"><h3>Activity</h3><div id="feeditems"></div></div>
 </div>
 
+<div class="panel" id="contract" data-label="Contract">
+  <button class="fold" type="button" title="Collapse"></button>
+  <div class="bd"><h3>Knowledge contract</h3>
+    <div class="scroll" id="cbody"><div class="say">Reading the contract…</div></div></div>
+</div>
+
 <div class="panel" id="detail"><span class="x" onclick="closeDetail()">&times;</span>
   <div class="t" id="dt"></div><div id="db"></div></div>
 
@@ -193,6 +250,8 @@ var userMovedCamera = false;
      ?glow=0     bloom off        ?flow=0   link particles off
      ?bg=RRGGBB  background colour, for a page shown through a shape
      ?fit=0      never re-frame the camera after the first fit
+     ?contract=0 no contract panel, and nothing fetched for it - for an
+                 embedder that only wants the shape of the graph
 
    Nothing here overrides a person: a drag still stops the orbit, and a button
    still flips its switch. These are the starting positions, not locks. */
@@ -724,7 +783,12 @@ function restoreFolds(){
   if(stored === null){
     // 760px is where #tools (222px, right) and #head (250px, left) stop
     // clearing each other with the graph still worth looking at between them.
-    ids = window.innerWidth < 760 ? ["legend", "feed"] : [];
+    // 1120px is the same sum for the bottom row: #contract is 392px on the
+    // centre line, and below that it starts overlapping the feed, so it comes
+    // up folded — a chip that names what it is hiding, not a missing panel.
+    if(window.innerWidth < 760) ids = ["legend", "feed", "contract"];
+    else if(window.innerWidth < 1120) ids = ["contract"];
+    else ids = [];
   } else {
     ids = stored ? stored.split(",") : [];
   }
@@ -744,6 +808,134 @@ foldable().forEach(function(p){
   });
 });
 restoreFolds();
+
+/* ---------- the knowledge contract ----------
+
+   The third route onto this page, and deliberately unlike the other two.
+   Structure is polled and diffed because the graph moves under the view;
+   activity is pushed the instant a call is handled because no poll can find a
+   query. The contract is neither: two aggregate scans over the whole store and
+   one filtered read, counting something that changes when a person clears a
+   held record. So this panel fetches it on its own slow timer through its own
+   endpoint, and it never rides the two-second structure poll — which would
+   otherwise triple the store's read load for a number nobody watches tick.
+   CONTRACT_MS mirrors liveview.ContractInterval; a test keeps them equal.
+
+   Two things are shown and no more: the tally, and what needs a person. */
+var CONTRACT_MS = 15000;
+var contractOn = OPTS.contract !== "0";
+
+var GRADE_COLOR = {verified:"#34d399", self_consistent:"#38bdf8", asserted:"#a78bfa",
+  held:"#fbbf24", refused:"#f87171"};
+// Untagged is muted because it is the shape of the shelf; unknown is rose and
+// carries a mark because it is a producer writing something the contract does
+// not define, and that is somebody's bug rather than somebody's silence.
+function gradeColor(r){
+  if(r.kind === "untagged") return "#475569";
+  if(r.kind === "unknown") return "#fb7185";
+  return GRADE_COLOR[r.grade] || "#7c8ba1";
+}
+function num(n){ try { return Number(n||0).toLocaleString(); } catch(e){ return String(n||0); } }
+function clip(s, n){ s = String(s==null?"":s); return s.length > n ? s.slice(0,n) + "…" : s; }
+
+function renderContract(rep){
+  var body = document.getElementById("cbody");
+  if(!rep || !rep.available){
+    // "This view cannot ask" is a different answer from "nothing here is
+    // graded", and drawing an empty chart for the first would misreport the
+    // second — which is the far more common state.
+    body.innerHTML = "<div class='say'>This view cannot read the knowledge contract.<div class='foot'>" +
+      esc((rep && rep.reason) || "no reason given") + "</div></div>";
+    return;
+  }
+  var html = "";
+  if(!rep.graded && !rep.untagged){
+    html += "<div class='say'>Nothing on this shelf yet — no records to grade.</div>";
+  } else if(!rep.graded){
+    // The state a real machine is most likely in today. Five empty bars would
+    // say a measurement was taken and came back empty; none was taken.
+    html += "<div class='say'><b>" + num(rep.nodes) + "</b> nodes and <b>" + num(rep.edges) +
+      "</b> edges, and not one of them carries a grade. Nothing here says how it is known.</div>";
+  } else {
+    // Scaled to the largest row, untagged included, so the graded bars read as
+    // the fraction of the shelf they actually are — which on a real shelf is a
+    // sliver, and saying otherwise is the whole thing this panel exists to
+    // avoid. The floor is the one concession: at that scale twelve records
+    // round to nothing, and a row that has some must not draw like a row that
+    // has none. Under a percent of the bar is still visibly nothing.
+    var max = 1;
+    (rep.rows||[]).forEach(function(r){ max = Math.max(max, r.nodes + r.edges); });
+    function seg(v){ return v > 0 ? Math.max(0.9, 100*v/max) : 0; }
+    html += (rep.rows||[]).map(function(r){
+      var c = gradeColor(r);
+      var name = r.kind === "untagged" ? "untagged" : esc(r.grade || "(blank)");
+      return "<div class='gr " + esc(r.kind) + "'>" +
+        "<span class='gn' title=\"" + name + "\">" + name + "</span>" +
+        "<span class='gb'>" +
+          "<i style='width:" + seg(r.nodes) + "%;background:" + c + "'></i>" +
+          "<i class='ge' style='width:" + seg(r.edges) + "%;background:" + c + "'></i>" +
+        "</span><span class='gc'>" + num(r.nodes) + " · " + num(r.edges) + "</span></div>";
+    }).join("");
+    html += "<div id='ckey'><span><i></i>nodes</span><span><i class='ge'></i>edges</span></div>";
+  }
+  // Said out loud because the scene draws the most-connected part of a large
+  // graph and this counts all of it: two numbers that disagree by an order of
+  // magnitude are not a fault, and a reader should not have to guess that. Not
+  // said over an empty store, where there are no two numbers to reconcile.
+  if(rep.graded || rep.untagged){
+    html += "<div class='foot'>counted over the whole store — the scene draws its most-connected part</div>";
+  }
+
+  var att = rep.attention || [];
+  html += "<div class='sub'>Needs a person</div>";
+  if(!att.length){
+    html += "<div class='say'>Nothing held, nothing refused.</div>";
+  } else {
+    html += att.map(function(r){
+      var g = r.grade === "refused" ? "refused" : "held";
+      var meta = [];
+      // Only when the record names one. A refusal says who refused, or says
+      // nothing — never a name this page filled in.
+      if(r.by) meta.push((g === "refused" ? "refused by " : "held by ") + r.by);
+      if(r.state) meta.push(r.state);
+      if(r.producer) meta.push(r.producer);
+      if(r.source) meta.push(r.source);
+      if(r.at) meta.push(r.at);
+      return "<div class='att " + g + "'><div class='ah'><span class='ag'>" + g + "</span>" +
+        "<span class='an'>" + esc(clip(r.content || r.id, 90)) +
+        (r.edge ? " <span style='color:#475569'>edge</span>" : "") + "</span></div>" +
+        // Every one of these carries a reason by contract, so a blank one is
+        // itself the finding rather than an empty line to skip past.
+        (r.why ? "<div class='aw'>" + esc(r.why) + "</div>"
+               : "<div class='aw missing'>no reason given — the contract requires one</div>") +
+        (meta.length ? "<div class='am'>" + esc(meta.join(" · ")) + "</div>" : "") + "</div>";
+    }).join("");
+    if(rep.truncated) html += "<div class='foot'>showing " + num(att.length) + " of " + num(rep.total) + "</div>";
+  }
+  body.innerHTML = html;
+}
+
+// Relative, for the same reason the stream is: the page is mounted behind
+// other applications' proxies, and an absolute path would leave the mount.
+function loadContract(){
+  if(!contractOn) return;
+  var panel = document.getElementById("contract");
+  // Folded, nobody is looking, and this is two aggregate scans. It refreshes
+  // the moment it is opened again.
+  if(panel.classList.contains("folded")) return;
+  fetch("api/contract", {cache:"no-store"})
+    .then(function(res){ return res.json(); })
+    .then(renderContract)
+    .catch(function(err){ renderContract({available:false, reason:String(err)}); });
+}
+if(contractOn){
+  document.getElementById("contract").querySelector(".fold")
+    .addEventListener("click", function(){ loadContract(); });
+  loadContract();
+  setInterval(loadContract, CONTRACT_MS);
+} else {
+  document.getElementById("contract").classList.add("off");
+}
 
 /* ---------- the stream ---------- */
 var booted = false;

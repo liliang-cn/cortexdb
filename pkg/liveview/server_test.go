@@ -405,12 +405,14 @@ func TestTheStreamIsClosedWithAMethodThatExists(t *testing.T) {
 	}
 }
 
-// The four corner panels sit on top of the scene they describe. In a narrow
-// window — a phone, or the graph framed inside another application — they meet
-// in the middle and cover the graph, so each has to be foldable, and the fold
-// has to survive a reload.
+// Every panel sits on top of the scene it describes — the four in the corners
+// and the contract panel on the bottom centre line. In a narrow window — a
+// phone, or the graph framed inside another application — they meet in the
+// middle and cover the graph, so each has to be foldable, and the fold has to
+// survive a reload. A panel that folded differently from its neighbours would
+// be a second design in one page.
 func TestEveryCornerPanelFolds(t *testing.T) {
-	for _, id := range []string{"head", "tools", "legend", "feed"} {
+	for _, id := range []string{"head", "tools", "legend", "feed", "contract"} {
 		if !strings.Contains(pageHTML, `id="`+id+`" data-label=`) {
 			t.Errorf("panel %q has no data-label, so folded it would name nothing", id)
 		}
@@ -421,8 +423,8 @@ func TestEveryCornerPanelFolds(t *testing.T) {
 			t.Errorf("panel %q has no id-level rule hiding its body when folded", id)
 		}
 	}
-	if strings.Count(pageHTML, `class="fold"`) != 4 {
-		t.Error("expected exactly four fold buttons, one per corner panel")
+	if strings.Count(pageHTML, `class="fold"`) != 5 {
+		t.Error("expected exactly five fold buttons, one per panel that covers the scene")
 	}
 	if !strings.Contains(pageHTML, "localStorage.setItem(FOLD_KEY") {
 		t.Error("folding is not remembered, so it has to be redone on every load")
