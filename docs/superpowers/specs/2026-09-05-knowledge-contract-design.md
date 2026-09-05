@@ -169,11 +169,19 @@ What it does not get (`_contradicts`) is an alchemy gap, not an argus one.
 | di-anchor `NoMatch` | engagement | `measured` | `refused` | `_why` |
 | precedent, verdict ∈ {met, met_but_costly, short, missed} | engagement | `measured` | `verified` | `_state` = verdict |
 | precedent, verdict `incomparable` | engagement | `measured` | `held` | `_why` = "measure redefined after adoption" |
-| precedent, verdict `rejected` | engagement | `human` | `refused` | `_why` = `Precedent.why`; `_by` = who rejected |
+| precedent, verdict `rejected`, name kept | engagement | `human` | `refused` | `_why` = `Precedent.why`; `_by` = `Precedent.who`, from `Decision::who` |
+| precedent, verdict `rejected`, name lost | engagement | `measured` | `refused` | `_why` only — a rejection is never signed by a guess |
 | `_audit` row, `refused = true` | database | `measured` | `refused` | `_why` = `note` |
 
 Note what the DI rows do **not** carry: `baseline`, `measured`, `target`. See
 the hard rule.
+
+And note the two `rejected` rows. `_by` is required whenever a record claims
+`human`, so the claim and the name have to move together: a precedent whose
+ledger kept the name is signed, and one whose ledger did not stays `measured`
+with no `_by`. A rejection carrying an invented signature destroys the one
+thing that record is for, which makes "sign it with whoever is nearest" the
+worst of the three available answers.
 
 ## Hard rule: judgements travel, numbers do not
 
