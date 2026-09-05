@@ -85,6 +85,15 @@ const ontologyHTML = `<!DOCTYPE html>
     color:#a9bcd8;font-size:11px;cursor:pointer;font-family:inherit;transition:.15s}
   button:hover{background:#1d2c49;color:#e2ecfb}
   button.on{background:#1d4ed8;border-color:#3b82f6;color:#fff;box-shadow:0 0 14px rgba(59,130,246,.45)}
+  /* A switch that cannot be flipped must not look flipped. The gap has nothing
+     to turn off on a draft, and leaving it lit would be the page showing a
+     lever it is ignoring. */
+  button:disabled{opacity:.35;cursor:not-allowed;box-shadow:none}
+  button:disabled:hover{background:#141f36;color:#a9bcd8}
+  /* The one control that changes what the whole page is about wears the
+     draft's own colour rather than the declarations' blue. */
+  #draftbtn.on{background:#a16207;border-color:#d97706;color:#fffbeb;
+    box-shadow:0 0 14px rgba(217,119,6,.45)}
 
   /* The finding, before the picture. On three of the four states this is the
      whole answer and the diagram below it is empty or beside the point, so it
@@ -117,6 +126,54 @@ const ontologyHTML = `<!DOCTYPE html>
   .chip b{color:#a8a29e;font-weight:500;font-variant-numeric:tabular-nums}
   .chip.blank{font-style:italic;color:#78716c}
   #strays .foot{font-size:10px;color:#3f4d66;margin-top:6px}
+
+  /* THE DRAFT SURFACE.
+
+     Everything a draft adds is in the band's amber and never in the blue the
+     declarations wear, because colour is the fastest of the signals that say
+     "nobody signed this" and the one a reader takes in before any sentence.
+     A draft that borrowed the saved page's palette would be arguing, in the
+     only language a glance understands, that somebody had. */
+  .pill.draft{border-color:#a16207;color:#fbbf24;background:rgba(41,26,4,.55)}
+  #say.drafted,#say.nothing-to-draft{border-color:#3f2d0a}
+  #say.undraftable{border-color:#3b1d1d}
+  #say .notes{font-size:10px;color:#3f4d66;margin-top:6px;line-height:1.55}
+  #say .notes div{margin-top:2px}
+
+  #decisions,#against{margin-top:12px;padding:11px 14px;border:1px solid #3f2d0a;border-radius:10px;
+    background:rgba(20,13,4,.38)}
+  #decisions h3,#against h3{font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+    color:#a16207;margin-bottom:4px}
+  #decisions .say,#against .say{font-size:11px;color:#94a3b8;margin-bottom:8px;line-height:1.55}
+  /* The glance, before the reading: how much of each kind of question there
+     is. Seven merges and one guessed key are two different afternoons, and a
+     flat list of a hundred and seventeen communicates neither. */
+  #decisions .tally{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px}
+  #decisions .tally span{font-size:10.5px;padding:2px 8px;border-radius:5px;border:1px solid #57534e;
+    color:#d6d3d1;background:rgba(41,37,36,.55);white-space:nowrap;cursor:pointer}
+  #decisions .tally span b{color:#fbbf24;font-weight:600;font-variant-numeric:tabular-nums}
+  #decisions .grp{border-top:1px solid #292524;padding-top:9px;margin-top:9px}
+  #decisions .gh{display:flex;gap:8px;align-items:baseline;cursor:pointer}
+  #decisions .gh b{color:#fbbf24;font-size:12px;font-weight:600}
+  #decisions .gh .n{font-size:10px;color:#1c1917;background:#a16207;border-radius:20px;padding:0 7px;
+    font-variant-numeric:tabular-nums;font-weight:600}
+  #decisions .gh .kd{font-size:10px;color:#57534e;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  #decisions .gh::before{content:"–";color:#57534e;width:9px;flex:none}
+  #decisions .grp.shut .gh::before{content:"+"}
+  #decisions .grp.shut .q,#decisions .grp.shut .d,#decisions .grp.shut .more{display:none}
+  #decisions .q{font-size:11px;color:#94a3b8;margin:5px 0 3px;line-height:1.55}
+  #decisions .d{margin-top:6px;padding-left:9px;border-left:2px solid #292524}
+  #decisions .d .tg{font-size:11px;color:#e8eefc;font-weight:600;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-word}
+  #decisions .d .dt{font-size:11px;color:#a8a29e;line-height:1.5}
+  #decisions .d .ev{font-size:10.5px;color:#78716c;margin-top:2px;font-variant-numeric:tabular-nums}
+  #decisions .more{font-size:10.5px;color:#78716c;margin-top:6px}
+  #against .ch{display:flex;gap:8px;align-items:baseline;font-size:11px;margin-top:4px}
+  #against .ch i{flex:none;font-style:normal;font-size:9px;text-transform:uppercase;letter-spacing:.05em;
+    color:#57534e;width:150px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  #against .ch b{color:#e8eefc;font-weight:600}
+  #against .ch.brk i{color:#f87171}
+  #against .ch span{color:#94a3b8}
 
   #legend{margin-top:12px;padding:10px 12px;font-size:11px;color:#64748b}
   #legend h3{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#4b5b76;margin-bottom:7px}
@@ -157,6 +214,7 @@ const ontologyHTML = `<!DOCTYPE html>
     <div id="headrow">
       <button id="gapbtn" class="on" title="Count what the store actually holds and hold the declarations against it">Declared vs actual</button>
       <button id="straybtn" class="on" title="Show the types the store uses that no schema declares">Undeclared</button>
+      <button id="draftbtn" title="Derive an ontology from what this store already holds. Nothing is saved: the page reviews, a person saves.">Draft</button>
       <button id="reload" title="Read it again now">Refresh</button>
       <span id="schemas"></span>
     </div>
@@ -166,6 +224,8 @@ const ontologyHTML = `<!DOCTYPE html>
 <div class="card" id="say">Reading the ontology…</div>
 <div class="card" id="canvas"></div>
 <div id="strays"></div>
+<div id="decisions"></div>
+<div id="against"></div>
 
 <div class="panel" id="legend" data-label="Key">
   <button class="fold" type="button" title="Collapse"></button>
@@ -198,7 +258,25 @@ const ontologyHTML = `<!DOCTYPE html>
                  showing the model alone turns it off
      ?schema=ID  which saved schema to draw, when more than one is saved
      ?panels=0   no chrome, the diagram alone
-     ?bg=RRGGBB  background colour, for a page shown through a shape          */
+     ?bg=RRGGBB  background colour, for a page shown through a shape
+
+   And the draft's own, which change the verb rather than the paint:
+
+     ?draft=1    derive an ontology from what the store holds and draw THAT,
+                 through these same lanes and this same overlay. Nothing is
+                 saved and nothing here can save: the page reviews, a person
+                 saves, through ontology_save. A flag rather than a
+                 ?schema=draft sentinel, because "draft" is a perfectly legal
+                 schema id — it is the deriver's own default — and a store
+                 that had saved its draft could then never be shown it again
+     ?min=N      keep node and edge types with fewer records than N out of the
+                 *drawing*. Defaults to 3: a real brain's unthresholded draft
+                 is 124 object types and 233 link types, which is not
+                 something a person reviews. What the threshold kept out is
+                 counted in the finding above the diagram, so a pruned drawing
+                 is never mistaken for a small vocabulary
+     ?min_nodes=N
+     ?min_edges=N  one side of that threshold on its own                     */
 var OPTS = (function(){
   var q = {};
   try { new URLSearchParams(location.search).forEach(function(v, k){ q[k] = v; }); } catch(e){}
@@ -207,6 +285,10 @@ var OPTS = (function(){
 var gapOn = OPTS.gap !== "0";
 var straysOn = OPTS.strays !== "0";
 var schemaWant = OPTS.schema || "";
+var draftOn = OPTS.draft === "1";
+var minWant = OPTS.min == null ? "" : OPTS.min;
+var minNodesWant = OPTS.min_nodes == null ? "" : OPTS.min_nodes;
+var minEdgesWant = OPTS.min_edges == null ? "" : OPTS.min_edges;
 var BG = /^[0-9a-fA-F]{6}$/.test(OPTS.bg || "") ? "#" + OPTS.bg : "#04060d";
 if(OPTS.panels === "0") document.documentElement.classList.add("bare");
 if(OPTS.bg && BG !== "#04060d") document.body.style.background = BG;
@@ -239,11 +321,84 @@ function laneColor(i){ return LANE[i % LANE.length]; }
    is produced by a source that cannot be asked, by a store with no schema and
    by a schema drawn with ?gap=0, and telling a reader the wrong one of those
    is worse than telling them nothing. */
+/* The draft's three states, kept entirely apart from the saved four.
+
+   Read off rep.draft rather than off the state word, so that a state this
+   build has never heard of still arrives wearing a draft's clothes. The
+   alternative — inferring draftness from an enum match — makes the first
+   unrecognised state render as a saved schema, which is the one mistake this
+   whole surface is arranged to prevent. */
+function draftSay(rep, u){
+  if(rep.state === "undraftable"){
+    return "<b>This source cannot draft an ontology.</b> That is not the same as this store having " +
+      "nothing to draft — nobody could ask it." +
+      "<div class='foot'>" + esc(rep.reason || "no reason given") + "</div>";
+  }
+  if(rep.state === "nothing-to-draft"){
+    return "<b>There is nothing here to draft from.</b> The store was read and holds no nodes, so " +
+      "there is no vocabulary to write down. That is an answer about this store, not about the deriver.";
+  }
+
+  if(rep.state !== "drafted"){
+    /* A draft state this build has never heard of. Saying so is the only
+       honest thing left: the alternative is to fall through into the drafted
+       sentence and describe a derivation that may not have happened. */
+    return "<b>This draft arrived in a state this page does not know how to read.</b>" +
+      "<div class='foot'>" + esc(rep.state || "no state given") + " &middot; " +
+      esc(rep.reason || "no reason given") + "</div>";
+  }
+
+  var objects = (rep.object_types||[]).length, links = (rep.link_types||[]).length;
+  var html = "<b>Nobody has saved this.</b> It is a first schema derived from what this store already " +
+    "contains: <b>" + num(objects) + "</b> object " + plural(objects, "type", "types") + " and <b>" +
+    num(links) + "</b> link " + plural(links, "type", "types") + " proposed over the <b>" +
+    num(rep.source_nodes) + "</b> " + plural(rep.source_nodes, "node", "nodes") + " and <b>" +
+    num(rep.source_edges) + "</b> " + plural(rep.source_edges, "edge", "edges") + " that were read. " +
+    "Every type is experimental, every primary key is a guess, every cardinality is MANY, and " +
+    "enforcement is vocabulary. Saving it — or a corrected version of it — is a person's act and " +
+    "happens elsewhere, through <b>ontology_save</b>.";
+
+  if(rep.decisions_total){
+    html += " <b>" + num(rep.decisions_total) + "</b> " +
+      plural(rep.decisions_total, "question is", "questions are") + " waiting for a decision below.";
+  }
+
+  /* The threshold, stated whether or not it bit. A drawing of thirty boxes
+     with a hundred types behind it reads as a small brain unless the page
+     says otherwise, and "nothing was pruned" is the other half of the same
+     sentence — without it, silence would mean either. */
+  html += "<div class='foot'>Drawn at <b>min_nodes=" + num(rep.min_nodes) + "</b>, <b>min_edges=" +
+    num(rep.min_edges) + "</b>. ";
+  if(rep.pruned_node_types || rep.pruned_edge_types){
+    html += "That kept <b>" + num(rep.pruned_node_types) + "</b> node " +
+      plural(rep.pruned_node_types, "type", "types") + " (" + num(rep.pruned_nodes) + " nodes) and <b>" +
+      num(rep.pruned_edge_types) + "</b> edge " + plural(rep.pruned_edge_types, "type", "types") +
+      " (" + num(rep.pruned_edges) + " edges) out of the <em>drawing</em> — not out of the counts. " +
+      "They are in the band below, and a lower threshold draws them.";
+  } else {
+    html += "Nothing was kept out of the drawing by the threshold; everything absent below was " +
+      "excluded by the deriver's own rules.";
+  }
+  html += " The store carries <b>" + num(rep.source_node_types) + "</b> node types and <b>" +
+    num(rep.source_edge_types) + "</b> edge types in all.</div>";
+
+  /* The deriver's own caveats, in its words. It knows what it did not do, and
+     a view paraphrasing that would be a second opinion pretending to be the
+     first. */
+  if((rep.notes||[]).length){
+    html += "<div class='notes'>" + rep.notes.map(function(n){
+      return "<div>" + esc(n) + "</div>";
+    }).join("") + "</div>";
+  }
+  return html;
+}
+
 function renderSay(rep){
   var el = document.getElementById("say");
   el.className = "card " + esc(rep.state || "");
   var u = rep.usage || {};
   var html = "";
+  if(rep.draft){ el.innerHTML = draftSay(rep, u); return; }
   if(rep.state === "unreadable"){
     html = "<b>This view cannot be asked for an ontology.</b> That is not the same as this store " +
       "having none — nobody asked it." +
@@ -298,6 +453,22 @@ function renderSay(rep){
 
 function renderHead(rep){
   var s = document.getElementById("sub");
+  /* A draft never wears a saved schema's chips. No "active", no "inactive",
+     no strict-actions badge: those describe a schema that is deciding what
+     writes are allowed, and this one is deciding nothing. */
+  if(rep.draft){
+    if(rep.state === "undraftable") s.innerHTML = "no draft from this source";
+    else if(rep.state === "nothing-to-draft") s.innerHTML = "nothing to draft from";
+    else {
+      s.innerHTML = "<b>" + esc(rep.schema_id || "draft") + "</b> &middot; derived, not saved" +
+        "<span class='pill draft'>draft &middot; nobody signed this</span>" +
+        "<span class='pill cold'>" + esc(rep.enforcement || "vocabulary") + "</span>" +
+        "<span class='pill cold'>min " + num(rep.min_nodes) + " / " + num(rep.min_edges) + "</span>" +
+        (rep.against ? "<span class='pill warn'>vs " + esc(rep.against) + "</span>" : "");
+    }
+    document.getElementById("schemas").innerHTML = "";
+    return;
+  }
   if(!rep.saved){
     s.innerHTML = rep.state === "unreadable" ? "no answer from this source" : "no schema saved";
   } else {
@@ -406,10 +577,16 @@ function svgText(x, y, s, attrs){
 function renderDiagram(rep){
   var host = document.getElementById("canvas");
   host.innerHTML = "";
-  if(!rep.saved || !(rep.object_types||[]).length){
-    /* Nothing declared. The sentence above has already said which of the two
-       reasons that is; drawing an empty frame under it would add a third
-       claim nobody made. */
+  if(!(rep.object_types||[]).length){
+    /* Nothing to draw. The sentence above has already said which of the
+       reasons that is; drawing an empty frame under it would add one more
+       claim nobody made.
+
+       Gated on the boxes alone, and deliberately no longer on rep.saved: a
+       draft has object types and nothing saved, and a guard that asked
+       whether somebody had saved this would hide the whole point of drafting
+       it. For a saved report the two conditions coincide anyway — a report
+       with no schema has no object types either. */
     host.style.display = "none";
     return;
   }
@@ -752,10 +929,20 @@ function renderStrays(rep){
   };
   var html = "<h3>Outside the model</h3>";
   html += "<div class='say'>" +
-    (rep.saved
-      ? "These are the types the store's own records carry, which this schema never declares."
-      : "There is no schema, so every type the store uses is here. This is the vocabulary the brain " +
-        "already has and has never written down.") +
+    (rep.draft
+      /* On a draft this band is not "what nobody declared" — it is the
+         deriver's own exclusions, drawn where a reader already knows to look
+         for what a model leaves out. Naming the reasons matters: a type here
+         may be a record, the unrecognised majority, a minority spelling that
+         was deliberately not merged, a name that cannot be an API name, or
+         simply small — and only the last of those is the reader's own doing. */
+      ? "The draft is silent about these. They are what the deriver bucketed out — record kinds and " +
+        "the writes that named no type — or withheld: a minority spelling it would not merge, a name " +
+        "that cannot be an API name, or a type under the threshold."
+      : rep.saved
+        ? "These are the types the store's own records carry, which this schema never declares."
+        : "There is no schema, so every type the store uses is here. This is the vocabulary the brain " +
+          "already has and has never written down.") +
     " <b>" + num(u.undeclared_node_count) + "</b> of <b>" + num(u.nodes) + "</b> nodes and <b>" +
     num(u.undeclared_edge_count) + "</b> of <b>" + num(u.edges) + "</b> edges are under one of them.</div>";
   if((u.undeclared_nodes||[]).length){
@@ -765,6 +952,103 @@ function renderStrays(rep){
   if((u.undeclared_edges||[]).length){
     html += "<div class='grp'><span>edge types &middot; " + num(u.undeclared_edge_types) + "</span>" +
       chips(u.undeclared_edges, u.edge_list_truncated, u.undeclared_edge_types) + "</div>";
+  }
+  el.innerHTML = html;
+}
+
+/* ---------- the review half ----------
+
+   A draft rendered as a picture alone is the picture with the work hidden
+   behind it. Every one of these is a question the data cannot answer — which
+   is why they are a list beside the draft rather than a value inside it — and
+   nothing here answers one: this page reviews, and a person saves.
+
+   Two readings, in this order. The tally is the glance: how much of each kind
+   of question there is, because seven merge candidates and one guessed key
+   are two different afternoons. The groups under it are the reading, open by
+   default and foldable, because a review that starts folded is a review
+   somebody skips. */
+function renderDecisions(rep){
+  var el = document.getElementById("decisions");
+  var groups = (rep.draft && rep.decisions) || [];
+  if(!groups.length){ el.style.display = "none"; el.innerHTML = ""; return; }
+  el.style.display = "";
+
+  var html = "<h3>To decide &middot; " + num(rep.decisions_total) + "</h3>";
+  html += "<div class='say'>The half of a draft that is not a picture. Nothing here is decided by " +
+    "this page or by the deriver that raised it — a schema is saved by a person, through " +
+    "<b>ontology_save</b>.</div>";
+  html += "<div class='tally'>" + groups.map(function(g, i){
+    return "<span data-jump='" + i + "'>" + esc(g.title) + " <b>" + num(g.count) + "</b></span>";
+  }).join("") + "</div>";
+
+  html += groups.map(function(g, i){
+    var shown = g.decisions || [];
+    return "<div class='grp' data-grp='" + i + "'>" +
+      "<div class='gh'><b>" + esc(g.title) + "</b><span class='n'>" + num(g.count) + "</span>" +
+      "<span class='kd'>" + esc(g.kind) + "</span></div>" +
+      "<div class='q'>" + esc(g.question) + "</div>" +
+      shown.map(function(d){
+        return "<div class='d'><div class='tg'>" + esc(d.target) + "</div>" +
+          "<div class='dt'>" + esc(d.detail) + "</div>" +
+          (d.evidence ? "<div class='ev'>" + esc(d.evidence) + "</div>" : "") + "</div>";
+      }).join("") +
+      /* The cap is on the list, never on the count — the same bargain the
+         band above makes. A reader is told how many there are and shown as
+         many as a page can hold, rather than shown a list that stops. */
+      (g.truncated ? "<div class='more'>and " + num(g.count - shown.length) +
+        " more of this kind, not listed</div>" : "") +
+      "</div>";
+  }).join("");
+  el.innerHTML = html;
+
+  Array.prototype.forEach.call(el.querySelectorAll(".grp .gh"), function(h){
+    h.addEventListener("click", function(){ h.parentNode.classList.toggle("shut"); });
+  });
+  Array.prototype.forEach.call(el.querySelectorAll(".tally span"), function(t){
+    t.addEventListener("click", function(){
+      var g = el.querySelector(".grp[data-grp='" + t.getAttribute("data-jump") + "']");
+      if(!g) return;
+      g.classList.remove("shut");
+      g.scrollIntoView({block: "start"});
+    });
+  });
+}
+
+/* ---------- and against a schema somebody did save ----------
+
+   Only when there is one. A diff against nothing renders as "every type
+   added", which reads as a change somebody made rather than as a store that
+   has never been modelled — and on a real brain, never modelled is the case.
+
+   The vocabulary here is ontology_diff's, and it is the right one exactly
+   here and nowhere else on this page: both sides are schemas, so "added",
+   "removed" and "breaking" describe what they say. Held against data instead
+   — which is what the rest of this page does — those words would be claiming
+   somebody changed something. */
+function renderAgainst(rep){
+  var el = document.getElementById("against");
+  if(!rep.draft || !rep.against){ el.style.display = "none"; el.innerHTML = ""; return; }
+  el.style.display = "";
+  var changes = rep.changes || [];
+  var breaking = changes.filter(function(c){ return c.breaking; }).length;
+
+  var html = "<h3>Against the saved schema &middot; " + esc(rep.against) +
+    " v" + num(rep.against_version) + "</h3>";
+  html += "<div class='say'>This store already has a schema, and nothing here is applied to it. " +
+    "This is what would differ if the draft replaced it, taken through the same comparison a version " +
+    "bump goes through: <b>" + num(rep.changes_total) + "</b> " +
+    plural(rep.changes_total, "change", "changes") +
+    (rep.breaking
+      ? ", of which <b>" + num(breaking) + "</b> listed here would stop something already stored from validating."
+      : ", none of which would invalidate anything already stored.") + "</div>";
+  html += changes.map(function(c){
+    return "<div class='ch" + (c.breaking ? " brk" : "") + "'><i>" + esc(c.kind) + "</i>" +
+      "<b>" + esc(c.target) + "</b><span>" + esc(c.detail) + "</span></div>";
+  }).join("");
+  if(rep.changes_total > changes.length){
+    html += "<div class='ch'><i></i><span>and " + num(rep.changes_total - changes.length) +
+      " more, not listed</span></div>";
   }
   el.innerHTML = html;
 }
@@ -782,12 +1066,30 @@ function renderStrays(rep){
    makes by not fetching while it is folded. */
 function load(){
   var q = [];
-  if(!gapOn) q.push("gap=0");
+  if(draftOn){
+    /* One endpoint, two verbs. The draft is the same question about the same
+       store asked as "what could be declared", so it arrives through the same
+       fetch at the same instant rather than through a second one that could
+       disagree with this one about what the store held.
+
+       gap has nothing to switch off here: deriving a draft reads the type
+       counts as part of deriving it, so the overlay is already paid for and
+       turning it off would buy nothing. */
+    q.push("draft=1");
+    if(minWant !== "") q.push("min=" + encodeURIComponent(minWant));
+    if(minNodesWant !== "") q.push("min_nodes=" + encodeURIComponent(minNodesWant));
+    if(minEdgesWant !== "") q.push("min_edges=" + encodeURIComponent(minEdgesWant));
+  } else if(!gapOn) q.push("gap=0");
   if(schemaWant) q.push("schema=" + encodeURIComponent(schemaWant));
   fetch("api/ontology" + (q.length ? "?" + q.join("&") : ""), {cache: "no-store"})
     .then(function(r){ return r.json(); })
     .then(render)
     .catch(function(err){
+      if(draftOn){
+        render({draft: true, state: "undraftable", reason: String(err), schemas: [],
+          object_types: [], link_types: [], interfaces: [], usage: {}, decisions: [], notes: []});
+        return;
+      }
       render({state: "unreadable", reason: String(err), schemas: [],
         object_types: [], link_types: [], interfaces: [], usage: {}});
     });
@@ -799,6 +1101,8 @@ function render(rep){
   renderSay(rep);
   renderDiagram(rep);
   renderStrays(rep);
+  renderDecisions(rep);
+  renderAgainst(rep);
   var b = document.getElementById("boot");
   b.classList.add("gone");
   setTimeout(function(){ b.style.display = "none"; }, 500);
@@ -852,8 +1156,35 @@ document.getElementById("straybtn").addEventListener("click", function(){
   this.classList.toggle("on", straysOn);
   if(REP) renderStrays(REP);
 });
+document.getElementById("draftbtn").addEventListener("click", function(){
+  draftOn = !draftOn;
+  this.classList.toggle("on", draftOn);
+  syncDraftChrome();
+  // A selection is a type in the schema that was being drawn, and the draft's
+  // schema is a different one. Kept, and the panel would reopen on a name
+  // that now means something else.
+  SEL = null;
+  closeDetail();
+  setHilite(null);
+  load();
+});
+// The gap switch is meaningless on a draft — see load() — so it is disabled
+// rather than left looking like a lever that does nothing.
+function syncDraftChrome(){
+  document.getElementById("draftbtn").classList.toggle("on", draftOn);
+  var g = document.getElementById("gapbtn");
+  g.disabled = draftOn;
+  // Unlit while it is inert, and back to whatever it was when the draft is
+  // switched off — the switch keeps its position, it just stops claiming to
+  // be holding one.
+  g.classList.toggle("on", gapOn && !draftOn);
+  g.title = draftOn
+    ? "A draft is derived from the store's own counts, so the overlay is already taken"
+    : "Count what the store actually holds and hold the declarations against it";
+}
 document.getElementById("gapbtn").classList.toggle("on", gapOn);
 document.getElementById("straybtn").classList.toggle("on", straysOn);
+syncDraftChrome();
 
 // The layout depends on the width, and an SVG does not reflow the way the
 // panels around it do — left alone it keeps whatever width the window had when

@@ -45,6 +45,22 @@
 // is [OntologyReport.State], decided in Go so the page never reads an empty
 // list and guesses.
 //
+// That page has a second half, because on a real brain the first half is a
+// dead end: nothing is declared, so the diagram is empty and the finding is
+// "nobody has modelled this store". [Source.Draft] answers the question that
+// leaves — what *could* be declared — by deriving a first schema from the
+// store's own vocabulary and drawing it through the same lanes, the same
+// curves and the same overlay, so the counts under the boxes are real and the
+// band outside the model is exactly what the deriver bucketed out or withheld.
+// It arrives as an [OntologyDraftView], which is an [OntologyReport] plus the
+// half a draft has and a saved schema does not: the questions a person has to
+// answer before signing it, and the threshold the drawing was pruned at.
+// Nothing on that path writes — [OntologyDrafted] is a proposal, saving is a
+// person's act done through ontology_save — and its three states
+// ([OntologyDrafted], [OntologyNothingToDraft], [OntologyUndraftable]) share
+// no word with the saved four, so a draft can never be handed a saved
+// schema's sentence.
+//
 // A caller supplies a [Source], which is anything that can read nodes and
 // edges. [OpenSource] builds one from the ambient CortexDB configuration
 // (CORTEXDB_REMOTE for a shared brain, CORTEXDB_PATH otherwise), and

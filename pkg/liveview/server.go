@@ -62,7 +62,19 @@ type Source struct {
 	// [OntologyReport.State] names which, and the page reads that rather than
 	// inferring it from an empty list of types.
 	Ontology func(ctx context.Context, q OntologyQuery) (OntologyReport, error)
-	Close    func() error
+	// Draft derives an ontology this store does not have — what *could* be
+	// declared, held against what is there, with the questions a person has
+	// to answer beside it. It saves nothing.
+	//
+	// A hook of its own rather than a flag on OntologyQuery, because nil is
+	// the answer to a different question. Ontology non-nil means "this source
+	// can be asked what it declares"; the shared brain answers that today and
+	// cannot derive a draft, because ontology_draft postdates the version it
+	// runs. One nil check cannot carry two answers, and folding the two would
+	// leave a source that can read a schema but not derive one with no way to
+	// say so — which is the state the cluster is actually in.
+	Draft func(ctx context.Context, q OntologyDraftQuery) (OntologyDraftView, error)
+	Close func() error
 }
 
 // OpenSource opens whichever brain this process is configured for. The
@@ -77,6 +89,7 @@ func OpenSource(ctx context.Context) (*Source, error) {
 			},
 			Contract: remoteContract(addr, token),
 			Ontology: remoteOntology(addr, token),
+			Draft:    remoteDraft(addr, token),
 			Close:    func() error { return nil },
 		}, nil
 	}
@@ -99,6 +112,7 @@ func OpenSource(ctx context.Context) (*Source, error) {
 		},
 		Contract: localContract(db),
 		Ontology: localOntology(db),
+		Draft:    localDraft(db),
 		Close:    db.Close,
 	}, nil
 }
@@ -395,6 +409,11 @@ func (s *Server) handleOntology(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 
+	if r.URL.Query().Get("draft") == "1" {
+		s.writeOntologyDraft(w, r)
+		return
+	}
+
 	q := OntologyQuery{
 		SchemaID: r.URL.Query().Get("schema"),
 		Usage:    r.URL.Query().Get("gap") != "0",
@@ -412,6 +431,69 @@ func (s *Server) handleOntology(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	_ = json.NewEncoder(w).Encode(rep)
+}
+
+// writeOntologyDraft answers ?draft=1: not what this store declares, but what
+// it could declare, derived from what it holds.
+//
+// The same endpoint rather than one of its own, because it is the same
+// question asked with a different verb, and because the page then has one
+// loader, one instant and one place a report arrives — the argument
+// handleOntology already makes for not splitting the declarations from the
+// counts. ?draft=1 rather than a schema=draft sentinel: "draft" is a legal
+// schema id, and the deriver's own default one, so a sentinel would mean a
+// store that had saved its draft could never be shown its saved draft again.
+//
+// The threshold defaults to OntologyDraftDefaultMin rather than to the
+// deriver's zero. Zero is right for a program and wrong for a page: the shared
+// brain's unthresholded draft is 124 object types and 233 link types, and a
+// first load nobody can review teaches a reader that this page is not for
+// reviewing.
+//
+// Like the two endpoints above, a source that cannot answer still gets a 200
+// with a view saying why. A failed fetch would leave the page showing the
+// draft it drew last, which after an error is a different store's proposal
+// presented as this one's.
+func (s *Server) writeOntologyDraft(w http.ResponseWriter, r *http.Request) {
+	min := ontologyDraftMin(r.URL.Query().Get("min"), OntologyDraftDefaultMin)
+	q := OntologyDraftQuery{
+		SchemaID: r.URL.Query().Get("schema"),
+		MinNodes: ontologyDraftMin(r.URL.Query().Get("min_nodes"), min),
+		MinEdges: ontologyDraftMin(r.URL.Query().Get("min_edges"), min),
+	}
+
+	var view OntologyDraftView
+	switch {
+	case s.src.Draft == nil:
+		view = unavailableDraft("this view's source cannot be asked to draft an ontology")
+	default:
+		got, err := s.src.Draft(r.Context(), q)
+		if err != nil {
+			view = unavailableDraft(err.Error())
+		} else {
+			view = got
+		}
+	}
+	_ = json.NewEncoder(w).Encode(view)
+}
+
+// ontologyDraftMin reads one threshold, falling back rather than failing.
+//
+// Zero has to be expressible — it is how a reader asks for the whole
+// vocabulary — so "absent" and "0" cannot be the same thing, which is why this
+// takes the raw string. A value that is not a number falls back to the
+// default: a page is not worth a 400, and drafting 124 types because somebody
+// typed a word is the wrong way to be strict.
+func ontologyDraftMin(raw string, fallback int) int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		return fallback
+	}
+	return n
 }
 
 // handleStream is the live channel: one SSE connection per open page.
