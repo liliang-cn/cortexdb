@@ -46,10 +46,18 @@ const (
 	// verbatim. It is displayed as detail and never interpreted across
 	// producers — that is what keeps KeyGrade from flattening anything.
 	KeyState = ContractPrefix + "state"
-	// KeyAt is when the record was produced, RFC 3339.
+	// KeyAt is when the record was produced, RFC 3339: when a measurement was
+	// taken, when a claim was published, when a person asserted. A writer that
+	// has no producer-side time (alchemy stamps none on an extraction, because
+	// its results are content-addressed and a clock would change every
+	// address) writes the moment it put the record on the shelf. That is a
+	// true statement about the record, and _run/_source point back to the job.
 	KeyAt = ContractPrefix + "at"
-	// KeyBy is the named person, or the speaker a report attributes a claim
-	// to. Not the outlet — that is KeySource.
+	// KeyBy is the named person who asserted this record into the graph. Not
+	// the speaker a report quotes — that is what a claim is about, and it
+	// belongs in the graph as an edge (argus: attributed_to) where it can be
+	// queried; folding it in here would make "who put this here" and "who the
+	// report says said it" one field.
 	KeyBy = ContractPrefix + "by"
 	// KeyWhy is the reason a record is held or refused, in words a person can
 	// act on. A refusal without a reason is noise the reader will delete.
@@ -64,22 +72,25 @@ const (
 	KeyConfidence = ContractPrefix + "confidence"
 )
 
-// Producer values. The first five are alchemy's Producer enum as its CortexDB
-// connector writes them today; the contract adds two for a producer whose
-// output is a governed number rather than an extraction.
+// Producer values. The first five are the strings alchemy's Producer type
+// already puts on the wire (pkg/alchemy/types.go: "ddl", "graph-import", …)
+// and its CortexDB connector already writes under _producer — not the proto
+// enum names, which never leave the RPC layer. The contract ratifies what is
+// written, so a record alchemy stored last month validates today. Two more
+// for a producer whose output is a governed number rather than an extraction.
 const (
-	ProducerDDL         = "PRODUCER_DDL"
-	ProducerGraphImport = "PRODUCER_GRAPH_IMPORT"
-	ProducerTabular     = "PRODUCER_TABULAR"
-	ProducerLLMExtract  = "PRODUCER_LLM_EXTRACT"
-	ProducerHuman       = "PRODUCER_HUMAN"
+	ProducerDDL         = "ddl"
+	ProducerGraphImport = "graph-import"
+	ProducerTabular     = "tabular"
+	ProducerLLMExtract  = "llm-extract"
+	ProducerHuman       = "human"
 	// ProducerMeasured is a value obtained by running a governed query against
 	// a system of record. The value itself does not travel — see the hard rule
 	// in the spec — only the judgement about it does.
-	ProducerMeasured = "PRODUCER_MEASURED"
+	ProducerMeasured = "measured"
 	// ProducerCompiled is derived deterministically from a declared model: a
 	// metric definition, a schema.
-	ProducerCompiled = "PRODUCER_COMPILED"
+	ProducerCompiled = "compiled"
 )
 
 // Grade values: by what kind of thing a record's truth is established.

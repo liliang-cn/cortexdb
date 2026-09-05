@@ -109,18 +109,19 @@ func TestAHumanAssertionNamesTheHuman(t *testing.T) {
 	}
 }
 
-// Closed sets stay closed. A producer inventing a sixth grade or a value it
-// spelled differently gets told the whole allowed set, not just "invalid".
+// Closed sets stay closed. A producer inventing a sixth grade, or writing the
+// proto enum name where the wire string belongs, gets told the whole allowed
+// set, not just "invalid".
 func TestUnknownGradeAndProducerAreNamedWithTheAllowedSet(t *testing.T) {
 	err := ValidateContract(map[string]string{
-		KeySource: "x", KeyProducer: "llm_extract", KeyGrade: "probably",
+		KeySource: "x", KeyProducer: "PRODUCER_LLM_EXTRACT", KeyGrade: "probably",
 		KeyAt: "2026-09-05T00:00:00Z",
 	})
 	if err == nil {
 		t.Fatal("unknown values accepted")
 	}
 	msg := err.Error()
-	for _, want := range []string{`"probably"`, GradeVerified, GradeRefused, `"llm_extract"`, ProducerLLMExtract, ProducerMeasured} {
+	for _, want := range []string{`"probably"`, GradeVerified, GradeRefused, `"PRODUCER_LLM_EXTRACT"`, ProducerLLMExtract, ProducerMeasured} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("error does not mention %s: %s", want, msg)
 		}

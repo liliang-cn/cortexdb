@@ -68,11 +68,11 @@ Required on every record that claims to be knowledge: `_source`, `_producer`,
 |---|---|---|---|
 | `_source` | string | yes | Where it came from: a URL, a file name, a job, an engagement or database **name**. Never a DSN, never a path with credentials. |
 | `_chunk` | int | no | Chunk index within the source. `-1` when the producer did not work in chunks (DDL, graph import, a measurement). alchemy's semantics, unchanged. |
-| `_producer` | enum | yes | How it was made. alchemy's `Producer` values as written today (`PRODUCER_DDL`, `PRODUCER_GRAPH_IMPORT`, `PRODUCER_TABULAR`, `PRODUCER_LLM_EXTRACT`, `PRODUCER_HUMAN`) plus two: **`PRODUCER_MEASURED`** — a value obtained by running a governed query against a system of record — and **`PRODUCER_COMPILED`** — derived deterministically from a declared model (a metric definition, a schema). |
+| `_producer` | enum | yes | How it was made. alchemy's `Producer` strings **as its connector writes them today** (`ddl`, `graph-import`, `tabular`, `llm-extract`, `human` — `pkg/alchemy/types.go`; not the proto enum names, which never leave the RPC) plus two: **`measured`** — a value obtained by running a governed query against a system of record — and **`compiled`** — derived deterministically from a declared model (a metric definition, a schema). |
 | `_grade` | enum | yes | See below. |
 | `_state` | string | no | The producer's own word for where this record stands, verbatim: `met_but_costly`, `needs_review:conflict`, `too_coarse`, `PENDING`. Displayed as detail; never interpreted across producers. |
-| `_at` | RFC 3339 | yes | When the record was produced (for a measurement: when it was measured; for a claim: when it was published). |
-| `_by` | string | when `_producer=PRODUCER_HUMAN` | The named person or, for a claim, the speaker the report attributes it to. **Not** the outlet — that is `_source`. |
+| `_at` | RFC 3339 | yes | When the record was produced (for a measurement: when it was measured; for a claim: when it was published; for a person's assertion: when they made it). A writer with no producer-side time writes the moment it put the record on the shelf — alchemy stamps no clock on an extraction because its results are content-addressed, so its connector fills `_at` at commit. |
+| `_by` | string | when `_producer=human` | The named person who asserted this record into the graph. **Not** the speaker a report quotes — that is what a claim is *about*, and it lives in the graph as an `attributed_to` edge, where it can be queried; folding it into `_by` would make "who put this here" and "who the report says said it" one field. |
 | `_why` | string | when `_grade` ∈ {`held`, `refused`} | The reason, in words a person can act on. A refusal without a reason is noise the reader will delete. |
 | `_contradicts` | JSON `[]string` | no | Ids of records this one cannot both-be-true with. Written on **both** records by whoever detects it. The disagreement is information, not an error. |
 | `_confidence` | float `[0,1]` | no | alchemy's extraction confidence. Never a substitute for `_grade`. |
@@ -114,40 +114,63 @@ Two rules that fall out:
 
 ## Mapping the three producers (the evidence the vocabulary holds)
 
-**alchemy** (connector already writes every key but the new five):
+**alchemy** (connector already writes every key but the new five). What the
+connector can say is bounded by what reaches it: a rejected record is removed
+before any sink sees it (`pkg/review/apply.go` `VerbReject`), a held result is
+refused whole (`ErrHeld`, §7.3), and `Conflict` names its sides as prose with
+no `Ref`. So the table has two halves.
+
+Reachable on the write path today:
 
 | alchemy | `_producer` | `_grade` | `_state` |
 |---|---|---|---|
-| deterministic (DDL, graph import, tabular without LLM) | as today | `self_consistent` | — |
-| LLM extraction, not reviewed | `PRODUCER_LLM_EXTRACT` | `asserted` | — |
-| reviewer accepted (`reviewed_by` set, verb accept) | as today | `verified` | verb |
-| reviewer rejected | as today | `refused` | verb; `_why` = the rejection |
-| any `NEEDS_REVIEW` | as today | `held` | `needs_review:<ReviewKind>`; `_why` = finding detail |
-| `Violation` | as today | `refused` | `violation:<ViolationKind>` |
-| `Conflict{left,right}` | — | both sides keep their own grade | `_contradicts` written on both |
+| `ddl` / `graph-import` / `tabular`, not reviewed, no violation | as today | `self_consistent` | — |
+| `llm-extract`, not reviewed | as today | `asserted` | — |
+| `human` (an `Assert`) | as today | `asserted` | — (`_by` already written) |
+| `ReviewedBy` set — the record survived review | as today | `verified` | — (the verb is not on the wire; nothing is invented) |
+| a `Violation` whose `About` names this record | as today | `refused` | `violation:<ViolationKind>`; `_why` = `Violation.Detail` |
+| a fused edge (several relations → one CortexDB edge) | — | its **least established** member's grade | — |
 
-**argus** (writes through alchemy; its ontology `world@3` is the declared type):
+Review outranks a violation: the reviewer was shown the finding. A fused edge
+takes the weakest member's grade, the same rule the connector already applies
+to `inferred`; every member's own provenance stays in `_provenance`.
+
+Not reachable without a change in `pkg/alchemy` / `pkg/sink`, and therefore
+**not written** rather than guessed:
+
+| row | why not | what it needs |
+|---|---|---|
+| `refused` from a review rejection | `review.Apply` deletes the record before a sink sees it | `Result` carrying its rejections |
+| `_state` = review verb | `ReviewedBy` is a list of names; no verb reaches a sink | a decision on `Result` |
+| `held` | the only survivable NEEDS_REVIEW is a conflict, and §7.3 refuses the whole result first | `review.Kind` reaching a sink |
+| `_contradicts` | `Conflict{left,right}` carries statements, not `Ref`s — recovering ids means parsing prose, which `Violation.About` exists to abolish | an `About Ref` on each side of `Conflict` |
+
+**argus** (writes through alchemy; its ontology `world@3` is the declared type,
+and it adds nothing of its own):
 
 | argus | key |
 |---|---|
-| `Claim.text`, `published_at` | record content; `_at` |
-| `Source` (outlet domain, via `reports`) | `_source` |
-| `attributed_to` (the speaker) | `_by` |
-| every `Claim` | `_grade=asserted`, `_producer=PRODUCER_LLM_EXTRACT` |
-| `contradicts` edge | `_contradicts` on both claims |
+| the article (URL alchemy was handed as the source) | `_source` — finer than the outlet: the outlet is derivable from it and is already in the graph as the `Source` node the `reports` edge points at |
+| `Claim.published_at` | not `_at` — `_at` is when alchemy's connector put the record on the shelf; `published_at` stays a `Claim` attribute where a query can compare the two |
+| `attributed_to` (the speaker) | stays an edge; **not** `_by` (see the key table) |
+| every `Claim` | `_grade=asserted`, `_producer=llm-extract` — free, from alchemy's row |
+| `contradicts` edge | stays an ontology edge, queryable as such. `_contradicts` on the two claims is **not written today** — see alchemy's "not reachable" table; it needs `Conflict` to carry `Ref`s |
+
+So argus gets every key it can truthfully have without a line of its own code.
+What it does not get (`_contradicts`) is an alchemy gap, not an argus one.
 
 **DataIntelligence** (writes `InsertGraphDocument`; today's `source: "di"` stays as a plain attribute):
 
 | DI | `_source` | `_producer` | `_grade` | `_state` / `_why` |
 |---|---|---|---|---|
-| metric document (`di-recall::index`) | database name | `PRODUCER_COMPILED` | `self_consistent` | — |
-| di-anchor `Anchored` | engagement | `PRODUCER_MEASURED` | `verified` | — |
-| di-anchor `Ambiguous` / `TooCoarse` | engagement | `PRODUCER_MEASURED` | `held` | `_why` from the verdict |
-| di-anchor `NoMatch` | engagement | `PRODUCER_MEASURED` | `refused` | `_why` |
-| precedent, verdict ∈ {met, met_but_costly, short, missed} | engagement | `PRODUCER_MEASURED` | `verified` | `_state` = verdict |
-| precedent, verdict `incomparable` | engagement | `PRODUCER_MEASURED` | `held` | `_why` = "measure redefined after adoption" |
-| precedent, verdict `rejected` | engagement | `PRODUCER_HUMAN` | `refused` | `_why` = `Precedent.why`; `_by` = who rejected |
-| `_audit` row, `refused = true` | database | `PRODUCER_MEASURED` | `refused` | `_why` = `note` |
+| metric document (`di-recall::index`) | database name | `compiled` | `self_consistent` | — |
+| di-anchor `Anchored` | engagement | `measured` | `verified` | — |
+| di-anchor `Ambiguous` / `TooCoarse` | engagement | `measured` | `held` | `_why` from the verdict |
+| di-anchor `NoMatch` | engagement | `measured` | `refused` | `_why` |
+| precedent, verdict ∈ {met, met_but_costly, short, missed} | engagement | `measured` | `verified` | `_state` = verdict |
+| precedent, verdict `incomparable` | engagement | `measured` | `held` | `_why` = "measure redefined after adoption" |
+| precedent, verdict `rejected` | engagement | `human` | `refused` | `_why` = `Precedent.why`; `_by` = who rejected |
+| `_audit` row, `refused = true` | database | `measured` | `refused` | `_why` = `note` |
 
 Note what the DI rows do **not** carry: `baseline`, `measured`, `target`. See
 the hard rule.
