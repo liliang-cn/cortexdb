@@ -51,6 +51,17 @@ type Source struct {
 	// drawing an empty chart over it, so nil never reads as "nothing here is
 	// graded", which is a different and much more common finding.
 	Contract func(ctx context.Context) (ContractReport, error)
+	// Ontology answers what this store is allowed to talk about — the object
+	// types and link types it declares — and, when asked for, what its records
+	// are actually typed as, so the two can be held against each other.
+	//
+	// Optional and nil for the same reason Contract is, and with a sharper
+	// consequence: a nil hook must never render as "no ontology is saved". A
+	// store nobody can ask and a store nobody has modelled are different
+	// findings, and the second is far and away the more common one — so
+	// [OntologyReport.State] names which, and the page reads that rather than
+	// inferring it from an empty list of types.
+	Ontology func(ctx context.Context, q OntologyQuery) (OntologyReport, error)
 	Close    func() error
 }
 
@@ -65,6 +76,7 @@ func OpenSource(ctx context.Context) (*Source, error) {
 				return LoadRemote(ctx, addr, token, 0, true)
 			},
 			Contract: remoteContract(addr, token),
+			Ontology: remoteOntology(addr, token),
 			Close:    func() error { return nil },
 		}, nil
 	}
@@ -86,6 +98,7 @@ func OpenSource(ctx context.Context) (*Source, error) {
 			return LoadLocal(ctx, db.SQL())
 		},
 		Contract: localContract(db),
+		Ontology: localOntology(db),
 		Close:    db.Close,
 	}, nil
 }
@@ -136,8 +149,15 @@ func Start(ctx context.Context, src *Source, port int, interval time.Duration, a
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handlePage)
+	// The ontology is a second page rather than a mode of the first. It draws
+	// a different graph — tens of declared types, not thousands of instances —
+	// with a different layout, a different cadence and different honesty
+	// states, and a switch on one page would have had to carry all of that
+	// while pretending the two were views of one thing.
+	mux.HandleFunc("/ontology", s.handleOntologyPage)
 	mux.HandleFunc("/api/graph", s.handleGraph)
 	mux.HandleFunc("/api/contract", s.handleContract)
+	mux.HandleFunc("/api/ontology", s.handleOntology)
 	mux.HandleFunc("/api/stream", s.handleStream)
 	s.http = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 
@@ -302,6 +322,54 @@ func (s *Server) handleContract(w http.ResponseWriter, r *http.Request) {
 		got, err := s.src.Contract(r.Context())
 		if err != nil {
 			rep = unavailableContract(err.Error())
+		} else {
+			rep = got
+		}
+	}
+	_ = json.NewEncoder(w).Encode(rep)
+}
+
+// handleOntologyPage serves the second page: what this brain is allowed to
+// talk about, rather than what is in it.
+func (s *Server) handleOntologyPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte(ontologyHTML))
+}
+
+// handleOntology answers the ontology page.
+//
+// One endpoint for both halves — the declarations and the store's own
+// vocabulary — because they are one finding. Split across two fetches they
+// would arrive at two different times against a store that can be written
+// between them, and the page would be left reconciling a schema read at one
+// instant with counts read at another, which is precisely the sort of quiet
+// disagreement this page exists to surface rather than create.
+//
+// gap=0 is the one thing that changes the work: the declarations alone, with
+// nothing read for the overlay. Same bargain the contract panel makes when it
+// is folded — the expensive read is the one nobody is looking at.
+//
+// Like the contract endpoint, a store this view cannot ask still answers 200
+// with a report saying why. A failed fetch would leave the page showing what
+// it drew last, which after an error is the previous answer presented as the
+// current one.
+func (s *Server) handleOntology(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+
+	q := OntologyQuery{
+		SchemaID: r.URL.Query().Get("schema"),
+		Usage:    r.URL.Query().Get("gap") != "0",
+	}
+	var rep OntologyReport
+	switch {
+	case s.src.Ontology == nil:
+		rep = unavailableOntology("this view's source cannot be asked for an ontology")
+	default:
+		got, err := s.src.Ontology(r.Context(), q)
+		if err != nil {
+			rep = unavailableOntology(err.Error())
 		} else {
 			rep = got
 		}

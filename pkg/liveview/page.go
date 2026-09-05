@@ -38,6 +38,11 @@ const pageHTML = `<!DOCTYPE html>
     border-radius:10px;backdrop-filter:blur(10px);box-shadow:0 8px 30px rgba(0,0,0,.5)}
   #head{top:14px;left:14px;padding:11px 14px;min-width:250px}
   #head h1{font-size:13px;font-weight:600;color:#e8eefc;letter-spacing:.2px;padding-right:16px}
+  /* Relative, like everything else this page asks for: an absolute /ontology
+     would leave the mount point when the view is framed inside another
+     application. */
+  #head h1 a{color:#7dd3fc;text-decoration:none;font-weight:500}
+  #head h1 a:hover{text-decoration:underline}
   #counts{font-size:11px;color:#64748b;margin-top:5px}
   #counts b{color:#7dd3fc;font-weight:600}
   .badge{display:inline-flex;align-items:center;gap:5px;font-size:10px;padding:2px 7px;border-radius:20px;
@@ -177,7 +182,7 @@ const pageHTML = `<!DOCTYPE html>
 <div class="panel" id="head" data-label="CortexDB">
   <button class="fold" type="button" title="Collapse"></button>
   <div class="bd">
-    <h1>CortexDB — live brain</h1>
+    <h1>CortexDB — live brain &nbsp;<a href="ontology" title="The ontology: what this brain is allowed to talk about">ontology →</a></h1>
     <div id="counts"><b id="n">0</b> nodes · <b id="e">0</b> edges</div>
     <div class="badge" id="live"><span class="led"></span><span id="livetext">connecting</span></div>
   </div>

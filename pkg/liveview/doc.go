@@ -27,6 +27,24 @@
 // store nobody can ask and a store nobody has graded are different findings,
 // and the second is the one a real machine is usually in.
 //
+// There is a second page, at /ontology, and it draws a different graph about
+// the same store: not what is in this brain but what it is allowed to talk
+// about — tens of declared object types with link types between them, read
+// back through [Source.Ontology] as an [OntologyReport]. It is drawn as a
+// deterministic 2D diagram rather than in the scene next door, for the reason
+// spelled out over ontologyHTML: an ontology is tens of named nodes with
+// declared structure — interfaces, link direction, a foreign key on one side —
+// and a force layout can only express distance.
+//
+// A picture of the declarations alone describes intent. Held against what the
+// store's records are actually typed as, it describes reality, and the gap is
+// the finding: a declared type at zero instances is something nobody used, a
+// node_type nothing declares is the reverse, and on a real brain it is most of
+// them. Which of the four things this page has to say — the source cannot be
+// asked, nothing is saved, a schema is saved and unused, a schema is in use —
+// is [OntologyReport.State], decided in Go so the page never reads an empty
+// list and guesses.
+//
 // A caller supplies a [Source], which is anything that can read nodes and
 // edges. [OpenSource] builds one from the ambient CortexDB configuration
 // (CORTEXDB_REMOTE for a shared brain, CORTEXDB_PATH otherwise), and
