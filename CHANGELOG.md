@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.96.0] - 2026-09-05
+
+### Added
+
+- **`liveview.SourceFor(db, describe)`** — a live view over a brain the caller already
+  holds open. `OpenSource` opens its own database from the environment; a process
+  writing through a `*cortexdb.DB` should not open the same file a second time to draw
+  it. The Source does not close what it did not open.
+
 ## [2.95.0] - 2026-09-05
 
 ### Added
