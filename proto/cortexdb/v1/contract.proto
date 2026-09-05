@@ -1,0 +1,130 @@
+syntax = "proto3";
+package cortexdb.v1;
+option go_package = "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1;rpcv1";
+
+// The knowledge contract, read over the wire.
+//
+// pkg/cortexdb/contract.go says what a producer must write for a record to be
+// trusted and explained, and contract_query.go reads it back. Both are Go, so
+// the reader reaches in-process callers and MCP hosts and nothing else — while
+// the two consumers that need it next are a Rust process (DataIntelligence)
+// and a separate Go one (argus) that must not open the same database file.
+// Without these RPCs the contract is readable by everything except the things
+// that write into it.
+//
+// Its own file rather than a few messages bolted onto graph.proto: the
+// contract is a vocabulary every producer shares across knowledge, memory and
+// the graph alike, not a feature of one store. It is computed today over the
+// graph's property primitives, and putting it in KnowledgeGraphService would
+// pin that implementation fact into the name a client calls forever.
+
+// GradeCount is how many nodes and how many edges carry one grade.
+//
+// The two are kept apart rather than summed for the reason the Go type gives:
+// an edge is an assertion about two things and a node is one thing, so "40
+// records" over 4 nodes and 36 edges describes a different shelf than the
+// reverse. A caller that wants the total adds them.
+message GradeCount {
+  int64 nodes = 1;
+  int64 edges = 2;
+}
+
+// ContractTallyRequest takes nothing on purpose: the tally is over the whole
+// store, and narrowing it to a collection answers a different question than
+// the one a reader opens with ("what is on this shelf").
+message ContractTallyRequest {}
+
+// ContractTallyResponse is how much of the shelf stands on what.
+//
+// The five graded fields are the contract's closed set. The last two are why
+// this message is not just a map: untagged is every record carrying no _grade
+// at all — usually the largest number here, and a five-bar chart drawn without
+// it describes 3% of the data while looking like all of it — and unknown is
+// every grade this build does not recognise, which means some producer is
+// writing a vocabulary the contract does not define. Folding those into
+// untagged would hide the one case a maintainer has to act on.
+message ContractTallyResponse {
+  GradeCount verified = 1;
+  GradeCount self_consistent = 2;
+  GradeCount asserted = 3;
+  GradeCount held = 4;
+  GradeCount refused = 5;
+  GradeCount untagged = 6;
+  map<string, GradeCount> unknown = 7;
+}
+
+// GradedRecord is one record with the contract keys a reader renders.
+//
+// The contract's other keys (_chunk, _model, _confidence, and whatever a
+// producer adds under the prefix) are deliberately absent: this is what a wall
+// shows and what an agent cites, and a message that grew a field per key would
+// be a second place to keep the contract in step. A caller wanting the rest
+// has the id.
+message GradedRecord {
+  string id = 1;
+  // edge tells a node from an edge without a client guessing from the shape of
+  // the id. A graph's assertions are mostly edges, so a reader that renders
+  // only nodes misses the half that matters.
+  bool edge = 2;
+  // type is node_type or edge_type.
+  string type = 3;
+  // content is a node's label. Edges have none — they are named by their type
+  // and their ends.
+  string content = 4;
+  // from and to are an edge's ends, empty on a node. Ids rather than labels:
+  // resolving them costs a query per row, and a caller that wants the labels
+  // already knows how to ask for nodes.
+  string from = 5;
+  string to = 6;
+
+  string grade = 7;
+  // state is the producer's own word for where the record stands, verbatim,
+  // and is never interpreted across producers — that is what keeps grade from
+  // flattening di-consult's Met/Short/Missed into di-anchor's Anchored.
+  string state = 8;
+  // why is the reason a record is held or refused. Every record this API
+  // returns under those grades carries one: a refusal without a reason is
+  // noise the reader will delete.
+  string why = 9;
+  string source = 10;
+  string producer = 11;
+  // at is RFC 3339, as written. Left a string rather than a Timestamp because
+  // the store keeps whatever the producer stamped and a parse here would turn
+  // one producer's malformed record into a failed read of the whole list.
+  string at = 12;
+  string by = 13;
+}
+
+// NeedsAttentionRequest caps the list.
+message NeedsAttentionRequest {
+  // limit caps the records returned. 0 takes the server's default, which keeps
+  // an unbounded ask from returning a whole shelf into a model's context. It
+  // is a cap on the answer, not on the work — total still reports everything.
+  int32 limit = 1;
+}
+
+// NeedsAttentionResponse is the work waiting on the shelf: held (nobody has
+// looked yet) and refused (somebody looked and said no), told apart by grade
+// and each carrying its reason.
+message NeedsAttentionResponse {
+  repeated GradedRecord records = 1;
+  // truncated and total let a capped caller say what it is not showing. A list
+  // that quietly stopped at fifty reads as "fifty things need a person", and
+  // the number is the half a reader acts on.
+  bool truncated = 2;
+  int64 total = 3;
+}
+
+// ContractService reads the knowledge contract. Read-only by construction:
+// what goes on the shelf is written through the stores' own RPCs, and a
+// producer that could stamp a grade without writing the record would be a way
+// to make the tally disagree with the shelf.
+service ContractService {
+  // ContractTally counts every node and edge by its grade.
+  rpc ContractTally(ContractTallyRequest) returns (ContractTallyResponse);
+  // NeedsAttention lists what a person has to deal with. It is a named call
+  // rather than a filter language because it is the one question the contract
+  // exists to make answerable, and because held and refused belong in one list
+  // — split into two calls, it is likely only one gets rendered.
+  rpc NeedsAttention(NeedsAttentionRequest) returns (NeedsAttentionResponse);
+}

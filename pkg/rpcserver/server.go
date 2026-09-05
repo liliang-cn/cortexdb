@@ -100,4 +100,5 @@ func Register(s *grpc.Server, db *cortexdb.DB, opts Options) {
 	rpcv1.RegisterKnowledgeGraphServiceServer(s, &graphService{db: db})
 	rpcv1.RegisterGraphRagServiceServer(s, &graphragService{db: db})
 	rpcv1.RegisterToolsServiceServer(s, &toolsService{db: db})
+	rpcv1.RegisterContractServiceServer(s, &contractService{db: db})
 }

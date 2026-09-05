@@ -102,6 +102,7 @@ func TestTheServedMethodListLooksLikeTheWholeAPI(t *testing.T) {
 	// service, the two tests above still pass with nothing left to check.
 	want := []string{
 		"cortexdb.v1.AdminService",
+		"cortexdb.v1.ContractService",
 		"cortexdb.v1.GraphRagService",
 		"cortexdb.v1.KnowledgeGraphService",
 		"cortexdb.v1.KnowledgeService",

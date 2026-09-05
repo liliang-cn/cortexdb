@@ -124,6 +124,17 @@ var methods = map[string]Method{
 	// search_knowledge and knowledge_memory_recall, which it could not before.
 	"/cortexdb.v1.ToolsService/ListTools": {Access: Read, Rowless: true},
 	"/cortexdb.v1.ToolsService/CallTool":  {Access: Write},
+
+	// ContractService reads the knowledge contract off the shelf. Both are
+	// reads — nothing here stamps a grade — but neither is Rowless, for
+	// Backup's reason rather than Health's: the tally counts every node and
+	// edge in the store and NeedsAttention hands back their content, so both
+	// see rows a confined key is confined away from, and the request carries
+	// no scope field to narrow them by. Rowless false is therefore an outright
+	// denial for a confined key, which is the honest answer — a tally silently
+	// narrowed to one user's rows would report a shelf nobody has.
+	"/cortexdb.v1.ContractService/ContractTally":  {Access: Read},
+	"/cortexdb.v1.ContractService/NeedsAttention": {Access: Read},
 }
 
 // LookupMethod returns the classification of a gRPC full method name.
