@@ -90,6 +90,23 @@ func ontologyToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
+			Name: "ontology_draft",
+			// Reads the graph's vocabulary and hands back a proposal. It
+			// stores nothing — the point of the tool is that a person, not a
+			// deriver, decides what the ontology says.
+			Description: "Propose a first ontology schema from what the graph already contains, with the reasoning and the open questions beside it. Returns three things: the draft schema (enforcement=vocabulary, every type experimental, nothing active), a report saying which rule bucketed each node type as domain / bookkeeping / unclassified and why each edge type was included or excluded, and a to-decide list — spelling collisions that were NOT merged, primary keys that are guesses, and relations whose one-ness looks like cardinality and is not evidence of it. Saves nothing: pass the corrected schema to ontology_save.",
+			InputSchema: toolObjectSchema(
+				nil,
+				map[string]any{
+					"schema_id":         toolStringSchema("ID to give the draft (default \"draft\"). Nothing is saved under it; it is for comparing drafts and for ontology_diff."),
+					"min_nodes":         toolIntegerSchema("Keep node types with fewer nodes than this out of the draft. They stay in the report."),
+					"min_edges":         toolIntegerSchema("Keep edge types with fewer edges than this out of the draft. They stay in the report."),
+					"domain_types":      toolStringArraySchema("Node types to treat as real-world object types whatever the rules say."),
+					"bookkeeping_types": toolStringArraySchema("Node types to treat as record kinds whatever the rules say."),
+				},
+			),
+		},
+		{
 			Name:        "ontology_delete",
 			Mutates:     true,
 			Description: "Delete one ontology schema by ID.",

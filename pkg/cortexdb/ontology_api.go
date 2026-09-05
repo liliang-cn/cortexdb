@@ -209,3 +209,7 @@ func (t *GraphRAGToolbox) DeleteOntologySchema(ctx context.Context, req Ontology
 func (t *GraphRAGToolbox) DiffOntologySchema(ctx context.Context, req OntologyDiffRequest) (*OntologyDiffResponse, error) {
 	return t.db.DiffOntologySchema(ctx, req)
 }
+
+func (t *GraphRAGToolbox) DraftOntology(ctx context.Context, req OntologyDraftRequest) (*OntologyDraftResponse, error) {
+	return t.db.DraftOntology(ctx, req)
+}

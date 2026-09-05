@@ -91,6 +91,19 @@ func addOntologyMCPTools(server *mcp.Server, definitions map[string]ToolDefiniti
 		}
 		return *resp, nil
 	})
+	// Through addOntologyMCPTool like the rest: the response carries a whole
+	// OntologySchema, which reaches the recursive OntologyDataType that panics
+	// the SDK's schema inference.
+	addOntologyMCPTool(server, definitions["ontology_draft"], func(ctx context.Context, req OntologyDraftRequest) (OntologyDraftResponse, error) {
+		resp, err := toolbox.DraftOntology(ctx, req)
+		if err != nil {
+			return OntologyDraftResponse{}, err
+		}
+		if resp == nil {
+			return OntologyDraftResponse{}, nil
+		}
+		return *resp, nil
+	})
 	addOntologyMCPTool(server, definitions["ontology_delete"], func(ctx context.Context, req OntologyDeleteRequest) (OntologyDeleteResponse, error) {
 		resp, err := toolbox.DeleteOntologySchema(ctx, req)
 		if err != nil {

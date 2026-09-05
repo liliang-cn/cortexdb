@@ -38,6 +38,15 @@ func TestJSONHelpersSpeakEachDatabase(t *testing.T) {
 			postgre: []string{"@> to_jsonb(?::text)"},
 		},
 		{
+			// The only helper here that is a join rather than an expression,
+			// and the only one whose failure mode is "the statement raises on
+			// one odd row" rather than "the value reads back wrong".
+			name:    "key enumeration",
+			build:   func(d Dialect) string { return d.JSONEachEntry("n.properties") },
+			sqlite:  []string{", json_each(", "json_type(n.properties) = 'object'", ") je"},
+			postgre: []string{"CROSS JOIN LATERAL jsonb_each_text(", "jsonb_typeof(", "AS je(key, value)"},
+		},
+		{
 			name:    "field write",
 			build:   func(d Dialect) string { return d.JSONSet("properties", "source_document_ids") },
 			sqlite:  []string{"json_set(properties, '$.source_document_ids', json(?))"},

@@ -113,7 +113,7 @@ func (g *GraphStore) typeCounts(ctx context.Context, query string) (map[string]i
 // Edges whose endpoints are missing are not reported: both endpoints are
 // declared foreign keys, so on a store this package opened they cannot exist.
 func (g *GraphStore) EdgeShapes(ctx context.Context, edgeTypes ...string) ([]EdgeShape, error) {
-	where, args := edgeTypeFilter("e.edge_type", edgeTypes)
+	where, args := typeFilter("e.edge_type", edgeTypes)
 	rows, err := g.query(ctx, `
 		SELECT COALESCE(e.edge_type, ''),
 		       COALESCE(f.node_type, ''),
@@ -154,7 +154,7 @@ func (g *GraphStore) EdgeShapes(ctx context.Context, edgeTypes ...string) ([]Edg
 // EdgeShapes. This scans one row per distinct (type, from, to) triple, so on a
 // large graph pass the edge types the caller actually cares about.
 func (g *GraphStore) EdgeEndpointPairs(ctx context.Context, edgeTypes ...string) ([]EdgeEndpointPair, error) {
-	where, args := edgeTypeFilter("e.edge_type", edgeTypes)
+	where, args := typeFilter("e.edge_type", edgeTypes)
 	rows, err := g.query(ctx, `
 		SELECT COALESCE(e.edge_type, ''),
 		       f.id, COALESCE(f.node_type, ''), COALESCE(f.content, ''),
@@ -185,18 +185,22 @@ func (g *GraphStore) EdgeEndpointPairs(ctx context.Context, edgeTypes ...string)
 	return out, rows.Err()
 }
 
-// edgeTypeFilter builds an optional IN clause and its arguments.
+// typeFilter builds an optional IN clause and its arguments.
+//
+// Over any column, not only an edge's type: the node-side reads below narrow
+// the same way, and two copies of one IN clause is how the two would come to
+// disagree about the empty case.
 //
 // The placeholders are written as ? and left for the dialect to rebind, like
 // every other query in this package: a hand-numbered $1 would work on
 // PostgreSQL and break on SQLite, which is the mistake this indirection exists
 // to make impossible.
-func edgeTypeFilter(column string, edgeTypes []string) (string, []any) {
-	if len(edgeTypes) == 0 {
+func typeFilter(column string, types []string) (string, []any) {
+	if len(types) == 0 {
 		return "", nil
 	}
-	args := make([]any, 0, len(edgeTypes))
-	for _, t := range edgeTypes {
+	args := make([]any, 0, len(types))
+	for _, t := range types {
 		args = append(args, t)
 	}
 	return " WHERE " + column + " IN (" + strings.TrimSuffix(strings.Repeat("?,", len(args)), ",") + ")", args
@@ -319,6 +323,67 @@ func escapeLikePrefix(s string) string {
 	s = strings.ReplaceAll(s, "%", `\%`)
 	s = strings.ReplaceAll(s, "_", `\_`)
 	return s
+}
+
+// PropertyKeyUsage is one property key as it appears on the nodes of one type:
+// how many of them carry it, and how many distinct values they carry.
+//
+// Distinct is the field that earns the type. Coverage alone says a key is
+// present; only distinctness separates a key that identifies a record from one
+// that classifies it, which on a store of 4,000 nodes is the difference between
+// `name` and `type` and is the only evidence data can offer about identity at
+// all.
+type PropertyKeyUsage struct {
+	NodeType string `json:"node_type"`
+	Key      string `json:"key"`
+	Records  int    `json:"records"`
+	Distinct int    `json:"distinct_values"`
+}
+
+// NodePropertyKeys reports which property keys the nodes of each type carry.
+//
+// Every other property query in this file starts from a key the caller already
+// knows. This one starts from nothing, because that is where anything deriving
+// a shape from stored data has to start: what the records say about themselves,
+// before anybody has written down what they were supposed to say. A caller
+// wanting it had to enumerate JSON keys itself — which is json_each on SQLite
+// and a lateral jsonb_each_text on PostgreSQL, so it was also a caller pinned
+// to one database.
+//
+// Passing node types narrows the scan to those; passing none reports every
+// type in the graph. They are matched exactly, as stored, and untyped nodes
+// come back under the empty string — the same two rules NodeTypeCounts and
+// EdgeShapes follow, and for the same reasons.
+//
+// Domain-neutral, like the rest of this section: it knows that properties is a
+// JSON object of string fields, and nothing about what any key means or what
+// anybody intends to do with the answer.
+//
+// One row per (type, key) pair, so the cost is a scan of graph_nodes and its
+// properties rather than a scan per type. Ordered by type then key so two
+// reads of one graph agree.
+func (g *GraphStore) NodePropertyKeys(ctx context.Context, nodeTypes ...string) ([]PropertyKeyUsage, error) {
+	const nodeType = "COALESCE(n.node_type, '')"
+	where, args := typeFilter(nodeType, nodeTypes)
+	rows, err := g.query(ctx, `
+		SELECT `+nodeType+`, je.key, COUNT(*), COUNT(DISTINCT je.value)
+		  FROM graph_nodes n`+g.dialect.JSONEachEntry("n.properties")+where+`
+		 GROUP BY `+nodeType+`, je.key
+		 ORDER BY `+nodeType+`, je.key`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("node property keys: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []PropertyKeyUsage
+	for rows.Next() {
+		var u PropertyKeyUsage
+		if err := rows.Scan(&u.NodeType, &u.Key, &u.Records, &u.Distinct); err != nil {
+			return nil, fmt.Errorf("node property keys: %w", err)
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
 }
 
 // Grouping and listing the graph by what is written on it, rather than by

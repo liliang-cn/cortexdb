@@ -81,6 +81,28 @@ type Dialect interface {
 	// inference rule would have re-derived them on top of themselves.
 	JSONFlag(column, key string) string
 
+	// JSONEachEntry expands a JSON object column into one row per top-level
+	// field, as a FROM-clause fragment joining the rows of `je(key, value)`
+	// onto the table already named.
+	//
+	// A fragment rather than an expression because this is the one thing here
+	// that is not a scalar: enumerating the keys of a JSON object is a join on
+	// both databases, and the two spell the join itself differently — SQLite
+	// has a table-valued json_each that goes in a comma join, PostgreSQL needs
+	// CROSS JOIN LATERAL and a column alias list. So the fragment begins with
+	// its own separator and is appended straight after the table.
+	//
+	// Every other JSON helper here reads a key the caller already knows. This
+	// answers the opposite question — which keys are there at all — which is
+	// what anything deriving a shape from stored data has to ask first, and
+	// what nothing in this codebase could ask before.
+	//
+	// Guarded the way JSONTextGuarded is, and one step further: a column that
+	// holds no JSON, or holds JSON that is not an object, yields no rows
+	// rather than failing the statement. Both databases raise on json_each of
+	// a scalar, and a single such row would take the whole scan down.
+	JSONEachEntry(column string) string
+
 	// JSONArrayContains tests whether a JSON array field contains a value,
 	// as an expression carrying exactly one `?` placeholder for it.
 	//
@@ -178,6 +200,14 @@ func (sqliteDialect) JSONArrayContains(column, key string) string {
 		column, jsonKey(key))
 }
 
+// json_type as well as json_valid: json_valid('"x"') is true and json_each of
+// a scalar raises, so the object check is what actually keeps one odd row from
+// failing the scan.
+func (sqliteDialect) JSONEachEntry(column string) string {
+	return fmt.Sprintf(", json_each(CASE WHEN json_valid(%[1]s) = 1 AND json_type(%[1]s) = 'object' THEN %[1]s ELSE '{}' END) je",
+		column)
+}
+
 func (sqliteDialect) AutoIncrementPK() string {
 	return "INTEGER PRIMARY KEY AUTOINCREMENT"
 }
@@ -235,6 +265,15 @@ func (postgresDialect) JSONArrayContains(column, key string) string {
 	return fmt.Sprintf(
 		"(NULLIF(%s::text, '') IS NOT NULL AND (NULLIF(%s::text, '')::jsonb -> '%s') @> to_jsonb(?::text))",
 		column, column, jsonKey(key))
+}
+
+// jsonb_each_text rather than jsonb_each so the value comes back as text on
+// both sides; SQLite's json_each already yields text. The column alias list is
+// required — without it the lateral's row type has no names to select by.
+func (postgresDialect) JSONEachEntry(column string) string {
+	guarded := fmt.Sprintf("NULLIF(%s::text, '')", column)
+	return fmt.Sprintf(" CROSS JOIN LATERAL jsonb_each_text(CASE WHEN %[1]s IS NOT NULL AND jsonb_typeof(%[1]s::jsonb) = 'object' THEN %[1]s::jsonb ELSE '{}'::jsonb END) AS je(key, value)",
+		guarded)
 }
 
 func (postgresDialect) AutoIncrementPK() string {
