@@ -2,21 +2,31 @@ package cortexdb
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
+// apply_inference is now one shape of rule, not a separate engine.
+//
+// It used to own a join: load the explicit edges of two relation types, match
+// the target of one against the source of the other, write the composition.
+// That is exactly what
+//
+//	IF left(?x, ?y) AND right(?y, ?z) THEN result(?x, ?z)
+//
+// says, so the two-hop request is translated into that rule and handed to
+// ApplyRules. The tool keeps its name, its arguments and the provenance it
+// wrote; what it no longer keeps is a second derivation path that could drift
+// away from the one inference_explain knows how to explain.
 func (db *DB) applyInferenceRules(ctx context.Context, req ApplyInferenceRequest) (*ApplyInferenceResponse, error) {
 	if err := db.graph.InitGraphSchema(ctx); err != nil {
 		return nil, fmt.Errorf("init graph schema: %w", err)
 	}
 
 	ruleIDs := make([]string, 0, len(req.Rules))
-	relationTypeSet := make(map[string]struct{}, len(req.Rules)*2)
+	rules := make([]graph.Rule, 0, len(req.Rules))
 	for _, rule := range req.Rules {
 		if strings.TrimSpace(rule.RuleID) == "" {
 			return nil, fmt.Errorf("rule_id is required")
@@ -25,8 +35,17 @@ func (db *DB) applyInferenceRules(ctx context.Context, req ApplyInferenceRequest
 			return nil, fmt.Errorf("left_relation_type, right_relation_type, and result_relation_type are required")
 		}
 		ruleIDs = append(ruleIDs, rule.RuleID)
-		relationTypeSet[normalizeOntologyLabel(rule.LeftRelationType)] = struct{}{}
-		relationTypeSet[normalizeOntologyLabel(rule.RightRelationType)] = struct{}{}
+		rules = append(rules, graph.Rule{
+			ID:   rule.RuleID,
+			Name: rule.Description,
+			When: []graph.Atom{
+				{Predicate: rule.LeftRelationType, Subject: "?x", Object: "?y"},
+				{Predicate: rule.RightRelationType, Subject: "?y", Object: "?z"},
+			},
+			Then:     graph.Atom{Predicate: rule.ResultRelationType, Subject: "?x", Object: "?z"},
+			Weight:   rule.Weight,
+			Metadata: cloneStringMap(rule.Metadata),
+		})
 	}
 
 	resp := &ApplyInferenceResponse{}
@@ -38,164 +57,38 @@ func (db *DB) applyInferenceRules(ctx context.Context, req ApplyInferenceRequest
 		resp.DeletedEdgeIDs = deletedIDs
 	}
 
-	explicitEdges, err := db.loadExplicitRelationEdges(ctx, sortedKeysFromSet(relationTypeSet), req.DocumentID)
+	result, err := db.graph.ApplyRules(ctx, rules, graph.RuleOptions{
+		DocumentID: req.DocumentID,
+		Validate:   db.validateRuleDerivedEdges,
+	})
 	if err != nil {
 		return nil, err
 	}
-	if len(explicitEdges) == 0 {
-		return resp, nil
-	}
-
-	leftByType := make(map[string][]*graph.GraphEdge, len(relationTypeSet))
-	rightByTypeAndFrom := make(map[string]map[string][]*graph.GraphEdge, len(relationTypeSet))
-	for _, edge := range explicitEdges {
-		relationType := normalizeOntologyLabel(edge.EdgeType)
-		leftByType[relationType] = append(leftByType[relationType], edge)
-		if rightByTypeAndFrom[relationType] == nil {
-			rightByTypeAndFrom[relationType] = make(map[string][]*graph.GraphEdge)
-		}
-		rightByTypeAndFrom[relationType][edge.FromNodeID] = append(rightByTypeAndFrom[relationType][edge.FromNodeID], edge)
-	}
-
-	inferredEdges := make(map[string]*graph.GraphEdge)
-	inferredRelations := make([]ToolRelationInput, 0)
-	for _, rule := range req.Rules {
-		leftType := normalizeOntologyLabel(rule.LeftRelationType)
-		rightType := normalizeOntologyLabel(rule.RightRelationType)
-		resultType := normalizeOntologyLabel(rule.ResultRelationType)
-
-		for _, left := range leftByType[leftType] {
-			matches := rightByTypeAndFrom[rightType][left.ToNodeID]
-			for _, right := range matches {
-				edgeID := inferredEdgeID(rule.RuleID, left.FromNodeID, right.ToNodeID, resultType)
-				if _, exists := inferredEdges[edgeID]; exists {
-					continue
-				}
-
-				weight := rule.Weight
-				if weight == 0 {
-					weight = (left.Weight + right.Weight) / 2
-				}
-
-				properties := map[string]any{
-					"inferred":               true,
-					"provenance":             "rule",
-					"rule_id":                rule.RuleID,
-					"support_edge_ids":       []string{left.ID, right.ID},
-					"support_relation_types": []string{left.EdgeType, right.EdgeType},
-				}
-				documentID := strings.TrimSpace(req.DocumentID)
-				if documentID == "" {
-					if sharedDocumentID, ok := sharedInferenceDocumentID(left, right); ok {
-						documentID = sharedDocumentID
-					}
-				}
-				if documentID != "" {
-					properties["document_id"] = documentID
-				}
-				for key, value := range rule.Metadata {
-					switch key {
-					case "inferred", "provenance", "rule_id", "support_edge_ids", "support_relation_types", "document_id":
-						continue
-					}
-					properties[key] = value
-				}
-
-				inferredEdges[edgeID] = &graph.GraphEdge{
-					ID:         edgeID,
-					FromNodeID: left.FromNodeID,
-					ToNodeID:   right.ToNodeID,
-					EdgeType:   resultType,
-					Weight:     weight,
-					Properties: properties,
-				}
-				inferredRelations = append(inferredRelations, ToolRelationInput{
-					From:           left.FromNodeID,
-					To:             right.ToNodeID,
-					Type:           resultType,
-					Inferred:       true,
-					Provenance:     "rule",
-					RuleID:         rule.RuleID,
-					SupportEdgeIDs: []string{left.ID, right.ID},
-					Metadata:       cloneStringMap(rule.Metadata),
-				})
-			}
-		}
-	}
-
-	if len(inferredEdges) == 0 {
-		return resp, nil
-	}
-	if err := db.validateRelationInputs(ctx, inferredRelations); err != nil {
-		return nil, err
-	}
-
-	orderedIDs := sortedKeysFromSet(edgeIDSet(inferredEdges))
-	edges := make([]*graph.GraphEdge, 0, len(orderedIDs))
-	for _, edgeID := range orderedIDs {
-		edges = append(edges, inferredEdges[edgeID])
-		resp.CreatedEdgeIDs = append(resp.CreatedEdgeIDs, edgeID)
-	}
-	edgeResult, err := db.graph.UpsertEdgesBatch(ctx, edges)
-	if err != nil {
-		return nil, fmt.Errorf("upsert inferred edges: %w", err)
-	}
-	// Rejected rows live in the result, not in err. CreatedEdgeIDs would otherwise
-	// list edges that were never written.
-	if err := edgeResult.Err(); err != nil {
-		return nil, fmt.Errorf("upsert inferred edges: %w", err)
-	}
+	resp.CreatedEdgeIDs = result.CreatedEdgeIDs
+	resp.UnchangedEdgeIDs = result.UnchangedEdgeIDs
 	return resp, nil
 }
 
-func (db *DB) loadExplicitRelationEdges(ctx context.Context, relationTypes []string, documentID string) ([]*graph.GraphEdge, error) {
-	if len(relationTypes) == 0 {
-		return nil, nil
+// validateRuleDerivedEdges puts derived edges through the same ontology gate a
+// hand-written relation goes through. A rule is not a licence to write a
+// relation the schema forbids.
+func (db *DB) validateRuleDerivedEdges(ctx context.Context, edges []*graph.GraphEdge) error {
+	relations := make([]ToolRelationInput, 0, len(edges))
+	for _, edge := range edges {
+		ruleID, _ := edge.Properties["rule_id"].(string)
+		supports, _ := edge.Properties["support_edge_ids"].([]string)
+		relations = append(relations, ToolRelationInput{
+			From:           edge.FromNodeID,
+			To:             edge.ToNodeID,
+			Type:           edge.EdgeType,
+			Weight:         edge.Weight,
+			Inferred:       true,
+			Provenance:     graph.RuleProvenance,
+			RuleID:         ruleID,
+			SupportEdgeIDs: supports,
+		})
 	}
-
-	placeholders := make([]string, len(relationTypes))
-	args := make([]any, 0, len(relationTypes)+1)
-	for i, relationType := range relationTypes {
-		placeholders[i] = "?"
-		args = append(args, relationType)
-	}
-
-	query := fmt.Sprintf(`
-		SELECT id, from_node_id, to_node_id, edge_type, weight, properties
-		FROM graph_edges
-		WHERE edge_type IN (%s)
-		  AND %s != 1
-	`, strings.Join(placeholders, ","), db.dialect.JSONFlag("properties", "inferred"))
-	if strings.TrimSpace(documentID) != "" {
-		query += ` AND ` + db.dialect.JSONTextGuarded("properties", "document_id") + ` = ?`
-		args = append(args, documentID)
-	}
-	query += ` ORDER BY id ASC`
-
-	rows, err := db.query(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("query explicit relation edges: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	edges := make([]*graph.GraphEdge, 0)
-	for rows.Next() {
-		var edge graph.GraphEdge
-		var propertiesJSON sql.NullString
-		if err := rows.Scan(&edge.ID, &edge.FromNodeID, &edge.ToNodeID, &edge.EdgeType, &edge.Weight, &propertiesJSON); err != nil {
-			return nil, fmt.Errorf("scan explicit relation edge: %w", err)
-		}
-		if propertiesJSON.Valid && propertiesJSON.String != "" {
-			if err := json.Unmarshal([]byte(propertiesJSON.String), &edge.Properties); err != nil {
-				return nil, fmt.Errorf("decode explicit relation edge properties: %w", err)
-			}
-		}
-		edges = append(edges, &edge)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate explicit relation edges: %w", err)
-	}
-	return edges, nil
+	return db.validateRelationInputs(ctx, relations)
 }
 
 func (db *DB) deleteInferredEdges(ctx context.Context, documentID string, ruleIDs []string) ([]string, error) {
@@ -253,28 +146,4 @@ func (db *DB) inferredEdgeIDs(ctx context.Context, documentID string, ruleIDs []
 		return nil, fmt.Errorf("iterate inferred edge ids: %w", err)
 	}
 	return edgeIDs, nil
-}
-
-func inferredEdgeID(ruleID, fromNodeID, toNodeID, edgeType string) string {
-	return fmt.Sprintf("edge:inferred:%s:%s:%s:%s", normalizeOntologyLabel(ruleID), fromNodeID, toNodeID, normalizeOntologyLabel(edgeType))
-}
-
-func sharedInferenceDocumentID(left, right *graph.GraphEdge) (string, bool) {
-	leftDocumentID, ok := stringProperty(left.Properties, "document_id")
-	if !ok {
-		return "", false
-	}
-	rightDocumentID, ok := stringProperty(right.Properties, "document_id")
-	if !ok || rightDocumentID != leftDocumentID {
-		return "", false
-	}
-	return leftDocumentID, true
-}
-
-func edgeIDSet(edges map[string]*graph.GraphEdge) map[string]struct{} {
-	set := make(map[string]struct{}, len(edges))
-	for edgeID := range edges {
-		set[edgeID] = struct{}{}
-	}
-	return set
 }

@@ -137,6 +137,10 @@ type GraphStore struct {
 	// store convinced the tables exist for the rest of its lifetime.
 	schemaMu    sync.Mutex
 	schemaReady bool
+	// Guards the rule table the same way, separately: rules are opt-in, so a
+	// brain that never declares one never grows the table.
+	ruleSchemaMu    sync.Mutex
+	ruleSchemaReady bool
 
 	// vecCap is what in-database vector search can do here, decided once when
 	// the schema is created. The zero value — everything false — is the

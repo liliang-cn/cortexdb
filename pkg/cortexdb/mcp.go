@@ -47,6 +47,7 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		definitions[definition.Name] = definition
 	}
 	addInferenceMCPTools(server, definitions, toolbox)
+	addRuleMCPTools(server, definitions, toolbox)
 	addOntologyMCPTools(server, definitions, toolbox)
 	// --- decision ledger (pkg/cortexdb/decision_tooldefs.go) ---
 	addDecisionMCPTools(server, definitions, db)

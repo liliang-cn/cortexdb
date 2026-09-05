@@ -279,6 +279,7 @@ pairs, _ := db.Graph().EdgeEndpointPairs(ctx, "uses")
 Both edge queries take optional edge types, matched exactly as stored; passing
 none reports the whole graph.
 
+<<<<<<< HEAD
 ## Decision ledger
 
 `fact_provenance` and the knowledge contract say how a *fact* is known. The
@@ -327,6 +328,63 @@ Tools (in-process and MCP), and the mirroring `cortexdb.v1.DecisionService`:
 - `decision_record` — writes (read-only keys are refused it)
 - `decision_chain` — reads
 - `decision_precedents` — reads
+=======
+## Declared inference rules
+
+`apply_inference` composes two hops. That is one rule shape; the engine behind
+it takes any Horn clause over graph edges — any number of premises, variables
+bound across them — forward-chained to a bounded fixpoint. `apply_inference`
+keeps its name and behaviour and now runs through that engine, so there is one
+derivation path and one explanation for both.
+
+```go
+// Written the way a person writes it. Keywords are case-insensitive; a term
+// starting with ? is a variable.
+_, _ = db.SaveRules(ctx, cortexdb.RulesSaveRequest{Rules: []cortexdb.RuleDefinition{{
+    ID:         "mortality",
+    Text:       "IF instance_of(?x, ?c) AND subclass_of(?c, ?d) THEN instance_of(?x, ?d)",
+    Confidence: 0.9,
+}}})
+
+// Dry run first; with neither rule_ids nor rules, every enabled rule runs.
+plan, _ := db.ApplyRules(ctx, cortexdb.RulesApplyRequest{DryRun: true})
+applied, _ := db.ApplyRules(ctx, cortexdb.RulesApplyRequest{})
+_ = plan
+
+// Why is that edge there?
+why, _ := db.ExplainInference(ctx, cortexdb.InferenceExplainRequest{EdgeID: applied.CreatedEdgeIDs[0]})
+// why.Explanation names the rule and its text; why.Trace is the premise chain,
+// flattened in preorder.
+```
+
+**Literal terms.** A term starting with `?` is a variable. Anything else is a
+literal, resolved against the stored nodes in this order: an exact node id
+first; otherwise `Type:Name`, matching every node whose `node_type` equals
+`Type` and whose name (the `name` property, or the node content) equals `Name`,
+both case-insensitively; otherwise a bare name matched the same way across all
+types. A literal matching several nodes matches all of them; one matching none
+is returned in `unresolved_terms`, so a rule that can never fire says so.
+
+**Derived edges** carry `inferred=true`, `provenance=rule`, `rule_id`,
+`rule_text`, the exact `support_edge_ids`, and `confidence` = the minimum
+premise confidence times the rule's own. Re-running derives nothing new: an edge
+already there from the same rule is reported in `unchanged_edge_ids`, not
+rewritten.
+
+**Caps.** Chaining stops at 16 rounds and 50 000 derived edges by default
+(`max_iterations`, `max_derived`). Hitting either is an error —
+`graph.ErrRuleCapExceeded` — and **nothing is written**, because a half-built
+closure in the graph is worse than none.
+
+Rules persist in their own `kg_rules` table, not as graph nodes: a rule is
+configuration for the engine, not a fact about the world the graph describes,
+and a `rule:` node would show up in `find_nodes`, `expand_graph` and every
+export. The table is created the first time a rule is saved.
+
+Tools: `rules_save`, `rules_list`, `rules_delete`, `rules_apply` (with
+`dry_run`), `inference_explain`. Engine: `pkg/graph/rules*.go`; facade:
+`pkg/cortexdb/rules*.go`.
+>>>>>>> worktree-agent-a8606f050fbc39364
 
 ## Ontology
 
@@ -662,8 +720,12 @@ Important tools:
 - Knowledge graph: `knowledge_graph_upsert`, `knowledge_graph_query`, `knowledge_graph_shacl_validate`, `knowledge_graph_infer_refresh`
 - KnowledgeMemory: `knowledge_memory_recall`, `knowledge_memory_build_context_pack`, `knowledge_memory_reflect`, `knowledge_memory_consolidate`
 - Ontology: `ontology_save`, `ontology_get`, `ontology_list`, `ontology_delete`, `ontology_diff`, `ontology_action_list`, `ontology_action_apply`, `object_set_resolve`
+<<<<<<< HEAD
 - Inference: `apply_inference`
 - Decision ledger: `decision_record`, `decision_chain`, `decision_precedents`
+=======
+- Inference: `apply_inference`, `rules_save`, `rules_list`, `rules_delete`, `rules_apply`, `inference_explain`
+>>>>>>> worktree-agent-a8606f050fbc39364
 
 Separate workflow toolboxes:
 

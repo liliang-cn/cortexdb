@@ -29,6 +29,17 @@ var toolWrites = map[string]bool{
 	"vector_dimension_repair": true, // re-embeds and rewrites vectors unless dry_run
 	"apply_inference":         true, // materializes inferred edges
 
+	// Declared inference rules. rules_save writes no edges, but a saved rule
+	// is what rules_apply runs by default, so it changes what the brain will
+	// infer — that is a write. rules_apply has a dry_run, which makes it
+	// read-only for one argument value that authorization never sees; a tool
+	// that can write is a write.
+	"rules_save":        true,
+	"rules_delete":      true,
+	"rules_apply":       true,
+	"rules_list":        false,
+	"inference_explain": false,
+
 	// GraphRAG retrieval. All of these only read what is stored; none of them
 	// records the access, caches an embedding, or writes a rendered file.
 	"search_text":               false,
@@ -126,7 +137,7 @@ var toolWrites = map[string]bool{
 // table so that a tool added without a decision cannot slip through by sharing
 // a name with one already listed, and so that a tool quietly disappearing is
 // noticed too. Change it in the same commit that adds the tool and its row.
-const toolCount = 67
+const toolCount = 72
 
 // TestEveryToolDeclaresWhetherItWrites is the test the Mutates doc comment
 // promises: it makes forgetting impossible rather than merely unlikely.
