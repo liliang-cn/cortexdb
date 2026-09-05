@@ -285,6 +285,23 @@ func unavailableDraft(reason string) OntologyDraftView {
 // no vocabulary and a server that would not answer are the same blank diagram
 // and completely different findings, and on the cluster the second is the one
 // that was true until it was upgraded.
+// remoteToolErr wraps a CallTool failure without overclaiming what it means.
+//
+// The first version of every remote reader here appended "(is the server new
+// enough?)" to *any* error, so a dropped connection or an expired token was
+// reported as a version problem — and a person reading it went to upgrade a
+// server that was fine. Only an unknown tool says that. rpcserver maps
+// "unknown tool" onto codes.NotFound, and the message keeps the words in case
+// a client saw it before the code was set; anything else is reported as what
+// it is: the call failed, and this view cannot say why.
+func remoteToolErr(name, addr string, err error) error {
+	if status.Code(err) == codes.NotFound ||
+		strings.Contains(strings.ToLower(err.Error()), "unknown tool") {
+		return fmt.Errorf("%s on %s: %w (the server does not have this tool — is it new enough?)", name, addr, err)
+	}
+	return fmt.Errorf("%s on %s: %w", name, addr, err)
+}
+
 func undraftableRemote(addr string, err error) string {
 	if status.Code(err) == codes.NotFound ||
 		strings.Contains(strings.ToLower(err.Error()), "unknown tool") {

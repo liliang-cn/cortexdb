@@ -261,7 +261,7 @@ func remoteContract(addr, token string) func(context.Context) (ContractReport, e
 			}
 			resp, cerr := client.CallTool(callCtx, &rpcv1.CallToolRequest{Name: name, ArgsJson: string(body)})
 			if cerr != nil {
-				return fmt.Errorf("%s on %s: %w (is the server new enough?)", name, addr, cerr)
+				return remoteToolErr(name, addr, cerr)
 			}
 			if uerr := json.Unmarshal([]byte(resp.GetResultJson()), out); uerr != nil {
 				return fmt.Errorf("decode %s: %w", name, uerr)
