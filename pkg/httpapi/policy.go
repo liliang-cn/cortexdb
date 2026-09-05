@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"io"
 	"net/http"
 	"strings"
@@ -72,37 +73,94 @@ func authenticate(keys *authz.KeySet, next http.Handler) http.Handler {
 // nobody registered are the same request, and every 404 would come back as a
 // 403 the moment a key file was configured.
 func authorize(rr route, next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		key, enforcing := keyFrom(r.Context())
-		if !enforcing {
-			// No policy in force. The classification table still exists and
-			// the coverage test still holds it to every route; there is just
-			// no key whose clearance or scope could be consulted.
+	return authorizeWith(nil)(rr, next)
+}
+
+// authorizeWith is authorize with a brain to ask, which the tool route needs
+// and nothing else does: the one question a table cannot answer is whether a
+// SPARQL query writes, and only the executor's own parser can.
+func authorizeWith(db *cortexdb.DB) func(rr route, next http.HandlerFunc) http.HandlerFunc {
+	return func(rr route, next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			key, enforcing := keyFrom(r.Context())
+			if !enforcing {
+				// No policy in force. The classification table still exists and
+				// the coverage test still holds it to every route; there is just
+				// no key whose clearance or scope could be consulted.
+				next(w, r)
+				return
+			}
+			// A missing entry is the zero authz.Method, which is Unclassified, and
+			// AuthorizeOperation denies it by name. Nothing branches on ok: a route
+			// nobody classified is a route nobody thought about.
+			m, _ := lookupRoute(rr)
+			name := rr.String()
+			if rr.path == toolRoutePath {
+				// The table says the toolbox is a write, which is the only safe
+				// answer for a route that reaches every tool. Refine it to the
+				// tool actually named, the same way the gRPC side does — from
+				// the tool's own declaration, never a second list — and deny a
+				// name the toolbox does not define, fail closed. A confined key
+				// is refused every tool: arguments are opaque JSON no scope can
+				// be checked against, which is also gRPC's rule.
+				tool, _ := strings.CutPrefix(r.URL.Path, toolCallPrefix)
+				name = "POST " + toolCallPrefix + tool
+				access, known := authz.LookupTool(tool)
+				if !known {
+					writeError(w, http.StatusForbidden, "denied: "+tool+" is not a tool this server defines")
+					return
+				}
+				if !key.Scope.IsZero() {
+					writeError(w, http.StatusForbidden, "denied: key \""+key.ID+"\" is confined and a tool's arguments are opaque JSON no scope can be checked against")
+					return
+				}
+				m = authz.Method{Access: access, Rowless: true}
+				if tool == sparqlToolName && access == authz.Write && db != nil {
+					if q, ok := peekJSONString(w, r, "query"); ok && !db.Graph().SPARQLMutates(r.Context(), q) {
+						m.Access = authz.Read
+					}
+				}
+			}
+			if err := key.AuthorizeOperation(name, m); err != nil {
+				writeError(w, http.StatusForbidden, err.Error())
+				return
+			}
+			if key.Scope.IsZero() || m.Rowless {
+				next(w, r)
+				return
+			}
+			lookup, ok := bodyFieldLookup(w, r)
+			if !ok {
+				return
+			}
+			if err := key.AuthorizeOperationRows(rr.String(), m, lookup); err != nil {
+				writeError(w, http.StatusForbidden, err.Error())
+				return
+			}
 			next(w, r)
-			return
 		}
-		// A missing entry is the zero authz.Method, which is Unclassified, and
-		// AuthorizeOperation denies it by name. Nothing branches on ok: a route
-		// nobody classified is a route nobody thought about.
-		m, _ := lookupRoute(rr)
-		if err := key.AuthorizeOperation(rr.String(), m); err != nil {
-			writeError(w, http.StatusForbidden, err.Error())
-			return
-		}
-		if key.Scope.IsZero() || m.Rowless {
-			next(w, r)
-			return
-		}
-		lookup, ok := bodyFieldLookup(w, r)
-		if !ok {
-			return
-		}
-		if err := key.AuthorizeOperationRows(rr.String(), m, lookup); err != nil {
-			writeError(w, http.StatusForbidden, err.Error())
-			return
-		}
-		next(w, r)
 	}
+}
+
+// sparqlToolName is the one tool whose classification is decided per call.
+const sparqlToolName = "knowledge_graph_query"
+
+// peekJSONString reads one top-level string out of the body and puts the body
+// back, so the handler still sees it. A body that will not parse yields no
+// value, which leaves the static classification in place — the call is about
+// to fail on the same JSON anyway.
+func peekJSONString(w http.ResponseWriter, r *http.Request, field string) (string, bool) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBytes))
+	if err != nil {
+		return "", false
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	var m map[string]any
+	if json.Unmarshal(body, &m) != nil {
+		return "", false
+	}
+	v, ok := m[field].(string)
+	return v, ok
 }
 
 // nestedScanDepth bounds the walk for nested copies of a scope field, matching

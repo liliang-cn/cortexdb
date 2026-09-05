@@ -64,21 +64,46 @@ func TestAReadOnlyKeyMaySearchKnowledgeButNotSaveIt(t *testing.T) {
 		`{"query":"anything","top_k":3}`, http.StatusOK)
 }
 
-// Every tool call is a write until tools declare otherwise, so a read-only key
-// cannot reach the toolbox at all — including the tools that only read. The
-// comment on routeAccess says why that trade is the cheaper mistake; this test
-// is here so the day it changes, it changes on purpose.
-func TestEveryToolCallIsAWriteUntilToolsSayOtherwise(t *testing.T) {
+// A tool call is classified by the tool actually named, from the tool's own
+// declaration (cortexdb.ToolDefinition.Mutates), the same way the gRPC side
+// does it. This replaced TestEveryToolCallIsAWriteUntilToolsSayOtherwise, which
+// pinned the conservative placeholder: every tool a write, so a read-only
+// auditor could not even read the contract tally — found the first time the
+// product's own doors were run with a read-only key.
+func TestAReadOnlyKeyMayCallTheToolsThatOnlyRead(t *testing.T) {
 	srv := newPolicyServer(t, Options{Keys: hermesAndZeus(t)})
 
-	msg := wantStatus(t, srv, http.MethodPost, "/v1/tools/search_knowledge", "librarian-ro",
-		`{"query":"anything"}`, http.StatusForbidden)
-	if !strings.Contains(msg, "is a write") {
-		t.Fatalf("refusal %q does not say the tool call counted as a write", msg)
+	wantStatus(t, srv, http.MethodPost, "/v1/tools/contract_tally", "librarian-ro", `{}`, http.StatusOK)
+	wantStatus(t, srv, http.MethodPost, "/v1/tools/find_nodes", "librarian-ro", `{"query":"anything"}`, http.StatusOK)
+
+	msg := wantStatus(t, srv, http.MethodPost, "/v1/tools/ingest_document", "librarian-ro",
+		`{"document_id":"d","content":"x"}`, http.StatusForbidden)
+	if !strings.Contains(msg, "ingest_document") || !strings.Contains(msg, "write") {
+		t.Fatalf("refusal %q should name the tool and say it writes", msg)
+	}
+
+	// Unknown name: denied by the policy, before the handler could 404 it,
+	// and naming what was asked for.
+	msg = wantStatus(t, srv, http.MethodPost, "/v1/tools/search_knowledge", "librarian-ro", `{}`, http.StatusForbidden)
+	if !strings.Contains(msg, "search_knowledge") {
+		t.Fatalf("refusal %q should name the unknown tool", msg)
 	}
 
 	// The catalogue is not a tool call and reads no row, so it stays open.
 	wantStatus(t, srv, http.MethodGet, "/v1/tools", "librarian-ro", "", http.StatusOK)
+}
+
+// SPARQL is classified by what the query does, on this port exactly as on
+// gRPC: a read-only key keeps SELECT and is refused INSERT. Both doors ask the
+// executor's own parser, so they cannot disagree.
+func TestSPARQLOverHTTPIsClassifiedByWhatTheQueryDoes(t *testing.T) {
+	srv := newPolicyServer(t, Options{Keys: hermesAndZeus(t)})
+	wantStatus(t, srv, http.MethodPost, "/v1/tools/knowledge_graph_query", "librarian-ro",
+		`{"query":"SELECT ?s WHERE { ?s ?p ?o }"}`, http.StatusOK)
+	wantStatus(t, srv, http.MethodPost, "/v1/tools/knowledge_graph_query", "librarian-ro",
+		`{"query":"INSERT DATA { <http://x/a> <http://x/b> \"c\" }"}`, http.StatusForbidden)
+	wantStatus(t, srv, http.MethodPost, "/v1/tools/knowledge_graph_query", "librarian-ro",
+		`{"query":"not sparql"}`, http.StatusForbidden)
 }
 
 func TestAConfinedKeyIsRefusedAnotherUsersRowsOverHTTP(t *testing.T) {

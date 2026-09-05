@@ -86,7 +86,7 @@ var routeAccess = map[route]authz.Method{
 	// name here in the meantime would put a third policy table in the tree and
 	// would be wrong the first time a tool was renamed.
 	{http.MethodGet, "/v1/tools"}:    {Access: authz.Read, Rowless: true},
-	{http.MethodPost, toolRoutePath}: {Access: authz.Write},
+	{http.MethodPost, toolRoutePath}: {Access: authz.Write}, // refined per tool in policy.go
 }
 
 // lookupRoute returns the classification of a route. A missing entry yields the

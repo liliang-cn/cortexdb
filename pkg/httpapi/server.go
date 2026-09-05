@@ -77,7 +77,7 @@ func NewWithPolicy(db *cortexdb.DB, opts Options) (http.Handler, error) {
 	// so a route cannot be served without one. The 404 and 405 answers stay
 	// inside the router, unwrapped: a path nobody registered is not an
 	// authorisation failure and should not be reported as one.
-	rt.wrapEach(authorize)
+	rt.wrapEach(authorizeWith(db))
 	return authenticate(keys, rt), nil
 }
 

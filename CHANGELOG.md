@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.97.0] - 2026-09-05
+
+### Changed
+
+- **REST tool calls are classified per tool**, from `ToolDefinition.Mutates`, the same
+  way the gRPC side already was. Until now `POST /v1/tools/{name}` was a write for every
+  name, so a read-only key could not call `contract_tally` — a read-only auditor unable to
+  read the audit, found the first time the doors were run with one. An unknown tool name
+  is refused by the policy, naming it; a confined key is refused every tool, because a
+  tool's arguments are opaque JSON no scope can be checked against (gRPC's rule too).
+  `knowledge_graph_query` is narrowed to a read when the executor's own parser says the
+  query does not mutate, so a read-only key keeps `SELECT` on both ports and the two
+  ports cannot disagree.
+
 ## [2.96.0] - 2026-09-05
 
 ### Added
