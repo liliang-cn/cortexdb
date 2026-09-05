@@ -98,6 +98,15 @@ var toolWrites = map[string]bool{
 	"contract_tally":           false,
 	"contract_needs_attention": false,
 
+	// The decision ledger. Recording writes a node and its edges; the other
+	// two walk what is already there. decision_chain is the one worth saying
+	// out loud: it reads a decision's premises and their grades and records
+	// nothing about having been asked, which is what lets a read-only key ask
+	// why something was done.
+	"decision_record":     true,
+	"decision_chain":      false,
+	"decision_precedents": false,
+
 	// KnowledgeMemory facade.
 	"knowledge_memory_remember":             true,
 	"knowledge_memory_promote_to_knowledge": true,
@@ -117,7 +126,7 @@ var toolWrites = map[string]bool{
 // table so that a tool added without a decision cannot slip through by sharing
 // a name with one already listed, and so that a tool quietly disappearing is
 // noticed too. Change it in the same commit that adds the tool and its row.
-const toolCount = 64
+const toolCount = 67
 
 // TestEveryToolDeclaresWhetherItWrites is the test the Mutates doc comment
 // promises: it makes forgetting impossible rather than merely unlikely.

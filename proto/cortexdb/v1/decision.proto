@@ -1,0 +1,190 @@
+syntax = "proto3";
+package cortexdb.v1;
+option go_package = "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1;rpcv1";
+
+// The decision ledger, over the wire.
+//
+// contract.proto reads how well established a *fact* is. This says why an
+// *action* was taken: which facts it rested on, who took it, what it replaced,
+// and what else was decided the same way. The two belong together — a chain of
+// premises without their grades looks like evidence and is not — which is why
+// every premise here carries the contract's grade and source.
+//
+// Its own file rather than messages on graph.proto for contract.proto's
+// reason. A decision is stored as a graph record today, which is what makes a
+// chain a graph walk and puts the ledger in every existing view for free; but
+// that is an implementation fact, and putting these RPCs in
+// KnowledgeGraphService would pin it into the name a client calls forever.
+
+// DecisionPremise is one thing a decision rested on, with how sure that thing
+// was.
+message DecisionPremise {
+  // id is the node id or edge id the decision named.
+  string id = 1;
+  // edge says the premise is a fact — a relation — rather than a thing. It
+  // matters to a reader: a graph's assertions are mostly edges, and a client
+  // that renders only the nodes drops the half a decision usually stood on.
+  bool edge = 2;
+  // type is node_type or edge_type.
+  string type = 3;
+  // content is a node's label; edges have none.
+  string content = 4;
+  // from and to are a fact's ends, empty on a node.
+  string from = 5;
+  string to = 6;
+  // decision says this premise is itself a decision, which is what makes a
+  // chain recurse.
+  bool decision = 7;
+  // grade and source are the premise's own contract keys. Empty means the
+  // record carries none, which is an answer and a different one from
+  // "asserted".
+  string grade = 8;
+  string source = 9;
+  // missing says the premise was recorded and has since been deleted. It
+  // cannot happen at write time — recording refuses an unknown premise — so it
+  // means the shelf changed under a decision that already stands, which the
+  // reader has to be told rather than shown a gap.
+  bool missing = 10;
+}
+
+// Decision is one ledger entry.
+message Decision {
+  string id = 1;
+  // kind is the shape of the decision: load, review, action, assert, or a word
+  // of the caller's own. The vocabulary is open — precedents groups by
+  // whatever is written — and those four are what the product uses.
+  string kind = 2;
+  string actor = 3;
+  // at is RFC 3339, as written. A string rather than a Timestamp for the
+  // reason GradedRecord.at is one: the store keeps what the producer stamped,
+  // and a parse here would turn one malformed record into a failed read of the
+  // whole list.
+  string at = 4;
+  // verdict is the outcome in the actor's own word — hold, ship, rejected —
+  // and is never interpreted across actors, for the reason state is not.
+  string verdict = 5;
+  // subject is the node id the decision was about.
+  string subject = 6;
+  // note is the decision in words.
+  string note = 7;
+
+  string grade = 8;
+  string source = 9;
+  string producer = 10;
+  string state = 11;
+  string why = 12;
+
+  repeated DecisionPremise premises = 13;
+  // supersedes is what this decision replaced. Repeated rather than a single
+  // id because a decision consolidating three earlier ones is ordinary, and a
+  // field that could only hold one would make the ledger lie by arithmetic.
+  repeated string supersedes = 14;
+}
+
+// RecordDecisionRequest writes why something was done.
+message RecordDecisionRequest {
+  // id names the decision. Empty mints one. Given, it makes the write
+  // idempotent, which is what lets a caller replay a transcript without
+  // doubling its ledger.
+  string id = 1;
+  string kind = 2;
+  // actor is required: a decision nobody made is a note.
+  string actor = 3;
+  // note is required, for the reason a refused record needs a why — a ledger
+  // entry a reader cannot act on is noise.
+  string note = 4;
+  string verdict = 5;
+  // subject must be a node that exists.
+  string subject = 6;
+  // premises are node ids and edge ids the decision rested on. Every one must
+  // exist: a decision resting on a fact that does not exist is not a decision,
+  // and accepting it would produce a chain that reads as evidence while
+  // pointing at nothing. The whole request is refused and nothing is written.
+  repeated string premises = 7;
+  // supersedes must exist and must be a decision.
+  string supersedes = 8;
+  // at is RFC 3339. Empty means now.
+  string at = 9;
+
+  // The contract keys a caller may override. The defaults are the case the
+  // ledger exists for — a named person signing a decision, which is
+  // established outside any producer and so is verified — and an agent
+  // recording its own decision says so by setting producer and grade.
+  string source = 10;
+  string producer = 11;
+  string grade = 12;
+  string state = 13;
+  // why is required by the contract when grade is held or refused.
+  string why = 14;
+}
+
+message RecordDecisionResponse {
+  Decision decision = 1;
+}
+
+// DecisionChainRequest asks why one decision was made.
+message DecisionChainRequest {
+  // id, with or without the "decision:" prefix.
+  string id = 1;
+  // max_depth is how many decision hops to follow. 0 takes the server's
+  // default; the server also caps it, because a chain is a graph walk and a
+  // graph is not a tree.
+  int32 max_depth = 2;
+}
+
+// DecisionChainResponse is a decision and everything it stands on.
+message DecisionChainResponse {
+  string root = 1;
+  // decisions is the root first, then every decision reachable through
+  // supersedes and through premises that are themselves decisions, breadth
+  // first — so a truncated chain is truncated at the far end.
+  repeated Decision decisions = 2;
+  int32 depth = 3;
+  // truncated says the depth bound stopped the walk with decisions still
+  // unvisited. A chain that quietly stopped reads as a complete account of why
+  // something was done, which is the one thing it must never do.
+  bool truncated = 4;
+}
+
+// PrecedentsRequest asks what was decided this way before. Both kind and
+// subject empty is refused rather than meaning "the whole ledger": a caller
+// asking for every decision anybody ever made is not asking about a precedent,
+// and on a shared brain that is other people's ledger.
+message PrecedentsRequest {
+  string kind = 1;
+  string subject = 2;
+  // exclude leaves one decision out — the one being decided now is not its own
+  // precedent.
+  string exclude = 3;
+  // limit caps the rows. 0 takes the server's default.
+  int32 limit = 4;
+}
+
+message PrecedentsResponse {
+  // decisions are newest first.
+  repeated Decision decisions = 1;
+  int32 count = 2;
+  // truncated says the limit cut the list short, so "3 precedents" is never
+  // mistaken for "only 3 precedents".
+  bool truncated = 3;
+}
+
+// DecisionService records and reads the ledger. RecordDecision is the only
+// write, and it is a write in the ordinary sense — it puts a node and its
+// edges on the same shelf every other producer writes to, graded by the same
+// contract, so contract_tally counts a decision without being told about
+// decisions.
+service DecisionService {
+  // RecordDecision writes a decision and the edges that explain it. It fails
+  // closed and it fails before writing anything: an unknown premise, an empty
+  // actor or metadata the knowledge contract refuses leaves the store
+  // untouched, because a decision that half-wrote has fewer premises than its
+  // author believes and nothing downstream can tell that from a decision that
+  // genuinely rested on less.
+  rpc RecordDecision(RecordDecisionRequest) returns (RecordDecisionResponse);
+  // DecisionChain walks back from a decision to what it rested on.
+  rpc DecisionChain(DecisionChainRequest) returns (DecisionChainResponse);
+  // Precedents lists earlier decisions of the same kind or about the same
+  // subject, newest first.
+  rpc Precedents(PrecedentsRequest) returns (PrecedentsResponse);
+}

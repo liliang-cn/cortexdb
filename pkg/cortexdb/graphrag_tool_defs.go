@@ -313,6 +313,9 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 	definitions = append(definitions, ontologyToolDefinitions()...)
 	definitions = append(definitions, KnowledgeMemoryToolDefinitions()...)
 	definitions = append(definitions, contractToolDefinitions()...)
+	// --- decision ledger (pkg/cortexdb/decision_tooldefs.go) ---
+	definitions = append(definitions, decisionToolDefinitions()...)
+	// --- end decision ledger ---
 	return append(definitions, KnowledgeMemoryFacadeToolDefinitions()...)
 }
 
@@ -321,6 +324,11 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 	if resp, handled, err := t.callInferenceTool(ctx, name, input); handled {
 		return resp, err
 	}
+	// --- decision ledger (pkg/cortexdb/decision_tooldefs.go) ---
+	if resp, handled, err := t.callDecisionTool(ctx, name, input); handled {
+		return resp, err
+	}
+	// --- end decision ledger ---
 	if resp, handled, err := t.callOntologyTool(ctx, name, input); handled {
 		return resp, err
 	}

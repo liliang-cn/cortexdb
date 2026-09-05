@@ -135,6 +135,24 @@ var methods = map[string]Method{
 	// narrowed to one user's rows would report a shelf nobody has.
 	"/cortexdb.v1.ContractService/ContractTally":  {Access: Read},
 	"/cortexdb.v1.ContractService/NeedsAttention": {Access: Read},
+
+	// DecisionService. RecordDecision puts a node and its edges on the shelf,
+	// so it is a write in the ordinary sense. The other two walk what is
+	// already there and record nothing about having been asked — which is the
+	// point of classifying them apart: an auditor with a read-only key has to
+	// be able to ask why something was done without being able to decide
+	// anything, and a ledger a reader could append to is not a ledger.
+	//
+	// None is Rowless, for ContractService's reason rather than Health's: a
+	// chain hands back the premises a decision rested on and a precedent
+	// search reads other actors' entries, so both see rows a confined key is
+	// confined away from, and neither request carries a scope field to narrow
+	// them by. Rowless false is an outright denial for a confined key, which
+	// is the honest answer — precedents silently narrowed to one user's own
+	// decisions would report "no precedent" for a shelf full of them.
+	"/cortexdb.v1.DecisionService/RecordDecision": {Access: Write},
+	"/cortexdb.v1.DecisionService/DecisionChain":  {Access: Read},
+	"/cortexdb.v1.DecisionService/Precedents":     {Access: Read},
 }
 
 // LookupMethod returns the classification of a gRPC full method name.
