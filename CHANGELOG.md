@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.98.0] - 2026-09-05
+
+The brain could say how it knew a fact. It could not say why anything was done,
+and it could derive only the one rule shape we shipped. Both close here.
+
+### Added
+
+- **Decisions as first-class records** (`RecordDecision`, `DecisionChain`,
+  `Precedents`, `DecisionsBy`; tools `decision_record` / `decision_chain` /
+  `decision_precedents`; gRPC `DecisionService`). A decision is a graph record —
+  `decision:<id>` with `based_on`, `about` and `supersedes` edges — so a chain is a graph
+  walk and every existing tool sees it. It carries the contract: a named actor signed
+  it, so it is `verified`, `_producer=human`, `_by=<actor>`; `contract_tally` counts it.
+  A premise that is an edge is anchored on that edge's subject node and named exactly
+  in `premise_edge_id`, because `graph_edges.to_node_id` is a foreign key both backends
+  enforce; the chain reports the *edge's* grade. Unknown premise, empty actor, or a
+  supersedes target that does not exist: refused before the first write.
+
+- **Rules a user declares** (`pkg/graph/rules*.go`; `RuleDefinition` with text
+  `IF p(?x,?y) AND q(?y,?z) THEN r(?x,?z)` or structured when/then; tools `rules_save` /
+  `rules_list` / `rules_delete` / `rules_apply` / `rules_explain`). Semi-naive forward
+  chaining to a fixpoint; derived edges carry `rule_id`, `rule_text`, `support_edge_ids`
+  and a confidence; re-running derives nothing new; `inference_explain` shows the chain.
+  Hard caps (16 iterations, 50 000 derived edges, overridable) that **write nothing** when
+  hit and say so. Literal terms match by node id, then `Type:Name`, then bare name; a term
+  matching nothing is reported in `unresolved_terms` rather than matching nothing quietly.
+  Rules persist in a `kg_rules` table, not as graph nodes: a rule is configuration for the
+  engine, not a fact about the world.
+
+### Changed
+
+- **`apply_inference` runs through the rule engine** — its two-hop request is one rule,
+  and the old join is gone, so there is one derivation path. Tool name, arguments and
+  provenance unchanged; the response gained `unchanged_edge_ids`.
+
 ## [2.97.0] - 2026-09-05
 
 ### Changed
