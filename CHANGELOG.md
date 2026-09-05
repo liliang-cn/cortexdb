@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.94.0] - 2026-09-05
+
+### Added
+
+- **`liveview.New` and `(*Server).Handler`** — the live graph view as routes a process
+  mounts on a mux it already owns, instead of a loopback listener of its own. `Start`
+  is now `New` plus a listener and behaves exactly as before. The pages fetch by
+  relative path, so the handler works under a prefix (`/graph/`, stripped, trailing
+  slash). Needed by a process that serves the brain as one page of a larger service
+  and should not run a second HTTP server on a second port for one route.
+
 ## [2.93.0] - 2026-09-05
 
 The knowledge contract: what a record must carry to be trusted and explained,

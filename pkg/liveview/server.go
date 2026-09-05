@@ -112,6 +112,9 @@ type Server struct {
 
 	ln   net.Listener
 	http *http.Server
+	// mux is the routes, kept so a view built by New can hand them to a mux it
+	// does not own. Start wraps the same mux in its own http.Server.
+	mux *http.ServeMux
 	// activity reports whether tool calls are being observed. A view started
 	// from the command line polls a database and sees structure only; one
 	// started from inside the MCP server sees the calls too. The page says
@@ -119,23 +122,30 @@ type Server struct {
 	activity bool
 }
 
-// Start reads the graph once, starts serving, and starts polling.
-// It returns as soon as the URL is usable.
-func Start(ctx context.Context, src *Source, port int, interval time.Duration, activity bool) (*Server, error) {
+// New reads the graph once, starts polling, and returns a view that serves
+// on a mux somebody else owns — see Handler.
+//
+// It exists because Start binds its own loopback listener, which is right for
+// the MCP server (the view is a thing you open, and a port is how you open it)
+// and wrong for a process that already has an HTTP server and wants the graph
+// as one page of it. That process should not have to run a second listener
+// on a second port for one route. Everything Start did apart from listening is
+// here, and Start is now New plus a listener.
+//
+// The pages fetch their APIs by relative path ("api/graph", href="ontology"),
+// so the handler can be mounted under a prefix — with http.StripPrefix and a
+// trailing slash on the mount — and the browser resolves the rest.
+func New(ctx context.Context, src *Source, interval time.Duration, activity bool) (*Server, error) {
+	if src == nil {
+		return nil, fmt.Errorf("live view: a source is required")
+	}
 	if interval <= 0 {
 		interval = DefaultInterval
 	}
-	ln, err := listenLocal(port)
-	if err != nil {
-		return nil, err
-	}
-
 	s := &Server{
 		hub:      NewHub(),
 		src:      src,
-		url:      "http://" + ln.Addr().String(),
 		interval: interval,
-		ln:       ln,
 		activity: activity,
 	}
 
@@ -159,14 +169,37 @@ func Start(ctx context.Context, src *Source, port int, interval time.Duration, a
 	mux.HandleFunc("/api/contract", s.handleContract)
 	mux.HandleFunc("/api/ontology", s.handleOntology)
 	mux.HandleFunc("/api/stream", s.handleStream)
-	s.http = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	s.mux = mux
+
+	go s.poll(ctx)
+	return s, nil
+}
+
+// Handler is the view's routes, rooted at "/". Mount it wherever the page
+// should live; the pages' own links and fetches are relative, so a prefix
+// works as long as it ends in a slash and is stripped before this handler.
+func (s *Server) Handler() http.Handler { return s.mux }
+
+// Start reads the graph once, starts serving on its own loopback listener,
+// and starts polling. It returns as soon as the URL is usable.
+func Start(ctx context.Context, src *Source, port int, interval time.Duration, activity bool) (*Server, error) {
+	s, err := New(ctx, src, interval, activity)
+	if err != nil {
+		return nil, err
+	}
+	ln, err := listenLocal(port)
+	if err != nil {
+		return nil, err
+	}
+	s.ln = ln
+	s.url = "http://" + ln.Addr().String()
+	s.http = &http.Server{Handler: s.mux, ReadHeaderTimeout: 10 * time.Second}
 
 	go func() {
 		if serr := s.http.Serve(ln); serr != nil && serr != http.ErrServerClosed {
 			fmt.Fprintf(os.Stderr, "cortexdb: live view: %v\n", serr)
 		}
 	}()
-	go s.poll(ctx)
 	return s, nil
 }
 
@@ -210,12 +243,16 @@ func (s *Server) Close() error {
 	// seconds of nothing, on every settings change, with the caller's lock
 	// held. Close the connections instead: the listener is already shut, and a
 	// stream to a view that is going away has nothing left to say.
-	shutCtx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
-	defer cancel()
-	if err := s.http.Shutdown(shutCtx); err != nil {
-		// Deadline reached with streams still attached, which is the normal
-		// case rather than a fault. Close forces them down.
-		_ = s.http.Close()
+	// A view built by New has no server of its own to stop: the process that
+	// mounted it owns the listener, and shutting that down is its business.
+	if s.http != nil {
+		shutCtx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+		defer cancel()
+		if err := s.http.Shutdown(shutCtx); err != nil {
+			// Deadline reached with streams still attached, which is the normal
+			// case rather than a fault. Close forces them down.
+			_ = s.http.Close()
+		}
 	}
 	if s.src.Close != nil {
 		return s.src.Close()
