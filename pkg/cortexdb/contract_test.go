@@ -17,7 +17,7 @@ func TestContractAcceptsEachProducersRealShape(t *testing.T) {
 			KeyProducer: ProducerLLMExtract, KeyGrade: GradeVerified,
 			KeyState: "accept", KeyAt: "2026-09-03T10:12:00Z",
 			KeyConfidence: "0.82",
-			"_model": "gemini-3.6-flash", "_ontology": "world@3", "_chunking": "whole",
+			"_model":      "gemini-3.6-flash", "_ontology": "world@3", "_chunking": "whole",
 			"_reviewed_by": "liang", "_run": "job-4f2c",
 			"company": "Reuters", // not under `_`: the source's own attribute
 		},
@@ -181,7 +181,7 @@ func TestTypedOptionalKeysAreChecked(t *testing.T) {
 func TestUnknownKeysPassThrough(t *testing.T) {
 	if err := ValidateContract(map[string]string{
 		KeySource: "x", KeyProducer: ProducerDDL, KeyGrade: GradeSelfConsistent,
-		KeyAt: "2026-09-05T00:00:00Z",
+		KeyAt:       "2026-09-05T00:00:00Z",
 		"_ontology": "world@3", "_something_alchemy_adds_later": "y", "table": "orders",
 	}); err != nil {
 		t.Fatalf("pass-through keys rejected: %v", err)
