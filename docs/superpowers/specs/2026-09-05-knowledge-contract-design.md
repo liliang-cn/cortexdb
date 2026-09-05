@@ -116,9 +116,10 @@ Two rules that fall out:
 
 **alchemy** (connector already writes every key but the new five). What the
 connector can say is bounded by what reaches it: a rejected record is removed
-before any sink sees it (`pkg/review/apply.go` `VerbReject`), a held result is
-refused whole (`ErrHeld`, §7.3), and `Conflict` names its sides as prose with
-no `Ref`. So the table has two halves.
+before any sink sees it (`pkg/review/apply.go` `VerbReject`) and an *unanswered*
+conflict refuses the whole result (`ErrHeld`, §7.3 — `Result.Held()` counts a
+conflict as open only when **neither** side carries `ReviewedBy`, so one with a
+reviewed side does reach a store). So the table has two halves.
 
 Reachable on the write path today:
 
@@ -130,6 +131,7 @@ Reachable on the write path today:
 | `ReviewedBy` set — the record survived review | as today | `verified` | — (the verb is not on the wire; nothing is invented) |
 | a `Violation` whose `About` names this record | as today | `refused` | `violation:<ViolationKind>`; `_why` = `Violation.Detail` |
 | a fused edge (several relations → one CortexDB edge) | — | its **least established** member's grade | — |
+| both sides of a relation `Conflict` — a reversal, or an edge the ontology declared `at_most_one` | — | each keeps its own grade | `_contradicts` = the other record's id, on **both** |
 
 Review outranks a violation: the reviewer was shown the finding. A fused edge
 takes the weakest member's grade, the same rule the connector already applies
@@ -143,7 +145,7 @@ Not reachable without a change in `pkg/alchemy` / `pkg/sink`, and therefore
 | `refused` from a review rejection | `review.Apply` deletes the record before a sink sees it | `Result` carrying its rejections |
 | `_state` = review verb | `ReviewedBy` is a list of names; no verb reaches a sink | a decision on `Result` |
 | `held` | the only survivable NEEDS_REVIEW is a conflict, and §7.3 refuses the whole result first | `review.Kind` reaching a sink |
-| `_contradicts` | `Conflict{left,right}` carries statements, not `Ref`s — recovering ids means parsing prose, which `Violation.About` exists to abolish | an `About Ref` on each side of `Conflict` |
+| `_contradicts` **between two argus `Claim`s** | argus's `contradicts` is a declared `world@3` relation, not an `alchemy.Conflict`. `Conflict` is only ever two claims about **one** subject (`pkg/verify`, `pkg/extract/merge.go`, `pkg/source/ddl/model.go`), so two `Claim` nodes with different ids never make one | the connector reading a declared ontology edge type as a contract key |
 
 **argus** (writes through alchemy; its ontology `world@3` is the declared type,
 and it adds nothing of its own):
@@ -154,10 +156,20 @@ and it adds nothing of its own):
 | `Claim.published_at` | not `_at` — `_at` is when alchemy's connector put the record on the shelf; `published_at` stays a `Claim` attribute where a query can compare the two |
 | `attributed_to` (the speaker) | stays an edge; **not** `_by` (see the key table) |
 | every `Claim` | `_grade=asserted`, `_producer=llm-extract` — free, from alchemy's row |
-| `contradicts` edge | stays an ontology edge, queryable as such. `_contradicts` on the two claims is **not written today** — see alchemy's "not reachable" table; it needs `Conflict` to carry `Ref`s |
+| `contradicts` edge | stays an ontology edge, queryable as such. `_contradicts` on the two claims is **not written**, and giving `Conflict` its `Ref`s did not change that — see the row in alchemy's second table |
 
 So argus gets every key it can truthfully have without a line of its own code.
-What it does not get (`_contradicts`) is an alchemy gap, not an argus one.
+
+**A correction to an earlier draft of this section.** It said `_contradicts`
+would arrive for argus once `alchemy.Conflict` carried `Ref`s. It does not.
+`Conflict` is alchemy noticing that its own extraction disagrees with itself
+about one subject; argus's `contradicts` is an assertion its ontology declares,
+between two `Claim` nodes that alchemy is perfectly happy to have both of. The
+`Ref`s are worth having and are now there — they close `_contradicts` for the
+disagreements alchemy detects (a relation reversed between two chunks, an edge
+the ontology says there can only be one of) — but the two mechanisms were never
+the same one, and reading the ontology's own edge type as a contract key is a
+different change nobody has made.
 
 **DataIntelligence** (writes `InsertGraphDocument`; today's `source: "di"` stays as a plain attribute):
 
