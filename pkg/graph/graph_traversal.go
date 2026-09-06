@@ -308,17 +308,19 @@ func (g *GraphStore) Connected(ctx context.Context, nodeID1, nodeID2 string, max
 
 // getEdgeByID retrieves an edge by its ID
 func (g *GraphStore) getEdgeByID(ctx context.Context, edgeID string) (*GraphEdge, error) {
+	src, srcArgs := g.edgeSource(ctx)
 	query := `
-	SELECT id, from_node_id, to_node_id, edge_type, weight, properties, vector, created_at
-	FROM graph_edges
+	SELECT id, from_node_id, to_node_id, edge_type, weight, properties, vector, created_at` + temporalSelect + `
+	FROM ` + src + ` AS e
 	WHERE id = ?
 	`
 
 	var edge GraphEdge
 	var propertiesJSON sql.NullString
 	var vectorBytes []byte
+	var tt temporalScan
 
-	err := g.queryRow(ctx, query, edgeID).Scan(
+	err := g.queryRow(ctx, query, append(srcArgs, edgeID)...).Scan(
 		&edge.ID,
 		&edge.FromNodeID,
 		&edge.ToNodeID,
@@ -327,6 +329,7 @@ func (g *GraphStore) getEdgeByID(ctx context.Context, edgeID string) (*GraphEdge
 		&propertiesJSON,
 		&vectorBytes,
 		&edge.CreatedAt,
+		&tt.validFrom, &tt.validTo, &tt.recordedAt, &tt.retractedAt,
 	)
 
 	if err == sql.ErrNoRows {
@@ -351,6 +354,7 @@ func (g *GraphStore) getEdgeByID(ctx context.Context, edgeID string) (*GraphEdge
 			return nil, fmt.Errorf("failed to decode vector: %w", err)
 		}
 	}
+	tt.applyEdge(&edge)
 
 	return &edge, nil
 }

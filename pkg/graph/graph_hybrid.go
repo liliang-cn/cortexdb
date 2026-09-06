@@ -522,8 +522,10 @@ func (g *GraphStore) CountNodes(ctx context.Context, filter *GraphFilter) (int, 
 		return 0, err
 	}
 	where, args := g.nodeWhere(filter)
+	src, srcArgs := g.nodeSource(ctx)
 	var n int
-	if err := g.queryRow(ctx, `SELECT COUNT(*) FROM graph_nodes`+where, args...).Scan(&n); err != nil {
+	if err := g.queryRow(ctx, `SELECT COUNT(*) FROM `+src+` AS n`+where,
+		append(srcArgs, args...)...).Scan(&n); err != nil {
 		return 0, fmt.Errorf("cortexdb: count nodes: %w", err)
 	}
 	return n, nil
@@ -550,12 +552,14 @@ func (g *GraphStore) ListNodes(ctx context.Context, filter *GraphFilter) ([]*Gra
 		return nil, err
 	}
 	where, args := g.nodeWhere(filter)
-	query := `SELECT id, content, node_type, properties, created_at, updated_at FROM graph_nodes` + where
+	src, srcArgs := g.nodeSource(ctx)
+	query := `SELECT id, content, node_type, properties, created_at, updated_at` + temporalSelect +
+		` FROM ` + src + ` AS n` + where
 	if filter != nil && filter.Limit > 0 {
 		query += ` ORDER BY id LIMIT ?`
 		args = append(args, filter.Limit)
 	}
-	rows, err := g.query(ctx, query, args...)
+	rows, err := g.query(ctx, query, append(srcArgs, args...)...)
 	if err != nil {
 		return nil, fmt.Errorf("cortexdb: list nodes: %w", err)
 	}
@@ -565,10 +569,13 @@ func (g *GraphStore) ListNodes(ctx context.Context, filter *GraphFilter) ([]*Gra
 	for rows.Next() {
 		var node GraphNode
 		var propertiesJSON sql.NullString
+		var tt temporalScan
 		if err := rows.Scan(&node.ID, &node.Content, &node.NodeType, &propertiesJSON,
-			&node.CreatedAt, &node.UpdatedAt); err != nil {
+			&node.CreatedAt, &node.UpdatedAt,
+			&tt.validFrom, &tt.validTo, &tt.recordedAt, &tt.retractedAt); err != nil {
 			return nil, err
 		}
+		tt.applyNode(&node)
 		if propertiesJSON.Valid && propertiesJSON.String != "" {
 			if err := json.Unmarshal([]byte(propertiesJSON.String), &node.Properties); err != nil {
 				return nil, fmt.Errorf("cortexdb: list nodes: node %s: decode properties: %w", node.ID, err)

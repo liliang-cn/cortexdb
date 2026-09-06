@@ -228,14 +228,19 @@ type Connectivity struct {
 // reachable part is divided; this asks how much of the graph is reachable at
 // all.
 func (g *GraphStore) Connectivity(ctx context.Context) (Connectivity, error) {
+	// The edge source is named inside the SELECT list and the node source in
+	// the FROM, so for an as-of read the arguments go in that textual order —
+	// the correlated subquery's first.
+	nodeSrc, nodeArgs := g.nodeSource(ctx)
+	edgeSrc, edgeArgs := g.edgeSource(ctx)
 	var c Connectivity
 	err := g.queryRow(ctx, `
 		SELECT COUNT(*),
 		       COALESCE(SUM(CASE WHEN NOT EXISTS (
-		           SELECT 1 FROM graph_edges e
+		           SELECT 1 FROM `+edgeSrc+` AS e
 		            WHERE e.from_node_id = n.id OR e.to_node_id = n.id
 		       ) THEN 1 ELSE 0 END), 0)
-		  FROM graph_nodes n`).Scan(&c.Nodes, &c.Orphans)
+		  FROM `+nodeSrc+` AS n`, append(edgeArgs, nodeArgs...)...).Scan(&c.Nodes, &c.Orphans)
 	if err != nil {
 		return Connectivity{}, fmt.Errorf("graph connectivity: %w", err)
 	}
@@ -288,7 +293,9 @@ func (g *GraphStore) NodeLabels(ctx context.Context, q NodeLabelQuery) ([]NodeLa
 		where = append(where, `LENGTH(COALESCE(content, '')) >= ?`)
 		args = append(args, q.MinContentLength)
 	}
-	sqlText := `SELECT id, COALESCE(node_type, ''), COALESCE(content, '') FROM graph_nodes`
+	src, srcArgs := g.nodeSource(ctx)
+	args = append(srcArgs, args...)
+	sqlText := `SELECT id, COALESCE(node_type, ''), COALESCE(content, '') FROM ` + src + ` AS n`
 	if len(where) > 0 {
 		sqlText += " WHERE " + strings.Join(where, " AND ")
 	}

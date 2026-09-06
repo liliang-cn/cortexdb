@@ -23,6 +23,20 @@ type GraphNode struct {
 	Properties map[string]interface{} `json:"properties,omitempty"`
 	CreatedAt  time.Time              `json:"created_at"`
 	UpdatedAt  time.Time              `json:"updated_at"`
+
+	// The bitemporal columns. See pkg/graph/temporal.go for what the two axes
+	// mean and why NULL is unbounded on all four.
+	//
+	// ValidFrom is the only one a caller may set on a write: it says when the
+	// fact became true in the world, and defaults to the moment of the write.
+	// The other three are set by the store and ignored on write, the same way
+	// CreatedAt and UpdatedAt already were — a live row always has an open
+	// ValidTo and no RetractedAt, because a row that has ended or been
+	// retracted lives in graph_node_history instead.
+	ValidFrom   time.Time `json:"valid_from,omitzero"`
+	ValidTo     time.Time `json:"valid_to,omitzero"`
+	RecordedAt  time.Time `json:"recorded_at,omitzero"`
+	RetractedAt time.Time `json:"retracted_at,omitzero"`
 }
 
 // GraphEdge represents a directed edge between two nodes
@@ -35,6 +49,15 @@ type GraphEdge struct {
 	Properties map[string]interface{} `json:"properties,omitempty"`
 	Vector     []float32              `json:"vector,omitempty"` // Optional edge embedding
 	CreatedAt  time.Time              `json:"created_at"`
+
+	// The bitemporal columns, with the same rules as GraphNode's: ValidFrom is
+	// an input, the other three are outputs. An edge is where these earn their
+	// keep — "the runbook recommended sds-meta" is a claim with a beginning and
+	// an end, and Relate names how two such claims sit against each other.
+	ValidFrom   time.Time `json:"valid_from,omitzero"`
+	ValidTo     time.Time `json:"valid_to,omitzero"`
+	RecordedAt  time.Time `json:"recorded_at,omitzero"`
+	RetractedAt time.Time `json:"retracted_at,omitzero"`
 }
 
 // GraphFilter defines filtering options for graph queries
@@ -141,6 +164,11 @@ type GraphStore struct {
 	// brain that never declares one never grows the table.
 	ruleSchemaMu    sync.Mutex
 	ruleSchemaReady bool
+
+	// clock hands out the strictly increasing instants the bitemporal columns
+	// are stamped with. See temporal.go: a wall clock repeats, and two writes
+	// at the same instant produce a version interval nothing can read.
+	clock temporalClock
 
 	// vecCap is what in-database vector search can do here, decided once when
 	// the schema is created. The zero value — everything false — is the
@@ -320,7 +348,10 @@ func (g *GraphStore) createGraphSchema(ctx context.Context) error {
 		}
 	}
 
-	return nil
+	// Last, and guarded the same way: the bitemporal columns and the history
+	// tables. A brain written before this release gains them here, with every
+	// existing row reading as current.
+	return g.createTemporalSchema(ctx)
 }
 
 // UpsertNode inserts or updates a node in the graph
@@ -331,6 +362,10 @@ func (g *GraphStore) UpsertNode(ctx context.Context, node *GraphNode) error {
 
 	if len(node.Vector) == 0 {
 		return fmt.Errorf("invalid node: missing vector")
+	}
+
+	if err := errIfAsOf(ctx); err != nil {
+		return err
 	}
 
 	if err := g.InitGraphSchema(ctx); err != nil {
@@ -352,26 +387,42 @@ func (g *GraphStore) UpsertNode(ctx context.Context, node *GraphNode) error {
 		}
 	}
 
-	query := `
-	INSERT INTO graph_nodes (id, vector, content, node_type, properties, updated_at)
-	VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-	ON CONFLICT(id) DO UPDATE SET
-		vector = excluded.vector,
-		content = excluded.content,
-		node_type = excluded.node_type,
-		properties = excluded.properties,
-		updated_at = CURRENT_TIMESTAMP
-	`
+	// The version this write opens. A caller may state when the fact became
+	// true; most do not, and then it became true when it was written.
+	at, recorded := g.versionStamps(node.ValidFrom)
 
-	_, err = g.exec(ctx, query,
+	// Archive-then-write, in one transaction. Two statements outside one would
+	// be two autocommits and two WAL syncs for what is a single change, which
+	// cost more than the versioning itself — and would leave a window in which
+	// the old version was recorded and the new one was not.
+	//
+	// The archive closes the old version at `at`, but only if the content
+	// actually differs; that comparison happens in the database, so an
+	// unchanged upsert costs one index probe and writes nothing. See
+	// archiveNodeVersion.
+	tx, err := g.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := g.archiveNodeVersion(ctx, tx, node.ID, at,
+		node.Content, node.NodeType, string(propertiesJSON)); err != nil {
+		return err
+	}
+
+	if _, err = g.txExec(ctx, tx, upsertNodeSQL,
 		node.ID,
 		vectorBytes,
 		node.Content,
 		node.NodeType,
 		string(propertiesJSON),
-	)
-
-	if err != nil {
+		at,
+		recorded,
+	); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 
@@ -396,17 +447,19 @@ func (g *GraphStore) UpsertNode(ctx context.Context, node *GraphNode) error {
 
 // GetNode retrieves a node by ID
 func (g *GraphStore) GetNode(ctx context.Context, nodeID string) (*GraphNode, error) {
+	src, srcArgs := g.nodeSource(ctx)
 	query := `
-	SELECT id, vector, content, node_type, properties, created_at, updated_at
-	FROM graph_nodes
+	SELECT id, vector, content, node_type, properties, created_at, updated_at` + temporalSelect + `
+	FROM ` + src + ` AS n
 	WHERE id = ?
 	`
 
 	var node GraphNode
 	var vectorBytes []byte
 	var propertiesJSON sql.NullString
+	var tt temporalScan
 
-	err := g.queryRow(ctx, query, nodeID).Scan(
+	err := g.queryRow(ctx, query, append(srcArgs, nodeID)...).Scan(
 		&node.ID,
 		&vectorBytes,
 		&node.Content,
@@ -414,6 +467,7 @@ func (g *GraphStore) GetNode(ctx context.Context, nodeID string) (*GraphNode, er
 		&propertiesJSON,
 		&node.CreatedAt,
 		&node.UpdatedAt,
+		&tt.validFrom, &tt.validTo, &tt.recordedAt, &tt.retractedAt,
 	)
 
 	if err == sql.ErrNoRows {
@@ -436,6 +490,7 @@ func (g *GraphStore) GetNode(ctx context.Context, nodeID string) (*GraphNode, er
 			return nil, fmt.Errorf("failed to decode properties: %w", err)
 		}
 	}
+	tt.applyNode(&node)
 
 	return &node, nil
 }
@@ -468,29 +523,19 @@ func (g *GraphStore) MergeEntities(ctx context.Context, canonicalID string, alia
 	return nil
 }
 
-// DeleteNode removes a node and all its edges
+// DeleteNode removes a node and all its edges from the current graph.
+//
+// It is a retraction now, not a hard delete: the node and its edges move to
+// graph_node_history / graph_edge_history with retracted_at set, so a read as
+// of any instant before this one still sees them. Every current read is
+// unaffected — the live tables no longer hold the row — which is why the name,
+// the signature and the "node not found" error are all unchanged.
+//
+// RetractNodeAt is the same operation with the instant stated, for a fact
+// discovered today to have stopped being believed last Tuesday. Purge is the
+// only thing that removes any of it for good.
 func (g *GraphStore) DeleteNode(ctx context.Context, nodeID string) error {
-	// Edges are automatically deleted due to CASCADE
-	query := `DELETE FROM graph_nodes WHERE id = ?`
-	result, err := g.exec(ctx, query, nodeID)
-	if err != nil {
-		return err
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rowsAffected == 0 {
-		return fmt.Errorf("node not found: %s", nodeID)
-	}
-
-	if g.hnswIndex != nil {
-		g.hnswIndex.index.Remove(nodeID)
-	}
-
-	return nil
+	return g.RetractNodeAt(ctx, nodeID, g.clock.now())
 }
 
 // UpsertEdge inserts or updates an edge in the graph
@@ -501,6 +546,10 @@ func (g *GraphStore) UpsertEdge(ctx context.Context, edge *GraphEdge) error {
 
 	if edge.FromNodeID == "" || edge.ToNodeID == "" {
 		return fmt.Errorf("invalid edge: missing node IDs")
+	}
+
+	if err := errIfAsOf(ctx); err != nil {
+		return err
 	}
 
 	if err := g.InitGraphSchema(ctx); err != nil {
@@ -532,19 +581,19 @@ func (g *GraphStore) UpsertEdge(ctx context.Context, edge *GraphEdge) error {
 		}
 	}
 
-	query := `
-	INSERT INTO graph_edges (id, from_node_id, to_node_id, edge_type, weight, properties, vector)
-	VALUES (?, ?, ?, ?, ?, ?, ?)
-	ON CONFLICT(id) DO UPDATE SET
-		from_node_id = excluded.from_node_id,
-		to_node_id = excluded.to_node_id,
-		edge_type = excluded.edge_type,
-		weight = excluded.weight,
-		properties = excluded.properties,
-		vector = excluded.vector
-	`
+	at, recorded := g.versionStamps(edge.ValidFrom)
 
-	_, err := g.exec(ctx, query,
+	tx, err := g.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := g.archiveEdgeVersion(ctx, tx, edge.ID, at,
+		edge.FromNodeID, edge.ToNodeID, edge.EdgeType, edge.Weight, string(propertiesJSON)); err != nil {
+		return err
+	}
+	if _, err := g.txExec(ctx, tx, upsertEdgeSQL,
 		edge.ID,
 		edge.FromNodeID,
 		edge.ToNodeID,
@@ -552,9 +601,13 @@ func (g *GraphStore) UpsertEdge(ctx context.Context, edge *GraphEdge) error {
 		edge.Weight,
 		string(propertiesJSON),
 		vectorBytes,
-	)
+		at,
+		recorded,
+	); err != nil {
+		return err
+	}
 
-	return err
+	return tx.Commit()
 }
 
 // GetEdges retrieves edges for a node.
@@ -566,17 +619,18 @@ func (g *GraphStore) UpsertEdge(ctx context.Context, edge *GraphEdge) error {
 // backends, and a different set on PostgreSQL from one run to the next once
 // the table had been updated.
 func (g *GraphStore) GetEdges(ctx context.Context, nodeID string, direction string) ([]*GraphEdge, error) {
+	src, srcArgs := g.edgeSource(ctx)
+	projection := `SELECT id, from_node_id, to_node_id, edge_type, weight, properties, vector, created_at` +
+		temporalSelect + ` FROM ` + src + ` AS e `
+
 	var query string
 	switch direction {
 	case "out":
-		query = `SELECT id, from_node_id, to_node_id, edge_type, weight, properties, vector, created_at
-				FROM graph_edges WHERE from_node_id = ? ORDER BY id`
+		query = projection + `WHERE from_node_id = ? ORDER BY id`
 	case "in":
-		query = `SELECT id, from_node_id, to_node_id, edge_type, weight, properties, vector, created_at
-				FROM graph_edges WHERE to_node_id = ? ORDER BY id`
+		query = projection + `WHERE to_node_id = ? ORDER BY id`
 	case "both", "":
-		query = `SELECT id, from_node_id, to_node_id, edge_type, weight, properties, vector, created_at
-				FROM graph_edges WHERE from_node_id = ? OR to_node_id = ? ORDER BY id`
+		query = projection + `WHERE from_node_id = ? OR to_node_id = ? ORDER BY id`
 	default:
 		return nil, fmt.Errorf("invalid direction: %s (use 'in', 'out', or 'both')", direction)
 	}
@@ -585,9 +639,9 @@ func (g *GraphStore) GetEdges(ctx context.Context, nodeID string, direction stri
 	var err error
 
 	if direction == "both" || direction == "" {
-		rows, err = g.query(ctx, query, nodeID, nodeID)
+		rows, err = g.query(ctx, query, append(srcArgs, nodeID, nodeID)...)
 	} else {
-		rows, err = g.query(ctx, query, nodeID)
+		rows, err = g.query(ctx, query, append(srcArgs, nodeID)...)
 	}
 
 	if err != nil {
@@ -600,6 +654,7 @@ func (g *GraphStore) GetEdges(ctx context.Context, nodeID string, direction stri
 		var edge GraphEdge
 		var propertiesJSON sql.NullString
 		var vectorBytes []byte
+		var tt temporalScan
 
 		err := rows.Scan(
 			&edge.ID,
@@ -610,10 +665,12 @@ func (g *GraphStore) GetEdges(ctx context.Context, nodeID string, direction stri
 			&propertiesJSON,
 			&vectorBytes,
 			&edge.CreatedAt,
+			&tt.validFrom, &tt.validTo, &tt.recordedAt, &tt.retractedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
+		tt.applyEdge(&edge)
 
 		// Decode properties
 		if propertiesJSON.Valid && propertiesJSON.String != "" {
@@ -637,24 +694,14 @@ func (g *GraphStore) GetEdges(ctx context.Context, nodeID string, direction stri
 	return edges, rows.Err()
 }
 
-// DeleteEdge removes an edge from the graph
+// DeleteEdge removes an edge from the current graph.
+//
+// A retraction, like DeleteNode: the row moves to graph_edge_history with
+// retracted_at set, so "what did this fact say before we withdrew it" has an
+// answer and FactProvenanceFor can still resolve it as of an earlier instant.
+// Current reads see exactly what they saw before.
 func (g *GraphStore) DeleteEdge(ctx context.Context, edgeID string) error {
-	query := `DELETE FROM graph_edges WHERE id = ?`
-	result, err := g.exec(ctx, query, edgeID)
-	if err != nil {
-		return err
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rowsAffected == 0 {
-		return fmt.Errorf("edge not found: %s", edgeID)
-	}
-
-	return nil
+	return g.RetractEdgeAt(ctx, edgeID, g.clock.now())
 }
 
 func (g *GraphStore) getNodesByIDs(ctx context.Context, nodeIDs []string) (map[string]*GraphNode, error) {
@@ -669,13 +716,14 @@ func (g *GraphStore) getNodesByIDs(ctx context.Context, nodeIDs []string) (map[s
 		args[i] = nodeID
 	}
 
+	src, srcArgs := g.nodeSource(ctx)
 	query := fmt.Sprintf(`
-	SELECT id, vector, content, node_type, properties, created_at, updated_at
-	FROM graph_nodes
+	SELECT id, vector, content, node_type, properties, created_at, updated_at`+temporalSelect+`
+	FROM `+src+` AS n
 	WHERE id IN (%s)
 	`, strings.Join(placeholders, ","))
 
-	rows, err := g.query(ctx, query, args...)
+	rows, err := g.query(ctx, query, append(srcArgs, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -686,6 +734,7 @@ func (g *GraphStore) getNodesByIDs(ctx context.Context, nodeIDs []string) (map[s
 		var node GraphNode
 		var vectorBytes []byte
 		var propertiesJSON sql.NullString
+		var tt temporalScan
 
 		err := rows.Scan(
 			&node.ID,
@@ -695,10 +744,12 @@ func (g *GraphStore) getNodesByIDs(ctx context.Context, nodeIDs []string) (map[s
 			&propertiesJSON,
 			&node.CreatedAt,
 			&node.UpdatedAt,
+			&tt.validFrom, &tt.validTo, &tt.recordedAt, &tt.retractedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
+		tt.applyNode(&node)
 
 		node.Vector, err = encoding.DecodeVector(vectorBytes)
 		if err != nil {

@@ -73,21 +73,15 @@ func (g *GraphStore) UpsertNodesBatch(ctx context.Context, nodes []*GraphNode) (
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Prepare statement for batch insert
-	stmt, err := g.txPrepare(ctx, tx, `
-		INSERT INTO graph_nodes (id, vector, content, node_type, properties, updated_at)
-		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(id) DO UPDATE SET
-			vector = excluded.vector,
-			content = excluded.content,
-			node_type = excluded.node_type,
-			properties = excluded.properties,
-			updated_at = CURRENT_TIMESTAMP
-	`)
+	// Two statements per row, not one: the archive closes the version this
+	// write replaces, prepared alongside the upsert so a batch pays one index
+	// probe per row rather than a round trip. It writes nothing for a node that
+	// is new or unchanged, which is nearly all of them on an ingest.
+	stmt, archive, err := g.prepareNodeUpsert(ctx, tx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to prepare statement: %w", err)
+		return nil, err
 	}
-	defer func() { _ = stmt.Close() }()
+	defer func() { _ = stmt.Close(); _ = archive.Close() }()
 
 	// Process each node
 	for _, node := range nodes {
@@ -122,6 +116,14 @@ func (g *GraphStore) UpsertNodesBatch(ctx context.Context, nodes []*GraphNode) (
 			}
 		}
 
+		at, recorded := g.versionStamps(node.ValidFrom)
+		if _, err = archive.ExecContext(ctx, at, node.ID,
+			node.Content, node.NodeType, string(propertiesJSON)); err != nil {
+			result.Errors = append(result.Errors, fmt.Errorf("failed to archive node version %s: %w", node.ID, err))
+			result.FailedCount++
+			continue
+		}
+
 		// Execute insert
 		_, err = stmt.ExecContext(ctx,
 			node.ID,
@@ -129,6 +131,8 @@ func (g *GraphStore) UpsertNodesBatch(ctx context.Context, nodes []*GraphNode) (
 			node.Content,
 			node.NodeType,
 			string(propertiesJSON),
+			at,
+			recorded,
 		)
 
 		if err != nil {
@@ -176,6 +180,13 @@ func (g *GraphStore) DeleteNodesBatch(ctx context.Context, nodeIDs []string) (*B
 		args[i] = id
 	}
 
+	// Retraction, not a hard delete: the rows and every edge touching them are
+	// recorded first, in this transaction, so a crash between the two cannot
+	// leave a fact that vanished without a trace.
+	if err := g.archiveNodes(ctx, tx, nodeIDs, g.clock.now()); err != nil {
+		return nil, err
+	}
+
 	query := fmt.Sprintf("DELETE FROM graph_nodes WHERE id IN (%s)", strings.Join(placeholders, ","))
 
 	res, err := g.txExec(ctx, tx, query, args...)
@@ -221,21 +232,11 @@ func (g *GraphStore) UpsertEdgesBatch(ctx context.Context, edges []*GraphEdge) (
 	defer func() { _ = tx.Rollback() }()
 
 	// Prepare statement for batch insert
-	stmt, err := g.txPrepare(ctx, tx, `
-		INSERT INTO graph_edges (id, from_node_id, to_node_id, edge_type, weight, properties, vector)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			from_node_id = excluded.from_node_id,
-			to_node_id = excluded.to_node_id,
-			edge_type = excluded.edge_type,
-			weight = excluded.weight,
-			properties = excluded.properties,
-			vector = excluded.vector
-	`)
+	stmt, archive, err := g.prepareEdgeUpsert(ctx, tx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to prepare statement: %w", err)
+		return nil, err
 	}
-	defer func() { _ = stmt.Close() }()
+	defer func() { _ = stmt.Close(); _ = archive.Close() }()
 
 	// Process each edge
 	for _, edge := range edges {
@@ -278,6 +279,14 @@ func (g *GraphStore) UpsertEdgesBatch(ctx context.Context, edges []*GraphEdge) (
 			}
 		}
 
+		at, recorded := g.versionStamps(edge.ValidFrom)
+		if _, err = archive.ExecContext(ctx, at, edge.ID, edge.FromNodeID, edge.ToNodeID,
+			edge.EdgeType, edge.Weight, string(propertiesJSON)); err != nil {
+			result.Errors = append(result.Errors, fmt.Errorf("failed to archive edge version %s: %w", edge.ID, err))
+			result.FailedCount++
+			continue
+		}
+
 		// Execute insert
 		_, err = stmt.ExecContext(ctx,
 			edge.ID,
@@ -287,6 +296,8 @@ func (g *GraphStore) UpsertEdgesBatch(ctx context.Context, edges []*GraphEdge) (
 			edge.Weight,
 			string(propertiesJSON),
 			vectorBytes,
+			at,
+			recorded,
 		)
 
 		if err != nil {
@@ -334,6 +345,10 @@ func (g *GraphStore) DeleteEdgesBatch(ctx context.Context, edgeIDs []string) (*B
 		args[i] = id
 	}
 
+	if err := g.archiveEdges(ctx, tx, edgeIDs, g.clock.now(), "id"); err != nil {
+		return nil, err
+	}
+
 	query := fmt.Sprintf("DELETE FROM graph_edges WHERE id IN (%s)", strings.Join(placeholders, ","))
 
 	res, err := g.txExec(ctx, tx, query, args...)
@@ -371,13 +386,14 @@ func (g *GraphStore) GetNodesBatch(ctx context.Context, nodeIDs []string) ([]*Gr
 		args[i] = id
 	}
 
+	src, srcArgs := g.nodeSource(ctx)
 	query := fmt.Sprintf(`
-		SELECT id, vector, content, node_type, properties, created_at, updated_at
-		FROM graph_nodes
+		SELECT id, vector, content, node_type, properties, created_at, updated_at`+temporalSelect+`
+		FROM `+src+` AS n
 		WHERE id IN (%s)
 	`, strings.Join(placeholders, ","))
 
-	rows, err := g.query(ctx, query, args...)
+	rows, err := g.query(ctx, query, append(srcArgs, args...)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query nodes: %w", err)
 	}
@@ -388,6 +404,7 @@ func (g *GraphStore) GetNodesBatch(ctx context.Context, nodeIDs []string) ([]*Gr
 		var node GraphNode
 		var vectorBytes []byte
 		var propertiesJSON sql.NullString
+		var tt temporalScan
 
 		err := rows.Scan(
 			&node.ID,
@@ -397,10 +414,12 @@ func (g *GraphStore) GetNodesBatch(ctx context.Context, nodeIDs []string) ([]*Gr
 			&propertiesJSON,
 			&node.CreatedAt,
 			&node.UpdatedAt,
+			&tt.validFrom, &tt.validTo, &tt.recordedAt, &tt.retractedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan node: %w", err)
 		}
+		tt.applyNode(&node)
 
 		// Decode vector
 		node.Vector, err = encoding.DecodeVector(vectorBytes)
@@ -436,14 +455,15 @@ func (g *GraphStore) GetEdgesBatch(ctx context.Context, edgeIDs []string) ([]*Gr
 		args[i] = id
 	}
 
+	src, srcArgs := g.edgeSource(ctx)
 	query := fmt.Sprintf(`
-		SELECT id, from_node_id, to_node_id, edge_type, weight, properties, vector, created_at
-		FROM graph_edges
+		SELECT id, from_node_id, to_node_id, edge_type, weight, properties, vector, created_at`+temporalSelect+`
+		FROM `+src+` AS e
 		WHERE id IN (%s)
 		ORDER BY id
 	`, strings.Join(placeholders, ","))
 
-	rows, err := g.query(ctx, query, args...)
+	rows, err := g.query(ctx, query, append(srcArgs, args...)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query edges: %w", err)
 	}
@@ -454,6 +474,7 @@ func (g *GraphStore) GetEdgesBatch(ctx context.Context, edgeIDs []string) ([]*Gr
 		var edge GraphEdge
 		var propertiesJSON sql.NullString
 		var vectorBytes []byte
+		var tt temporalScan
 
 		err := rows.Scan(
 			&edge.ID,
@@ -464,10 +485,12 @@ func (g *GraphStore) GetEdgesBatch(ctx context.Context, edgeIDs []string) ([]*Gr
 			&propertiesJSON,
 			&vectorBytes,
 			&edge.CreatedAt,
+			&tt.validFrom, &tt.validTo, &tt.recordedAt, &tt.retractedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan edge: %w", err)
 		}
+		tt.applyEdge(&edge)
 
 		// Decode properties
 		if propertiesJSON.Valid && propertiesJSON.String != "" {
@@ -575,20 +598,11 @@ func (g *GraphStore) ExecuteBatch(ctx context.Context, ops *BatchGraphOperation)
 func (g *GraphStore) upsertNodesBatchTx(ctx context.Context, tx *sql.Tx, nodes []*GraphNode) (*BatchResult, error) {
 	result := &BatchResult{Errors: make([]error, 0)}
 
-	stmt, err := g.txPrepare(ctx, tx, `
-		INSERT INTO graph_nodes (id, vector, content, node_type, properties, updated_at)
-		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(id) DO UPDATE SET
-			vector = excluded.vector,
-			content = excluded.content,
-			node_type = excluded.node_type,
-			properties = excluded.properties,
-			updated_at = CURRENT_TIMESTAMP
-	`)
+	stmt, archive, err := g.prepareNodeUpsert(ctx, tx)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = stmt.Close() }()
+	defer func() { _ = stmt.Close(); _ = archive.Close() }()
 
 	for _, node := range nodes {
 		if node == nil || node.ID == "" || len(node.Vector) == 0 {
@@ -605,7 +619,15 @@ func (g *GraphStore) upsertNodesBatchTx(ctx context.Context, tx *sql.Tx, nodes [
 			propertiesJSON, _ = json.Marshal(node.Properties)
 		}
 
-		_, err = stmt.ExecContext(ctx, node.ID, vectorBytes, node.Content, node.NodeType, string(propertiesJSON))
+		at, recorded := g.versionStamps(node.ValidFrom)
+		if _, err = archive.ExecContext(ctx, at, node.ID,
+			node.Content, node.NodeType, string(propertiesJSON)); err != nil {
+			result.FailedCount++
+			result.Errors = append(result.Errors, err)
+			continue
+		}
+		_, err = stmt.ExecContext(ctx, node.ID, vectorBytes, node.Content, node.NodeType,
+			string(propertiesJSON), at, recorded)
 		if err != nil {
 			result.FailedCount++
 			result.Errors = append(result.Errors, err)
@@ -631,6 +653,13 @@ func (g *GraphStore) deleteNodesBatchTx(ctx context.Context, tx *sql.Tx, nodeIDs
 		args[i] = id
 	}
 
+	// Retraction, not a hard delete: the rows and every edge touching them are
+	// recorded first, in this transaction, so a crash between the two cannot
+	// leave a fact that vanished without a trace.
+	if err := g.archiveNodes(ctx, tx, nodeIDs, g.clock.now()); err != nil {
+		return nil, err
+	}
+
 	query := fmt.Sprintf("DELETE FROM graph_nodes WHERE id IN (%s)", strings.Join(placeholders, ","))
 	res, err := g.txExec(ctx, tx, query, args...)
 	if err != nil {
@@ -647,21 +676,11 @@ func (g *GraphStore) deleteNodesBatchTx(ctx context.Context, tx *sql.Tx, nodeIDs
 func (g *GraphStore) upsertEdgesBatchTx(ctx context.Context, tx *sql.Tx, edges []*GraphEdge) (*BatchResult, error) {
 	result := &BatchResult{Errors: make([]error, 0)}
 
-	stmt, err := g.txPrepare(ctx, tx, `
-		INSERT INTO graph_edges (id, from_node_id, to_node_id, edge_type, weight, properties, vector)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			from_node_id = excluded.from_node_id,
-			to_node_id = excluded.to_node_id,
-			edge_type = excluded.edge_type,
-			weight = excluded.weight,
-			properties = excluded.properties,
-			vector = excluded.vector
-	`)
+	stmt, archive, err := g.prepareEdgeUpsert(ctx, tx)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = stmt.Close() }()
+	defer func() { _ = stmt.Close(); _ = archive.Close() }()
 
 	for _, edge := range edges {
 		if edge == nil || edge.ID == "" || edge.FromNodeID == "" || edge.ToNodeID == "" {
@@ -684,7 +703,15 @@ func (g *GraphStore) upsertEdgesBatchTx(ctx context.Context, tx *sql.Tx, edges [
 			vectorBytes, _ = encoding.EncodeVector(edge.Vector)
 		}
 
-		_, err = stmt.ExecContext(ctx, edge.ID, edge.FromNodeID, edge.ToNodeID, edge.EdgeType, edge.Weight, string(propertiesJSON), vectorBytes)
+		at, recorded := g.versionStamps(edge.ValidFrom)
+		if _, err = archive.ExecContext(ctx, at, edge.ID, edge.FromNodeID, edge.ToNodeID,
+			edge.EdgeType, edge.Weight, string(propertiesJSON)); err != nil {
+			result.FailedCount++
+			result.Errors = append(result.Errors, err)
+			continue
+		}
+		_, err = stmt.ExecContext(ctx, edge.ID, edge.FromNodeID, edge.ToNodeID, edge.EdgeType,
+			edge.Weight, string(propertiesJSON), vectorBytes, at, recorded)
 		if err != nil {
 			result.FailedCount++
 			result.Errors = append(result.Errors, err)
@@ -708,6 +735,10 @@ func (g *GraphStore) deleteEdgesBatchTx(ctx context.Context, tx *sql.Tx, edgeIDs
 	for i, id := range edgeIDs {
 		placeholders[i] = "?"
 		args[i] = id
+	}
+
+	if err := g.archiveEdges(ctx, tx, edgeIDs, g.clock.now(), "id"); err != nil {
+		return nil, err
 	}
 
 	query := fmt.Sprintf("DELETE FROM graph_edges WHERE id IN (%s)", strings.Join(placeholders, ","))

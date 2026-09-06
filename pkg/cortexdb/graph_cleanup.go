@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 	"strings"
+	"time"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
@@ -30,6 +31,16 @@ func (db *DB) cleanupKnowledgeGraphArtifactsTx(ctx context.Context, tx *sql.Tx, 
 	if err != nil {
 		return nil, err
 	}
+	// A document's graph is retracted, not erased: the rows move to history
+	// with retracted_at set before they leave the live tables, in this
+	// transaction, so delete_document_graph keeps its name and its current
+	// behaviour while "what did this document say before we removed it" gains
+	// an answer. ArchiveNodesTx takes the edges of each node with it, because
+	// the DELETE below cascades to them whether or not they were listed.
+	at := time.Now().UTC()
+	if err := db.graph.ArchiveEdgesTx(ctx, tx, edgeIDs, at); err != nil {
+		return nil, fmt.Errorf("record document graph edges: %w", err)
+	}
 	if err := deleteStringIDsTx(ctx, db.Dialect(), tx, "graph_edges", "id", edgeIDs); err != nil {
 		return nil, fmt.Errorf("delete document graph edges: %w", err)
 	}
@@ -39,6 +50,9 @@ func (db *DB) cleanupKnowledgeGraphArtifactsTx(ctx context.Context, tx *sql.Tx, 
 	for _, chunk := range chunks {
 		nodeIDs = append(nodeIDs, chunk.ID)
 	}
+	if err := db.graph.ArchiveNodesTx(ctx, tx, nodeIDs, at); err != nil {
+		return nil, fmt.Errorf("record graph nodes: %w", err)
+	}
 	if err := deleteStringIDsTx(ctx, db.Dialect(), tx, "graph_nodes", "id", nodeIDs); err != nil {
 		return nil, fmt.Errorf("delete graph nodes: %w", err)
 	}
@@ -46,6 +60,9 @@ func (db *DB) cleanupKnowledgeGraphArtifactsTx(ctx context.Context, tx *sql.Tx, 
 	orphanIDs, err := db.orphanNodeIDsTx(ctx, tx, sortedKeysFromSet(entityNodeSet))
 	if err != nil {
 		return nil, fmt.Errorf("get orphan entity nodes: %w", err)
+	}
+	if err := db.graph.ArchiveNodesTx(ctx, tx, orphanIDs, at); err != nil {
+		return nil, fmt.Errorf("record orphan entity nodes: %w", err)
 	}
 	if err := deleteStringIDsTx(ctx, db.Dialect(), tx, "graph_nodes", "id", orphanIDs); err != nil {
 		return nil, fmt.Errorf("delete orphan entity nodes: %w", err)
