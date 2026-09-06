@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.99.0] - 2026-09-06
+
+### Added
+
+- **Point-in-time reads.** `graph_nodes` and `graph_edges` carry `valid_from`,
+  `valid_to`, `recorded_at` and `retracted_at`, added by `ALTER TABLE` under the
+  existing duplicate-column guard with defaults that make every existing row current —
+  a brain that predates this opens and reads exactly as it did. Default reads are
+  unchanged; as-of is opt-in.
+
+- **Delete becomes retraction.** `DeleteNode`/`DeleteEdge` and the delete tools keep
+  their names and their observable current behaviour, but the row stays with
+  `retracted_at` set, so an as-of read from before that instant still sees it.
+  `vacuum_graph` is the single operation that removes anything permanently: it refuses
+  without a cutoff and offers a dry run.
+
+- **`graph_snapshot`, `graph_diff`** (reads) and **`vacuum_graph`** (a write), plus
+  `GraphDiff(t1, t2)` reporting what was added, retracted and changed between two
+  instants, and an Allen interval helper over `(valid_from, valid_to)` — how two claims
+  about one subject state that the runbook's validity ended where the incident's began.
+
 ## [2.98.0] - 2026-09-05
 
 The brain could say how it knew a fact. It could not say why anything was done,
