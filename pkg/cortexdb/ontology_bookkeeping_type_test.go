@@ -91,3 +91,37 @@ func TestADeclaredEntityTypeIsStillValidated(t *testing.T) {
 		t.Fatal("a declared entity type should still have its properties validated")
 	}
 }
+
+// The exemption must not become a hole a caller can walk through.
+//
+// It applies to what the built-in extractor produced, on the ingestion path.
+// A caller reaching the public write API and typing its object "entity" is
+// making a claim about the domain like any other, goes through
+// validateEntityInputs, and is refused by a schema that declares no such type.
+// If this ever passes, typing an object "entity" is a way to write an
+// unvalidated node.
+func TestACallerCannotSmuggleANodeInAsTheBookkeepingType(t *testing.T) {
+	db := openOntologyTestDB(t)
+	activateAviationSchema(t, db)
+	ctx := context.Background()
+
+	_, err := db.GraphRAGTools().UpsertEntities(ctx, ToolUpsertEntitiesRequest{
+		Entities: []ToolEntityInput{
+			{Name: "smuggled", Type: "entity", Metadata: map[string]string{"anything": "at all"}},
+		},
+	})
+	if err == nil {
+		t.Fatal("a caller wrote an unvalidated node by typing it the bookkeeping type")
+	}
+
+	_, err = db.SaveKnowledge(ctx, KnowledgeSaveRequest{
+		KnowledgeID: "note-2",
+		Content:     "A note.",
+		Entities: []ToolEntityInput{
+			{Name: "smuggled", Type: "entity", Metadata: map[string]string{"anything": "at all"}},
+		},
+	})
+	if err == nil {
+		t.Fatal("the knowledge door let the same node through")
+	}
+}
