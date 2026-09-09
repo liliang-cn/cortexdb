@@ -19,6 +19,8 @@ go run ./examples/13_scale_analytics
 go run ./examples/14_semantic_rag
 go run ./examples/15_cortex_query
 go run ./examples/16_ontology
+go run ./examples/17_query_source
+go run ./examples/18_vector_graph_ontology
 ```
 
 ## 01_core
@@ -227,3 +229,15 @@ Need vector + lexical + graph fusion?  -> 15_cortex_query
 Need typed, governed, audited writes?   -> 16_ontology
 Have a search cluster to fuse in?       -> 17_query_source
 ```
+
+## 18_vector_graph_ontology
+
+All three layers over one estate, and the seams between them.
+
+- an ontology whose link cardinality refuses the two-writer state at the write
+- object-set algebra: filter, interface, `search_around`, intersect
+- retrieval joined to the graph through chunk mention edges, in both directions
+- retrieval as one operand of a typed set expression
+
+Runs lexically with no model; set `OPENAI_API_KEY` to rank the same corpus by
+meaning. See its own README for the three API defects it surfaced.
