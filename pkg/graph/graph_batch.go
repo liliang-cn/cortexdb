@@ -357,10 +357,33 @@ func (g *GraphStore) DeleteEdgesBatch(ctx context.Context, edgeIDs []string) (*B
 	return result, nil
 }
 
-// GetNodesBatch retrieves multiple nodes by their IDs
+// maxNodeIDsPerQuery bounds how many ids go into one IN (...) list.
+//
+// One placeholder is bound per id and SQLite refuses more than 32766 of them,
+// so an unchunked read failed on exactly the ingests large enough to care —
+// with "too many SQL variables", from a read the caller never asked for. 999
+// is the conservative bound pkg/cortexdb already uses for the same reason.
+const maxNodeIDsPerQuery = 999
+
+// GetNodesBatch retrieves multiple nodes by their IDs.
+//
+// The result contains only the ids that exist, in no guaranteed order, which
+// is what it always did — chunking does not change that contract.
 func (g *GraphStore) GetNodesBatch(ctx context.Context, nodeIDs []string) ([]*GraphNode, error) {
 	if len(nodeIDs) == 0 {
 		return []*GraphNode{}, nil
+	}
+	if len(nodeIDs) > maxNodeIDsPerQuery {
+		out := make([]*GraphNode, 0, len(nodeIDs))
+		for start := 0; start < len(nodeIDs); start += maxNodeIDsPerQuery {
+			end := min(start+maxNodeIDsPerQuery, len(nodeIDs))
+			batch, err := g.GetNodesBatch(ctx, nodeIDs[start:end])
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, batch...)
+		}
+		return out, nil
 	}
 
 	// Build query with placeholders

@@ -2,6 +2,8 @@ package cortexdb
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
 	"testing"
 )
 
@@ -207,5 +209,100 @@ func TestSaveKnowledgeEntitiesDoNotEraseAnObjectsProperties(t *testing.T) {
 				t.Fatalf("mentioning the airport in a note erased its name: %#v", node.Properties)
 			}
 		})
+	}
+}
+
+// openMergeBrainWithEmbedder is a brain whose knowledge path runs the built-in
+// extractor, which is what produces a MENTION as opposed to a declaration.
+func openMergeBrainWithEmbedder(t *testing.T) *DB {
+	t.Helper()
+	cfg := DefaultConfig(filepath.Join(t.TempDir(), "merge.db"))
+	cfg.Dimensions = 4
+	db, err := Open(cfg, WithEmbedder(newKeywordEmbedder("heathrow", "ground", "handling", "contracted")))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+// A document that merely MENTIONS an object must not erase it either.
+//
+// Declaring an entity and mentioning one produce nodes for the same object
+// through two different builders, and only the declaration path was covered at
+// first. That left the outcome depending on an unrelated field: the identical
+// prose kept the object's properties if the request happened to declare some
+// other entity, and wiped them if it did not.
+func TestExtractedMentionsDoNotEraseAnObjectsProperties(t *testing.T) {
+	db := openMergeBrainWithEmbedder(t)
+	activateAviationSchema(t, db)
+	ctx := context.Background()
+
+	if _, err := db.GraphRAGTools().UpsertEntities(ctx, ToolUpsertEntitiesRequest{
+		Entities: []ToolEntityInput{{
+			Name: "Heathrow", Type: "Airport",
+			Metadata: map[string]string{"iataCode": "LHR", "airportName": "Heathrow"},
+		}},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// No declared entities at all: the extractor is what will name Heathrow.
+	if _, err := db.SaveKnowledge(ctx, KnowledgeSaveRequest{
+		KnowledgeID: "note-mention",
+		Content:     "Ground handling at Heathrow is contracted out.",
+	}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	node := requireEntityNode(t, db, "Airport", "iataCode", "LHR")
+	if got := node.Properties["airportName"]; got != "Heathrow" {
+		t.Fatalf("a passing mention erased the airport's name: %#v", node.Properties)
+	}
+}
+
+// InsertGraphDocument is the third door onto the same act.
+func TestInsertGraphDocumentDoesNotEraseAnObjectsProperties(t *testing.T) {
+	db := openMergeBrainWithEmbedder(t)
+	activateAviationSchema(t, db)
+	ctx := context.Background()
+
+	if _, err := db.GraphRAGTools().UpsertEntities(ctx, ToolUpsertEntitiesRequest{
+		Entities: []ToolEntityInput{{
+			Name: "Heathrow", Type: "Airport",
+			Metadata: map[string]string{"iataCode": "LHR", "airportName": "Heathrow"},
+		}},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := db.InsertGraphDocument(ctx, GraphRAGDocument{
+		ID:      "doc-1",
+		Title:   "Handling",
+		Content: "Ground handling at Heathrow is contracted out.",
+	}, GraphRAGIngestOptions{}); err != nil {
+		t.Fatalf("insert graph document: %v", err)
+	}
+
+	node := requireEntityNode(t, db, "Airport", "iataCode", "LHR")
+	if got := node.Properties["airportName"]; got != "Heathrow" {
+		t.Fatalf("InsertGraphDocument erased the airport's name: %#v", node.Properties)
+	}
+}
+
+// The prior-state load binds one placeholder per id, and SQLite stops at
+// 32766 of them. A single large ingest worked before the merge existed and has
+// to keep working, so the load is chunked.
+func TestALargeUpsertDoesNotExhaustTheSQLPlaceholders(t *testing.T) {
+	db := openOntologyTestDB(t)
+	ctx := context.Background()
+
+	const count = 33000
+	entities := make([]ToolEntityInput, 0, count)
+	for i := range count {
+		name := fmt.Sprintf("e-%d", i)
+		entities = append(entities, ToolEntityInput{Name: name})
+	}
+	if _, err := db.GraphRAGTools().UpsertEntities(ctx, ToolUpsertEntitiesRequest{Entities: entities}); err != nil {
+		t.Fatalf("a %d-entity upsert failed: %v", count, err)
 	}
 }

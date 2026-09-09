@@ -308,7 +308,7 @@ _, err := db.SaveOntologySchema(ctx, cortexdb.OntologySaveRequest{
 
 One schema at a time is **active**. What activation does depends on the schema's `enforcement`:
 
-- `"strict"` (the default) validates every write: unknown object types, unknown properties, missing required values and values that do not parse are rejected. Nodes written under it are identified as `entity:<objectType>:<primaryKey>`; with no active schema the older name-derived IDs still apply.
+- `"strict"` (the default) validates every write a caller makes: unknown object types, unknown properties, missing required values and values that do not parse are rejected. It does not gate the library's own bookkeeping — what the built-in extractor produces is untyped and exempt, so an ontology does not make `SaveKnowledge` unusable. That exemption keys on the type name, so an extractor you supply yourself can also write a bare name-keyed node. Nodes written under it are identified as `entity:<objectType>:<primaryKey>`; with no active schema the older name-derived IDs still apply.
 - `"vocabulary"` keeps the schema as a shared vocabulary without gating writes: declared type spellings are canonicalized and interfaces expand for retrieval, but an entity that cannot state its primary key — the normal case for LLM extraction from prose — falls back to the name-derived ID instead of being refused, and undeclared types and link types pass through. Use this for extraction pipelines; strict enforcement would force them to choose between activating the schema and keeping their entities.
 
 `strict_actions` and `enforcement: "vocabulary"` are mutually exclusive — one closes the generic write path, the other promises never to.
@@ -355,7 +355,7 @@ Tools: `ontology_save`, `ontology_get`, `ontology_list`, `ontology_delete`, `ont
 ### Current limitations
 
 - **`vectorized` is declarative only.** The flag is stored and validated, but no write path embeds those properties. `upsert_entities` writes a lexical FNV hash vector into the node regardless of whether an embedder is configured, so a `nearest_neighbors` predicate over a *text* query compares across two different vector spaces. Object-set vector predicates are meaningful today only when you pass an explicit query `vector`.
-- **An active ontology constrains `SaveKnowledge`.** It always runs its built-in heuristic extractor, whose entities are untyped, and write-path validation rejects them. If you want both, declare a catch-all `entity` object type (primary key `name`) and a `related_to` link type in the schema.
+- **A property is removed only by deleting the object.** An upsert updates the properties it names and leaves the rest alone — which is what stops a document that merely mentions an object from erasing it — so omitting a property does not clear it. Use `delete_entities` and write it again. A property an ontology revision no longer declares is refused on input but survives on rows written before the change.
 - **`modify_object` does not rewrite the node's display title.** Changing the title property through a modify rule updates the property but leaves the stored title, so name-based endpoint resolution still finds the pre-rename name.
 - **Deliberately not modelled:** Foundry's function runtime, branches and proposals, dynamic row-level security, and backing datasources. Those need a platform CortexDB is not trying to be.
 

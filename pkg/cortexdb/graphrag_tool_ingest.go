@@ -478,8 +478,23 @@ func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRel
 //
 // This is the same instinct as the two mergers that were already here — source
 // documents were unioned and a declared type was preserved, each one field at a
-// time — generalised to the whole map, and it loads the prior state once for
-// all three instead of once each.
+// time — generalised to the whole map. It shares its load with the
+// source-document merge; preserveDeclaredEntityTypes still does its own, which
+// is a redundancy worth removing and not worth pretending is already gone.
+//
+// Two limits are worth knowing.
+//
+// The prior read happens outside the write transaction, so two concurrent
+// upserts of the same object can each miss the other's new property: "a
+// property left out survives" holds against earlier COMMITTED state, not
+// against a concurrent writer. Replace semantics lost the same race, so this
+// is not a regression — but it used to be an accident and is now a promise,
+// and a promise should say where it stops.
+//
+// A property an ontology revision no longer declares is carried forward rather
+// than dropped, because nothing validates stored rows against the current
+// schema. Such a value is refused on input and survives on rows written before
+// the change; a re-upsert used to clear it and no longer does.
 func (db *DB) mergePriorEntityProperties(ctx context.Context, nodes []*graph.GraphNode) (map[string]*graph.GraphNode, error) {
 	if len(nodes) == 0 {
 		return nil, nil

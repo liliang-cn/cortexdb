@@ -118,6 +118,9 @@ func (db *DB) buildEmbedderKnowledgePlan(ctx context.Context, input knowledgeMut
 	if err := db.appendKnowledgeExplicitArtifacts(ctx, input, entityNodes, entityTypes, edgeMap, &plan.ingest); err != nil {
 		return nil, err
 	}
+	if err := db.mergeEntityNodeProperties(ctx, entityNodes); err != nil {
+		return nil, err
+	}
 	plan.graphOps.NodeUpserts = append(plan.graphOps.NodeUpserts, sortedNodePointers(entityNodes)...)
 	plan.graphOps.EdgeUpserts = sortedEdgePointers(edgeMap)
 	return plan, nil
@@ -151,6 +154,9 @@ func (db *DB) buildLexicalKnowledgePlan(ctx context.Context, input knowledgeMuta
 	entityNodes := make(map[string]*graph.GraphNode)
 	entityTypes := make(map[string]string)
 	if err := db.appendKnowledgeExplicitArtifacts(ctx, input, entityNodes, entityTypes, edgeMap, &plan.ingest); err != nil {
+		return nil, err
+	}
+	if err := db.mergeEntityNodeProperties(ctx, entityNodes); err != nil {
 		return nil, err
 	}
 	plan.graphOps.NodeUpserts = append(plan.graphOps.NodeUpserts, sortedNodePointers(entityNodes)...)
@@ -396,6 +402,27 @@ func (db *DB) buildExtractedEntityArtifacts(ctx context.Context, entityTexts map
 	return entityNodes, entityTypes, mentionEdges, relationEdges, entityIDs, nil
 }
 
+// mergeEntityNodeProperties applies the upsert-updates rule to every entity
+// node a knowledge write is about to produce.
+//
+// It sits at the flush rather than beside one of the two producers, because
+// both produce nodes for the same objects and only one of them used to be
+// covered. An entity a document merely MENTIONS is built by extraction; an
+// entity it DECLARES is built here; a mention and a declaration of the same
+// object are the same object. Covering one and not the other made the outcome
+// depend on whether the request happened to declare something unrelated.
+func (db *DB) mergeEntityNodeProperties(ctx context.Context, entityNodes map[string]*graph.GraphNode) error {
+	if len(entityNodes) == 0 {
+		return nil
+	}
+	nodes := make([]*graph.GraphNode, 0, len(entityNodes))
+	for _, node := range entityNodes {
+		nodes = append(nodes, node)
+	}
+	_, err := db.mergePriorEntityProperties(ctx, nodes)
+	return err
+}
+
 func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowledgeMutationInput, entityNodes map[string]*graph.GraphNode, entityTypes map[string]string, edgeMap map[string]*graph.GraphEdge, ingest *knowledgeIngestResult) error {
 	if len(input.Entities) == 0 && len(input.Relations) == 0 {
 		return nil
@@ -468,22 +495,6 @@ func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowle
 				}
 				edgeMap[mentionEdge.ID] = mentionEdge
 			}
-		}
-	}
-
-	// Before the relations, and before the early return below, because an
-	// entity-only request is the ordinary shape: a document declaring what it
-	// mentions carries identity and no detail, and replacing the property map
-	// would erase everything a fuller earlier write established. This is the
-	// same act the toolbox upsert performs by another door, so it obeys the
-	// same rule. See DB.mergePriorEntityProperties.
-	if len(entityNodes) > 0 {
-		declared := make([]*graph.GraphNode, 0, len(entityNodes))
-		for _, node := range entityNodes {
-			declared = append(declared, node)
-		}
-		if _, err := db.mergePriorEntityProperties(ctx, declared); err != nil {
-			return err
 		}
 	}
 

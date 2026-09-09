@@ -66,10 +66,30 @@ func TestAnUndeclaredDomainTypeIsStillRefused(t *testing.T) {
 	}
 }
 
-// A schema that DOES declare a type named "entity" keeps its own meaning: the
-// exemption is a fallback for untyped extraction, not an override.
+// A schema that DOES declare a type named "entity" keeps its own meaning.
+//
+// This has to go through the extraction path to prove anything: the guard
+// lives in validateExtractedGraphData, and calling validateEntityInputs
+// directly exercises code that never had the exemption and so passes either
+// way. Here the built-in extractor produces entity-typed nodes with no `key`,
+// the schema declares `key` required, and the write must be refused — the
+// exemption is a fallback for a name nobody claimed, not an override of a
+// schema that claimed it.
 func TestADeclaredEntityTypeIsStillValidated(t *testing.T) {
-	db := openOntologyTestDB(t)
+	dbPath := fmt.Sprintf("test_declared_entity_%d.db", testname.Nano())
+	cfg := DefaultConfig(dbPath)
+	cfg.Dimensions = 4
+	db, err := Open(cfg, WithEmbedder(newKeywordEmbedder("drbd", "linstor", "standalone")))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Close()
+		for _, suffix := range []string{"", "-wal", "-shm"} {
+			_ = os.Remove(dbPath + suffix)
+		}
+	})
+
 	schema := validAviationSchema()
 	schema.ObjectTypes = append(schema.ObjectTypes, OntologyObjectType{
 		APIName:    "entity",
@@ -84,11 +104,19 @@ func TestADeclaredEntityTypeIsStillValidated(t *testing.T) {
 		t.Fatalf("activate: %v", err)
 	}
 
-	err := db.validateEntityInputs(context.Background(), []ToolEntityInput{
-		{Name: "x", Type: "entity", Metadata: map[string]string{"nope": "1"}},
+	_, err = db.SaveKnowledge(context.Background(), KnowledgeSaveRequest{
+		KnowledgeID: "rb-2",
+		Content: "After a network partition heals, DRBD may refuse to reconnect. " +
+			"The LINSTOR controller records the outcome as StandAlone.",
 	})
 	if err == nil {
-		t.Fatal("a declared entity type should still have its properties validated")
+		t.Fatal("a schema that declares an entity type should still validate its objects")
+	}
+	// Named specifically: the refusal has to come from validating the DECLARED
+	// entity type against its own schema, not from some other check that would
+	// have refused this write anyway.
+	if !strings.Contains(err.Error(), `missing primary key property "key"`) {
+		t.Fatalf("refused, but not by the declared type's own validation: %v", err)
 	}
 }
 

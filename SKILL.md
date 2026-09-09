@@ -453,11 +453,21 @@ breaking classes: removed object/link type, removed property, changed property
 data type, property became required, new required property, changed primary
 key, retargeted link side, cardinality tightened `MANY` -> `ONE`.
 
+Writes MERGE: an upsert updates the properties it names and leaves the rest
+alone, so naming an object a document merely mentions no longer erases what a
+fuller write established. There is no way to remove a property by omitting it;
+use `delete_entities`.
+
+The extractor's untyped output is bookkeeping and is exempt from schema
+validation, so an active strict ontology no longer blocks `SaveKnowledge` with
+an embedder. A schema that itself declares an object type named `entity` keeps
+its own validation. The exemption keys on the type name alone, so a CALLER-
+supplied extractor can write a bare name-keyed node under strict enforcement;
+the `upsert_entities` and `SaveKnowledge` entity doors are unaffected.
+
 Known limitations: `vectorized` is declarative only (no write path embeds those
-properties, and `upsert_entities` always writes a lexical hash vector), an
-active ontology rejects `SaveKnowledge`'s untyped heuristic entities unless the
-schema declares a catch-all `entity` object type plus a `related_to` link type,
-and `modify_object` does not rewrite a node's stored display title. Foundry's
+properties, and `upsert_entities` always writes a lexical hash vector), and
+`modify_object` does not rewrite a node's stored display title. Foundry's
 function runtime, branches/proposals, dynamic row-level security and backing
 datasources are deliberately not modelled.
 

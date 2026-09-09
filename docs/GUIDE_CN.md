@@ -281,7 +281,7 @@ _, err := db.SaveOntologySchema(ctx, cortexdb.OntologySaveRequest{
 
 同一时刻只有一份 schema 处于 **active**。激活的效果取决于 schema 的 `enforcement`：
 
-- `"strict"`（默认）校验每一次写入：未声明的 object type、未声明的属性、缺失的必填值、解析不了的值都会被拒绝。在它之下写入的节点身份是 `entity:<objectType>:<primaryKey>`；没有 active schema 时仍沿用旧的按名字推导的 ID。
+- `"strict"`（默认）校验调用方的每一次写入：未声明的 object type、未声明的属性、缺失的必填值、解析不了的值都会被拒绝。它不管库自己的簿记——内置抽取器产出的实体是无类型的，属于豁免范围，所以 active ontology 不会让 `SaveKnowledge` 变得不可用。这个豁免只认类型名，因此你自己提供的抽取器同样能写进一个仅以名字为键的裸节点。在它之下写入的节点身份是 `entity:<objectType>:<primaryKey>`；没有 active schema 时仍沿用旧的按名字推导的 ID。
 - `"vocabulary"` 把 schema 当作共享词表，不阻拦写入：已声明类型的拼写会被规范化、interface 在检索时照常展开，但一个说不出主键的实体——LLM 从散文抽取实体时的常态——会回落到按名字推导的 ID 而不是被拒绝，未声明的类型和 link type 直接放行。抽取管线用这个模式；strict 会逼它们在"激活 schema"和"保住实体"之间二选一。
 
 `strict_actions` 与 `enforcement: "vocabulary"` 互斥——一个关闭通用写入路径，另一个承诺永不关闭。
@@ -328,7 +328,7 @@ diff, err := db.DiffOntologySchema(ctx, cortexdb.OntologyDiffRequest{SchemaID: "
 ### 当前限制
 
 - **`vectorized` 目前只是声明。** 这个标记会被存储和校验，但没有任何写入路径会去 embedding 这些属性。无论是否配置了 embedder，`upsert_entities` 都往节点里写一个词法 FNV 哈希向量，所以用**文本**查询做 `nearest_neighbors` 是在两个不同的向量空间之间比较。今天只有显式传入查询 `vector` 时，object set 的向量谓词才有意义。
-- **active ontology 会约束 `SaveKnowledge`。** 它总会跑内置的启发式抽取器，产出的实体是无类型的，会被写入校验拒绝。两者都要用的话，在 schema 里声明一个兜底的 `entity` object type（主键 `name`）和一个 `related_to` link type。
+- **属性只能通过删除对象来移除。** upsert 只更新它点名的属性，其余保持不变——这正是"一篇只是提到某对象的文档不会把它抹掉"的原因——所以省略一个属性并不会清空它。要清就用 `delete_entities` 再写一次。ontology 改版后不再声明的属性，在输入侧会被拒绝，但改版之前写下的行上仍然留着。
 - **`modify_object` 不会改写节点的显示标题。** 通过 modify 规则改 title 属性只更新属性本身，存储的标题不变，所以按名字解析端点仍会命中改名前的名字。
 - **刻意不建模：** Foundry 的 function runtime、branch/proposal、动态行级安全、backing datasource。那些需要的是 CortexDB 无意成为的那种平台。
 
