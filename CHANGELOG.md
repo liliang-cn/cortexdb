@@ -2,6 +2,74 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.100.0] - 2026-09-09
+
+An example that put vectors, the knowledge graph and the ontology over one
+estate found five defects at the seams between them. All five close here.
+
+### Fixed
+
+- **Naming an object no longer erases what is known about it.** An entity upsert
+  replaced the property map, so a caller that only named an object — a document
+  declaring the entities it mentions, which carries identity and nothing else —
+  wiped every domain property an earlier, fuller write had established. Silently,
+  with the ontology's required-property check still passing because the primary
+  key was the one thing a mention carried. An upsert now updates: a property the
+  request names wins, one it leaves out survives, and there is no way to remove a
+  property by omitting it (use `delete_entities`). Three write paths had the bug —
+  the toolbox upsert, declared entities in `SaveKnowledge`, and the extractor's
+  mentions on both knowledge paths — and they share one merger. The prior read is
+  outside the write transaction, so the rule holds against committed state, not
+  against a concurrent writer; a property an ontology revision no longer declares
+  survives on rows written before the change.
+
+- **A strict ontology no longer blocks embedder-backed `SaveKnowledge`.** The
+  built-in extractor types everything it finds `entity`; that literal was validated
+  as an ordinary object type against a schema with no reason to declare it, so a
+  governed ontology and embedder-backed knowledge were mutually exclusive and the
+  error blamed the user's schema for a name the library had chosen. The bookkeeping
+  type is exempt unless a schema declares it and means something by it. The
+  `upsert_entities` and `SaveKnowledge` entity doors still validate a caller-typed
+  `entity`; an extractor supplied by the caller can write a bare name-keyed node
+  under strict enforcement, and the guide now says so.
+
+- **Search hits name the typed objects their chunks mention.** The chunk-to-entity
+  lookup matched `node_type = 'entity'` — what an untyped entity is stored as — so
+  under an ontology, where an entity's node type is its object type, every hit came
+  back with an empty entity list for exactly the users who had adopted the schema.
+  It follows the mention edge now. And it runs in auto mode: naming what a chunk
+  mentions had been gated behind the decision to run graph *expansion*, which a
+  lowercase question never triggers. An explicit lexical mode or `disable_graph`
+  still leaves the graph untouched.
+
+- **`vectorized` is embedded on write.** The flag was stored, validated and
+  inherited, and nothing ever embedded the property, so the `nearest_neighbors`
+  object-set predicate compared a real embedding of the query against lexical hash
+  vectors and matched nothing. With an embedder, an object whose type declares a
+  vectorized property gets its node vector from the embedding of that text (name
+  first), in one batch per write. Without one the node keeps its lexical vector and
+  the write goes through; a dimension that does not match the store's is refused.
+
+- **`GetNodesBatch` chunks its ids** (999 per query). It bound one placeholder per
+  id and never chunked, so an ingest of more than 32766 entities failed with "too
+  many SQL variables" on every path that read prior state.
+
+### Added
+
+- **Hybrid results keep what each retriever thought.** Reciprocal rank fusion at
+  k=60 scores the top three results 1/61, 1/62 and 1/63 whatever the corpus — right
+  to order by, wrong to read, and until now the only thing kept. Every chunk carries
+  `VectorScore`/`VectorRank` and `LexicalScore`/`LexicalRank` (rank 0 means that
+  retriever never returned it); a `KnowledgeSearchHit` carries its 1-based `Rank`
+  and the best of each score. The fused order is unchanged.
+
+- **Example `18_vector_graph_ontology`** — the three layers over one replicated
+  storage estate, and the seams between them in both directions: a passage's chunks
+  walk to the objects they mention, an exact typed set walks back to the prose about
+  it, and retrieved passages become a `static` object set intersected with a graph
+  traversal. Runs lexically with no model; with an embedder, `nearest_neighbors`
+  answers over a vectorized property. Its README records the five defects above.
+
 ## [2.99.0] - 2026-09-06
 
 ### Added
