@@ -465,9 +465,19 @@ its own validation. The exemption keys on the type name alone, so a CALLER-
 supplied extractor can write a bare name-keyed node under strict enforcement;
 the `upsert_entities` and `SaveKnowledge` entity doors are unaffected.
 
-Known limitations: `vectorized` is declarative only (no write path embeds those
-properties, and `upsert_entities` always writes a lexical hash vector), and
-`modify_object` does not rewrite a node's stored display title. Foundry's
+A property declared `vectorized` is embedded on write when an embedder is
+configured: the object's node vector becomes the embedding of its vectorized
+text (name first, then each vectorized property), so the `nearest_neighbors`
+object-set predicate answers by meaning. With no embedder the node keeps the
+lexical hash vector and the write still goes through. A search hit names the
+objects its chunks mention whatever their object type, in auto mode as well as
+graph mode; an explicit lexical mode or `disable_graph` still leaves the graph
+untouched. Hybrid results carry each retriever's score and rank beside the
+fused score, which is a reciprocal-rank value that is right to order by and
+wrong to read.
+
+Known limitation: `modify_object` does not rewrite a node's stored display
+title. Foundry's
 function runtime, branches/proposals, dynamic row-level security and backing
 datasources are deliberately not modelled.
 

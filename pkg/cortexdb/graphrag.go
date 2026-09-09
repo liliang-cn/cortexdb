@@ -106,7 +106,18 @@ type GraphRAGChunkResult struct {
 	Score       float64
 	BaseScore   float64
 	RerankScore float64
-	Entities    []string
+	// VectorScore and LexicalScore are what each retriever thought of this
+	// chunk, kept because Score is a reciprocal-rank-fusion value that is
+	// right to order by and wrong to read: at k=60 the top three results
+	// score 1/61, 1/62 and 1/63 whatever the corpus. VectorRank and
+	// LexicalRank are the chunk's 1-based position in each list; zero means
+	// that retriever never returned it, which is not the same as scoring it
+	// zero. Populated only by hybrid retrieval.
+	VectorScore  float64
+	LexicalScore float64
+	VectorRank   int
+	LexicalRank  int
+	Entities     []string
 }
 
 // GraphRAGQueryResult contains the assembled GraphRAG retrieval output.
@@ -469,6 +480,29 @@ func (db *DB) SearchGraphRAG(ctx context.Context, query string, opts GraphRAGQue
 	}
 
 	if !useGraph {
+		// Naming what a chunk mentions is not graph expansion, and it does not
+		// wait for the expansion decision. Expansion walks hops and costs
+		// something; this is one batched lookup of the mention edges, and it
+		// is what lets a caller go from a passage to the objects it is about.
+		// It used to be skipped with the rest, so auto mode — the common case,
+		// a lowercase question with no "entity-like" capitals — returned every
+		// chunk with an empty entity list.
+		// Unless the caller opted out: an explicit lexical mode or DisableGraph
+		// means "do not touch the graph", and that contract stands. The rule
+		// is the one the chunk-loading tools already use.
+		if shouldLoadChunkEntities(opts.RetrievalMode, opts.DisableGraph, "") {
+			names, err := db.chunkEntityNamesBatch(ctx, seedOrder, opts.MaxEntitiesPerChunk)
+			if err != nil {
+				return nil, fmt.Errorf("load chunk entities: %w", err)
+			}
+			for chunkID, chunk := range chunkResults {
+				chunk.Entities = names[chunkID]
+				for _, entityName := range chunk.Entities {
+					entitySet[entityName] = struct{}{}
+				}
+			}
+			result.Entities = sortedKeys(entitySet)
+		}
 		seedChunkList := make([]GraphRAGChunkResult, 0, len(seeds))
 		for _, seed := range seeds {
 			if chunk, ok := chunkResults[seed.ID]; ok {

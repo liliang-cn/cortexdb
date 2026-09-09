@@ -76,8 +76,8 @@ rather than leaving it to a reviewer.
 
 ## What this example found
 
-Writing it against the real API surfaced four defects. Two are fixed; the
-remaining two are commented where they bite.
+Writing it against the real API surfaced four defects. All four are fixed in
+the library; the example keeps the notes because the failures are instructive.
 
 Fixed:
 
@@ -96,13 +96,17 @@ Fixed:
   name the library had chosen. The bookkeeping type is now exempt, unless a
   schema declares it and means something by it.
 
-Still open:
+Fixed after the first version of this example:
 
-- **`OntologyProperty.Vectorized` is compiled and never used.** Nothing writes
+- **`OntologyProperty.Vectorized` was compiled and never used.** Nothing wrote
   a vector for the property, so the `nearest_neighbors` object-set predicate —
-  implemented on the read side — has nothing to match. Seam (c) uses a static
-  set from retrieval instead.
-- **GraphRAG's chunk→entity enrichment looks for `node_type = 'entity'`,** and
-  a typed entity gets its ontology type as its node type. Enrichment therefore
-  goes quiet for exactly the users who adopted the ontology. This example walks
-  the mention edges itself.
+  implemented on the read side — had nothing to match. A vectorized property is
+  now embedded on write when an embedder is configured.
+- **GraphRAG's chunk→entity enrichment matched `node_type = 'entity'`,** and a
+  typed entity gets its ontology type as its node type, so enrichment went
+  quiet for exactly the users who adopted the ontology. It now follows the
+  mention edge, and runs in auto mode rather than only when graph expansion
+  was chosen. Seam (a) still walks the edges itself, which is the more general
+  move; `hits.Entities` now carries the same names.
+- **The fused score hid what the retrievers thought.** Hybrid results now
+  carry each retriever's score and rank beside the fused value.

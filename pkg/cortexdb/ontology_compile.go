@@ -1,6 +1,11 @@
 package cortexdb
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+	"sort"
+	"strings"
+)
 
 // resolveSharedProperties expands object type properties that reference a
 // shared property by name alone. A shared property is defined once and reused
@@ -212,4 +217,83 @@ func (c *compiledOntology) orientLink(linkType OntologyLinkType, fromObjectType 
 			linkType.APIName, linkType.A.ObjectTypeAPIName, linkType.B.ObjectTypeAPIName,
 			fromObjectType, toObjectType)
 	}
+}
+
+// vectorizedText spells out the text an object's Vectorized properties hold,
+// in a stable order, or "" when its type declares none. The name leads so an
+// object with an empty vectorized value still embeds as itself.
+func vectorizedText(compiled *compiledOntology, entity ToolEntityInput) string {
+	if compiled == nil || strings.TrimSpace(entity.Type) == "" {
+		return ""
+	}
+	byName, ok := compiled.properties[ontologyAPIKey(entity.Type)]
+	if !ok {
+		return ""
+	}
+	names := make([]string, 0, len(byName))
+	for name, property := range byName {
+		if property.Vectorized {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	sort.Strings(names)
+	parts := make([]string, 0, len(names)+1)
+	if name := strings.TrimSpace(entity.Name); name != "" {
+		parts = append(parts, name)
+	}
+	for _, name := range names {
+		for key, value := range entity.Metadata {
+			if ontologyAPIKey(key) == name && strings.TrimSpace(value) != "" {
+				parts = append(parts, strings.TrimSpace(value))
+			}
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+// embedVectorizedEntities returns, by index, an embedding for every entity
+// whose object type declares a Vectorized property — the write side of the
+// nearest_neighbors predicate.
+//
+// The flag used to be stored, validated and inherited, and nothing ever
+// embedded the property: every entity node carried a lexical hash vector, so
+// the predicate compared a real embedding of the query against hash vectors
+// and matched nothing. With no embedder there is nothing to embed with and the
+// map is empty; the caller keeps the lexical vector, and the write goes
+// through. A dimension that does not match the store's is an operator's
+// misconfiguration and is refused rather than padded, because a vector of the
+// wrong width in the graph index is a node that can never be found.
+func (db *DB) embedVectorizedEntities(ctx context.Context, compiled *compiledOntology, entities []ToolEntityInput, vectorDim int) (map[int][]float32, error) {
+	out := make(map[int][]float32)
+	if db.embedder == nil || compiled == nil {
+		return out, nil
+	}
+	indexes := make([]int, 0)
+	texts := make([]string, 0)
+	for i, entity := range entities {
+		if text := vectorizedText(compiled, entity); text != "" {
+			indexes = append(indexes, i)
+			texts = append(texts, text)
+		}
+	}
+	if len(texts) == 0 {
+		return out, nil
+	}
+	vectors, err := db.embedder.EmbedBatch(ctx, texts)
+	if err != nil {
+		return nil, fmt.Errorf("embed vectorized properties: %w", err)
+	}
+	if len(vectors) != len(texts) {
+		return nil, fmt.Errorf("embed vectorized properties: got %d vectors for %d texts", len(vectors), len(texts))
+	}
+	for n, i := range indexes {
+		if len(vectors[n]) != vectorDim {
+			return nil, fmt.Errorf("embed vectorized properties: embedder returned %d dimensions, the store holds %d", len(vectors[n]), vectorDim)
+		}
+		out[i] = vectors[n]
+	}
+	return out, nil
 }

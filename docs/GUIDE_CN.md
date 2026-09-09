@@ -327,7 +327,7 @@ diff, err := db.DiffOntologySchema(ctx, cortexdb.OntologyDiffRequest{SchemaID: "
 
 ### 当前限制
 
-- **`vectorized` 目前只是声明。** 这个标记会被存储和校验，但没有任何写入路径会去 embedding 这些属性。无论是否配置了 embedder，`upsert_entities` 都往节点里写一个词法 FNV 哈希向量，所以用**文本**查询做 `nearest_neighbors` 是在两个不同的向量空间之间比较。今天只有显式传入查询 `vector` 时，object set 的向量谓词才有意义。
+- **`vectorized` 需要 embedder 才有意义。** 配置了 embedder 时，类型声明了 vectorized 属性的对象，其节点向量就是这段文本的 embedding，`nearest_neighbors` 按语义作答。没有 embedder 时节点仍是词法哈希向量，用**文本**查询做 `nearest_neighbors` 就是在两个向量空间之间比较——这种情况要么显式传查询 `vector`，要么配置 embedder。
 - **属性只能通过删除对象来移除。** upsert 只更新它点名的属性，其余保持不变——这正是"一篇只是提到某对象的文档不会把它抹掉"的原因——所以省略一个属性并不会清空它。要清就用 `delete_entities` 再写一次。ontology 改版后不再声明的属性，在输入侧会被拒绝，但改版之前写下的行上仍然留着。
 - **`modify_object` 不会改写节点的显示标题。** 通过 modify 规则改 title 属性只更新属性本身，存储的标题不变，所以按名字解析端点仍会命中改名前的名字。
 - **刻意不建模：** Foundry 的 function runtime、branch/proposal、动态行级安全、backing datasource。那些需要的是 CortexDB 无意成为的那种平台。

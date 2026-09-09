@@ -180,7 +180,14 @@ func (t *GraphRAGToolbox) UpsertEntities(ctx context.Context, req ToolUpsertEnti
 	edges := make([]*graph.GraphEdge, 0)
 	entityIDs := make([]string, 0, len(req.Entities))
 
-	for _, entity := range req.Entities {
+	// One batch for every entity whose type declares a Vectorized property;
+	// the rest keep the lexical vector they always had.
+	vectorized, err := t.db.embedVectorizedEntities(ctx, compiled, req.Entities, vectorDim)
+	if err != nil {
+		return nil, err
+	}
+
+	for i, entity := range req.Entities {
 		if strings.TrimSpace(entity.Name) == "" && strings.TrimSpace(entity.ID) == "" {
 			continue
 		}
@@ -201,9 +208,13 @@ func (t *GraphRAGToolbox) UpsertEntities(ctx context.Context, req ToolUpsertEnti
 			properties[k] = v
 		}
 
+		vector, ok := vectorized[i]
+		if !ok {
+			vector = lexicalVectorForText(strings.TrimSpace(entity.Name+" "+entity.Description), vectorDim)
+		}
 		nodes = append(nodes, &graph.GraphNode{
 			ID:         entityID,
-			Vector:     lexicalVectorForText(strings.TrimSpace(entity.Name+" "+entity.Description), vectorDim),
+			Vector:     vector,
 			Content:    firstNonEmpty(entity.Name, entity.ID),
 			NodeType:   ontologyCanonicalNodeType(compiled, firstNonEmpty(entity.Type, "entity")),
 			Properties: properties,

@@ -445,8 +445,12 @@ func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowle
 		if err != nil {
 			return err
 		}
+		vectorized, err := db.embedVectorizedEntities(ctx, compiled, input.Entities, vectorDim)
+		if err != nil {
+			return err
+		}
 
-		for _, entity := range input.Entities {
+		for i, entity := range input.Entities {
 			if strings.TrimSpace(entity.Name) == "" && strings.TrimSpace(entity.ID) == "" {
 				continue
 			}
@@ -474,9 +478,13 @@ func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowle
 				properties[key] = value
 			}
 
+			vector, ok := vectorized[i]
+			if !ok {
+				vector = lexicalVectorForText(strings.TrimSpace(entity.Name+" "+entity.Description), vectorDim)
+			}
 			entityNodes[entityID] = &graph.GraphNode{
 				ID:         entityID,
-				Vector:     lexicalVectorForText(strings.TrimSpace(entity.Name+" "+entity.Description), vectorDim),
+				Vector:     vector,
 				Content:    firstNonEmpty(entity.Name, entity.ID),
 				NodeType:   nodeType,
 				Properties: properties,

@@ -114,15 +114,24 @@ type KnowledgeSearchRequest struct {
 
 // KnowledgeSearchHit is a document-shaped search result aggregated from chunk retrieval.
 type KnowledgeSearchHit struct {
-	KnowledgeID string            `json:"knowledge_id"`
-	Title       string            `json:"title,omitempty"`
-	SourceURL   string            `json:"source_url,omitempty"`
-	Author      string            `json:"author,omitempty"`
-	Snippet     string            `json:"snippet,omitempty"`
-	Score       float64           `json:"score"`
-	ChunkIDs    []string          `json:"chunk_ids,omitempty"`
-	Entities    []string          `json:"entities,omitempty"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
+	KnowledgeID string  `json:"knowledge_id"`
+	Title       string  `json:"title,omitempty"`
+	SourceURL   string  `json:"source_url,omitempty"`
+	Author      string  `json:"author,omitempty"`
+	Snippet     string  `json:"snippet,omitempty"`
+	Score       float64 `json:"score"`
+	// Rank is this hit's 1-based position in Results. Score is a fusion
+	// value that is right to order by and wrong to read (see
+	// GraphRAGChunkResult); Rank is what a caller comparing two runs wants.
+	Rank int `json:"rank"`
+	// VectorScore and LexicalScore are the best each retriever gave any chunk
+	// of this document, zero when that retriever did not run or did not
+	// return it. Populated only by hybrid retrieval.
+	VectorScore  float64           `json:"vector_score,omitempty"`
+	LexicalScore float64           `json:"lexical_score,omitempty"`
+	ChunkIDs     []string          `json:"chunk_ids,omitempty"`
+	Entities     []string          `json:"entities,omitempty"`
+	Metadata     map[string]string `json:"metadata,omitempty"`
 }
 
 // KnowledgeSearchResponse contains grouped knowledge hits and the packed GraphRAG context.

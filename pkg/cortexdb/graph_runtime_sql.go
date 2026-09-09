@@ -132,6 +132,14 @@ func (db *DB) graphEdgesByNodeIDs(ctx context.Context, nodeIDs []string, directi
 	return result, nil
 }
 
+// chunkEntityNamesBatch names the entities each chunk mentions.
+//
+// It follows the mention edge rather than the type of the node at its far
+// end. It used to require node_type = 'entity', which is what an UNTYPED
+// entity is stored as; under an ontology an entity's node type is its object
+// type, so the lookup found nothing and every search hit came back with an
+// empty entity list for exactly the users who had adopted the ontology. What
+// makes a node "an entity this chunk is about" is the edge that says so.
 func (db *DB) chunkEntityNamesBatch(ctx context.Context, chunkIDs []string, limitPerChunk int) (map[string][]string, error) {
 	result := make(map[string][]string, len(chunkIDs))
 	if len(chunkIDs) == 0 {
@@ -148,12 +156,12 @@ func (db *DB) chunkEntityNamesBatch(ctx context.Context, chunkIDs []string, limi
 				SELECT e.from_node_id AS chunk_id, n.content AS entity_name
 				FROM graph_edges e
 				JOIN graph_nodes n ON n.id = e.to_node_id
-				WHERE e.from_node_id IN (%s) AND n.node_type = 'entity'
+				WHERE e.from_node_id IN (%s) AND e.edge_type = 'mentions'
 				UNION
 				SELECT e.to_node_id AS chunk_id, n.content AS entity_name
 				FROM graph_edges e
 				JOIN graph_nodes n ON n.id = e.from_node_id
-				WHERE e.to_node_id IN (%s) AND n.node_type = 'entity'
+				WHERE e.to_node_id IN (%s) AND e.edge_type = 'mentions'
 			)
 			ORDER BY chunk_id ASC, entity_name ASC
 		`, placeholders, placeholders), unionArgs...)

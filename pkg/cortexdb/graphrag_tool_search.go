@@ -2,6 +2,7 @@ package cortexdb
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -380,6 +381,25 @@ func (t *GraphRAGToolbox) SearchGraphRAGLexical(ctx context.Context, req ToolSea
 	}
 
 	if !useGraph {
+		// Naming what a chunk mentions is not graph expansion and does not
+		// wait for the expansion decision — see the same branch in
+		// graphrag.go. One batched lookup of the mention edges.
+		// Unless the caller opted out: an explicit lexical mode or DisableGraph
+		// means "do not touch the graph", and that contract stands. The rule
+		// is the one the chunk-loading tools already use.
+		if shouldLoadChunkEntities(opts.RetrievalMode, opts.DisableGraph, "") {
+			names, err := t.db.chunkEntityNamesBatch(ctx, seedOrder, opts.MaxEntitiesPerChunk)
+			if err != nil {
+				return nil, fmt.Errorf("load chunk entities: %w", err)
+			}
+			for chunkID, chunk := range chunkResults {
+				chunk.Entities = names[chunkID]
+				for _, entityName := range chunk.Entities {
+					entitySet[entityName] = struct{}{}
+				}
+			}
+			result.Entities = sortedKeys(entitySet)
+		}
 		allChunks := make([]GraphRAGChunkResult, 0, len(seedOrder))
 		for _, seedID := range seedOrder {
 			if chunk := chunkResults[seedID]; chunk != nil {

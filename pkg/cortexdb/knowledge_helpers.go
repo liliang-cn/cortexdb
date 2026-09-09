@@ -177,6 +177,8 @@ func (db *DB) aggregateKnowledgeHits(ctx context.Context, chunks []GraphRAGChunk
 				agg.hit.Snippet = snippet
 			}
 		}
+		agg.hit.VectorScore = max(agg.hit.VectorScore, chunk.VectorScore)
+		agg.hit.LexicalScore = max(agg.hit.LexicalScore, chunk.LexicalScore)
 		if _, exists := agg.chunkSet[chunk.ID]; !exists {
 			agg.chunkSet[chunk.ID] = struct{}{}
 			agg.hit.ChunkIDs = append(agg.hit.ChunkIDs, chunk.ID)
@@ -214,5 +216,8 @@ func (db *DB) aggregateKnowledgeHits(ctx context.Context, chunks []GraphRAGChunk
 		}
 		return results[i].Score > results[j].Score
 	})
+	for i := range results {
+		results[i].Rank = i + 1
+	}
 	return results, nil
 }

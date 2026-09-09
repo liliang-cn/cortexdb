@@ -129,12 +129,12 @@ func (db *DB) chunkEntityNamesBatchTx(ctx context.Context, querier graphStringQu
 				SELECT e.from_node_id AS chunk_id, n.content AS entity_name
 				FROM graph_edges e
 				JOIN graph_nodes n ON n.id = e.to_node_id
-				WHERE e.from_node_id IN (%s) AND n.node_type = 'entity'
+				WHERE e.from_node_id IN (%s) AND e.edge_type = 'mentions'
 				UNION
 				SELECT e.to_node_id AS chunk_id, n.content AS entity_name
 				FROM graph_edges e
 				JOIN graph_nodes n ON n.id = e.from_node_id
-				WHERE e.to_node_id IN (%s) AND n.node_type = 'entity'
+				WHERE e.to_node_id IN (%s) AND e.edge_type = 'mentions'
 			)
 			ORDER BY chunk_id ASC, entity_name ASC
 		`, placeholders, placeholders), unionArgs...)
