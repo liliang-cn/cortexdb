@@ -503,6 +503,12 @@ func (db *DB) countOntologyLinks(ctx context.Context, linkTypeAPIName string, no
 
 // validateExtractedGraphData admits a whole extraction: the entities and the
 // relationships between them, before any of it is written.
+// ontologyBookkeepingObjectType is the type the built-in extractor puts on
+// everything it finds. It names an entity the library noticed, not an object a
+// user modelled, and an ontology that does not declare it is not thereby
+// refusing it.
+const ontologyBookkeepingObjectType = "entity"
+
 func (db *DB) validateExtractedGraphData(ctx context.Context, entities map[string]GraphEntity, relationships map[string]graph.GraphEdge) error {
 	if len(entities) == 0 && len(relationships) == 0 {
 		return nil
@@ -510,11 +516,41 @@ func (db *DB) validateExtractedGraphData(ctx context.Context, entities map[strin
 
 	// Sorted so that an extraction breaking several rules always reports the
 	// same one; map order would otherwise make the error flap between runs.
+	// The built-in extractor types everything it finds "entity"
+	// (graphrag_helpers.go). That is the library's own bookkeeping, not a
+	// claim about the domain, and it is not the schema's to approve.
+	//
+	// It used to be validated as an ordinary object type, so an active strict
+	// ontology refused every knowledge write an embedder made: the extractor
+	// runs over each chunk, finds proper nouns, and types all of them that
+	// way. The two headline features were mutually exclusive, and the error
+	// blamed the user's schema for a name the library had chosen on their
+	// behalf.
+	//
+	// The exemption is narrow in both directions. A schema that genuinely
+	// declares an object type called "entity" means something by it, so its
+	// objects are validated as usual. And nothing else is exempt: a typed
+	// extraction is still checked, because this excuses the absence of a claim
+	// and never a wrong one.
+	compiled, err := db.activeCompiledOntology(ctx)
+	if err != nil {
+		return err
+	}
+	// A deployment with no ontology at all has nothing to declare, and the
+	// accessors here are not nil-safe by convention.
+	entityIsDeclared := false
+	if compiled != nil {
+		_, entityIsDeclared = compiled.objectType(ontologyBookkeepingObjectType)
+	}
+
 	entityInputs := make([]ToolEntityInput, 0, len(entities))
 	batchTypes := make(map[string]string, len(entities))
 	for _, entityID := range sortedMapKeys(entities) {
 		entity := entities[entityID]
-		objectType := firstNonEmpty(entity.Type, "entity")
+		objectType := firstNonEmpty(entity.Type, ontologyBookkeepingObjectType)
+		if objectType == ontologyBookkeepingObjectType && !entityIsDeclared {
+			continue
+		}
 		entityInputs = append(entityInputs, ToolEntityInput{ID: entityID, Name: entity.Name, Type: objectType})
 		batchTypes[entityID] = objectType
 	}

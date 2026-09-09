@@ -471,6 +471,22 @@ func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowle
 		}
 	}
 
+	// Before the relations, and before the early return below, because an
+	// entity-only request is the ordinary shape: a document declaring what it
+	// mentions carries identity and no detail, and replacing the property map
+	// would erase everything a fuller earlier write established. This is the
+	// same act the toolbox upsert performs by another door, so it obeys the
+	// same rule. See DB.mergePriorEntityProperties.
+	if len(entityNodes) > 0 {
+		declared := make([]*graph.GraphNode, 0, len(entityNodes))
+		for _, node := range entityNodes {
+			declared = append(declared, node)
+		}
+		if _, err := db.mergePriorEntityProperties(ctx, declared); err != nil {
+			return err
+		}
+	}
+
 	if len(input.Relations) == 0 {
 		return nil
 	}
@@ -533,6 +549,7 @@ func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowle
 			Properties: properties,
 		}
 	}
+
 	return nil
 }
 

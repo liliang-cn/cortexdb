@@ -232,10 +232,12 @@ func (t *GraphRAGToolbox) UpsertEntities(ctx context.Context, req ToolUpsertEnti
 	// outside the graph (the normal shape for an external ingest pipeline) is
 	// rejected by the foreign key — for a long time silently, so the graph had
 	// entities but no record of what mentioned them.
+	prior, err := t.db.mergePriorEntityProperties(ctx, nodes)
+	if err != nil {
+		return nil, err
+	}
 	if req.DocumentID != "" && len(nodes) > 0 {
-		if err := t.mergeEntitySourceDocuments(ctx, nodes, req.DocumentID); err != nil {
-			return nil, err
-		}
+		mergeEntitySourceDocuments(nodes, prior, req.DocumentID)
 	}
 	if err := t.db.preserveDeclaredEntityTypes(ctx, nodes); err != nil {
 		return nil, err
@@ -459,29 +461,76 @@ func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRel
 // replaces properties wholesale: a re-extraction from document B would
 // otherwise erase document A's claim to a shared entity — and with it the only
 // record that lets a purge of A know to leave the entity alone.
-func (t *GraphRAGToolbox) mergeEntitySourceDocuments(ctx context.Context, nodes []*graph.GraphNode, documentID string) error {
+// mergePriorEntityProperties fills in what this write did not mention.
+//
+// A caller that names an object it did not author supplies identity and
+// nothing else — declaring the entities a document mentions is exactly that
+// shape, and it is the shape the knowledge API asks for. Replacing the
+// property map on such a write erased every domain property an earlier, fuller
+// write had established: purpose, capacity, a foreign key. Silently, and with
+// the ontology's required-property check still passing, because the primary
+// key was the one thing the second write did carry.
+//
+// So an upsert updates rather than replaces: a property the request names wins,
+// a property it leaves out survives. There is deliberately no way to remove a
+// property by omitting it, because omission is what an incidental mention looks
+// like and deletion should be something a caller asks for.
+//
+// This is the same instinct as the two mergers that were already here — source
+// documents were unioned and a declared type was preserved, each one field at a
+// time — generalised to the whole map, and it loads the prior state once for
+// all three instead of once each.
+func (db *DB) mergePriorEntityProperties(ctx context.Context, nodes []*graph.GraphNode) (map[string]*graph.GraphNode, error) {
+	if len(nodes) == 0 {
+		return nil, nil
+	}
 	ids := make([]string, 0, len(nodes))
 	for _, node := range nodes {
 		ids = append(ids, node.ID)
 	}
-	existing, err := t.db.graph.GetNodesBatch(ctx, ids)
+	existing, err := db.graph.GetNodesBatch(ctx, ids)
 	if err != nil {
-		return fmt.Errorf("load entity provenance: %w", err)
+		return nil, fmt.Errorf("load prior entity state: %w", err)
 	}
-	prior := make(map[string][]string, len(existing))
+	prior := make(map[string]*graph.GraphNode, len(existing))
 	for _, node := range existing {
-		if node == nil || node.Properties == nil {
+		if node != nil {
+			prior[node.ID] = node
+		}
+	}
+	for _, node := range nodes {
+		was, ok := prior[node.ID]
+		if !ok || was.Properties == nil {
 			continue
 		}
-		prior[node.ID] = toStringSlice(node.Properties["source_document_ids"])
+		if node.Properties == nil {
+			node.Properties = map[string]interface{}{}
+		}
+		for key, value := range was.Properties {
+			if _, named := node.Properties[key]; !named {
+				node.Properties[key] = value
+			}
+		}
 	}
+	return prior, nil
+}
+
+// mergeEntitySourceDocuments records that this document asserted these
+// entities, keeping every document that asserted them before.
+//
+// Without it no query can answer "where did this entity come from" and no
+// purge can remove a document's entities without guessing.
+func mergeEntitySourceDocuments(nodes []*graph.GraphNode, prior map[string]*graph.GraphNode, documentID string) {
 	for _, node := range nodes {
 		if node.Properties == nil {
 			node.Properties = map[string]interface{}{}
 		}
-		node.Properties["source_document_ids"] = unionStrings(prior[node.ID], []string{documentID})
+		var before []string
+		if was, ok := prior[node.ID]; ok && was.Properties != nil {
+			before = toStringSlice(was.Properties["source_document_ids"])
+		}
+		node.Properties["source_document_ids"] = unionStrings(before, []string{documentID})
 	}
-	return nil
 }
 
 // missingChunkStubs returns a stub graph node for every mention-edge chunk that

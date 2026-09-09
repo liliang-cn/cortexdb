@@ -74,19 +74,35 @@ rather than leaving it to a reviewer.
    set, intersected with a graph traversal. The question is asked in words and
    answered in objects, with keys and properties you can act on.
 
-## Three things this example found
+## What this example found
 
-Writing it against the real API surfaced three defects. All three are visible
-in the code, commented where they bite.
+Writing it against the real API surfaced four defects. Two are fixed; the
+remaining two are commented where they bite.
 
-- **A strict ontology and embedder-backed knowledge ingestion cannot be used
-  together.** Saving prose with an embedder runs a built-in extractor whose
-  nodes are typed `entity`; a schema that does not declare that type refuses
-  the write. `schema.go` declares it as a workaround and says so.
+Fixed:
+
+- **Naming an object erased its properties.** An upsert replaced the property
+  map, so a document declaring the entities it mentions — identity and no
+  detail, which is the shape the knowledge API asks for — wiped every domain
+  property an earlier, fuller write had established. Silently, with the
+  ontology's required-property check still passing because the primary key was
+  the one thing the mention carried. An upsert now updates: a property the
+  request names wins, one it leaves out survives. Two write paths had the same
+  bug and now share one merger.
+- **A strict ontology blocked embedder-backed ingestion entirely.** The
+  built-in extractor types everything it finds `entity`, that was validated as
+  an ordinary object type, and no user schema declares it — so the two headline
+  features were mutually exclusive and the error blamed the user's schema for a
+  name the library had chosen. The bookkeeping type is now exempt, unless a
+  schema declares it and means something by it.
+
+Still open:
+
 - **`OntologyProperty.Vectorized` is compiled and never used.** Nothing writes
   a vector for the property, so the `nearest_neighbors` object-set predicate —
-  which is implemented on the read side — has nothing to match.
+  implemented on the read side — has nothing to match. Seam (c) uses a static
+  set from retrieval instead.
 - **GraphRAG's chunk→entity enrichment looks for `node_type = 'entity'`,** and
   a typed entity gets its ontology type as its node type. Enrichment therefore
   goes quiet for exactly the users who adopted the ontology. This example walks
-  the mention edges itself instead.
+  the mention edges itself.

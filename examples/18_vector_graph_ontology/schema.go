@@ -44,30 +44,6 @@ func storageSchema() cortexdb.OntologySchema {
 		},
 
 		ObjectTypes: []cortexdb.OntologyObjectType{
-			// This one should not have to be here, and it is worth knowing why
-			// it is.
-			//
-			// A strict ontology validates every write to the graph, including
-			// the writes CortexDB makes on its own behalf. Saving prose with an
-			// embedder runs a built-in extractor over each chunk, and the nodes
-			// it produces are typed "entity" — a bookkeeping type, not a domain
-			// one. A schema that does not declare it therefore refuses the
-			// ingestion, so an active strict ontology and embedder-backed
-			// knowledge cannot be used together until somebody adds this.
-			//
-			// Declaring it is the workaround, not the design. The distinction
-			// the product already knows about — domain types versus bookkeeping
-			// types, which ontology_draft reasons in — has not reached the
-			// validator yet.
-			{
-				APIName:           "entity",
-				PluralDisplayName: "Extracted mentions",
-				PrimaryKey:        "name",
-				TitleProperty:     "name",
-				Properties: []cortexdb.OntologyProperty{
-					{APIName: "name", DataType: stringType, Required: true, Searchable: true},
-				},
-			},
 			{
 				APIName:           "Node",
 				PluralDisplayName: "Nodes",
