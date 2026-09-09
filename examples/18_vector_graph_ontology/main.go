@@ -280,11 +280,14 @@ func run() error {
 	// The document that actually answers it is rb-standalone. Naming it and
 	// printing where it landed is worth more than asserting that retrieval
 	// works: run this twice, once with an embedder and once without, and the
-	// two rankings are the measurement. On the corpus here a small local
-	// embedding model does not reliably beat keyword overlap, and the scores
-	// come back nearly flat — which is a fact about this model and this
-	// eight-document corpus, and exactly the kind of thing an example should
-	// let you see rather than claim away.
+	// two rankings are the measurement. On this eight-document corpus a small
+	// local embedding model does not reliably beat keyword overlap.
+	//
+	// Ignore the score column while comparing. It is a reciprocal-rank-fusion
+	// score with k=60, so the first three results are 1/61, 1/62 and 1/63 — a
+	// band 0.0005 wide that rounds to the same number and says nothing about
+	// how confident either retriever was. The RANK is the signal here; the
+	// score is an artefact of the fusion constant.
 	fmt.Printf("   the document that answers it is %q — ranked %s here\n",
 		"Recovering a resource that went StandAlone", rankOf(hits, "rb-standalone"))
 	if embedder == nil {

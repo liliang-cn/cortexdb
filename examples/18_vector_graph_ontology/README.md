@@ -19,6 +19,10 @@ eight-document corpus a small local embedding model does not reliably beat
 keyword overlap — which is the sort of thing an example should let you measure
 rather than assert.
 
+Compare the ranks, not the scores. The score is reciprocal rank fusion with
+k=60, so the top three are always 1/61, 1/62 and 1/63 — they round to the same
+number and carry no information about either retriever's confidence.
+
 Any OpenAI-compatible `/embeddings` endpoint works, including a local Ollama:
 
 ```bash
