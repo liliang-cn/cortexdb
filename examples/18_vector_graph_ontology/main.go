@@ -419,7 +419,33 @@ func run() error {
 	// and not a filter over properties — a nearest-neighbour predicate INSIDE
 	// a typed object set. The answer is Resources, with their keys and
 	// properties, ranked by what they are for.
-	fmt.Println("(c) retrieval as one operand of a typed set expression")
+	fmt.Println("(c) semantic search that returns typed objects, not passages")
+	// With an embedder, the nearest_neighbors predicate is the direct form of
+	// this: the Resource whose declared-vectorized `purpose` is closest in
+	// meaning to a phrase. The answer is an object with a key and properties,
+	// not a paragraph. Without an embedder the predicate has nothing to
+	// compare, so the same question is asked the longer way below.
+	if embedder != nil {
+		byMeaning, err := db.ResolveObjectSetObjects(ctx, cortexdb.ObjectSetResolveRequest{
+			ObjectSet: cortexdb.ObjectSet{
+				Kind:   cortexdb.ObjectSetFilter,
+				Source: &cortexdb.ObjectSet{Kind: cortexdb.ObjectSetBase, ObjectType: "Resource"},
+				Where: &cortexdb.ObjectSetPredicate{
+					Op:       cortexdb.PredicateNearestNeighbors,
+					Property: "purpose",
+					Value:    "somewhere to put copies we can throw away and make again",
+					K:        1,
+				},
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("nearest neighbours: %w", err)
+		}
+		fmt.Printf("    nearest_neighbors on purpose, \"copies we can throw away\" → %v\n", titles(byMeaning))
+	} else {
+		fmt.Println("    (nearest_neighbors needs an embedder; asking the longer way instead)")
+	}
+	fmt.Println("    and retrieval as one operand of a typed set expression:")
 	// Not "search, then filter in Go". The passages found by meaning become a
 	// STATIC object set, and that set is then intersected and traversed like
 	// any other — so the answer is objects with their keys and properties,
