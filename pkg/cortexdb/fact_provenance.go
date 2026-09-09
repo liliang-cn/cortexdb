@@ -71,9 +71,15 @@ func (db *DB) FactProvenanceFor(ctx context.Context, edgeID string, withText boo
 		edgeType string
 		propsRaw string
 	)
+	// The edge source rather than the table, so a retracted fact can still say
+	// where it came from. That is the point of retracting instead of deleting:
+	// "says who?" about a withdrawn claim is exactly the question an audit
+	// asks, and under graph.AsOf(ctx, before) this resolves it. Without an
+	// as-of on the context this is the bare table and the query is unchanged.
+	src, srcArgs := db.Graph().EdgeSource(ctx)
 	err := db.queryRow(ctx, db.Dialect().Rebind(`
 		SELECT from_node_id, to_node_id, COALESCE(edge_type, ''), COALESCE(properties, '')
-		FROM graph_edges WHERE id = ?`), edgeID).Scan(&from, &to, &edgeType, &propsRaw)
+		FROM `+src+` AS e WHERE id = ?`), append(srcArgs, edgeID)...).Scan(&from, &to, &edgeType, &propsRaw)
 	if err != nil {
 		return nil, fmt.Errorf("cortexdb: fact provenance: %w", err)
 	}
@@ -174,16 +180,17 @@ func (db *DB) UncitedFacts(ctx context.Context, limit int) ([]FactProvenance, er
 	docID := d.JSONText("properties", "document_id")
 	ruleID := d.JSONText("properties", "rule_id")
 
+	src, srcArgs := db.Graph().EdgeSource(ctx)
 	query := d.Rebind(`
 		SELECT id, from_node_id, to_node_id, COALESCE(edge_type, '')
-		FROM graph_edges
+		FROM ` + src + ` AS e
 		WHERE (` + chunkIDs + ` IS NULL OR ` + chunkIDs + ` IN ('', '[]'))
 		  AND (` + docID + ` IS NULL OR ` + docID + ` = '')
 		  AND (` + ruleID + ` IS NULL OR ` + ruleID + ` = '')
 		ORDER BY id
 		LIMIT ?`)
 
-	rows, err := db.query(ctx, query, limit)
+	rows, err := db.query(ctx, query, append(srcArgs, limit)...)
 	if err != nil {
 		return nil, fmt.Errorf("cortexdb: uncited facts: %w", err)
 	}

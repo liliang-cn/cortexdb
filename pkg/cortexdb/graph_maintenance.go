@@ -79,20 +79,19 @@ func (db *DB) PruneJunkEntities(ctx context.Context, opts GraphMaintenanceOption
 		return report, nil
 	}
 
+	// Through RetractNodes rather than two DELETEs, so a pruned junk entity is
+	// still readable as of before the prune. Pruning is exactly the operation
+	// somebody wants to look back at: it deletes on a heuristic, and the
+	// question afterwards is always "what did it take".
+	ids := make([]string, 0, len(victims))
 	for _, v := range victims {
-		res, err := db.exec(ctx,
-			`DELETE FROM graph_edges WHERE from_node_id = ? OR to_node_id = ?`, v.id, v.id)
-		if err != nil {
-			return report, fmt.Errorf("delete edges of %q: %w", v.id, err)
-		}
-		if n, err := res.RowsAffected(); err == nil {
-			report.EdgesRemoved += int(n)
-		}
-		if _, err := db.exec(ctx,
-			`DELETE FROM graph_nodes WHERE id = ?`, v.id); err != nil {
-			return report, fmt.Errorf("delete node %q: %w", v.id, err)
-		}
+		ids = append(ids, v.id)
 	}
+	_, edges, err := db.graph.RetractNodes(ctx, ids)
+	if err != nil {
+		return report, fmt.Errorf("prune junk entities: %w", err)
+	}
+	report.EdgesRemoved += edges
 	return report, nil
 }
 

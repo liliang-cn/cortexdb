@@ -118,6 +118,15 @@ var toolWrites = map[string]bool{
 	"decision_chain":      false,
 	"decision_precedents": false,
 
+	// Point-in-time reads. The two that read the past read only what is
+	// stored; vacuum_graph is the one operation in the whole temporal
+	// machinery that destroys anything, so it is a write — and it has to be,
+	// because a read-only key deriving its rights from this table would
+	// otherwise be able to erase the record it exists to audit.
+	"graph_snapshot": false,
+	"graph_diff":     false,
+	"vacuum_graph":   true,
+
 	// KnowledgeMemory facade.
 	"knowledge_memory_remember":             true,
 	"knowledge_memory_promote_to_knowledge": true,
@@ -137,7 +146,7 @@ var toolWrites = map[string]bool{
 // table so that a tool added without a decision cannot slip through by sharing
 // a name with one already listed, and so that a tool quietly disappearing is
 // noticed too. Change it in the same commit that adds the tool and its row.
-const toolCount = 72
+const toolCount = 75
 
 // TestEveryToolDeclaresWhetherItWrites is the test the Mutates doc comment
 // promises: it makes forgetting impossible rather than merely unlikely.
