@@ -24,6 +24,7 @@ import (
 
 	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	rpcv1 "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1"
+	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 )
 
 // dialTimeout bounds a single read of a shared brain. The poller runs on a
@@ -59,12 +60,86 @@ type Node struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
 	Type  string `json:"type"`
+	// Grade is the record's _grade: by what kind of thing its truth is
+	// established. One of the knowledge contract's five closed values, or
+	// empty for a record no producer stamped — which on a real shelf is most
+	// of them, and is a finding rather than a gap.
+	//
+	// omitempty on purpose: a source that reports no grades puts the same
+	// bytes on the wire it did before this field existed.
+	Grade string `json:"grade,omitempty"`
 }
 
 type Edge struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
 	Label  string `json:"label"`
+	// ID is the edge's own row id, carried so the inspector can be asked about
+	// it. An edge named only by its two ends and a label is not a record
+	// anything can look up — and it is the record that has the source, the
+	// chunk and the grade on it.
+	//
+	// Not part of the edge's identity for diffing: two nodes can be joined by
+	// several relations and edgeKey tells those apart by type, which is a
+	// question about the graph rather than about the row.
+	ID string `json:"id,omitempty"`
+	// Grade is the edge's own _grade. An edge is an assertion about two
+	// things and carries the contract exactly as a node does — a picture that
+	// graded only the nodes would report a shelf far better established than
+	// it is, which is the argument graph.PropertyCount already makes.
+	Grade string `json:"grade,omitempty"`
+}
+
+// gradeExpr is the one spelling of "read this record's _grade".
+//
+// pkg/cortexdb reads the contract through pkg/graph's property primitives, and
+// both of those — PropertyCounts behind ContractTally, RecordsWithProperties
+// behind GradedRecords — build the read as
+// dialect.JSONTextGuarded("properties", cortexdb.KeyGrade). This is that, with
+// the column qualified because the edge query has three tables in its FROM.
+// A second spelling would be a second thing to keep in step with the contract,
+// and the first symptom would be a page colouring by a grade the panel beneath
+// it does not count.
+func gradeExpr(d sqldialect.Dialect, column string) string {
+	return d.JSONTextGuarded(column, cortexdb.KeyGrade)
+}
+
+// graphSource names the rows one read of the entity graph sees: a fragment to
+// put in a FROM clause and the arguments it binds ahead of the query's own.
+//
+// It exists so the present and the past are read by one query rather than two.
+// A past read is the same question asked of graph.GraphStore.NodeSource /
+// EdgeSource instead of the bare tables — see readAsOfLocal — and two copies
+// of this query would be two places for the degree ranking, the chunk filter
+// and the grade read to drift apart.
+type graphSource struct {
+	dialect  sqldialect.Dialect
+	nodes    string
+	nodeArgs []any
+	edges    string
+	edgeArgs []any
+}
+
+// liveSource reads the tables as they stand now, which is byte-for-byte the
+// query this package issued before point-in-time reads existed.
+//
+// SQLite's dialect, because LoadLocal takes a bare *sql.DB and has always
+// bound `?` without rebinding — this names what that already assumed rather
+// than narrowing anything. A caller holding a *cortexdb.DB goes through
+// readAsOfLocal, which uses the database's own dialect.
+func liveSource() graphSource {
+	return graphSource{
+		dialect: sqldialect.For(sqldialect.SQLite),
+		nodes:   "graph_nodes",
+		edges:   "graph_edges",
+	}
+}
+
+// rowQuerier is whatever can run a read — the database handle, or a
+// transaction. Both loaders take one rather than a *sql.DB so a caller that
+// already has a narrower handle is not forced to widen it.
+type rowQuerier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
 // LoadLocal reads meaningful nodes/edges from the live GraphRAG graph
@@ -73,37 +148,51 @@ type Edge struct {
 // and capped, so the view shows the densely-linked hub instead of an arbitrary
 // truncation with dangling edges.
 func LoadLocal(ctx context.Context, sqlDB *sql.DB) ([]Node, []Edge, error) {
+	return loadGraph(ctx, sqlDB, liveSource())
+}
+
+// loadGraph is LoadLocal's body, over whichever rows graphSource names.
+func loadGraph(ctx context.Context, q rowQuerier, src graphSource) ([]Node, []Edge, error) {
 	const (
 		maxNodes = 600
 		maxScan  = 50000
 	)
+	d := src.dialect
 
-	// 1. Meaningful edges, and degree per node.
-	edgeRows, err := sqlDB.QueryContext(ctx,
+	// 1. Meaningful edges, their grade, and degree per node.
+	edgeArgs := append([]any{}, src.edgeArgs...)
+	edgeArgs = append(edgeArgs, src.nodeArgs...)
+	edgeArgs = append(edgeArgs, src.nodeArgs...)
+	edgeRows, err := q.QueryContext(ctx, d.Rebind(
 		// "next" is dropped only where it wires one chunk to the next, which is
 		// document layout. It is also the most natural name for one step
 		// following another, and blanket-skipping the type meant a caller who
 		// modelled a sequence got its nodes drawn and every link between them
 		// silently missing. The endpoints decide, not the label.
-		`SELECT e.from_node_id, COALESCE(e.edge_type,''), e.to_node_id
-		 FROM graph_edges e
-		 JOIN graph_nodes f ON f.id = e.from_node_id
-		 JOIN graph_nodes t ON t.id = e.to_node_id
+		`SELECT e.id, e.from_node_id, COALESCE(e.edge_type,''), e.to_node_id, `+gradeExpr(d, "e.properties")+`
+		 FROM `+src.edges+` AS e
+		 JOIN `+src.nodes+` AS f ON f.id = e.from_node_id
+		 JOIN `+src.nodes+` AS t ON t.id = e.to_node_id
 		 WHERE e.edge_type != 'has_chunk'
 		   AND COALESCE(f.node_type,'') != 'chunk'
-		   AND COALESCE(t.node_type,'') != 'chunk'`)
+		   AND COALESCE(t.node_type,'') != 'chunk'`), edgeArgs...)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer func() { _ = edgeRows.Close() }()
-	type rawEdge struct{ from, etype, to string }
+	type rawEdge struct{ id, from, etype, to, grade string }
 	rawEdges := make([]rawEdge, 0)
 	degree := make(map[string]int)
 	for edgeRows.Next() {
 		var e rawEdge
-		if err := edgeRows.Scan(&e.from, &e.etype, &e.to); err != nil {
+		// Nullable: the guarded read yields NULL both for a record with no
+		// properties and for one whose JSON lacks the key, and those are the
+		// same answer — nobody stamped this.
+		var grade sql.NullString
+		if err := edgeRows.Scan(&e.id, &e.from, &e.etype, &e.to, &grade); err != nil {
 			return nil, nil, err
 		}
+		e.grade = grade.String
 		rawEdges = append(rawEdges, e)
 		degree[e.from]++
 		degree[e.to]++
@@ -113,8 +202,11 @@ func LoadLocal(ctx context.Context, sqlDB *sql.DB) ([]Node, []Edge, error) {
 	}
 
 	// 2. All non-chunk nodes (bounded), tagged with degree.
-	nodeRows, err := sqlDB.QueryContext(ctx,
-		`SELECT id, COALESCE(content,''), COALESCE(node_type,'') FROM graph_nodes WHERE node_type != 'chunk' LIMIT ?`, maxScan)
+	nodeArgs := append([]any{}, src.nodeArgs...)
+	nodeArgs = append(nodeArgs, maxScan)
+	nodeRows, err := q.QueryContext(ctx, d.Rebind(
+		`SELECT n.id, COALESCE(n.content,''), COALESCE(n.node_type,''), `+gradeExpr(d, "n.properties")+
+			` FROM `+src.nodes+` AS n WHERE n.node_type != 'chunk' LIMIT ?`), nodeArgs...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -126,7 +218,8 @@ func LoadLocal(ctx context.Context, sqlDB *sql.DB) ([]Node, []Edge, error) {
 	all := make([]rawNode, 0)
 	for nodeRows.Next() {
 		var id, content, ntype string
-		if err := nodeRows.Scan(&id, &content, &ntype); err != nil {
+		var grade sql.NullString
+		if err := nodeRows.Scan(&id, &content, &ntype, &grade); err != nil {
 			return nil, nil, err
 		}
 		label := content
@@ -134,7 +227,10 @@ func LoadLocal(ctx context.Context, sqlDB *sql.DB) ([]Node, []Edge, error) {
 			label = trimNodePrefix(id)
 		}
 		label = ClipLabel(label)
-		all = append(all, rawNode{view: Node{ID: id, Label: label, Type: ntype}, deg: degree[id]})
+		all = append(all, rawNode{
+			view: Node{ID: id, Label: label, Type: ntype, Grade: grade.String},
+			deg:  degree[id],
+		})
 	}
 	if err := nodeRows.Err(); err != nil {
 		return nil, nil, err
@@ -166,7 +262,7 @@ func LoadLocal(ctx context.Context, sqlDB *sql.DB) ([]Node, []Edge, error) {
 		if _, ok := shown[e.to]; !ok {
 			continue
 		}
-		edges = append(edges, Edge{Source: e.from, Target: e.to, Label: e.etype})
+		edges = append(edges, Edge{Source: e.from, Target: e.to, Label: e.etype, ID: e.id, Grade: e.grade})
 	}
 	return nodes, edges, nil
 }
@@ -184,6 +280,12 @@ func trimNodePrefix(id string) string {
 // only drew part of the brain; the live view calls this every couple of seconds
 // and would repeat the same line forever, which turns a useful notice into the
 // only thing in the log.
+//
+// The nodes and edges come back without a grade: graph_list_all carries an id,
+// a label and a type and nothing else, and adding a field to that response is
+// a change to the shared brain's wire, not to this page. So a remote source
+// declares Grades false and the page says the grades cannot be read here —
+// which must not be confused with a shelf on which nothing is graded.
 func LoadRemote(ctx context.Context, addr, token string, limit int, quiet bool) ([]Node, []Edge, error) {
 	conn, err := dial(addr, token)
 	if err != nil {

@@ -61,7 +61,7 @@ func TestLiveServerServesPageAndGraph(t *testing.T) {
 	sv := startTestServer(t, f, true)
 
 	page := httpGet(t, sv.URL()+"/")
-	for _, want := range []string{"ForceGraph3D", "UnrealBloomPass", `EventSource("api/stream")`} {
+	for _, want := range []string{"ForceGraph3D", "UnrealBloomPass", "new EventSource(streamURL())"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page is missing %q", want)
 		}
@@ -362,11 +362,17 @@ func TestCloseDoesNotWaitOnAnOpenStream(t *testing.T) {
 // stream path would leave the mount point and land on whatever the host serves
 // at /api, so the page must ask for the stream relative to itself.
 func TestThePageAsksForItsStreamRelatively(t *testing.T) {
-	if strings.Contains(pageHTML, `EventSource("/api/`) {
+	if strings.Contains(pageHTML, `EventSource("/api/`) || strings.Contains(pageHTML, `= "/api/stream`) {
 		t.Error("the page opens its stream at an absolute path, so it cannot be mounted under a prefix")
 	}
-	if !strings.Contains(pageHTML, `EventSource("api/stream")`) {
+	// The URL is composed rather than written once, because a pinned page asks
+	// the same endpoint for a different instant. Both spellings have to stay
+	// relative, so both are named here.
+	if !strings.Contains(pageHTML, `return pinnedAt ? "api/stream?as_of=" + pinnedAt : "api/stream";`) {
 		t.Error("the page does not open a relative stream")
+	}
+	if !strings.Contains(pageHTML, "new EventSource(streamURL())") {
+		t.Error("the page does not open its stream through streamURL, so a pin could not reach it")
 	}
 }
 

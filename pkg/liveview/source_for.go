@@ -22,6 +22,9 @@ func SourceFor(db *cortexdb.DB, describe string) *Source {
 			var handle *sql.DB = db.SQL()
 			return LoadLocal(ctx, handle)
 		},
+		Grades:   true,
+		ReadAsOf: localReadAsOf(db),
+		Record:   localRecord(db),
 		Contract: localContract(db),
 		Ontology: localOntology(db),
 		Draft:    localDraft(db),

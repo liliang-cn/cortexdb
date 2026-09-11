@@ -39,9 +39,18 @@ type Snapshot struct {
 
 // Delta is what changed between two snapshots.
 //
-// AddedNodes carries upsert semantics rather than insert: a node whose label or
-// type changed is re-sent here, not removed and re-added, so the view updates
-// it in place and keeps the position the layout already settled on.
+// AddedNodes and AddedEdges carry upsert semantics rather than insert: a record
+// whose label, type or grade changed is re-sent here, not removed and re-added,
+// so the view updates it in place and keeps the position the layout already
+// settled on.
+//
+// For an edge that used to be a distinction without a difference — an edge was
+// its two ends and its label, all three of which are its identity, so nothing
+// could change without it becoming a different edge. It stopped being one when
+// an edge started carrying its grade: a record reviewed from held to verified
+// is the same edge saying something new about itself, and a view that only
+// learned about edges appearing and disappearing would have gone on drawing
+// last week's verdict.
 type Delta struct {
 	Version      int64    `json:"version"`
 	AddedNodes   []Node   `json:"added_nodes"`
@@ -102,7 +111,7 @@ func Diff(prev, next Snapshot) Delta {
 	for _, e := range next.Edges {
 		k := edgeKey(e)
 		nextEdges[k] = struct{}{}
-		if _, seen := prevEdges[k]; !seen {
+		if old, seen := prevEdges[k]; !seen || old != e {
 			d.AddedEdges = append(d.AddedEdges, e)
 		}
 	}

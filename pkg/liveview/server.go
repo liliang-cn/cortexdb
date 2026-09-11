@@ -42,6 +42,48 @@ const DefaultInterval = 2 * time.Second
 type Source struct {
 	Describe string
 	Read     func(ctx context.Context) ([]Node, []Edge, error)
+	// Grades reports whether Read fills in Node.Grade and Edge.Grade.
+	//
+	// A field rather than a hook, which is the odd one out here and
+	// deliberate: every other optional answer on this struct is a separate
+	// question the source is asked, and a grade is not — it rides on Read, on
+	// the record the page is already drawing. So what has to be declared is
+	// not "can you answer this" but "does what you already answer carry it",
+	// which is a fact about the source rather than a call.
+	//
+	// It exists for the same reason the nil hooks do. A source that cannot
+	// report grades returns every node ungraded, which is indistinguishable on
+	// the wire from a shelf nobody has stamped — and those are different
+	// findings. The shared brain is exactly this case: graph_list_all carries
+	// no grade, so the colour-by-grade mode says it cannot be read here rather
+	// than painting the whole brain the untagged grey.
+	Grades bool
+	// ReadAsOf reads the graph as it stood at an instant, for the page pinned
+	// to a moment in the past.
+	//
+	// Optional, and nil is a legitimate answer: a side graph assembled in
+	// memory has no history, and a shared brain has one this view cannot reach
+	// — graph_list_all answers about now and nothing else. A nil hook must
+	// never render as "the graph was empty then". The page says the source
+	// cannot be asked about the past, and stays where it is.
+	//
+	// A hook of its own rather than an argument to Read, for the reason
+	// graph.ReadOptions gives about the as-of epoch: it is not a parameter to
+	// one query but the instant a whole read happens in, and a source that can
+	// answer about now and not about then must be able to say so.
+	ReadAsOf func(ctx context.Context, at time.Time) ([]Node, []Edge, error)
+	// Record answers everything the store can say about one node or edge: its
+	// source file and chunk, its producer, its grade and why, when it became
+	// true, the text it was drawn from, what it was recorded as contradicting,
+	// and what anybody decided about it.
+	//
+	// Optional and nil for the same reason Contract is, with the same
+	// consequence: nil must render as "this view cannot look a record up", not
+	// as a record that carries nothing. The two are different findings and the
+	// panel says which — and a third state sits beside them, a record the
+	// source looked for and did not find, which on a graph being written under
+	// the view is a real event rather than a fault.
+	Record func(ctx context.Context, id string) (RecordDetail, error)
 	// Contract answers the knowledge contract's two questions about this
 	// store: how much of it stands on what, and what on it needs a person.
 	//
@@ -110,6 +152,9 @@ func OpenSource(ctx context.Context) (*Source, error) {
 		Read: func(ctx context.Context) ([]Node, []Edge, error) {
 			return LoadLocal(ctx, db.SQL())
 		},
+		Grades:   true,
+		ReadAsOf: localReadAsOf(db),
+		Record:   localRecord(db),
 		Contract: localContract(db),
 		Ontology: localOntology(db),
 		Draft:    localDraft(db),
@@ -180,6 +225,7 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 	// while pretending the two were views of one thing.
 	mux.HandleFunc("/ontology", s.handleOntologyPage)
 	mux.HandleFunc("/api/graph", s.handleGraph)
+	mux.HandleFunc("/api/record", s.handleRecord)
 	mux.HandleFunc("/api/contract", s.handleContract)
 	mux.HandleFunc("/api/ontology", s.handleOntology)
 	mux.HandleFunc("/api/stream", s.handleStream)
@@ -328,6 +374,27 @@ type Payload struct {
 	Source   string  `json:"source"`
 	Activity bool    `json:"activity"`
 	Interval int64   `json:"interval_ms"`
+
+	// Grades says the nodes and edges above carry a _grade, so the page may
+	// offer to colour by it. False is not "nothing is graded" — it is "this
+	// source does not report grades", and the legend says so rather than
+	// painting a brain the untagged grey.
+	Grades bool `json:"grades,omitempty"`
+	// Records says a record can be looked up on this source, so the inspector
+	// may offer to. False leaves the panel saying which of the two it is.
+	Records bool `json:"records,omitempty"`
+	// Temporal says this source can be asked about the past.
+	Temporal bool `json:"temporal,omitempty"`
+
+	// AsOf is the instant this payload describes, unix milliseconds, and zero
+	// for the live graph. Pinned is not derivable from it — a page can ask for
+	// an instant a source cannot answer — so the two are separate, and the
+	// banner reads Pinned.
+	AsOf   int64 `json:"as_of,omitempty"`
+	Pinned bool  `json:"pinned,omitempty"`
+	// PinReason is why a pin was refused, when one was. Empty on both a live
+	// payload and a successful pin.
+	PinReason string `json:"pin_reason,omitempty"`
 }
 
 func (s *Server) payload() Payload {
@@ -341,13 +408,100 @@ func (s *Server) payload() Payload {
 		Source:   s.src.Describe,
 		Activity: s.activity,
 		Interval: s.interval.Milliseconds(),
+		Grades:   s.src.Grades,
+		Records:  s.src.Record != nil,
+		Temporal: s.src.ReadAsOf != nil,
 	}
+}
+
+// pinnedPayload reads the graph as it stood at an instant and shapes it the way
+// the page expects an opening frame.
+//
+// A payload rather than an error whichever way it goes, for the reason the
+// contract endpoint gives: a failed fetch leaves the page showing what it drew
+// last, which after a pin is the present presented as the past. So a source
+// that cannot answer, a parameter that will not parse and a read that failed
+// all come back as a payload saying so, and the page keeps drawing the live
+// graph with the pin refused in words.
+//
+// The live snapshot is what it falls back to. That is not a silent substitution
+// — Pinned is false and PinReason says why — and it is the only fallback that
+// leaves a reader looking at something true.
+func (s *Server) pinnedPayload(ctx context.Context, raw string) Payload {
+	base := s.payload()
+	at, err := ParseAsOf(raw)
+	switch {
+	case err != nil:
+		base.PinReason = err.Error()
+		return base
+	case at.IsZero():
+		return base
+	case s.src.ReadAsOf == nil:
+		base.PinReason = "this view's source cannot be asked about the past"
+		base.AsOf = at.UnixMilli()
+		return base
+	}
+
+	nodes, edges, rerr := s.src.ReadAsOf(ctx, at)
+	if rerr != nil {
+		base.PinReason = rerr.Error()
+		base.AsOf = at.UnixMilli()
+		return base
+	}
+	base.Nodes, base.Edges = nodes, edges
+	base.AsOf = at.UnixMilli()
+	base.Pinned = true
+	// The activity ticker reports calls as they are handled, which is a fact
+	// about now however far back the scene is pinned. Saying the view is live
+	// while it is showing last Tuesday is exactly the confusion the banner
+	// exists to prevent, so a pinned frame claims nothing about liveness.
+	base.Activity = false
+	base.Events = nil
+	return base
 }
 
 func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	if raw := r.URL.Query().Get("as_of"); strings.TrimSpace(raw) != "" {
+		_ = json.NewEncoder(w).Encode(s.pinnedPayload(r.Context(), raw))
+		return
+	}
 	_ = json.NewEncoder(w).Encode(s.payload())
+}
+
+// handleRecord answers the inspector: everything the store can say about one
+// node or edge.
+//
+// Fetched on a click rather than polled or pushed, which is what makes it
+// affordable to answer expensively — a node read, an edge read, the supporting
+// chunks and a ledger query, once per record a person asks about.
+//
+// Like every other panel on this page, a source that cannot answer still gets
+// a 200 with a report saying why. A failed fetch would leave the panel showing
+// the record it drew last, which after a click on a different node is one
+// record's provenance under another record's name.
+func (s *Server) handleRecord(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	var detail RecordDetail
+	switch {
+	case s.src.Record == nil:
+		detail = unavailableRecord("this view's source cannot look a record up")
+	case id == "":
+		detail = unavailableRecord("no record id given")
+	default:
+		got, err := s.src.Record(r.Context(), id)
+		if err != nil {
+			detail = unavailableRecord(err.Error())
+		} else {
+			detail = got
+		}
+		detail.ID = id
+	}
+	_ = json.NewEncoder(w).Encode(detail)
 }
 
 // handleContract answers the contract panel.
@@ -508,6 +662,31 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 
+	// A page pinned to an instant reconnects here with ?as_of=, and this is
+	// where "live polling stops while the view is pinned" is actually enforced
+	// rather than promised: the pinned stream never subscribes to the hub at
+	// all, so no delta can reach it, and the past it was handed cannot be
+	// overwritten by something written since.
+	//
+	// Per connection rather than per server, and that is the load-bearing
+	// part. Pinning is one reader's decision, and a switch on the server would
+	// mean one person looking at last Tuesday froze the page of everybody else
+	// watching today. The poll keeps running; this stream simply does not
+	// listen to it.
+	//
+	// The connection is held open rather than closed after the frame, so the
+	// page's badge stays out of "reconnecting" — a pinned view is not a broken
+	// one — and so releasing the pin is a reconnect the page controls rather
+	// than a retry the browser schedules.
+	if raw := r.URL.Query().Get("as_of"); strings.TrimSpace(raw) != "" {
+		open := s.pinnedPayload(r.Context(), raw)
+		if !writeSSE(w, flusher, "snapshot", open) {
+			return
+		}
+		s.holdPinned(w, flusher, r)
+		return
+	}
+
 	ch, snap, backlog := s.hub.subscribe()
 	defer s.hub.unsubscribe(ch)
 
@@ -521,6 +700,9 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		Source:   s.src.Describe,
 		Activity: s.activity,
 		Interval: s.interval.Milliseconds(),
+		Grades:   s.src.Grades,
+		Records:  s.src.Record != nil,
+		Temporal: s.src.ReadAsOf != nil,
 	}
 	if !writeSSE(w, flusher, "snapshot", open) {
 		return
@@ -553,6 +735,28 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 				if !writeSSE(w, flusher, "activity", msg.Event) {
 					return
 				}
+			}
+		}
+	}
+}
+
+// holdPinned keeps a pinned stream open on heartbeats alone.
+//
+// The heartbeat is the whole of it. Without traffic a stream looks identical to
+// a dead one, and a pinned page that let its connection be mistaken for broken
+// would start reconnecting — to the live graph, silently, under a banner saying
+// it was showing the past. So the connection says "still here, still nothing to
+// report", which for the past is the truth forever.
+func (s *Server) holdPinned(w http.ResponseWriter, flusher http.Flusher, r *http.Request) {
+	beat := time.NewTicker(20 * time.Second)
+	defer beat.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-beat.C:
+			if !writeSSE(w, flusher, "ping", map[string]int64{"at": time.Now().UnixMilli()}) {
+				return
 			}
 		}
 	}

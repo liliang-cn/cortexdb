@@ -16,6 +16,39 @@
 //     one. These are reported by whoever handled the call, through
 //     [Server.Observe], and light up the nodes they named.
 //
+// What is drawn is coloured by node type, which answers "what is in here". The
+// other question a person brings to a picture of a brain is which of it anybody
+// checked, and the knowledge contract answers that per record — so [Node] and
+// [Edge] carry the record's `_grade` and the page has a switch between the two
+// palettes. Type is the default and stays it. Grade mode draws the contract's
+// five in the product's own colours, lifted for this background (see grade.go),
+// with [GradeLegend] as the legend — an unexplained colour scheme is decoration
+// — and it colours the relations as well as the things, because a graph's
+// assertions are mostly edges. A source whose reads do not carry grades sets
+// [Source.Grades] false and the legend says so, which is a different finding
+// from a store on which nothing is graded.
+//
+// Selecting a node or a relation opens the inspector, which is the fourth route
+// onto the page and the one that joins the picture to the product: the record's
+// source file and chunk, its producer, its grade and the reason for it, when the
+// fact became true, the text it was drawn from, what it was recorded as
+// contradicting, and the decision somebody signed against it — every id among
+// them a link, so a reader can walk from a fact to what disagrees with it
+// without going back to the search box. It arrives through [Source.Record] as a
+// [RecordDetail], fetched once per click rather than polled, which is what makes
+// it affordable to answer that expensively. Nil is a legitimate answer here too,
+// and there are three states rather than two: the source cannot be asked, the
+// source looked and the shelf no longer holds this, and here is the record.
+//
+// The page can also be pinned to an instant. [Source.ReadAsOf] reads the graph
+// as it stood then, through the same as-of machinery every other past read in
+// the module uses, and the page says so in a banner that cannot be folded
+// away — a graph quietly showing last week is worse than one that cannot show
+// it at all. Live updates stop while pinned, and stop on the server: a pinned
+// stream never subscribes to the poller, so there is no delta to arrive. Per
+// connection, not per server, because one reader looking at last Tuesday must
+// not freeze the page of the reader beside them.
+//
 // A third thing on the page does not move, and says so by arriving differently.
 // The contract panel answers how much of this store stands on what, and what on
 // it is waiting for a person — the knowledge contract, read back through
