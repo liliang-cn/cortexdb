@@ -25,7 +25,11 @@ func remoteConfigured() (addr, token string, ok bool) {
 	return addr, os.Getenv("CORTEXDB_GRPC_TOKEN"), addr != ""
 }
 
-// fetchAllMemoriesRemote pulls every memory from the shared brain.
+// fetchAllMemoriesRemote pulls every memory from the shared brain, one page
+// at a time. A single call cannot do it: a brain past a few thousand records
+// exceeds the 4 MiB gRPC message limit, and the failure is total — this is
+// the mode that produces a backup file, so returning part of one silently
+// would be worse than an error.
 //
 // Unlike the recall hook, a failure here is loud: these modes are invoked by
 // hand and produce a file, so quietly rendering an empty or stale dashboard
@@ -37,30 +41,51 @@ func fetchAllMemoriesRemote(ctx context.Context, addr, token string, limit int) 
 	}
 	defer func() { _ = conn.Close() }()
 
-	args, err := json.Marshal(cortexdb.MemoryListAllRequest{Limit: limit})
-	if err != nil {
-		return nil, err
-	}
+	const pageSize = 500
+	var (
+		all    []cortexdb.MemoryRecord
+		cursor string
+	)
+	for page := 0; ; page++ {
+		if page > 10_000 {
+			return nil, fmt.Errorf("memory export did not terminate after %d pages", page)
+		}
+		args, err := json.Marshal(cortexdb.MemoryListAllRequest{Limit: pageSize, Cursor: cursor})
+		if err != nil {
+			return nil, err
+		}
 
-	callCtx, cancel := context.WithTimeout(ctx, remoteDialTimeout)
-	defer cancel()
+		callCtx, cancel := context.WithTimeout(ctx, remoteDialTimeout)
+		resp, err := rpcv1.NewToolsServiceClient(conn).CallTool(callCtx, &rpcv1.CallToolRequest{
+			Name:     "memory_list_all",
+			ArgsJson: string(args),
+		})
+		cancel()
+		if err != nil {
+			return nil, fmt.Errorf("memory_list_all on %s: %w", addr, err)
+		}
 
-	resp, err := rpcv1.NewToolsServiceClient(conn).CallTool(callCtx, &rpcv1.CallToolRequest{
-		Name:     "memory_list_all",
-		ArgsJson: string(args),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("memory_list_all on %s: %w (is the server new enough?)", addr, err)
-	}
+		var out cortexdb.MemoryListAllResponse
+		if err := json.Unmarshal([]byte(resp.GetResultJson()), &out); err != nil {
+			return nil, fmt.Errorf("decode memory_list_all from %s: %w", addr, err)
+		}
+		all = append(all, out.Memories...)
 
-	var out cortexdb.MemoryListAllResponse
-	if err := json.Unmarshal([]byte(resp.GetResultJson()), &out); err != nil {
-		return nil, fmt.Errorf("decode memory_list_all: %w", err)
+		if limit > 0 && len(all) >= limit {
+			return all[:limit], nil
+		}
+		if !out.Truncated {
+			return all, nil
+		}
+		if out.NextCursor == "" {
+			// An older server: it truncated and cannot say where to resume.
+			return nil, fmt.Errorf(
+				"memory_list_all on %s stopped at %d records without a cursor; "+
+					"this server predates paged listings and cannot export a brain this size",
+				addr, len(all))
+		}
+		cursor = out.NextCursor
 	}
-	if out.Truncated {
-		fmt.Fprintf(os.Stderr, "cortexdb: note: the listing was truncated; pass a higher limit to get everything\n")
-	}
-	return out.Memories, nil
 }
 
 // loadAllMemories returns every memory, from the shared brain when one is
