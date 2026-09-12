@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // The HTML dashboard and the Markdown export both need every memory, not a
@@ -183,5 +184,135 @@ func TestMemoryListAllRejectsAMalformedCursor(t *testing.T) {
 	db := listAllTestDB(t)
 	if _, err := db.ListAllMemoriesPaged(ctx, MemoryListAllRequest{Cursor: "not-a-cursor!!"}); err == nil {
 		t.Fatal("accepted a malformed cursor")
+	}
+}
+
+// A row inserted between two page fetches must be neither skipped over nor
+// counted twice among the rows the walk already had a position past. Keyset
+// pagination gives this by construction — the cursor is a row's own sort key,
+// not a position that shifts when the table does — but a shared brain is
+// written while it is read constantly enough that the guarantee deserves its
+// own test rather than living only in the reasoning above listMemoryPage.
+func TestMemoryListAllToleratesAWriteBetweenPages(t *testing.T) {
+	ctx := context.Background()
+	db := listAllTestDB(t)
+	const total = 6
+	ids := make([]string, total)
+	for i := 0; i < total; i++ {
+		id := fmt.Sprintf("w%d", i)
+		ids[i] = id
+		if _, err := db.SaveMemory(ctx, MemorySaveRequest{MemoryID: id, Content: id, Scope: "global"}); err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+	}
+
+	first, err := db.ListAllMemoriesPaged(ctx, MemoryListAllRequest{Limit: 3})
+	if err != nil {
+		t.Fatalf("page 1: %v", err)
+	}
+	if !first.Truncated || first.NextCursor == "" {
+		t.Fatal("want a truncated first page with a cursor")
+	}
+
+	// A write lands between the two page fetches — the situation a shared
+	// brain is in constantly.
+	if _, err := db.SaveMemory(ctx, MemorySaveRequest{MemoryID: "late", Content: "late", Scope: "global"}); err != nil {
+		t.Fatalf("late write: %v", err)
+	}
+
+	seen := map[string]int{}
+	for _, m := range first.Memories {
+		seen[m.ID]++
+	}
+	cursor := first.NextCursor
+	for pages := 1; ; pages++ {
+		if pages > 20 {
+			t.Fatal("walk did not terminate")
+		}
+		resp, err := db.ListAllMemoriesPaged(ctx, MemoryListAllRequest{Limit: 3, Cursor: cursor})
+		if err != nil {
+			t.Fatalf("page %d: %v", pages, err)
+		}
+		for _, m := range resp.Memories {
+			seen[m.ID]++
+		}
+		if !resp.Truncated {
+			break
+		}
+		cursor = resp.NextCursor
+	}
+
+	for _, id := range ids {
+		if seen[id] != 1 {
+			t.Errorf("%s seen %d times, want exactly 1", id, seen[id])
+		}
+	}
+	// "late" is newer than everything the walk had already moved past when it
+	// was written, so it sorts ahead of the cursor's position under
+	// created_at DESC — a walk already past that position correctly never
+	// doubles back for it. An offset-based scheme would have had no such
+	// guarantee: the insert would have shifted every later page by one,
+	// dropping or repeating a real row instead.
+	if seen["late"] != 0 {
+		t.Errorf("a row inserted after the walk passed its position should not appear, got %d", seen["late"])
+	}
+}
+
+// On PostgreSQL, created_at is a real TIMESTAMP with microsecond precision
+// (pkg/core/store_postgres.go), unlike SQLite's second-granular stored text.
+// A keyset cutoff that floors to the whole second — correct on SQLite, where
+// nothing ever has a finer timestamp to floor away — skips any Postgres row
+// that falls strictly between two whole seconds. This seeds several memories
+// within the same second at distinct microsecond instants: exactly the shape
+// that silently lost rows before memoryListingCutoffArg bound the cutoff
+// per-backend.
+func TestMemoryListAllPagesAcrossSubSecondTimestampsOnPostgres(t *testing.T) {
+	ctx := context.Background()
+	db := openPostgresBrain(t, 4)
+
+	const total = 6
+	base := time.Now().UTC().Truncate(time.Second)
+	ids := make([]string, total)
+	for i := 0; i < total; i++ {
+		id := fmt.Sprintf("pgsub%d", i)
+		ids[i] = id
+		if _, err := db.SaveMemory(ctx, MemorySaveRequest{MemoryID: id, Content: "记忆 " + id, Scope: "global"}); err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+		// SaveMemory always writes CURRENT_TIMESTAMP; overwrite it directly so
+		// every id lands within the same second but at a distinct,
+		// sub-second instant — the scenario a whole-second cutoff drops.
+		ts := base.Add(time.Duration(i) * 150 * time.Millisecond)
+		if _, err := db.exec(ctx, `UPDATE messages SET created_at = ? WHERE id = ?`, ts, id); err != nil {
+			t.Fatalf("age %s: %v", id, err)
+		}
+	}
+
+	seen := map[string]int{}
+	cursor := ""
+	for pages := 0; ; pages++ {
+		if pages > 20 {
+			t.Fatal("walk did not terminate")
+		}
+		resp, err := db.ListAllMemoriesPaged(ctx, MemoryListAllRequest{Limit: 2, Cursor: cursor})
+		if err != nil {
+			t.Fatalf("page %d: %v", pages, err)
+		}
+		for _, m := range resp.Memories {
+			seen[m.ID]++
+		}
+		if !resp.Truncated {
+			break
+		}
+		if resp.NextCursor == "" {
+			t.Fatal("Truncated with no NextCursor")
+		}
+		cursor = resp.NextCursor
+	}
+
+	for _, id := range ids {
+		if seen[id] != 1 {
+			t.Errorf("%s seen %d times, want exactly 1 (sub-second timestamps on Postgres)", id, seen[id])
+		}
 	}
 }

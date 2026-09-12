@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 )
 
 // Bulk memory listing, for the views that need every record rather than a
@@ -49,7 +51,40 @@ const defaultMemoryListLimit = 500
 // predicate below binds the cursor's timestamp as a string in this exact
 // layout rather than handing the driver a time.Time — see the note on
 // listMemoryPage for why that distinction matters.
+//
+// This layout is SQLite-only. `messages.created_at` on PostgreSQL is a real
+// `TIMESTAMP` column with microsecond precision (pkg/core/store_postgres.go),
+// not text, and flooring the cutoff to whole seconds there does not merely
+// mis-order rows the way it would on SQLite — it drops them: a row at
+// 11:23:58.300000 is neither `< '11:23:58'` (compared as `.000000`) nor
+// `= '11:23:58'`, so it is skipped on every page and never returned. See
+// memoryListingCutoffArg, which picks the binding per backend.
 const sqliteTimestampLayout = "2006-01-02 15:04:05"
+
+// memoryListingCutoffArg binds a keyset cursor's timestamp the way this
+// backend's created_at column actually compares.
+//
+//   - SQLite stores created_at as the literal text CURRENT_TIMESTAMP writes
+//     ("YYYY-MM-DD HH:MM:SS", UTC, no fraction). Binding a bare time.Time
+//     there hits modernc.org/sqlite's fallback formatter, time.Time.String()
+//     ("2026-09-12 12:34:56 +0000 UTC"), which is the stored text plus a
+//     suffix — under SQLite's byte-wise TEXT comparison a string is "less
+//     than" any longer string it is a prefix of, so every row sharing the
+//     cursor's instant would wrongly satisfy `created_at < ?` and the `=`
+//     tie-break would never fire at all. Formatting to the exact stored
+//     layout keeps both sides of the comparison textually identical.
+//   - PostgreSQL stores created_at as a real, microsecond-precision TIMESTAMP.
+//     There is no text mismatch to route around, so the full-precision
+//     time.Time is bound directly and pgx encodes it natively; formatting it
+//     down to whole seconds (the SQLite fix, misapplied here) would floor the
+//     cutoff and silently skip any row between two whole seconds — the
+//     data-loss bug this function exists to prevent.
+func memoryListingCutoffArg(d sqldialect.Dialect, ts time.Time) any {
+	if d != nil && d.Kind() == sqldialect.Postgres {
+		return ts
+	}
+	return ts.UTC().Format(sqliteTimestampLayout)
+}
 
 // ListAllMemoriesPaged returns one page of memories, newest first.
 func (db *DB) ListAllMemoriesPaged(ctx context.Context, req MemoryListAllRequest) (*MemoryListAllResponse, error) {
@@ -127,23 +162,10 @@ func (db *DB) listMemoryPage(ctx context.Context, afterTS time.Time, afterID str
 		err  error
 	)
 	if resume {
-		// created_at is written by `INSERT ... VALUES (..., CURRENT_TIMESTAMP)`
-		// and modernc.org/sqlite stores that as the literal text SQLite's
-		// CURRENT_TIMESTAMP produces: "YYYY-MM-DD HH:MM:SS" UTC, no fractional
-		// seconds, no zone suffix. If afterTS were bound as a bare time.Time,
-		// the driver formats it with time.Time.String() instead — e.g.
-		// "2026-09-12 12:34:56 +0000 UTC" — and that string is never equal,
-		// nor lexically consistent, with the column's stored text: since the
-		// stored value is a strict prefix of the driver's formatted value,
-		// SQLite's text comparison ranks the stored row as "less than" a
-		// cutoff drawn from its own timestamp, so `m.created_at < ?` matches
-		// every row sharing that instant and `m.created_at = ?` never matches
-		// at all. That silently breaks the id tie-break and reintroduces
-		// duplicates precisely when multiple memories share a created_at
-		// second, which happens often in fast writes. Formatting the cursor's
-		// timestamp into the same layout the column already holds keeps the
-		// comparison textual on both sides.
-		afterTSParam := afterTS.UTC().Format(sqliteTimestampLayout)
+		// db.query runs on both backends (sql_exec.go rebinds `?` to `$1, $2,
+		// …` for PostgreSQL) but the two store created_at differently, so the
+		// cutoff has to be bound differently too — see memoryListingCutoffArg.
+		afterTSParam := memoryListingCutoffArg(db.Dialect(), afterTS)
 		rows, err = db.query(ctx, base+`
 		  AND (m.created_at < ? OR (m.created_at = ? AND m.id > ?))`+tail,
 			afterTSParam, afterTSParam, afterID, limit)
