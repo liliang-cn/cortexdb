@@ -295,7 +295,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 				map[string]any{
 					"limit":  map[string]any{"type": "integer", "description": "Maximum nodes in this page (default 2000)."},
 					"cursor": map[string]any{"type": "string", "description": "Resume point from a previous page's next_cursor. Supplying it implies order \"id\"."},
-					"order":  map[string]any{"type": "string", "description": "\"\" (default) returns the most-connected core, best for rendering. \"id\" walks the whole graph in a stable order, resumable with cursor."},
+					"order":  map[string]any{"type": "string", "description": "\"\" (default) returns the most-connected core, best for rendering. \"id\" walks the whole graph in a stable order, resumable with cursor; a page's edges may reference nodes from a later page, so the subgraph is complete only once the walk finishes."},
 				},
 			),
 		},
