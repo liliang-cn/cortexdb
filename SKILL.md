@@ -786,10 +786,10 @@ once a brain no longer fits in one gRPC message.
 Transport is plaintext by design — run it over loopback, a trusted LAN, or
 Tailscale. **The token is the access control**: anyone holding it has full
 read/write access. Embedder and LLM settings live on the server, not the
-clients. `--graph-html` reads the shared brain too. Other one-shot modes stay
-local regardless — `--learn-path`, `--reembed-memories` and `--graph-cleanup`
-among them; the latter two need direct database access by design, so they run
-where the database lives.
+clients. `--graph-html`, `--recall-eval` and `--capture-session` follow the
+remote too. Some one-shot modes are local-only by design — `--learn-path`,
+`--reembed-memories` and `--graph-cleanup` among them; the latter two need
+direct database access, so they run where the database lives.
 
 The graph view is also an MCP tool, `render_graph_html`. It is the one tool that
 is **not** proxied to the shared brain: the graph is read remotely, but the HTML
