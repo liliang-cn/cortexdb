@@ -2,7 +2,9 @@ package cortexdb
 
 import (
 	"context"
+	"database/sql"
 	"sort"
+	"time"
 )
 
 // Bulk graph listing, for the view that needs the whole entity graph rather
@@ -14,6 +16,15 @@ import (
 // database file, which on a machine pointed at a shared brain is the wrong one.
 //
 // Mirrors memory_list_all: bounded by default, and says so when it truncates.
+//
+// Two listing modes live here, not one flag on one:
+//
+//   - No cursor, no Order → the existing behaviour, unchanged. The
+//     most-connected core, truncated, no NextCursor. Degree ranking has no
+//     stable page boundary, so it cannot also be resumed.
+//   - Cursor supplied, or Order "id" → an id-ordered walk with NextCursor, no
+//     degree ranking. This is what lets a caller read a graph too big for one
+//     response, page by page, without missing or repeating a node.
 
 // GraphListAllRequest asks for the whole meaningful entity graph.
 type GraphListAllRequest struct {
@@ -21,6 +32,15 @@ type GraphListAllRequest struct {
 	// then restricted to those between returned nodes, so the result is always a
 	// self-consistent subgraph rather than one with dangling ends.
 	Limit int `json:"limit,omitempty"`
+	// Cursor resumes an id-ordered walk. Supplying it implies Order "id".
+	Cursor string `json:"cursor,omitempty"`
+	// Order selects what a page means. "" (default) keeps the most-connected
+	// core, which is what makes a large graph renderable. "id" walks the graph
+	// in a stable order so a caller can read all of it.
+	//
+	// These are different operations, not a flag on one: degree ranking and a
+	// resumable walk cannot share a page boundary.
+	Order string `json:"order,omitempty"`
 }
 
 // GraphListAllNode is one node in a bulk listing.
@@ -50,6 +70,9 @@ type GraphListAllResponse struct {
 	// TotalNodes is how many meaningful nodes exist, so a truncated caller can
 	// report what it is not showing.
 	TotalNodes int `json:"total_nodes"`
+	// NextCursor is the resume point for the next page. Only set in id order —
+	// the degree-ranked core has no stable boundary to resume from.
+	NextCursor string `json:"next_cursor,omitempty"`
 }
 
 const defaultGraphListLimit = 2000
@@ -64,7 +87,14 @@ const defaultGraphListLimit = 2000
 // the edges between them, excluding edges that only wire chunks. When the
 // node count exceeds the limit it keeps the most-connected core, which is what
 // makes a large graph readable rather than an arbitrary slice of it.
+//
+// Supplying a cursor, or asking for Order "id", switches to an id-ordered walk
+// instead: see listGraphPageByID.
 func (db *DB) ListGraphAll(ctx context.Context, req GraphListAllRequest) (*GraphListAllResponse, error) {
+	if req.Cursor != "" || req.Order == "id" {
+		return db.listGraphPageByID(ctx, req)
+	}
+
 	limit := req.Limit
 	if limit <= 0 {
 		limit = defaultGraphListLimit
@@ -74,36 +104,10 @@ func (db *DB) ListGraphAll(ctx context.Context, req GraphListAllRequest) (*Graph
 	}
 
 	// Edges first: they give every node its degree.
-	edgeRows, err := db.query(ctx,
-		`SELECT e.from_node_id, COALESCE(e.edge_type,''), e.to_node_id
-		 FROM graph_edges e
-		 JOIN graph_nodes f ON f.id = e.from_node_id
-		 JOIN graph_nodes t ON t.id = e.to_node_id
-		 WHERE e.edge_type != 'has_chunk'
-		   AND COALESCE(f.node_type,'') != 'chunk'
-		   AND COALESCE(t.node_type,'') != 'chunk'
-		 ORDER BY e.from_node_id, e.to_node_id, e.edge_type`)
+	raw, degree, err := db.listGraphEdgesAndDegree(ctx)
 	if err != nil {
 		return nil, err
 	}
-	type rawEdge struct{ from, etype, to string }
-	raw := make([]rawEdge, 0)
-	degree := make(map[string]int)
-	for edgeRows.Next() {
-		var e rawEdge
-		if err := edgeRows.Scan(&e.from, &e.etype, &e.to); err != nil {
-			_ = edgeRows.Close()
-			return nil, err
-		}
-		raw = append(raw, e)
-		degree[e.from]++
-		degree[e.to]++
-	}
-	if err := edgeRows.Err(); err != nil {
-		_ = edgeRows.Close()
-		return nil, err
-	}
-	_ = edgeRows.Close()
 
 	nodeRows, err := db.query(ctx,
 		// Ordered so the listing is the same graph twice, not just the same
@@ -161,6 +165,144 @@ func (db *DB) ListGraphAll(ctx context.Context, req GraphListAllRequest) (*Graph
 	resp.Nodes = all
 	resp.Edges = edges
 	return resp, nil
+}
+
+// listGraphPageByID walks the entity graph in id order so a caller can read all
+// of it. Each page carries the edges whose `from` endpoint is on that page, so
+// a complete walk yields every node once and every edge once.
+func (db *DB) listGraphPageByID(ctx context.Context, req GraphListAllRequest) (*GraphListAllResponse, error) {
+	limit := req.Limit
+	if limit <= 0 {
+		limit = defaultGraphListLimit
+	}
+	if err := db.graph.InitGraphSchema(ctx); err != nil {
+		return nil, err
+	}
+
+	afterID := ""
+	if req.Cursor != "" {
+		_, id, err := decodeListingCursor(req.Cursor)
+		if err != nil {
+			return nil, err
+		}
+		afterID = id
+	}
+
+	// Degree still comes from the whole edge set: a node's degree is a property
+	// of the graph, not of the page it landed on.
+	raw, degree, err := db.listGraphEdgesAndDegree(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		rows *sql.Rows
+		qErr error
+	)
+	const nodeBase = `SELECT id, COALESCE(content,''), COALESCE(node_type,'')
+		 FROM graph_nodes WHERE node_type != 'chunk'`
+	if afterID != "" {
+		rows, qErr = db.query(ctx, nodeBase+` AND id > ? ORDER BY id LIMIT ?`, afterID, limit+1)
+	} else {
+		rows, qErr = db.query(ctx, nodeBase+` ORDER BY id LIMIT ?`, limit+1)
+	}
+	if qErr != nil {
+		return nil, qErr
+	}
+	defer func() { _ = rows.Close() }()
+
+	page := make([]GraphListAllNode, 0, limit)
+	more := false
+	for rows.Next() {
+		var id, content, ntype string
+		if err := rows.Scan(&id, &content, &ntype); err != nil {
+			return nil, err
+		}
+		if len(page) == limit {
+			more = true
+			break
+		}
+		label := content
+		if label == "" {
+			label = trimGraphNodePrefix(id)
+		}
+		page = append(page, GraphListAllNode{ID: id, Label: label, Type: ntype, Degree: degree[id]})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	onPage := make(map[string]struct{}, len(page))
+	for _, n := range page {
+		onPage[n.ID] = struct{}{}
+	}
+	edges := make([]GraphListAllEdge, 0)
+	for _, e := range raw {
+		if _, ok := onPage[e.from]; !ok {
+			continue
+		}
+		edges = append(edges, GraphListAllEdge{From: e.from, To: e.to, Type: e.etype})
+	}
+
+	total, err := db.countGraphEntityNodes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp := &GraphListAllResponse{Nodes: page, Edges: edges, TotalNodes: total}
+	if more && len(page) > 0 {
+		resp.Truncated = true
+		resp.NextCursor = encodeListingCursor(time.Time{}, page[len(page)-1].ID)
+	}
+	return resp, nil
+}
+
+// countGraphEntityNodes counts the non-chunk nodes, so a paged caller can say
+// what fraction it is holding.
+func (db *DB) countGraphEntityNodes(ctx context.Context) (int, error) {
+	row := db.queryRow(ctx, `SELECT COUNT(*) FROM graph_nodes WHERE node_type != 'chunk'`)
+	var n int
+	if err := row.Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// rawEdge is one meaningful edge, before it is narrowed to a page.
+type rawEdge struct{ from, etype, to string }
+
+// listGraphEdgesAndDegree reads every meaningful edge and the degree it gives
+// each node. Degree is a property of the graph, not of the page a node lands
+// on, so both listing modes compute it over the whole edge set.
+func (db *DB) listGraphEdgesAndDegree(ctx context.Context) ([]rawEdge, map[string]int, error) {
+	edgeRows, err := db.query(ctx,
+		`SELECT e.from_node_id, COALESCE(e.edge_type,''), e.to_node_id
+		 FROM graph_edges e
+		 JOIN graph_nodes f ON f.id = e.from_node_id
+		 JOIN graph_nodes t ON t.id = e.to_node_id
+		 WHERE e.edge_type != 'has_chunk'
+		   AND COALESCE(f.node_type,'') != 'chunk'
+		   AND COALESCE(t.node_type,'') != 'chunk'
+		 ORDER BY e.from_node_id, e.to_node_id, e.edge_type`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = edgeRows.Close() }()
+
+	raw := make([]rawEdge, 0)
+	degree := make(map[string]int)
+	for edgeRows.Next() {
+		var e rawEdge
+		if err := edgeRows.Scan(&e.from, &e.etype, &e.to); err != nil {
+			return nil, nil, err
+		}
+		raw = append(raw, e)
+		degree[e.from]++
+		degree[e.to]++
+	}
+	if err := edgeRows.Err(); err != nil {
+		return nil, nil, err
+	}
+	return raw, degree, nil
 }
 
 // sortGraphNodesByDegree orders most-connected first, breaking ties by id so a
