@@ -777,17 +777,19 @@ That is the whole change. The MCP server then opens no local database: it
 discovers the tool surface from the server at startup and proxies every call, so
 all tools — current and future — work identically. The `UserPromptSubmit`
 auto-recall hook follows the same remote, so injected memories come from the
-same brain the tools write to, as do `--memory-html` and `--export-memory` —
-and any other one-shot mode that reads the whole brain. All of them share one
-remote-fetch path that walks it a `memory_list_all` page at a time rather than
-asking for everything in one call, so none of them stop working once a brain no
-longer fits in one gRPC message.
+same brain the tools write to. So do `--memory-html`, `--export-memory`,
+`--memory-usage` and `--sync-memory`: all four route through one shared
+remote-fetch path that walks the brain a `memory_list_all` page at a time
+rather than asking for everything in one call, so none of them stop working
+once a brain no longer fits in one gRPC message.
 
 Transport is plaintext by design — run it over loopback, a trusted LAN, or
 Tailscale. **The token is the access control**: anyone holding it has full
 read/write access. Embedder and LLM settings live on the server, not the
-clients. `--graph-html` reads the shared brain too; the remaining one-shot mode,
-`--learn-path`, still acts on a local database.
+clients. `--graph-html` reads the shared brain too. Other one-shot modes stay
+local regardless — `--learn-path`, `--reembed-memories` and `--graph-cleanup`
+among them; the latter two need direct database access by design, so they run
+where the database lives.
 
 The graph view is also an MCP tool, `render_graph_html`. It is the one tool that
 is **not** proxied to the shared brain: the graph is read remotely, but the HTML
