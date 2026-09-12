@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.103.0] - 2026-09-12
+
+### Fixed
+
+- **`--export-memory` writes `source` and `expires_at` into the frontmatter.**
+  It wrote scope, namespace, importance and created_at and dropped `source`,
+  so from the export a verbatim transcript turn and a distilled experience
+  were indistinguishable — both carry the same `harness-<timestamp>-<n>` id.
+  A deletion plan drawn from such an export would have taken 387 experience
+  memories along with the noise; it was caught only because the plan was read
+  before it was applied. Absent fields stay absent.
+
 ## [2.102.0] - 2026-09-12
 
 A bulk delete of 3390 memories, done through `memory_delete`, left 1097
