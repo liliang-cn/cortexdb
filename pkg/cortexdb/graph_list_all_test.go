@@ -171,6 +171,62 @@ func TestGraphListAllRejectsAMalformedCursor(t *testing.T) {
 	}
 }
 
+// Order is a free string with exactly two meaningful values, "" and "id".
+// Anything else must error rather than silently fall through to
+// degree-ranked mode: that mode never sets NextCursor, so a caller who typo'd
+// "order" would be told Truncated with no way to resume — the exact failure
+// this whole cursor mechanism exists to eliminate, one field over.
+
+func TestGraphListAllEmptyOrderStillDegreeRanks(t *testing.T) {
+	ctx := context.Background()
+	db := listAllTestDB(t)
+	seedGraphChain(t, db, 12)
+
+	resp, err := db.ListGraphAll(ctx, GraphListAllRequest{Limit: 4, Order: ""})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if !resp.Truncated {
+		t.Fatal("want Truncated with limit 4")
+	}
+	if resp.NextCursor != "" {
+		t.Errorf("degree-ranked mode must not offer a cursor, got %q", resp.NextCursor)
+	}
+}
+
+func TestGraphListAllOrderIdStillWalks(t *testing.T) {
+	ctx := context.Background()
+	db := listAllTestDB(t)
+	seedGraphChain(t, db, 12)
+
+	resp, err := db.ListGraphAll(ctx, GraphListAllRequest{Limit: 4, Order: "id"})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if !resp.Truncated {
+		t.Fatal("want Truncated with limit 4")
+	}
+	if resp.NextCursor == "" {
+		t.Error("id-walk mode must offer a cursor when truncated")
+	}
+}
+
+func TestGraphListAllRejectsAnUnrecognizedOrder(t *testing.T) {
+	ctx := context.Background()
+	db := listAllTestDB(t)
+	seedGraphChain(t, db, 12)
+
+	for _, order := range []string{"ID", "asc", "by-id", "Id"} {
+		t.Run(order, func(t *testing.T) {
+			resp, err := db.ListGraphAll(ctx, GraphListAllRequest{Limit: 4, Order: order})
+			if err == nil {
+				t.Fatalf("accepted order %q: got Truncated=%v NextCursor=%q instead of an error",
+					order, resp.Truncated, resp.NextCursor)
+			}
+		})
+	}
+}
+
 // graph_list_all and memory_list_all both take an opaque `cursor` string
 // described the same way, so an agent mixing them up is a realistic mistake.
 // A cursor from one listing fed into the other must error loudly rather than

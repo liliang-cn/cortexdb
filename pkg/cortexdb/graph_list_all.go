@@ -3,6 +3,7 @@ package cortexdb
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"sort"
 	"time"
 )
@@ -39,7 +40,10 @@ type GraphListAllRequest struct {
 	Cursor string `json:"cursor,omitempty"`
 	// Order selects what a page means. "" (default) keeps the most-connected
 	// core, which is what makes a large graph renderable. "id" walks the graph
-	// in a stable order so a caller can read all of it.
+	// in a stable order so a caller can read all of it. Any other value is
+	// rejected with an error — see validateGraphListAllOrder. The match is
+	// exact and case-sensitive: "ID" or "Id" is a typo, not a synonym, and is
+	// rejected rather than guessed at.
 	//
 	// These are different operations, not a flag on one: degree ranking and a
 	// resumable walk cannot share a page boundary.
@@ -87,6 +91,24 @@ type GraphListAllResponse struct {
 
 const defaultGraphListLimit = 2000
 
+// validateGraphListAllOrder rejects any Order other than "" and "id" before
+// ListGraphAll picks a mode. Order is a free string, and the mode branch only
+// ever tests it against the literal "id" — anything else, including a
+// plausible-looking typo like "ID" or "asc", used to fall through to
+// degree-ranked mode silently. That mode never sets NextCursor, so the
+// caller's response looked well-formed (Truncated: true) while giving no way
+// to resume: the same "I stopped and cannot tell you how to continue"
+// failure a malformed cursor is already rejected for, re-triggered one field
+// over. The comparison is exact and case-sensitive, matching the one the mode
+// branch itself uses, so accepting a value here never means something
+// different from what routes the request in ListGraphAll.
+func validateGraphListAllOrder(order string) error {
+	if order == "" || order == "id" {
+		return nil
+	}
+	return fmt.Errorf("cortexdb: invalid graph_list_all order %q: must be \"\" or \"id\"", order)
+}
+
 // has_chunk carries document layout, never meaning between entities, so it is
 // skipped by name. "next" is not: it is the obvious name for one thing
 // following another, and skipping the type outright meant a caller who modelled
@@ -101,6 +123,9 @@ const defaultGraphListLimit = 2000
 // Supplying a cursor, or asking for Order "id", switches to an id-ordered walk
 // instead: see listGraphPageByID.
 func (db *DB) ListGraphAll(ctx context.Context, req GraphListAllRequest) (*GraphListAllResponse, error) {
+	if err := validateGraphListAllOrder(req.Order); err != nil {
+		return nil, err
+	}
 	if req.Cursor != "" || req.Order == "id" {
 		return db.listGraphPageByID(ctx, req)
 	}
