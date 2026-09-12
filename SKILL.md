@@ -778,8 +778,9 @@ discovers the tool surface from the server at startup and proxies every call, so
 all tools — current and future — work identically. The `UserPromptSubmit`
 auto-recall hook follows the same remote, so injected memories come from the
 same brain the tools write to, as do `--memory-html` and `--export-memory` —
-the latter now walks it a `memory_list_all` page at a time rather than asking
-for everything in one call, so it keeps working past the point where a brain no
+and any other one-shot mode that reads the whole brain. All of them share one
+remote-fetch path that walks it a `memory_list_all` page at a time rather than
+asking for everything in one call, so none of them stop working once a brain no
 longer fits in one gRPC message.
 
 Transport is plaintext by design — run it over loopback, a trusted LAN, or
@@ -797,18 +798,20 @@ land it on the brain's host, out of reach of whatever asked. Set
 
 Both bulk listings behind these views are paged: `memory_list_all` (default
 limit 500) and `graph_list_all` (default limit 2000) each take `limit` and
-`cursor`, and return `truncated` together with `next_cursor` whenever more
-remains — never one without the other — so a caller resumes a walk exactly
-where it left off instead of restarting it. `graph_list_all` has two modes:
-with no `cursor` and no `order` it keeps the most-connected core, which is what
-makes a large graph renderable, and never sets `next_cursor` (degree ranking
-has no stable page boundary to resume from); `order: "id"` — or simply
-supplying a `cursor` — switches to a stable, resumable walk of the whole graph
-instead, where a page's edges may reference nodes that land on a later page, so
-the subgraph is complete only once the walk finishes. Cursors are opaque and
-tagged with the listing that produced them, so handing a `memory_list_all`
-cursor to `graph_list_all`, or the reverse, fails loudly rather than silently
-returning the wrong page.
+`cursor`. `memory_list_all` always pairs `truncated` with `next_cursor` —
+never one without the other — so a caller resumes exactly where it left off
+instead of restarting the walk. `graph_list_all` has two modes, and only one of
+them makes that same pairing: with no `cursor` and no `order` it keeps the
+most-connected core, which is what makes a large graph renderable, and sets
+`truncated` alone — degree ranking has no stable page boundary to resume from,
+so there is no `next_cursor` to give. `order: "id"` — or simply supplying a
+`cursor` — switches to a stable, resumable walk of the whole graph instead,
+where `truncated` and `next_cursor` pair the same way `memory_list_all`'s do; a
+page's edges may reference nodes that land on a later page, so the subgraph is
+complete only once the walk finishes. Cursors are opaque and tagged with the
+listing that produced them, so handing a `memory_list_all` cursor to
+`graph_list_all`, or the reverse, fails loudly rather than silently returning
+the wrong page.
 
 ## OpenClaw and Hermes Plugins
 

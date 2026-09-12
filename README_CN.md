@@ -34,7 +34,7 @@ fmt.Println(rec.ContextPack.Text) // 可直接粘贴的上下文包,带来源标
 - **知识图谱** — 同一文件上的 RDF 三元组/四元组:实用 SPARQL 子集(更新、OPTIONAL/UNION/VALUES、聚合、子查询、属性路径)、RDFS-lite 物化推理、SHACL-lite 校验、N-Triples/Turtle/TriG 读写;属性图侧 `apply_inference` 物化两跳关系组合并带出处;实体记录断言文档,`delete_document_graph` 是按摄入形状做的删除。
 - **Ontology(Palantir 风格)** — 带主键与基数的对象/链接/接口类型,对象集代数(union / intersect / filter / `search_around`),带审计的受治理**动作类型**,自动生成的类型化 agent 工具,以及破坏性变更的 schema diff;`strict` 与 `vocabulary` 两种执行模式。
 - **流水线** — `memoryflow`(转录 → 召回 → 唤醒 → 晋升)、`graphflow`(语料 → 图 → HTML 报告)、`importflow`(CSV / SQL dump / 在线 Postgres-MySQL → RAG + KG)、`connector`(PII 脱敏、签名计划、可逆保险库、CDC 同步)。
-- **工具与 MCP** — 60+ 工具,进程内与 MCP 同名同义,另有交互式图谱视图 `render_graph_html`,以及会分页的批量列举工具 `memory_list_all`、`graph_list_all`——大脑大到一页装不下时,返回 `next_cursor` 续读下一页。
+- **工具与 MCP** — 60+ 工具,进程内与 MCP 同名同义,另有交互式图谱视图 `render_graph_html`,以及会分页的批量列举工具 `memory_list_all`、`graph_list_all`——`graph_list_all` 默认只给连接最密的核心子图,传 `order: "id"` 才会逐页走完整张图,像 `memory_list_all` 一样返回 `next_cursor`。
 - **质量是测出来的** — `pkg/eval` 用标注查询集走真实检索路径,recall@k / nDCG 回归下限进 CI;FTS5 / SPARQL / SQL-dump 解析器有 fuzz 测试。
 
 ## Claude Code / Codex 插件与共享大脑
