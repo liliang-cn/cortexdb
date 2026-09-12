@@ -1,8 +1,10 @@
 package main
 
 import (
+	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A memory whose title is entirely CJK used to slug to "memory", and on macOS
@@ -53,7 +55,7 @@ func TestUniqueSlugSurvivesASuffixThatIsAlsoARealSlug(t *testing.T) {
 func TestExportSlugAssignmentIsCollisionFree(t *testing.T) {
 	titles := []string{
 		"黄金历史价格关键数据点：", // slugs to nothing
-		"记忆",                // slugs to nothing
+		"记忆",           // slugs to nothing
 		"situation",
 		"situation",
 		"situation-2",
@@ -80,5 +82,27 @@ func TestExportSlugAssignmentIsCollisionFree(t *testing.T) {
 	}
 	if len(seen) != len(titles) {
 		t.Errorf("got %d files for %d memories", len(seen), len(titles))
+	}
+}
+
+// An export with no `source` cannot separate a transcript turn from a distilled
+// experience — they share the harness-<timestamp>-<n> id shape — so a cleanup
+// planned from the backup would take the learning layer with the noise.
+func TestExportFrontmatterCarriesSourceAndExpiry(t *testing.T) {
+	exp := time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)
+	m := cortexdb.MemoryRecord{
+		ID: "harness-1-0", Content: "[list_dir] {}", Scope: "session", Namespace: "superleo-chat-x",
+		Metadata:  map[string]any{"source": "transcript"},
+		ExpiresAt: &exp,
+	}
+	out := renderMemoryMarkdown(m, "t", "harness-1-0")
+	for _, want := range []string{"  source: transcript\n", "  expires_at: 2026-10-12T00:00:00Z\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("frontmatter lacks %q:\n%s", want, out)
+		}
+	}
+	plain := renderMemoryMarkdown(cortexdb.MemoryRecord{ID: "p", Content: "x"}, "p", "p")
+	if strings.Contains(plain, "source:") || strings.Contains(plain, "expires_at:") {
+		t.Errorf("absent fields must stay absent, not become empty:\n%s", plain)
 	}
 }

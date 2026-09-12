@@ -125,6 +125,16 @@ func renderMemoryMarkdown(m cortexdb.MemoryRecord, title, slug string) string {
 	if !m.CreatedAt.IsZero() {
 		b.WriteString("  created_at: " + m.CreatedAt.UTC().Format(time.RFC3339) + "\n")
 	}
+	// Who wrote it and when it dies. Without `source` an export cannot tell a
+	// verbatim transcript turn from a distilled experience — both carry the
+	// same harness-<timestamp>-<n> id — and a backup that cannot say which
+	// rows a cleanup may take is not a backup for that cleanup.
+	if src, ok := m.Metadata["source"].(string); ok && strings.TrimSpace(src) != "" {
+		b.WriteString("  source: " + yamlInline(src) + "\n")
+	}
+	if m.ExpiresAt != nil && !m.ExpiresAt.IsZero() {
+		b.WriteString("  expires_at: " + m.ExpiresAt.UTC().Format(time.RFC3339) + "\n")
+	}
 	b.WriteString("---\n\n")
 	b.WriteString(strings.TrimSpace(m.Content))
 	b.WriteString("\n")
