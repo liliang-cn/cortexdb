@@ -777,13 +777,16 @@ That is the whole change. The MCP server then opens no local database: it
 discovers the tool surface from the server at startup and proxies every call, so
 all tools — current and future — work identically. The `UserPromptSubmit`
 auto-recall hook follows the same remote, so injected memories come from the
-same brain the tools write to, as do `--memory-html` and `--export-memory`.
+same brain the tools write to, as do `--memory-html` and `--export-memory` —
+the latter now walks it a `memory_list_all` page at a time rather than asking
+for everything in one call, so it keeps working past the point where a brain no
+longer fits in one gRPC message.
 
 Transport is plaintext by design — run it over loopback, a trusted LAN, or
 Tailscale. **The token is the access control**: anyone holding it has full
 read/write access. Embedder and LLM settings live on the server, not the
-clients. `--graph-html` reads the shared brain too; the remaining one-shot modes
-(`--export-memory`, `--learn-path`) still act on a local database.
+clients. `--graph-html` reads the shared brain too; the remaining one-shot mode,
+`--learn-path`, still acts on a local database.
 
 The graph view is also an MCP tool, `render_graph_html`. It is the one tool that
 is **not** proxied to the shared brain: the graph is read remotely, but the HTML
@@ -791,6 +794,21 @@ is rendered and written where the MCP server runs, because the caller needs the
 file on its own filesystem to open or attach it — a server-side render would
 land it on the brain's host, out of reach of whatever asked. Set
 `CORTEXDB_VIEW_DIR` to choose where renders go.
+
+Both bulk listings behind these views are paged: `memory_list_all` (default
+limit 500) and `graph_list_all` (default limit 2000) each take `limit` and
+`cursor`, and return `truncated` together with `next_cursor` whenever more
+remains — never one without the other — so a caller resumes a walk exactly
+where it left off instead of restarting it. `graph_list_all` has two modes:
+with no `cursor` and no `order` it keeps the most-connected core, which is what
+makes a large graph renderable, and never sets `next_cursor` (degree ranking
+has no stable page boundary to resume from); `order: "id"` — or simply
+supplying a `cursor` — switches to a stable, resumable walk of the whole graph
+instead, where a page's edges may reference nodes that land on a later page, so
+the subgraph is complete only once the walk finishes. Cursors are opaque and
+tagged with the listing that produced them, so handing a `memory_list_all`
+cursor to `graph_list_all`, or the reverse, fails loudly rather than silently
+returning the wrong page.
 
 ## OpenClaw and Hermes Plugins
 

@@ -34,7 +34,7 @@ fmt.Println(rec.ContextPack.Text) // paste-ready context pack with source attrib
 - **Knowledge graph** — RDF triples/quads on the same file: a practical SPARQL subset (updates, OPTIONAL/UNION/VALUES, aggregates, subqueries, property paths), RDFS-lite materialized inference, SHACL-lite validation, N-Triples/Turtle/TriG I/O; property-graph `apply_inference` materializes two-hop relation compositions with provenance; entities track asserting documents, and `delete_document_graph` is deletion shaped like ingest.
 - **Ontology (Palantir-style)** — typed object/link/interface types with primary keys and cardinality, an object-set algebra (union / intersect / filter / `search_around`), governed **action types** with audit trail, generated typed agent tools, and a breaking-change schema diff; `strict` or `vocabulary` enforcement.
 - **Pipelines** — `memoryflow` (transcript → recall → wake-up → promotion), `graphflow` (corpus → graph → HTML report), `importflow` (CSV / SQL dumps / live Postgres-MySQL → RAG + KG), `connector` (PII masking, signed plans, reversible vault, CDC sync).
-- **Tools & MCP** — 60+ tools with the same names in-process and over MCP, plus `render_graph_html`, an interactive graph view.
+- **Tools & MCP** — 60+ tools with the same names in-process and over MCP, plus `render_graph_html`, an interactive graph view, and paged bulk listings (`memory_list_all`, `graph_list_all`) that hand back `next_cursor` whenever a brain is too large for one page.
 - **Quality, measured** — `pkg/eval` runs a labeled query set through the real retrieval path with recall@k / nDCG regression floors in CI; FTS5 / SPARQL / SQL-dump parsers are fuzz-tested.
 
 ## Claude Code / Codex plugin & shared brain
