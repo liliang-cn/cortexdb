@@ -2,6 +2,49 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.101.0] - 2026-09-12
+
+A shared brain grew past what its own listing tool could return. `memory_list_all`
+answered with `truncated: true` and no way to continue, so `--export-memory`
+wrote zero files and the brain had no backup path at all. Both bulk listings now
+page.
+
+### Added
+
+- **`memory_list_all` and `graph_list_all` take a `cursor`** and return
+  `next_cursor` alongside `truncated`. The cursor is opaque and keyset-based,
+  never an offset: a shared brain is written while it is read, and an offset
+  silently skips records inserted behind it. It is also tagged with the listing
+  that produced it, so feeding one listing's cursor to the other fails loudly
+  instead of returning a plausible empty page.
+- **`graph_list_all` gained `order`.** The default still returns the
+  most-connected core, which is what makes a large graph renderable, and sets
+  `truncated` alone — degree ranking has no stable page boundary to resume from.
+  `order: "id"` walks the whole graph in a stable, resumable order. In that mode
+  a page's edges may reference nodes on a later page; the subgraph is complete
+  once the walk finishes. Any other `order` value is now rejected rather than
+  silently falling back to the ranked mode.
+
+### Changed
+
+- **`defaultMemoryListLimit` drops from 5000 to 500.** The old default was a
+  promise the transport could not keep: 5000 records exceed the 4 MiB gRPC
+  message limit, which gives out near 1100. The cursor, not a large limit, is
+  how a caller gets everything.
+- **`--export-memory` (and `--memory-html`, `--memory-usage`, `--sync-memory`)
+  walk the cursor** through one shared remote-fetch path. Against a server too
+  old to page they now fail loudly naming the cause, rather than writing a
+  partial backup that looks complete.
+
+### Fixed
+
+- **The keyset comparison was wrong on PostgreSQL and silently dropped rows.**
+  `created_at` is SQLite TEXT at one-second granularity but a microsecond
+  `TIMESTAMP` on PostgreSQL, and the cutoff was formatted with a layout carrying
+  no fractional seconds. A row inside the cutoff second was then neither `<` nor
+  `=` it, so it was skipped on every page, forever, with no error. The binding is
+  now per-dialect, and a parity test seeds sub-second instants to hold it.
+
 ## [2.100.0] - 2026-09-09
 
 An example that put vectors, the knowledge graph and the ontology over one
