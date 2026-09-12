@@ -278,21 +278,24 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "memory_list_all",
-			Description: "List every stored memory. For dashboards and exports that need the whole set rather than a search result; use memory_search to find specific memories.",
+			Description: "List stored memories, newest first, one page at a time. When the response sets truncated it also returns next_cursor — pass it back to get the rest. For dashboards and exports that need the whole set; use memory_search to find specific memories.",
 			InputSchema: toolObjectSchema(
 				nil,
 				map[string]any{
-					"limit": map[string]any{"type": "integer", "description": "Maximum records to return (default 5000). The response says whether it was truncated."},
+					"limit":  map[string]any{"type": "integer", "description": "Maximum records in this page (default 500)."},
+					"cursor": map[string]any{"type": "string", "description": "Resume point from a previous page's next_cursor. Omit for the first page."},
 				},
 			),
 		},
 		{
 			Name:        "graph_list_all",
-			Description: "List the whole entity knowledge graph — every non-chunk node and the edges between them. For rendering or analyzing the graph as a whole; use expand_graph or find_nodes when you already know where to start.",
+			Description: "List the entity knowledge graph — every non-chunk node and the edges between them. By default returns the most-connected core, which is what makes a large graph renderable; pass order \"id\" with a cursor to walk all of it. Use expand_graph or find_nodes when you already know where to start.",
 			InputSchema: toolObjectSchema(
 				nil,
 				map[string]any{
-					"limit": map[string]any{"type": "integer", "description": "Maximum nodes to return (default 2000). When it truncates it keeps the most-connected core and says so."},
+					"limit":  map[string]any{"type": "integer", "description": "Maximum nodes in this page (default 2000)."},
+					"cursor": map[string]any{"type": "string", "description": "Resume point from a previous page's next_cursor. Supplying it implies order \"id\"."},
+					"order":  map[string]any{"type": "string", "description": "\"\" (default) returns the most-connected core, best for rendering. \"id\" walks the whole graph in a stable order, resumable with cursor."},
 				},
 			),
 		},
