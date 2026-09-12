@@ -28,9 +28,12 @@ import (
 
 // GraphListAllRequest asks for the whole meaningful entity graph.
 type GraphListAllRequest struct {
-	// Limit caps how many nodes come back (0 = defaultGraphListLimit). Edges are
-	// then restricted to those between returned nodes, so the result is always a
-	// self-consistent subgraph rather than one with dangling ends.
+	// Limit caps how many nodes come back (0 = defaultGraphListLimit).
+	//
+	// In degree-ranked mode (no Cursor, no Order) edges are then restricted to
+	// those between returned nodes, so the result is always a self-consistent
+	// subgraph rather than one with dangling ends. In id-walk mode (Cursor set,
+	// or Order "id") that guarantee is weaker — see Order.
 	Limit int `json:"limit,omitempty"`
 	// Cursor resumes an id-ordered walk. Supplying it implies Order "id".
 	Cursor string `json:"cursor,omitempty"`
@@ -40,6 +43,13 @@ type GraphListAllRequest struct {
 	//
 	// These are different operations, not a flag on one: degree ranking and a
 	// resumable walk cannot share a page boundary.
+	//
+	// A single id-walk page is not self-consistent the way a degree-ranked one
+	// is: edges are kept when their `from` endpoint is on the page, regardless
+	// of where `to` landed, so one page routinely carries edges whose `to` node
+	// is on a different page (or not yet fetched). The subgraph is only
+	// complete — every node once, every edge once, no dangling ends — once the
+	// walk has been read to completion.
 	Order string `json:"order,omitempty"`
 }
 
@@ -181,7 +191,7 @@ func (db *DB) listGraphPageByID(ctx context.Context, req GraphListAllRequest) (*
 
 	afterID := ""
 	if req.Cursor != "" {
-		_, id, err := decodeListingCursor(req.Cursor)
+		_, id, err := decodeListingCursor(listingCursorKindGraph, req.Cursor)
 		if err != nil {
 			return nil, err
 		}
@@ -251,7 +261,7 @@ func (db *DB) listGraphPageByID(ctx context.Context, req GraphListAllRequest) (*
 	resp := &GraphListAllResponse{Nodes: page, Edges: edges, TotalNodes: total}
 	if more && len(page) > 0 {
 		resp.Truncated = true
-		resp.NextCursor = encodeListingCursor(time.Time{}, page[len(page)-1].ID)
+		resp.NextCursor = encodeListingCursor(listingCursorKindGraph, time.Time{}, page[len(page)-1].ID)
 	}
 	return resp, nil
 }

@@ -99,7 +99,7 @@ func (db *DB) ListAllMemoriesPaged(ctx context.Context, req MemoryListAllRequest
 		resume  bool
 	)
 	if req.Cursor != "" {
-		ts, id, err := decodeListingCursor(req.Cursor)
+		ts, id, err := decodeListingCursor(listingCursorKindMemory, req.Cursor)
 		if err != nil {
 			return nil, err
 		}
@@ -126,7 +126,7 @@ func (db *DB) ListAllMemoriesPaged(ctx context.Context, req MemoryListAllRequest
 				resp.Memories = resp.Memories[:limit]
 				resp.Truncated = true
 				last := resp.Memories[limit-1]
-				resp.NextCursor = encodeListingCursor(last.CreatedAt, last.ID)
+				resp.NextCursor = encodeListingCursor(listingCursorKindMemory, last.CreatedAt, last.ID)
 			}
 			return resp, nil
 		}
@@ -138,7 +138,7 @@ func (db *DB) ListAllMemoriesPaged(ctx context.Context, req MemoryListAllRequest
 	resp.Memories = resp.Memories[:limit]
 	resp.Truncated = true
 	last := resp.Memories[limit-1]
-	resp.NextCursor = encodeListingCursor(last.CreatedAt, last.ID)
+	resp.NextCursor = encodeListingCursor(listingCursorKindMemory, last.CreatedAt, last.ID)
 	return resp, nil
 }
 
