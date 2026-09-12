@@ -34,6 +34,11 @@ func remoteConfigured() (addr, token string, ok bool) {
 // Unlike the recall hook, a failure here is loud: these modes are invoked by
 // hand and produce a file, so quietly rendering an empty or stale dashboard
 // would be worse than an error the caller can read.
+//
+// The gRPC call is kept to a small closure and handed to walkMemoryPages,
+// which holds all the paging logic (continuation, limit-slicing, old-server
+// detection, stall detection) and has none of the gRPC in it — that is what
+// lets it be driven from a test against a fake instead of a live server.
 func fetchAllMemoriesRemote(ctx context.Context, addr, token string, limit int) ([]cortexdb.MemoryRecord, error) {
 	conn, err := dialCortexDB(addr, token)
 	if err != nil {
@@ -42,33 +47,67 @@ func fetchAllMemoriesRemote(ctx context.Context, addr, token string, limit int) 
 	defer func() { _ = conn.Close() }()
 
 	const pageSize = 500
+	client := rpcv1.NewToolsServiceClient(conn)
+	fetch := func(cursor string) (cortexdb.MemoryListAllResponse, error) {
+		args, err := json.Marshal(cortexdb.MemoryListAllRequest{Limit: pageSize, Cursor: cursor})
+		if err != nil {
+			return cortexdb.MemoryListAllResponse{}, err
+		}
+
+		callCtx, cancel := context.WithTimeout(ctx, remoteDialTimeout)
+		defer cancel()
+		resp, err := client.CallTool(callCtx, &rpcv1.CallToolRequest{
+			Name:     "memory_list_all",
+			ArgsJson: string(args),
+		})
+		if err != nil {
+			return cortexdb.MemoryListAllResponse{}, fmt.Errorf("memory_list_all on %s: %w", addr, err)
+		}
+
+		var out cortexdb.MemoryListAllResponse
+		if err := json.Unmarshal([]byte(resp.GetResultJson()), &out); err != nil {
+			return cortexdb.MemoryListAllResponse{}, fmt.Errorf("decode memory_list_all from %s: %w", addr, err)
+		}
+		return out, nil
+	}
+
+	return walkMemoryPages(fetch, limit, addr)
+}
+
+// walkMemoryPages drives a paged memory_list_all walk to completion (or to
+// limit), calling fetch once per page with the cursor to resume from ("" for
+// the first page). It has no transport in it so it can be exercised directly
+// against a fake fetch function.
+//
+// maxPages is a backstop, not the primary defense: it only protects against a
+// server that keeps handing back a genuinely different cursor forever without
+// ever setting Truncated to false, which would otherwise grow the result
+// without bound. The common ways a broken server actually misbehaves — a
+// repeated cursor, or a truncated page with no records — are caught
+// immediately below, not after thousands of pages.
+func walkMemoryPages(fetch func(cursor string) (cortexdb.MemoryListAllResponse, error), limit int, addr string) ([]cortexdb.MemoryRecord, error) {
+	const maxPages = 10_000
+
 	var (
 		all    []cortexdb.MemoryRecord
 		cursor string
 	)
 	for page := 0; ; page++ {
-		if page > 10_000 {
+		if page > maxPages {
 			return nil, fmt.Errorf("memory export did not terminate after %d pages", page)
 		}
-		args, err := json.Marshal(cortexdb.MemoryListAllRequest{Limit: pageSize, Cursor: cursor})
+
+		out, err := fetch(cursor)
 		if err != nil {
 			return nil, err
 		}
 
-		callCtx, cancel := context.WithTimeout(ctx, remoteDialTimeout)
-		resp, err := rpcv1.NewToolsServiceClient(conn).CallTool(callCtx, &rpcv1.CallToolRequest{
-			Name:     "memory_list_all",
-			ArgsJson: string(args),
-		})
-		cancel()
-		if err != nil {
-			return nil, fmt.Errorf("memory_list_all on %s: %w", addr, err)
+		if out.Truncated && len(out.Memories) == 0 {
+			return nil, fmt.Errorf(
+				"memory_list_all on %s claimed more records remain but returned none for cursor %q; refusing to spin",
+				addr, cursor)
 		}
 
-		var out cortexdb.MemoryListAllResponse
-		if err := json.Unmarshal([]byte(resp.GetResultJson()), &out); err != nil {
-			return nil, fmt.Errorf("decode memory_list_all from %s: %w", addr, err)
-		}
 		all = append(all, out.Memories...)
 
 		if limit > 0 && len(all) >= limit {
@@ -81,8 +120,14 @@ func fetchAllMemoriesRemote(ctx context.Context, addr, token string, limit int) 
 			// An older server: it truncated and cannot say where to resume.
 			return nil, fmt.Errorf(
 				"memory_list_all on %s stopped at %d records without a cursor; "+
-					"this server predates paged listings and cannot export a brain this size",
-				addr, len(all))
+					"the server at %s predates paged listings and needs to be upgraded to export a brain this size",
+				addr, len(all), addr)
+		}
+		if out.NextCursor == cursor {
+			return nil, fmt.Errorf(
+				"memory_list_all on %s returned the same cursor %q twice in a row after %d records; "+
+					"the server is not advancing the page, so export cannot continue",
+				addr, cursor, len(all))
 		}
 		cursor = out.NextCursor
 	}
