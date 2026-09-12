@@ -43,7 +43,7 @@ func TestWalkMemoryPagesTwoCleanPages(t *testing.T) {
 	page1 := makeRecords(0, 500)
 	page2 := makeRecords(500, 200)
 	f := &fakePages{byCursor: map[string]cortexdb.MemoryListAllResponse{
-		"": {Memories: page1, Truncated: true, NextCursor: "cursor-1"},
+		"":         {Memories: page1, Truncated: true, NextCursor: "cursor-1"},
 		"cursor-1": {Memories: page2, Truncated: false},
 	}}
 
@@ -68,7 +68,7 @@ func TestWalkMemoryPagesLimitCapsMidPage(t *testing.T) {
 	page1 := makeRecords(0, 500)
 	page2 := makeRecords(500, 500)
 	f := &fakePages{byCursor: map[string]cortexdb.MemoryListAllResponse{
-		"": {Memories: page1, Truncated: true, NextCursor: "cursor-1"},
+		"":         {Memories: page1, Truncated: true, NextCursor: "cursor-1"},
 		"cursor-1": {Memories: page2, Truncated: true, NextCursor: "cursor-2"},
 	}}
 
