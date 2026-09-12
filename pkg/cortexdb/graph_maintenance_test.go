@@ -141,3 +141,89 @@ func TestReindexMemoryGraphMakesBacklogReachable(t *testing.T) {
 		t.Fatalf("second pass should reindex the same memory idempotently, got %+v", again)
 	}
 }
+
+func memoryNodeExists(t *testing.T, db *DB, memoryID string) bool {
+	t.Helper()
+	var n int
+	if err := db.queryRow(context.Background(), `SELECT COUNT(*) FROM graph_nodes WHERE id = ?`, memoryGraphNodeID(memoryID)).Scan(&n); err != nil {
+		t.Fatalf("count node: %v", err)
+	}
+	return n > 0
+}
+
+// A bulk delete that only touched `messages` left 1097 memory:<id> nodes
+// pointing at memories nobody could read. The node goes with the row now.
+func TestDeleteMemoryRetractsItsGraphNode(t *testing.T) {
+	ctx := context.Background()
+	db := openMaintDB(t)
+	if _, err := db.SaveMemory(ctx, MemorySaveRequest{MemoryID: "with-node", Content: "Alice uses Apollo", Scope: "global", Entities: []ToolEntityInput{{Name: "Alice"}, {Name: "Apollo"}}}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if _, err := db.SaveMemory(ctx, MemorySaveRequest{MemoryID: "no-node", Content: "plain", Scope: "global"}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if !memoryNodeExists(t, db, "with-node") {
+		t.Fatal("precondition: a memory saved with entities has a graph node")
+	}
+
+	resp, err := db.DeleteMemory(ctx, MemoryDeleteRequest{MemoryID: "with-node"})
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if !resp.GraphNodeRetracted {
+		t.Error("response should say the node went too")
+	}
+	if memoryNodeExists(t, db, "with-node") {
+		t.Fatal("graph still has a node for a deleted memory")
+	}
+
+	// A memory that never had a node deletes cleanly and says so.
+	resp, err = db.DeleteMemory(ctx, MemoryDeleteRequest{MemoryID: "no-node"})
+	if err != nil {
+		t.Fatalf("delete plain: %v", err)
+	}
+	if resp.GraphNodeRetracted {
+		t.Error("no node existed, so none can have been retracted")
+	}
+}
+
+// Repairing a brain that was bulk-deleted before DeleteMemory retracted nodes:
+// only nodes whose row is gone go; a live memory's node stays.
+func TestPruneDanglingMemoryNodesTakesOnlyOrphans(t *testing.T) {
+	ctx := context.Background()
+	db := openMaintDB(t)
+	for _, id := range []string{"gone", "alive"} {
+		if _, err := db.SaveMemory(ctx, MemorySaveRequest{MemoryID: id, Content: id + " mentions Apollo", Scope: "global", Entities: []ToolEntityInput{{Name: "Apollo"}}}); err != nil {
+			t.Fatalf("save %s: %v", id, err)
+		}
+	}
+	// The old DeleteMemory: row gone, node left behind.
+	if _, err := db.exec(ctx, `DELETE FROM messages WHERE id = ?`, "gone"); err != nil {
+		t.Fatalf("raw delete: %v", err)
+	}
+
+	dry, err := db.PruneDanglingMemoryNodes(ctx, GraphMaintenanceOptions{DryRun: true})
+	if err != nil {
+		t.Fatalf("dry run: %v", err)
+	}
+	if dry.Scanned != 1 || dry.Pruned != 0 || len(dry.Names) != 1 || dry.Names[0] != memoryGraphNodeID("gone") {
+		t.Fatalf("dry run should name exactly the orphan and remove nothing: %+v", dry)
+	}
+	if !memoryNodeExists(t, db, "gone") {
+		t.Fatal("dry run must not delete")
+	}
+
+	got, err := db.PruneDanglingMemoryNodes(ctx, GraphMaintenanceOptions{})
+	if err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if got.Pruned != 1 {
+		t.Fatalf("want 1 pruned, got %+v", got)
+	}
+	if memoryNodeExists(t, db, "gone") {
+		t.Error("orphan node survived the prune")
+	}
+	if !memoryNodeExists(t, db, "alive") {
+		t.Error("a live memory's node was taken")
+	}
+}

@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.102.0] - 2026-09-12
+
+A bulk delete of 3390 memories, done through `memory_delete`, left 1097
+`memory:<id>` graph nodes pointing at rows that no longer existed. Nothing could
+remove them: `delete_entities` only knows `entity:` nodes, and the junk prune
+only looks at entities.
+
+### Fixed
+
+- **`DeleteMemory` retracts the memory's graph node.** A memory saved with
+  entities has a `memory:<id>` node and mention edges; deleting the row now
+  retracts them in the same call (archived, so still readable as of before the
+  delete). The response says whether a node went (`graph_node_retracted`). A
+  memory that never had a node costs one no-op statement.
+
+### Added
+
+- **`PruneDanglingMemoryNodes`**, wired into `--graph-cleanup` as its own stage
+  and selectable alone with `--dangling-only`, retracts `memory:` nodes whose
+  row is gone. Separate from the junk-entity prune so a brain can be repaired
+  after a bulk delete without also deciding what to do about its entities.
+  `--dry-run` names every node it would take.
+
 ## [2.101.0] - 2026-09-12
 
 A shared brain grew past what its own listing tool could return. `memory_list_all`

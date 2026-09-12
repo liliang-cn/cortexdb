@@ -13,10 +13,10 @@ import (
 // Local-only like --reembed-memories: it needs direct DB access and should run
 // on the machine where the database lives, beside the running service.
 //
-// `--graph-cleanup [--dry-run] [--prune-only|--reindex-only] [--limit N]`
+// `--graph-cleanup [--dry-run] [--prune-only|--reindex-only|--dangling-only] [--limit N]`
 func runGraphCleanup(args []string) {
 	opts := cortexdb.GraphMaintenanceOptions{}
-	pruneOnly, reindexOnly := false, false
+	pruneOnly, reindexOnly, danglingOnly := false, false, false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--dry-run":
@@ -25,6 +25,11 @@ func runGraphCleanup(args []string) {
 			pruneOnly = true
 		case "--reindex-only":
 			reindexOnly = true
+		case "--dangling-only":
+			// Only the memory:<id> nodes whose row is gone. Separate from the
+			// junk-entity prune so a brain can be repaired after a bulk memory
+			// delete without also deciding what to do about its entities.
+			danglingOnly = true
 		case "--limit":
 			if i+1 < len(args) {
 				i++
@@ -45,7 +50,7 @@ func runGraphCleanup(args []string) {
 	defer func() { _ = db.Close() }()
 	ctx := context.Background()
 
-	if !reindexOnly {
+	if !reindexOnly && !danglingOnly {
 		report, err := db.PruneJunkEntities(ctx, opts)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "cortexdb: prune: %v\n", err)
@@ -58,7 +63,23 @@ func runGraphCleanup(args []string) {
 			fmt.Printf("  %s\n", strings.Join(report.Names, ", "))
 		}
 	}
-	if !pruneOnly {
+	if !reindexOnly {
+		report, err := db.PruneDanglingMemoryNodes(ctx, opts)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cortexdb: prune dangling: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("dangling: scanned=%d pruned=%d edges_removed=%d dryRun=%v\n",
+			report.Scanned, report.Pruned, report.EdgesRemoved, report.DryRun)
+		if n := len(report.Names); n > 0 {
+			shown := report.Names
+			if n > 20 {
+				shown = append(append([]string{}, report.Names[:20]...), fmt.Sprintf("… and %d more", n-20))
+			}
+			fmt.Printf("  %s\n", strings.Join(shown, ", "))
+		}
+	}
+	if !pruneOnly && !danglingOnly {
 		report, err := db.ReindexMemoryGraph(ctx, opts)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "cortexdb: reindex: %v\n", err)

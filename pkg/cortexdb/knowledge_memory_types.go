@@ -219,6 +219,9 @@ type MemoryDeleteRequest struct {
 type MemoryDeleteResponse struct {
 	MemoryID string `json:"memory_id"`
 	Deleted  bool   `json:"deleted"`
+	// GraphNodeRetracted is true when the memory had a node in the graph and
+	// that node went with it. A memory saved without entities never had one.
+	GraphNodeRetracted bool `json:"graph_node_retracted,omitempty"`
 }
 
 // MemorySearchRequest searches memories inside a resolved memory bucket.

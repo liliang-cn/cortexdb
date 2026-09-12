@@ -25,6 +25,57 @@ type GraphPruneReport struct {
 	Names        []string `json:"names,omitempty"`
 }
 
+// PruneDanglingMemoryNodes retracts memory:<id> graph nodes whose memory row
+// no longer exists. Before DeleteMemory retracted the node itself, every
+// delete left one behind, so a brain that has ever had memories deleted
+// carries nodes that describe nothing readable. Retraction keeps them
+// readable as of before the prune, like the junk-entity prune.
+func (db *DB) PruneDanglingMemoryNodes(ctx context.Context, opts GraphMaintenanceOptions) (*GraphPruneReport, error) {
+	if err := db.graph.InitGraphSchema(ctx); err != nil {
+		return nil, fmt.Errorf("prune dangling memory nodes: init schema: %w", err)
+	}
+	// substr offset is 1-based on both dialects; len("memory:") == 7.
+	rows, err := db.query(ctx, `
+		SELECT id FROM graph_nodes
+		WHERE id LIKE 'memory:%'
+		  AND substr(id, 8) NOT IN (SELECT id FROM messages)
+		ORDER BY id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list dangling memory nodes: %w", err)
+	}
+	report := &GraphPruneReport{DryRun: opts.DryRun}
+	var victims []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("scan dangling memory node: %w", err)
+		}
+		report.Scanned++
+		if opts.Limit > 0 && len(victims) >= opts.Limit {
+			continue
+		}
+		victims = append(victims, id)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	_ = rows.Close()
+	report.Names = victims
+	if opts.DryRun || len(victims) == 0 {
+		return report, nil
+	}
+	nodes, edges, err := db.graph.RetractNodes(ctx, victims)
+	if err != nil {
+		return report, fmt.Errorf("prune dangling memory nodes: %w", err)
+	}
+	report.Pruned = nodes
+	report.EdgesRemoved = edges
+	return report, nil
+}
+
 // PruneJunkEntities removes generic entity nodes whose names the current
 // extraction rules would never produce.
 //

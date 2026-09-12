@@ -361,7 +361,18 @@ func (db *DB) DeleteMemory(ctx context.Context, req MemoryDeleteRequest) (*Memor
 	`, row.record.SessionID, row.record.SessionID); err != nil {
 		return nil, fmt.Errorf("cleanup empty memory bucket: %w", err)
 	}
-	return &MemoryDeleteResponse{MemoryID: req.MemoryID, Deleted: true}, nil
+	// The row is gone; the graph must not keep pointing at it. A memory saved
+	// with entities has a memory:<id> node and mention edges, and leaving them
+	// behind makes the graph describe a memory nobody can read — 1097 such
+	// nodes were found after a bulk delete that only touched `messages`.
+	// RetractNodes archives before it deletes, so the node stays readable
+	// as of before the delete, and a memory that never had a node costs one
+	// no-op statement.
+	nodes, _, err := db.graph.RetractNodes(ctx, []string{memoryGraphNodeID(req.MemoryID)})
+	if err != nil {
+		return nil, fmt.Errorf("retract memory graph node: %w", err)
+	}
+	return &MemoryDeleteResponse{MemoryID: req.MemoryID, Deleted: true, GraphNodeRetracted: nodes > 0}, nil
 }
 
 // SaveMemory stores a memory item through the tool surface.
