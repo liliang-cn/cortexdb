@@ -2,6 +2,63 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.105.0] - 2026-09-14
+
+Four capabilities built from parts the engine already had and nothing could
+reach, and the three defects that turned up in them once real data was pointed
+at them.
+
+### Added
+
+- **`graph_schema` and `graph_property_values`** report the graph's *observed*
+  schema: which node and edge types exist, which node-type pairs each edge type
+  really connects, which property keys each type carries, and what values one
+  key actually takes. `ontology_get` answers the *declared* schema, which is
+  opt-in and absent on exactly the graphs built by extraction whose shape nobody
+  knows. The answer carries a rendered `text` form, because it is read in a
+  prompt rather than parsed. Without the value distribution, a filter written
+  from a key's name — `color == "black"` against rows that all say `BLK` —
+  returns nothing and reads as a fact.
+- **`rank_graph_nodes`, `predict_graph_edges`, `graph_statistics`** open the
+  rest of `pkg/graph/graph_algorithms.go`, which had no callers at all.
+  `predict_graph_edges` reports `tied_at_top`: several unrelated nodes tied at
+  exactly 1.0 means the graph's vectors cannot tell them apart, which is what
+  short lexical hashes do to short entity names, and a maximal score is the
+  worst possible way to say "no signal".
+- **`disambiguate_mentions`** resolves an ambiguous name against the other names
+  given with it — shortest paths between their candidates, each rendered as a
+  sentence with its edge ids, ranked by that support. The deterministic four
+  steps are the library's and the choice is the caller's, so it works with no
+  model at all and can always explain itself. A mention nothing connects to is
+  unresolved rather than the nearest string match, and a bound that stopped the
+  search is reported apart from an absence.
+- **`ChunkWindow` / `chunk_window`** widens a hit to its neighbours in the same
+  document. Off by default; neighbours are context and never hits — not scored,
+  not reranked, never displacing a match, tagged `+context` in the assembled
+  text. Applied on every retrieval path, not only the one it was written
+  against: an option honoured on one path and ignored on another is worse than
+  no option.
+
+### Fixed
+
+- **`PredictEdges` let its two signals cancel instead of agreeing.** It averaged
+  vector similarity with a structural score that is strictly below 1, so purely
+  structural evidence sat permanently under the 0.5 a prediction must clear — a
+  pair sharing every neighbour and nothing else could never be returned — and
+  averaging *lowered* a strong similarity, so sharing neighbours demoted a pair.
+  The branch only ran when there was structure, which made structure strictly
+  harmful. Replaced with a noisy-OR: the structural term closes part of the gap
+  the similarity leaves to certainty, so it can only raise a score, and
+  structure alone still carries a pair over the line.
+- **`EdgeShapes` and `EdgeEndpointPairs` could not be filtered to the untyped
+  bucket.** Their SELECTs present a NULL type as `""`, which is the only name a
+  caller is given for it, and their WHERE compared the raw column, where NULL
+  equals nothing — so asking for rows the previous call had just counted
+  returned an empty answer. `NodePropertyKeys` already filtered on the
+  COALESCE'd expression; the other two now do too.
+- **`PredictEdges` silently dropped edges it could not scan**, leaving holes in
+  the topology every prediction is computed from.
+
 ## [2.104.0] - 2026-09-14
 
 Four capabilities existed in the engine and could not be used, and looking at

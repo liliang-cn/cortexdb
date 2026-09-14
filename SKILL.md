@@ -448,6 +448,70 @@ program-only on purpose: the filter language is a lot of schema for a model to
 get right, and the facet question a model actually has — what values, how many
 — is `aggregate_metadata` with a `group_by`.
 
+## Asking the graph about itself
+
+Retrieval says what is relevant to a query; these say what the graph *is*. All
+work on both backends.
+
+**Its observed schema.** `GraphSchema` reports which node and edge types exist
+and how many of each, which node-type pairs every edge type actually connects,
+and which property keys each node type carries. `GraphPropertyValues` reports
+what values one key actually takes. Call both before writing a traversal or a
+SPARQL query against a graph you have not inspected: a query naming a type the
+graph does not have still runs, matches nothing, and reads as an answer — and
+stored values are routinely codes, so a filter written from a key's *name*
+(`color == "black"` against rows that say `BLK`) returns nothing and looks like
+a fact. `ontology_get` answers the *declared* schema, which is opt-in and
+usually absent on graphs built by extraction; this is measured from the rows.
+The response carries a rendered `text` field, because this is read in a prompt.
+Tools: `graph_schema`, `graph_property_values`.
+
+**Its shape and its centres.** `GraphPageRank` ranks nodes by structural
+importance — what a knowledge base is about, rather than what it says most
+often — with each node's label and type beside the score. `GraphStatistics`
+reports node and edge counts, average degree, density and connected components;
+a component count far above 1 means entities were written and never linked.
+`GraphPredictEdges` lists nodes one node is not connected to but arguably should
+be, which is two findings in one shape: a missing fact, or one entity stored
+twice. Read `tied_at_top` first — several unrelated nodes tied at exactly 1.0
+means this graph's vectors cannot tell them apart, which is what short lexical
+hashes do to short entity names. Tools: `rank_graph_nodes`, `graph_statistics`,
+`predict_graph_edges`.
+
+**Disambiguating a name against the graph.** `DisambiguateMentions` resolves an
+ambiguous name using the other names given with it: it finds the shortest paths
+between this mention's candidates and the others', renders each as a sentence,
+and ranks by that support. Steps one to four are deterministic and live here;
+the choice is the caller's, so a caller with no model takes the top rank and one
+with a model reads the evidence — and either way can say afterwards why. A
+mention nothing connects to is `unresolved`, never the nearest string match, and
+a bound that stopped the search is reported apart from an absence.
+
+```go
+res, err := db.DisambiguateMentions(ctx, []string{"Claude", "MCP", "OpenClaw"},
+    cortexdb.DisambiguationOptions{NodeTypes: []string{"entity", "project", "protocol", "tool"}})
+```
+
+Pass `NodeTypes` on any brain that keeps documents and chunks as graph nodes.
+Without it, one document title holding two of the mentions matches both by
+substring and scores a perfect 1.0 for each — a coincidence of two words that
+ties with the real entity and resolves nothing. Tool: `disambiguate_mentions`.
+
+## Widening a hit to its neighbours
+
+`GraphRAGQueryOptions.ChunkWindow` (and `chunk_window` on the search tools)
+returns each hit's neighbouring chunks in the same document alongside it. Off by
+default, and the neighbours are context rather than hits: never scored, never
+reranked, never displacing a match, and tagged `+context` in the assembled text
+so a reader can tell what matched from what came along.
+
+It is for the failure chunking guarantees. A real retrieval over a book chapter
+returned a hit whose first word was `ance.` — *importance*, cut at a chunk
+boundary — and the question, about two steps of a process, was only answerable
+at `ChunkWindow: 2`, when both steps were finally in the context. Overlapping
+windows merge into one span, and the existing `MaxContextChars` budget is
+respected: hits are charged first and never refused.
+
 ## Ontology
 
 `pkg/cortexdb` models a Palantir-style ontology on the same file. One schema is
@@ -805,6 +869,9 @@ Important tools:
 - Inference: `apply_inference`, `rules_save`, `rules_list`, `rules_delete`, `rules_apply`, `inference_explain`
 - Decision ledger: `decision_record`, `decision_chain`, `decision_precedents`
 - Aggregates and thresholds: `aggregate_metadata`, `representative_records`, `search_vector_range`
+- Graph introspection: `graph_schema`, `graph_property_values`, `graph_statistics`
+- Graph analytics: `rank_graph_nodes`, `predict_graph_edges`
+- Disambiguation: `disambiguate_mentions`
 
 Separate workflow toolboxes:
 

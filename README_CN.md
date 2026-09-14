@@ -34,8 +34,11 @@ fmt.Println(rec.ContextPack.Text) // 可直接粘贴的上下文包,带来源标
 - **知识图谱** — 同一文件上的 RDF 三元组/四元组:实用 SPARQL 子集(更新、OPTIONAL/UNION/VALUES、聚合、子查询、属性路径)、RDFS-lite 物化推理、SHACL-lite 校验、N-Triples/Turtle/TriG 读写;属性图侧 `apply_inference` 物化两跳关系组合并带出处;实体记录断言文档,`delete_document_graph` 是按摄入形状做的删除。
 - **Ontology(Palantir 风格)** — 带主键与基数的对象/链接/接口类型,对象集代数(union / intersect / filter / `search_around`),带审计的受治理**动作类型**,自动生成的类型化 agent 工具,以及破坏性变更的 schema diff;`strict` 与 `vocabulary` 两种执行模式。
 - **流水线** — `memoryflow`(转录 → 召回 → 唤醒 → 晋升)、`graphflow`(语料 → 图 → HTML 报告)、`importflow`(CSV / SQL dump / 在线 Postgres-MySQL → RAG + KG)、`connector`(PII 脱敏、签名计划、可逆保险库、CDC 同步)。
-- **工具与 MCP** — 70+ 工具,进程内与 MCP 同名同义,另有交互式图谱视图 `render_graph_html`,以及会分页的批量列举工具 `memory_list_all`、`graph_list_all`——`graph_list_all` 默认只给连接最密的核心子图,传 `order: "id"` 才会逐页走完整张图,像 `memory_list_all` 一样返回 `next_cursor`。
+- **工具与 MCP** — 80+ 工具,进程内与 MCP 同名同义,另有交互式图谱视图 `render_graph_html`,以及会分页的批量列举工具 `memory_list_all`、`graph_list_all`——`graph_list_all` 默认只给连接最密的核心子图,传 `order: "id"` 才会逐页走完整张图,像 `memory_list_all` 一样返回 `next_cursor`。
 - **对整个库发问** — 检索回答"什么与这个查询相关"，这几个回答"里面有什么"。*范围*检索返回距离查询一定距离内的全部、以外的一个不要，当 top-K 只是在编造一个 K 时这才是诚实的答案（`search_vector_range`，而且响应会说明是否有匹配被上限挡住）。`Aggregate` 按元数据字段计数、求和、分组（`aggregate_metadata`）。`VectorAggregate` 归约向量本身 —— 质心、几何中位数，以及 **medoid**：组内距离其余成员最近的那条**真实记录**，它用算术回答"这批近重复里哪条是正本""这一簇到底在讲什么"，全程不需要模型（`representative_records`）。两个后端行为一致，每种行为一份测试体、两边都跑。
+- **图自己描述自己** — `graph_schema` 报告**观察到的** schema（有哪些节点类型和边类型、每种边实际连接哪对类型、每种节点带哪些属性键），`graph_property_values` 报告某个键实际取哪些值——因为照着键名写的过滤（`color == "black"` 而库里存的是 `BLK`）返回空，而空看起来像个事实。声明的本体是可选的，恰恰在"没人知道形状"的那些图上不存在；这个是从行里量出来的，还附带一份**可以直接贴进 prompt** 的文本形式。同组还有 `rank_graph_nodes`（这个大脑在结构上到底关于什么）、`graph_statistics`（连通分量远大于 1 说明实体写进去了却从没被连上）和 `predict_graph_edges`（缺的事实，或同一实体存了两份）。
+- **拿图给名字消歧** — `disambiguate_mentions` 用同句出现的其它名字来解析一个有歧义的名字：在候选之间找最短路径，每条渲染成一句话并带上 `edge_ids`。确定性的前四步归库，第五步"选哪个"归调用方——所以完全不需要模型也能用，而且任何时候都能说出为什么。连不上任何东西的提及标记为未解析，绝不退化成最接近的字符串。
+- **命中不再是半句话** — `chunk_window` 把命中块的邻块作为**上下文**带回来，明确标注、绝不当成命中。它治的是分块必然带来的那个毛病：一次真实检索返回的命中块第一个词是 `ance.`——*importance* 被切在块边界上。
 - **质量是测出来的** — `pkg/eval` 用标注查询集走真实检索路径,recall@k / nDCG 回归下限进 CI;FTS5 / SPARQL / SQL-dump 解析器有 fuzz 测试。
 
 ## Claude Code / Codex 插件与共享大脑
