@@ -146,6 +146,20 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			InputSchema: toolQueryRequestSchema(),
 		},
 		{
+			Name:        "search_vector_range",
+			Description: "Return every stored row whose embedding is within a distance radius of the query — everything above a bar, and nothing below it. Use this instead of search_text or cortex_query whenever a top-K would lie: finding all near-duplicates of a passage, asking whether the store holds anything like this at all, or any decision made against a similarity threshold. Those tools always hand back their K best rows however weak the last ones are; this one returns only what clears the bar, returns nothing when nothing does, and says when a cap hid matches that did. radius is a distance, not a similarity: with the default cosine metric it is 1 minus the similarity, so roughly 0.1 for near-identical text, 0.3 for closely related, 0.5 and up for loose. Requires an embedder.",
+			InputSchema: toolObjectSchema(
+				[]string{"query", "radius"},
+				map[string]any{
+					"query":       toolStringSchema("Text whose neighbourhood should be returned."),
+					"radius":      toolNumberSchema("Distance bar. Must be positive. With cosine, 1 minus the similarity you would accept."),
+					"collection":  toolStringSchema("Optional collection name."),
+					"filter":      toolMapSchema("Optional metadata equality filter."),
+					"max_results": toolIntegerSchema("Maximum matches to return, closest first. Defaults to 100; the response reports whether the radius matched more than that."),
+				},
+			),
+		},
+		{
 			Name:        "search_chunks_by_entities",
 			Description: "Find chunks linked to specific entity nodes.",
 			InputSchema: toolObjectSchema(
@@ -391,6 +405,12 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.Query(ctx, req)
+	case "search_vector_range":
+		var req ToolSearchVectorRangeRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.SearchVectorRange(ctx, req)
 	case "search_chunks_by_entities":
 		var req ToolSearchChunksByEntitiesRequest
 		if err := json.Unmarshal(input, &req); err != nil {

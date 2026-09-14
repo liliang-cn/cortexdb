@@ -43,6 +43,7 @@ var toolWrites = map[string]bool{
 	// GraphRAG retrieval. All of these only read what is stored; none of them
 	// records the access, caches an embedding, or writes a rendered file.
 	"search_text":               false,
+	"search_vector_range":       false,
 	"cortex_query":              false,
 	"search_chunks_by_entities": false,
 	"expand_graph":              false,
@@ -146,7 +147,7 @@ var toolWrites = map[string]bool{
 // table so that a tool added without a decision cannot slip through by sharing
 // a name with one already listed, and so that a tool quietly disappearing is
 // noticed too. Change it in the same commit that adds the tool and its row.
-const toolCount = 75
+const toolCount = 76
 
 // TestEveryToolDeclaresWhetherItWrites is the test the Mutates doc comment
 // promises: it makes forgetting impossible rather than merely unlikely.

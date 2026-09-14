@@ -121,6 +121,16 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *resp, nil
 	})
+	addGraphRAGMCPTool(server, definitions["search_vector_range"], func(ctx context.Context, req ToolSearchVectorRangeRequest) (ToolSearchVectorRangeResponse, error) {
+		resp, err := toolbox.SearchVectorRange(ctx, req)
+		if err != nil {
+			return ToolSearchVectorRangeResponse{}, err
+		}
+		if resp == nil {
+			return ToolSearchVectorRangeResponse{}, nil
+		}
+		return *resp, nil
+	})
 	addGraphRAGMCPTool(server, definitions["search_chunks_by_entities"], func(ctx context.Context, req ToolSearchChunksByEntitiesRequest) (ToolSearchChunksByEntitiesResponse, error) {
 		resp, err := toolbox.SearchChunksByEntities(ctx, req)
 		if err != nil {
