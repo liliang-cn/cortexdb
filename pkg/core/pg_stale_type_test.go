@@ -103,14 +103,26 @@ func TestSearchSurvivesTheVectorTypeBeingReplaced(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open admin: %v", err)
 	}
-	defer admin.Close()
 
 	dbName := fmt.Sprintf("cortexdb_staletype_%d", testname.Nano())
 	if _, err := admin.ExecContext(ctx, `CREATE DATABASE `+dbName); err != nil {
+		_ = admin.Close()
 		t.Fatalf("create database: %v", err)
 	}
+	// The drop and the close of the connection that performs it are one
+	// cleanup, because a test function's defers all run before any t.Cleanup:
+	// a `defer admin.Close()` here would shut this connection before the drop
+	// could use it. That is what happened, and because the drop discarded its
+	// error it happened silently — the server accumulated one abandoned
+	// cortexdb_staletype_* database per run, each holding a vector extension
+	// and a table, and nothing ever said so. The error is reported now: a test
+	// that cannot clean up after itself has failed, even if its assertions
+	// passed.
 	t.Cleanup(func() {
-		_, _ = admin.ExecContext(context.Background(), `DROP DATABASE IF EXISTS `+dbName+` WITH (FORCE)`)
+		defer func() { _ = admin.Close() }()
+		if _, err := admin.ExecContext(context.Background(), `DROP DATABASE IF EXISTS `+dbName+` WITH (FORCE)`); err != nil {
+			t.Errorf("drop %s: %v — the database is left behind on the server", dbName, err)
+		}
 	})
 
 	dsn := swapDatabase(base, dbName)
