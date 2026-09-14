@@ -21,10 +21,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 
+	cortexdbroot "github.com/liliang-cn/cortexdb/v2"
 	"github.com/liliang-cn/cortexdb/v2/pkg/connector"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
@@ -37,6 +39,14 @@ func getenv(key, def string) string {
 }
 
 func main() {
+	// Answered before the database and the vault are opened, so the question
+	// "which build is installed here" does not depend on this machine's
+	// configuration being correct.
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-version") {
+		fmt.Println("cortexdb-connector-mcp v" + cortexdbroot.Version)
+		return
+	}
+
 	dbPath := getenv("CORTEXDB_PATH", cortexdb.DefaultDBPath())
 	vaultPath := getenv("CONNECTOR_VAULT_PATH", filepath.Join(filepath.Dir(dbPath), "cortexdb.vault.db"))
 	tenant := getenv("CONNECTOR_TENANT", "default")

@@ -2,16 +2,26 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	cortexdbroot "github.com/liliang-cn/cortexdb/v2"
 	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
 func main() {
+	// `--version` prints what this binary is and exits, opening nothing. The
+	// MCP client that launches it cannot be asked, so this is the only way to
+	// tell an installed copy from the one you meant to install.
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-version") {
+		fmt.Println("cortexdb-mcp-stdio v" + cortexdbroot.Version)
+		return
+	}
+
 	// `--recall` is a one-shot mode for the UserPromptSubmit hook: read a hook
 	// payload from stdin, retrieve matching memories, print additionalContext,
 	// and exit. Everything else launches the long-running MCP stdio server.

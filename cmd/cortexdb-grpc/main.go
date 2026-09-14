@@ -16,12 +16,20 @@
 // `cortexdb-grpc -health` probes a server already running at -addr instead of
 // starting one, so the same binary is its own liveness check. See deploy/ for
 // systemd units and container images that use it.
+//
+// `cortexdb-grpc -version` prints the version of the binary itself and exits,
+// touching no database, no .env and no network. -health reports the version of
+// a server that is already running; this reports the version of the file on
+// disk, which is the question you have after copying a new binary into place
+// and before restarting anything. Without it the only way to tell two builds
+// apart was to compare their checksums against a build you still had.
 package main
 
 import (
 	"context"
 	"expvar"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -47,10 +55,18 @@ func envOr(key, fallback string) string {
 }
 
 func main() {
+	// Answered before .env is read and before any path is resolved: the whole
+	// point of asking a binary its version is that it works on a machine where
+	// nothing else is set up yet.
+	if versionRequested(os.Args[1:]) {
+		fmt.Println(versionLine)
+		return
+	}
 	_ = godotenv.Load()
 
 	var (
 		dbPath = flag.String("db", envOr("CORTEXDB_PATH", cortexdb.DefaultDBPath()), "SQLite database path")
+		_      = flag.Bool("version", false, "print the version of this binary and exit")
 		addr   = flag.String("addr", envOr("CORTEXDB_GRPC_ADDR", "127.0.0.1:47821"), "listen address")
 		token  = flag.String("token", os.Getenv("CORTEXDB_GRPC_TOKEN"), "bearer token (empty disables auth)")
 		health = flag.Bool("health", false, "probe a server already running at -addr, print its status and exit")
