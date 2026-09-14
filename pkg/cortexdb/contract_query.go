@@ -34,11 +34,31 @@ import (
 //     predates the contract, or that one producer writes and another does not,
 //     this is the largest number in the result, and a five-bar chart drawn
 //     without it describes 3% of the data while looking like all of it.
+//
 //   - Unknown is every _grade this build does not recognise. A value here
 //     means a producer is writing something the contract does not define —
 //     a typo, a newer contract, or a vocabulary somebody invented. Silently
 //     folding those into Untagged would hide the one case a maintainer has to
 //     act on.
+//
+//   - Bookkeeping is the store's own records — a decision is a graph node so
+//     decision_chain can walk it, a chunk and its document are nodes so an
+//     entity can cite one, and has_chunk, mentions and based_on are the edges
+//     that hold all three in place. They are not claims about the world, and
+//     every other bucket here is a claim about the world, so they are counted
+//     apart from all of them rather than folded into any.
+//
+//     They used to be spread across two: the chunks and their edges carry no
+//     contract and landed under Untagged, so a brain with nothing ungraded in
+//     it still reported dozens of records "with no contract at all"; and a
+//     Decision *does* carry one — somebody signed it, so it is stamped
+//     verified — which counted the ledger as established knowledge and made
+//     the good news bigger than it was. Both directions are the same mistake,
+//     and taking them out of the grade counting is the fix for both.
+//
+//     Counted rather than hidden: the store is bigger than the claims in it,
+//     and a tally that quietly dropped the difference would be lying a third
+//     way.
 type ContractTally struct {
 	Verified       graph.PropertyCount            `json:"verified"`
 	SelfConsistent graph.PropertyCount            `json:"self_consistent"`
@@ -46,16 +66,22 @@ type ContractTally struct {
 	Held           graph.PropertyCount            `json:"held"`
 	Refused        graph.PropertyCount            `json:"refused"`
 	Untagged       graph.PropertyCount            `json:"untagged"`
+	Bookkeeping    graph.PropertyCount            `json:"bookkeeping"`
 	Unknown        map[string]graph.PropertyCount `json:"unknown,omitempty"`
 }
 
 // ContractTally counts every node and edge by its _grade.
 func (db *DB) ContractTally(ctx context.Context) (ContractTally, error) {
-	counts, err := db.graph.PropertyCounts(ctx, KeyGrade)
+	counts, err := db.graph.PropertyCountsOfKnowledge(ctx, KeyGrade)
+	if err != nil {
+		return ContractTally{}, fmt.Errorf("contract tally: %w", err)
+	}
+	book, err := db.graph.BookkeepingCount(ctx)
 	if err != nil {
 		return ContractTally{}, fmt.Errorf("contract tally: %w", err)
 	}
 	var t ContractTally
+	t.Bookkeeping = book
 	into := map[string]*graph.PropertyCount{
 		GradeVerified:       &t.Verified,
 		GradeSelfConsistent: &t.SelfConsistent,
@@ -69,6 +95,7 @@ func (db *DB) ContractTally(ctx context.Context) (ContractTally, error) {
 			*dst = c
 			continue
 		}
+
 		if t.Unknown == nil {
 			t.Unknown = map[string]graph.PropertyCount{}
 		}

@@ -508,6 +508,15 @@ func TestPrecedentsByKindAndSubject(t *testing.T) {
 // TestARecordedDecisionShowsInTheContractTally. The reason a decision is a
 // graph record and not a side table: every reader the contract already has
 // sees it, without being told about decisions.
+//
+// It is seen as what it is. A decision carries a real contract — somebody
+// signed it, so it is stamped verified and GradedRecords returns it beside
+// every other verified record, which is the visibility this test was written
+// for. What it is not is an established fact about the world, and the tally's
+// grade buckets answer "how well established is what this brain knows". A
+// brain holding one asserted fact and fifty signed decisions read as fifty-one
+// records of which fifty are verified, which is the opposite of true. So the
+// tally counts the ledger in its own column and the grades count the claims.
 func TestARecordedDecisionShowsInTheContractTally(t *testing.T) {
 	for _, b := range decisionBackends(t) {
 		t.Run(b.name, func(t *testing.T) {
@@ -529,14 +538,24 @@ func TestARecordedDecisionShowsInTheContractTally(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ContractTally: %v", err)
 			}
-			if got := after.Verified.Nodes - before.Verified.Nodes; got != 1 {
-				t.Errorf("verified nodes grew by %d, want 1 — the decision itself", got)
+			if got := after.Verified.Nodes - before.Verified.Nodes; got != 0 {
+				t.Errorf("verified nodes grew by %d: the decision was counted as an established fact", got)
 			}
-			// based_on and about. Both are assertions the same actor signed,
-			// so both are graded; leaving them untagged would make the tally
-			// report a ledger far less established than it is.
-			if got := after.Verified.Edges - before.Verified.Edges; got != 2 {
-				t.Errorf("verified edges grew by %d, want 2", got)
+			if got := after.Untagged.Nodes - before.Untagged.Nodes; got != 0 {
+				t.Errorf("untagged nodes grew by %d: the decision was counted as a fact nobody stamped", got)
+			}
+			if got := after.Bookkeeping.Nodes - before.Bookkeeping.Nodes; got != 1 {
+				t.Errorf("bookkeeping nodes grew by %d, want 1 — the decision itself", got)
+			}
+			// based_on and about. based_on is how the ledger holds its premises
+			// and belongs with the decision; about is an edge to the subject
+			// under a type nobody has declared as filing, so it is counted
+			// where the contract puts it.
+			if got := after.Bookkeeping.Edges - before.Bookkeeping.Edges; got != 1 {
+				t.Errorf("bookkeeping edges grew by %d, want 1 — based_on", got)
+			}
+			if got := after.Verified.Edges - before.Verified.Edges; got != 1 {
+				t.Errorf("verified edges grew by %d, want 1 — the about edge", got)
 			}
 
 			graded, err := db.GradedRecords(ctx, GradedQuery{Grades: []string{GradeVerified}})

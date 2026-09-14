@@ -34,7 +34,11 @@ func TestAnAsOfReadReturnsTheGraphAsItWas(t *testing.T) {
 	}
 	if err := db.Graph().UpsertEdge(ctx, &graph.GraphEdge{
 		ID: "edge:late", FromNodeID: "entity:early", ToNodeID: "entity:late",
-		EdgeType: "mentions", Weight: 1,
+		// A claim about the world, because this test is about when a record
+		// was written and the picture draws only knowledge: an edge named for
+		// the store's own filing would be left out for a reason that has
+		// nothing to do with the instant being asked about.
+		EdgeType: "about", Weight: 1,
 		Properties: graded(cortexdb.GradeAsserted, "", ""),
 	}); err != nil {
 		t.Fatalf("UpsertEdge: %v", err)

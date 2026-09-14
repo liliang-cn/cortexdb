@@ -445,6 +445,24 @@ type PropertyCount struct {
 // result — a breakdown over the 3% of a shelf that was stamped looks exactly
 // like a breakdown over all of it.
 func (g *GraphStore) PropertyCounts(ctx context.Context, key string) (map[string]PropertyCount, error) {
+	return g.propertyCounts(ctx, key, false)
+}
+
+// PropertyCountsOfKnowledge is PropertyCounts over the records that are claims
+// about the world, with the store's own filing left out.
+//
+// The difference is not cosmetic. A Decision node carries a contract of its
+// own — somebody signed the decision, so it is stamped verified — and counting
+// it under Verified says the brain has more established facts in it than it
+// has. The chunks and their has_chunk edges carry no contract at all and land
+// under Untagged, saying the opposite. A tally built to answer "how well
+// established is what this brain knows" has to be asked only about the things
+// the brain knows; the filing is counted by BookkeepingCount, as itself.
+func (g *GraphStore) PropertyCountsOfKnowledge(ctx context.Context, key string) (map[string]PropertyCount, error) {
+	return g.propertyCounts(ctx, key, true)
+}
+
+func (g *GraphStore) propertyCounts(ctx context.Context, key string, knowledgeOnly bool) (map[string]PropertyCount, error) {
 	if key == "" {
 		return nil, fmt.Errorf("property counts: no key")
 	}
@@ -453,13 +471,21 @@ func (g *GraphStore) PropertyCounts(ctx context.Context, key string) (map[string
 		table string
 		edge  bool
 	}{{"graph_nodes", false}, {"graph_edges", true}} {
+		where := ""
+		if knowledgeOnly {
+			column, types := "COALESCE(node_type, '')", BookkeepingNodeTypes
+			if t.edge {
+				column, types = "COALESCE(edge_type, '')", BookkeepingEdgeTypes
+			}
+			where = " WHERE " + NotInTypes(column, types)
+		}
 		// COALESCE around the guarded read, not inside it: the guard yields
 		// NULL both for a record with no properties at all and for one whose
 		// JSON lacks this key, and those are the same answer to this question.
 		expr := "COALESCE(" + g.dialect.JSONTextGuarded("properties", key) + ", '')"
 		rows, err := g.query(ctx, `
 			SELECT `+expr+`, COUNT(*)
-			  FROM `+t.table+`
+			  FROM `+t.table+where+`
 			 GROUP BY `+expr+`
 			 ORDER BY `+expr)
 		if err != nil {
@@ -646,4 +672,69 @@ func (g *GraphStore) propertyWhere(w map[string][]string) (string, []any) {
 		return "1=0", nil
 	}
 	return strings.Join(clauses, " AND "), args
+}
+
+// BookkeepingNodeTypes and BookkeepingEdgeTypes are the store's own records —
+// the rows that are not claims about the world.
+//
+// A decision is a graph node so decision_chain can walk it; a chunk and its
+// document are nodes so an entity can cite one; has_chunk, mentions and
+// based_on are the edges that hold all three in place. None of them carries a
+// grade and none of them ever will, because there is nothing to grade: they
+// are how the store remembers rather than what it knows.
+//
+// Listed rather than derived from "has no grade", which is the test that put
+// them in the untagged column in the first place. Two rows that carry no grade
+// are different findings — one is a fact nobody stamped and the other is a
+// filing cabinet — and a rule that cannot tell them apart reports the cabinet
+// as the problem.
+var (
+	BookkeepingNodeTypes = []string{"Decision", "chunk", "document"}
+	BookkeepingEdgeTypes = []string{"has_chunk", "mentions", "based_on"}
+)
+
+// NotInTypes renders "this column is none of these types", for the queries
+// that have to leave the store's own filing out.
+//
+// Exported because two packages ask the same question and the answer has to be
+// the same one: the tally counts the knowledge in a brain and the live graph
+// draws it, and a picture that included a Decision node while the panel beside
+// it did not count one would be two views of the same store that disagree.
+//
+// Values are spelled into the SQL rather than bound. They are this package's
+// own constants — nothing here comes from a caller — and threading a variable
+// number of arguments through queries that already bind their own would put
+// the ordering of those arguments at risk for no gain.
+func NotInTypes(column string, types []string) string {
+	quoted := make([]string, len(types))
+	for i, t := range types {
+		quoted[i] = "'" + strings.ReplaceAll(t, "'", "''") + "'"
+	}
+	return column + " NOT IN (" + strings.Join(quoted, ", ") + ")"
+}
+
+// BookkeepingCount counts them.
+func (g *GraphStore) BookkeepingCount(ctx context.Context) (PropertyCount, error) {
+	var out PropertyCount
+	for _, q := range []struct {
+		table  string
+		column string
+		types  []string
+		into   *int
+	}{
+		{"graph_nodes", "node_type", BookkeepingNodeTypes, &out.Nodes},
+		{"graph_edges", "edge_type", BookkeepingEdgeTypes, &out.Edges},
+	} {
+		marks := make([]string, len(q.types))
+		args := make([]any, len(q.types))
+		for i, t := range q.types {
+			marks[i], args[i] = "?", t
+		}
+		row := g.queryRow(ctx, `SELECT COUNT(*) FROM `+q.table+
+			` WHERE COALESCE(`+q.column+`, '') IN (`+strings.Join(marks, ",")+`)`, args...)
+		if err := row.Scan(q.into); err != nil {
+			return PropertyCount{}, fmt.Errorf("bookkeeping count over %s: %w", q.table, err)
+		}
+	}
+	return out, nil
 }

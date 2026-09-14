@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 	rpcv1 "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1"
 	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 )
@@ -104,6 +105,32 @@ func gradeExpr(d sqldialect.Dialect, column string) string {
 	return d.JSONTextGuarded(column, cortexdb.KeyGrade)
 }
 
+// notIn renders "this column is none of these types".
+//
+// The picture and the tally have to agree about what a fact is. The tally
+// stopped calling the store's own filing an ungraded fact by naming those
+// types in one place (graph.BookkeepingNodeTypes, graph.BookkeepingEdgeTypes);
+// this is the same list, in the query that draws them. A graph that shows a
+// Decision node and its based_on edges beside the people they are about is
+// making the same claim the untagged column used to make — that the ledger is
+// knowledge — and a reader cannot tell by looking which half is which.
+//
+// The ledger is not lost by being left out of this picture: decision_chain
+// walks it, and it is the walk rather than the hairball that answers what was
+// decided and on what.
+//
+// Values are spelled into the SQL rather than bound, because they are this
+// package's own constants and the alternative is threading a variable number
+// of arguments through three positions of a query that already binds a source's
+// own. Nothing here comes from a caller.
+func notIn(column string, types []string) string {
+	quoted := make([]string, len(types))
+	for i, t := range types {
+		quoted[i] = "'" + strings.ReplaceAll(t, "'", "''") + "'"
+	}
+	return column + " NOT IN (" + strings.Join(quoted, ", ") + ")"
+}
+
 // graphSource names the rows one read of the entity graph sees: a fragment to
 // put in a FROM clause and the arguments it binds ahead of the query's own.
 //
@@ -173,9 +200,9 @@ func loadGraph(ctx context.Context, q rowQuerier, src graphSource) ([]Node, []Ed
 		 FROM `+src.edges+` AS e
 		 JOIN `+src.nodes+` AS f ON f.id = e.from_node_id
 		 JOIN `+src.nodes+` AS t ON t.id = e.to_node_id
-		 WHERE e.edge_type != 'has_chunk'
-		   AND COALESCE(f.node_type,'') != 'chunk'
-		   AND COALESCE(t.node_type,'') != 'chunk'`), edgeArgs...)
+		 WHERE `+notIn("COALESCE(e.edge_type,'')", graph.BookkeepingEdgeTypes)+`
+		   AND `+notIn("COALESCE(f.node_type,'')", graph.BookkeepingNodeTypes)+`
+		   AND `+notIn("COALESCE(t.node_type,'')", graph.BookkeepingNodeTypes)+``), edgeArgs...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -206,7 +233,8 @@ func loadGraph(ctx context.Context, q rowQuerier, src graphSource) ([]Node, []Ed
 	nodeArgs = append(nodeArgs, maxScan)
 	nodeRows, err := q.QueryContext(ctx, d.Rebind(
 		`SELECT n.id, COALESCE(n.content,''), COALESCE(n.node_type,''), `+gradeExpr(d, "n.properties")+
-			` FROM `+src.nodes+` AS n WHERE n.node_type != 'chunk' LIMIT ?`), nodeArgs...)
+			` FROM `+src.nodes+` AS n WHERE `+
+			notIn("COALESCE(n.node_type,'')", graph.BookkeepingNodeTypes)+` LIMIT ?`), nodeArgs...)
 	if err != nil {
 		return nil, nil, err
 	}

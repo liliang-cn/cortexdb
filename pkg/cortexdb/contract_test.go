@@ -1,6 +1,7 @@
 package cortexdb
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -185,5 +186,62 @@ func TestUnknownKeysPassThrough(t *testing.T) {
 		"_ontology": "world@3", "_something_alchemy_adds_later": "y", "table": "orders",
 	}); err != nil {
 		t.Fatalf("pass-through keys rejected: %v", err)
+	}
+}
+
+// TestTheTallyDoesNotCallItsOwnBookkeepingAnUngradedFact is what an operator
+// reads wrong on the first screen of this product.
+//
+// The store keeps its own records in the same tables as the knowledge: a
+// decision is a graph node so decision_chain can walk it, a chunk is a node so
+// an entity can cite one, and the edges that hold them there are has_chunk,
+// mentions and based_on. None of them is a claim about the world, none of them
+// carries a grade, and all of them were counted under untagged — so a brain
+// holding nothing ungraded reported "44 edges with no contract at all", which
+// is the one number on that screen nobody can act on and everybody has to
+// explain.
+func TestTheTallyDoesNotCallItsOwnBookkeepingAnUngradedFact(t *testing.T) {
+	db := openOntologyTestDB(t)
+	ctx := context.Background()
+
+	// A document, its chunks, and an entity that cites one: has_chunk and
+	// mentions edges, and chunk and document nodes, all of them the store's own.
+	if _, err := db.GraphRAGTools().IngestDocument(ctx, ToolIngestDocumentRequest{
+		DocumentID: "runbook", Content: "Leo lives in Chengdu. Nothing here is deleted.",
+	}); err != nil {
+		t.Fatalf("ingest: %v", err)
+	}
+	upsertProseEntities(t, db, "runbook", []string{"Leo", "Chengdu"}, "chunk:runbook:000")
+
+	// And one real fact, graded, which is what the screen is actually about.
+	if _, err := db.GraphRAGTools().UpsertRelations(ctx, ToolUpsertRelationsRequest{
+		Relations: []ToolRelationInput{{From: "Leo", To: "Chengdu", Type: "lives_in", Metadata: map[string]string{
+			KeyGrade: GradeAsserted, KeyProducer: ProducerLLMExtract, KeySource: "runbook",
+		}}},
+	}); err != nil {
+		t.Fatalf("relations: %v", err)
+	}
+
+	tally, err := db.ContractTally(ctx)
+	if err != nil {
+		t.Fatalf("tally: %v", err)
+	}
+	if tally.Asserted.Edges == 0 {
+		t.Fatalf("the graded fact was not counted: %+v", tally)
+	}
+	if tally.Bookkeeping.Nodes == 0 || tally.Bookkeeping.Edges == 0 {
+		t.Errorf("the store's own records are not counted anywhere: %+v", tally)
+	}
+	// The point of the change is that the two are separated, not that one is
+	// hidden. The entity nodes here were written without a grade and they are
+	// genuinely ungraded knowledge, so untagged keeps them; what it must not
+	// keep is a single chunk, document, decision or the edges holding them.
+	if tally.Untagged.Edges != 0 {
+		t.Errorf("untagged edges = %d, want none: every ungraded edge here is has_chunk or mentions, "+
+			"which is the store's filing rather than a fact nobody stamped", tally.Untagged.Edges)
+	}
+	if tally.Untagged.Nodes != 2 {
+		t.Errorf("untagged nodes = %d, want the two entities written with no grade: "+
+			"separating bookkeeping must not hide knowledge that really is ungraded", tally.Untagged.Nodes)
 	}
 }
