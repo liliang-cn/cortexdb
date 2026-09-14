@@ -279,7 +279,6 @@ pairs, _ := db.Graph().EdgeEndpointPairs(ctx, "uses")
 Both edge queries take optional edge types, matched exactly as stored; passing
 none reports the whole graph.
 
-<<<<<<< HEAD
 ## Decision ledger
 
 `fact_provenance` and the knowledge contract say how a *fact* is known. The
@@ -328,7 +327,7 @@ Tools (in-process and MCP), and the mirroring `cortexdb.v1.DecisionService`:
 - `decision_record` — writes (read-only keys are refused it)
 - `decision_chain` — reads
 - `decision_precedents` — reads
-=======
+
 ## Declared inference rules
 
 `apply_inference` composes two hops. That is one rule shape; the engine behind
@@ -384,7 +383,70 @@ export. The table is created the first time a rule is saved.
 Tools: `rules_save`, `rules_list`, `rules_delete`, `rules_apply` (with
 `dry_run`), `inference_explain`. Engine: `pkg/graph/rules*.go`; facade:
 `pkg/cortexdb/rules*.go`.
->>>>>>> worktree-agent-a8606f050fbc39364
+
+## Asking about the whole store
+
+Retrieval answers "what is relevant to this query". Three APIs answer questions
+about the collection instead, and all three work identically on SQLite and
+PostgreSQL.
+
+**A threshold instead of a K.** `RangeSearchVector` / `RangeSearchText` return
+every row within a distance of the query, and nothing outside it. Top-K always
+returns K rows however weak the last ones are; a range query returns what
+clears the bar and nothing when nothing does. That is the honest answer for
+"find all the near-duplicates of this", "does the store hold anything like this
+at all", and any threshold-driven decision.
+
+```go
+near, err := db.RangeSearchText(ctx, "the backup vault is offline",
+    cortexdb.VectorRangeOptions{Radius: 0.15})
+```
+
+`Radius` is a distance in the store's metric, not a similarity: under the
+default cosine it is `1 - similarity`, so roughly 0.1 for near-identical text
+and 0.5 for loosely related. `MaxResults` 0 means every match. Tool:
+`search_vector_range`, which caps at 100 by default and reports `truncated`
+when the radius reached further than the cap — a trimmed range answer is
+otherwise indistinguishable from a complete one, which would make it an
+unlabelled top-K.
+
+**Counting.** `Aggregate` runs count, sum, avg, min, max and group_by over a
+metadata field, optionally filtered and scoped to a collection. A `group_by` is
+also how to ask what values a field takes and how often. Tool:
+`aggregate_metadata`.
+
+```go
+byKind, err := db.Aggregate(ctx, core.AggregationRequest{
+    Type: core.AggregationGroupBy, GroupBy: []string{"kind"}, OrderBy: "count",
+})
+```
+
+Metadata names in these requests are column references, not values, and cannot
+be bound as parameters — so they are checked against a conservative identifier
+shape and refused otherwise, rather than escaped. A name inside a JSON path may
+carry dots and hyphens (`user.id`, `content-type`); one that becomes bare SQL —
+`GroupBy`, which is aliased by its own text, plus `OrderBy` and the `Having`
+keys — may not.
+
+**Aggregating the vectors.** `VectorAggregate` reduces the vectors themselves:
+
+| Kind | Returns | Use it for |
+| --- | --- | --- |
+| `centroid` | a computed point | the group's average direction; dragged by outliers |
+| `geometric_median` | a computed point | the same idea, robust — it minimises the sum of distances rather than of squared distances, so one far member barely moves it |
+| `medoid` | **a stored record** | "which of these near-duplicates is the canonical one", "give me the one record that represents this cluster" |
+
+The medoid is the one worth reaching for: it names a row that exists, with its
+text, so the answer can be read and traced rather than only measured. It
+answers the consolidation question arithmetically, with no model in the loop.
+Tool: `representative_records` — medoid only, because a synthetic point can only
+reach a model as several hundred floats it can do nothing with.
+
+**Facets.** `SearchWithFacets` filters a vector search by typed, nestable
+metadata facets and can return the per-value counts beside the hits. It is
+program-only on purpose: the filter language is a lot of schema for a model to
+get right, and the facet question a model actually has — what values, how many
+— is `aggregate_metadata` with a `group_by`.
 
 ## Ontology
 
@@ -740,12 +802,9 @@ Important tools:
 - Knowledge graph: `knowledge_graph_upsert`, `knowledge_graph_query`, `knowledge_graph_shacl_validate`, `knowledge_graph_infer_refresh`
 - KnowledgeMemory: `knowledge_memory_recall`, `knowledge_memory_build_context_pack`, `knowledge_memory_reflect`, `knowledge_memory_consolidate`
 - Ontology: `ontology_save`, `ontology_get`, `ontology_list`, `ontology_delete`, `ontology_diff`, `ontology_action_list`, `ontology_action_apply`, `object_set_resolve`
-<<<<<<< HEAD
-- Inference: `apply_inference`
-- Decision ledger: `decision_record`, `decision_chain`, `decision_precedents`
-=======
 - Inference: `apply_inference`, `rules_save`, `rules_list`, `rules_delete`, `rules_apply`, `inference_explain`
->>>>>>> worktree-agent-a8606f050fbc39364
+- Decision ledger: `decision_record`, `decision_chain`, `decision_precedents`
+- Aggregates and thresholds: `aggregate_metadata`, `representative_records`, `search_vector_range`
 
 Separate workflow toolboxes:
 

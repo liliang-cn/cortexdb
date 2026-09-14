@@ -2,6 +2,71 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.104.0] - 2026-09-14
+
+Four capabilities existed in the engine and could not be used, and looking at
+why turned up three defects in them.
+
+### Fixed
+
+- **`RangeSearch` returned opposite things on the two backends.** SQLite put
+  the distance in `Score` and sorted ascending; PostgreSQL delegated to
+  `Search`, so `Score` was a similarity sorted descending — and it silently
+  capped at a thousand rows and accepted a non-positive radius. The same call,
+  a different answer, no error. `Score` is the similarity on both now,
+  descending; `TopK` 0 means every match; `radius <= 0` is refused.
+- **Its distance conversion guessed the metric from the sign of a score.**
+  Cosine runs −1..1 and embedding vectors routinely have negative components,
+  so cosine −0.5 came out as distance 0.5 instead of 1.5: the whole negative
+  half of the range scored as nearer than it was, and a radius of 0.5 quietly
+  admitted vectors anti-correlated with the query. Orthogonal — exactly 0 —
+  came out as distance 0, the nearest possible, and passed every radius. The
+  conversion now subtracts from the metric's own fixed point,
+  `similarityFn(query, query)`, which needs nothing to know which metric it has.
+- **`SearchWithFacets` had never worked with a facet on SQLite.** Its query
+  LEFT JOINs `collections` onto `embeddings`, both tables have a `metadata`
+  column, and the facet conditions named it unqualified — so every facet filter
+  and every `opts.Filter` failed with "ambiguous column name: metadata" before
+  a row was read. The method worked only when asked to filter nothing.
+- **Aggregation names went into SQL unchecked.** `order_by` was pasted raw
+  after `ORDER BY`, so an arbitrary expression ran; a `Filters` key could close
+  its own `json_extract` and reopen the next one, turning the predicate into a
+  tautology — a count scoped to a value nothing had returned the whole table.
+  Names are now checked fail-closed before they reach the statement, by two
+  rules: one for names that stay inside a JSON path (dots and hyphens stay
+  legal, because `user.id` and `content-type` are real keys) and a stricter one
+  for names that become bare SQL.
+- **A Postgres test leaked a database per run.** A test function's defers all
+  run before any `t.Cleanup`, so `defer admin.Close()` shut the connection the
+  cleanup needed to drop its database, and the drop discarded its error.
+
+### Added
+
+- **`BatchRangeSearch`, `SearchWithFacets`, `Aggregate` and `VectorAggregate`
+  are implemented on PostgreSQL and promoted into the `Store` interface.** They
+  were `*SQLiteStore`-only and outside the interface, so nothing holding a
+  `Store` — `pkg/cortexdb.DB` holds one — could reach them, and anything that
+  did would break under PostgreSQL.
+- **`VectorAggregate`** reduces the vectors themselves: centroid, geometric
+  median (Weiszfeld with the Vardi–Zhang step for a coincident iterate), and
+  the **medoid** — the stored record closest to all the others in its group,
+  returned with its text. It answers "which of these near-duplicates is the
+  canonical one" and "what is this cluster about" arithmetically, with no model
+  in the loop.
+- **Facade and tools.** `RangeSearchVector` / `RangeSearchText`, `Aggregate`,
+  `SearchWithFacets`, `VectorAggregate`; tools `search_vector_range`,
+  `aggregate_metadata`, `representative_records`. The range tool reports
+  `truncated`, because a trimmed range answer is otherwise indistinguishable
+  from a complete one and decays into an unlabelled top-K.
+
+### Changed
+
+- `SKILL.md` had two unresolved merge-conflict markers committed into it,
+  swallowing the decision-ledger and declared-inference sections into each
+  other. Resolved as the union; both features shipped.
+- `gofmt` had never been run on thirty files, so `gofmt -l .` could not come
+  back clean and was useless as a gate.
+
 ## [2.103.0] - 2026-09-12
 
 ### Fixed
