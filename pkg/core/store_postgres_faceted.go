@@ -163,6 +163,9 @@ func (s *PostgresStore) BatchRangeSearch(ctx context.Context, queries [][]float3
 // facet sidebar that adds up differently depending on the DSN would be worse
 // than one that is consistently too generous.
 func (s *PostgresStore) SearchWithFacets(ctx context.Context, query []float32, opts FacetedSearchOptions) ([]ScoredEmbedding, []FacetResult, error) {
+	if err := validateFacetedSearchOptions(opts); err != nil {
+		return nil, nil, wrapError("search_faceted", err)
+	}
 	var (
 		results []ScoredEmbedding
 		err     error

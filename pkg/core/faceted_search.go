@@ -74,12 +74,38 @@ type FacetResult struct {
 }
 
 // SearchWithFacets performs vector search with faceted filtering
+// validateFacetedSearchOptions checks every name that will be pasted into the
+// statement, for the same reason validateAggregationRequest does: a facet field
+// and a filter key become part of a json_extract path, and a key that closes
+// its own quote rewrites the predicate. Both backends call this, so the rule is
+// one rule.
+func validateFacetedSearchOptions(opts FacetedSearchOptions) error {
+	for field, filter := range opts.Facets {
+		if err := validateMetadataIdentifier("facet", field); err != nil {
+			return err
+		}
+		// A nested filter reuses its parent's field name, so the nested values
+		// carry no new name to check — but say so, rather than leaving a
+		// reader to work out why the recursion stops here.
+		_ = filter
+	}
+	for key := range opts.Filter {
+		if err := validateMetadataIdentifier("filter", key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *SQLiteStore) SearchWithFacets(ctx context.Context, query []float32, opts FacetedSearchOptions) ([]ScoredEmbedding, []FacetResult, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	if s.closed {
 		return nil, nil, wrapError("search_faceted", ErrStoreClosed)
+	}
+	if err := validateFacetedSearchOptions(opts); err != nil {
+		return nil, nil, wrapError("search_faceted", err)
 	}
 
 	// Build faceted query

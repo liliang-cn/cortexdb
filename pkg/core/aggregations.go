@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 )
 
@@ -385,10 +386,96 @@ func (s *SQLiteStore) aggregateGroupBy(ctx context.Context, req AggregationReque
 	}, rows.Err()
 }
 
+// A metadata key or an order-by name is pasted into SQL, so it is checked
+// before it gets there.
+//
+// These requests name columns, not values: Field, GroupBy, OrderBy and the
+// Having keys all end up inside the statement text, because a JSON path and an
+// ORDER BY target cannot be bound as parameters. That is ordinary, and it is
+// safe only for as long as something says what a name may look like. Nothing
+// did. Two injections were reachable from a plain caller and are covered by
+// TestAggregationRefusesNamesThatAreNotNames:
+//
+//   - OrderBy went in raw after ORDER BY, so any SQL expression ran.
+//   - A Filters key closed its own json_extract and reopened the next one,
+//     turning the filter into a tautology: a request scoped to a value that
+//     matched nothing came back with the whole table. Anything using Filters to
+//     keep an answer inside a boundary was not being kept inside it.
+//
+// So the rule is fail-closed and deliberately narrower than JSON allows: a
+// leading letter or underscore, then letters, digits, underscore, dot or
+// hyphen. Dots stay legal because a nested metadata path ($.a.b) is a real
+// thing to ask for and cannot escape the quotes on its own. Everything else —
+// quotes, parentheses, whitespace, semicolons — is refused by name rather than
+// escaped, because escaping is a thing you can get subtly wrong and a
+// character class is not. A key outside this shape is unreachable through this
+// API; that is a smaller loss than the alternative.
+// There are two rules, because there are two positions.
+//
+// A name that only ever lands inside the quotes of a JSON path — '$.<name>' —
+// may carry dots and hyphens: "user.id" is a real nested path and
+// "content-type" is a real metadata key, both work today, and neither can
+// escape the quotes without one. A name that also becomes bare SQL cannot:
+// GroupBy is aliased by its own raw text (`... as <name>`) and OrderBy and the
+// Having keys are pasted in unquoted, where a dot is a qualified-name
+// separator and a hyphen is subtraction. Allowing them there would only trade
+// an injection for a syntax error, which is not a trade worth making.
+var (
+	metadataPathPattern  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]{0,127}$`)
+	sqlIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
+)
+
+// validateMetadataIdentifier checks a name that goes inside a JSON path.
+func validateMetadataIdentifier(role, name string) error {
+	if !metadataPathPattern.MatchString(name) {
+		// The refusal names the role and not the offending text: echoing a
+		// rejected name back into a log or an error a caller may render is how
+		// an injection attempt becomes a stored one.
+		return fmt.Errorf("%s is not a valid metadata name: it must start with a letter or underscore and contain only letters, digits, underscore, dot or hyphen", role)
+	}
+	return nil
+}
+
+// validateSQLIdentifier checks a name that becomes SQL of its own.
+func validateSQLIdentifier(role, name string) error {
+	if !sqlIdentifierPattern.MatchString(name) {
+		return fmt.Errorf("%s is not a valid metadata name: it becomes a SQL identifier, so it must start with a letter or underscore and contain only letters, digits or underscore", role)
+	}
+	return nil
+}
+
 // validateAggregationRequest validates the aggregation request
 func validateAggregationRequest(req AggregationRequest) error {
 	if req.Type == "" {
 		return fmt.Errorf("aggregation type is required")
+	}
+
+	// Every name that reaches the statement text, checked in one place because
+	// both backends come through here.
+	if req.Field != "" {
+		if err := validateMetadataIdentifier("field", req.Field); err != nil {
+			return err
+		}
+	}
+	for _, g := range req.GroupBy {
+		if err := validateSQLIdentifier("group_by", g); err != nil {
+			return err
+		}
+	}
+	if req.OrderBy != "" {
+		if err := validateSQLIdentifier("order_by", req.OrderBy); err != nil {
+			return err
+		}
+	}
+	for k := range req.Having {
+		if err := validateSQLIdentifier("having", k); err != nil {
+			return err
+		}
+	}
+	for k := range req.Filters {
+		if err := validateMetadataIdentifier("filter", k); err != nil {
+			return err
+		}
 	}
 
 	// Validate field requirement for certain aggregations
