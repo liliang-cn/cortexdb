@@ -225,3 +225,54 @@ func TestTheProvenanceToolsAreDeclaredAndReachable(t *testing.T) {
 		t.Errorf("count %d does not match the %d facts returned", swept.Count, len(swept.Facts))
 	}
 }
+
+// TestTheSweepSurvivesABrainThatHasIngestedADocument is the case every test
+// above missed by upserting relations without ever ingesting anything.
+//
+// ingest_document writes one has_chunk edge per chunk, and an edge written
+// with no properties gets the empty string in that column. The empty string is
+// not JSON, so the unguarded json_extract the sweep was built on failed the
+// whole query — "malformed JSON", naming neither column nor row — on any brain
+// that had ever ingested a document, which is every brain in use. The tool
+// that reports which facts cannot say where they came from was the one tool
+// that could not be run.
+func TestTheSweepSurvivesABrainThatHasIngestedADocument(t *testing.T) {
+	db, tools := provenanceBrain(t)
+	ctx := context.Background()
+
+	if _, err := tools.IngestDocument(ctx, ToolIngestDocumentRequest{
+		DocumentID: "runbook",
+		Content:    "The brain stores what the pipeline produced. Nothing here is deleted.",
+	}); err != nil {
+		t.Fatalf("ingest: %v", err)
+	}
+	if _, err := tools.UpsertEntities(ctx, ToolUpsertEntitiesRequest{Entities: []ToolEntityInput{
+		{Name: "Leo", Type: "Person"}, {Name: "Chengdu", Type: "City"},
+	}}); err != nil {
+		t.Fatalf("entities: %v", err)
+	}
+	if _, err := tools.UpsertRelations(ctx, ToolUpsertRelationsRequest{
+		Relations: []ToolRelationInput{{From: "Leo", To: "Chengdu", Type: "lives_in"}},
+	}); err != nil {
+		t.Fatalf("relations: %v", err)
+	}
+
+	swept, err := db.UncitedFactsTool(ctx, ToolUncitedFactsRequest{})
+	if err != nil {
+		t.Fatalf("uncited_facts on a brain with a document in it: %v", err)
+	}
+
+	// And it reports the claim, not the bookkeeping: a document owning its
+	// chunks is not a fact anybody can cite a source for, and one per chunk of
+	// every document would bury the answer.
+	types := make([]string, 0, len(swept.Facts))
+	for _, f := range swept.Facts {
+		types = append(types, f.Type)
+		if f.Type == "has_chunk" || f.Type == "mentions" {
+			t.Errorf("structural edge %q reported as an uncited fact", f.Type)
+		}
+	}
+	if len(swept.Facts) != 1 || (len(swept.Facts) == 1 && swept.Facts[0].Type != "lives_in") {
+		t.Errorf("swept %v, want exactly [lives_in]", types)
+	}
+}

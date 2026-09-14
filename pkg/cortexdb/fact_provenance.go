@@ -175,16 +175,31 @@ func (db *DB) UncitedFacts(ctx context.Context, limit int) ([]FactProvenance, er
 	// Filtered in SQL so a brain with a million cited edges does not have to
 	// hand all of them to Go to find the few that are not. Asked of the
 	// dialect because json_extract is SQLite's alone.
+	//
+	// Guarded, because an edge written without any properties gets the empty
+	// string in that column, and the empty string is not JSON. Every document
+	// ingested writes one such edge per chunk, so the unguarded extract failed
+	// this whole query on any brain that had ever ingested anything — with
+	// "malformed JSON", naming neither the column nor the row. An edge whose
+	// properties are unreadable cites nothing, which is exactly what this
+	// sweep is looking for; the guard makes it say so instead of erroring.
 	d := db.Dialect()
-	chunkIDs := d.JSONText("properties", "chunk_ids")
-	docID := d.JSONText("properties", "document_id")
-	ruleID := d.JSONText("properties", "rule_id")
+	chunkIDs := d.JSONTextGuarded("properties", "chunk_ids")
+	docID := d.JSONTextGuarded("properties", "document_id")
+	ruleID := d.JSONTextGuarded("properties", "rule_id")
 
+	// has_chunk and mentions are bookkeeping — a document owning its chunks, a
+	// chunk naming an entity. They carry no properties because there is nothing
+	// to cite: they are not claims about the world and were never going to have
+	// a source. Left in, every ingested document would add one per chunk to a
+	// report whose whole job is to be short enough to act on. The same two are
+	// excluded from graph_list_all for the same reason.
 	src, srcArgs := db.Graph().EdgeSource(ctx)
 	query := d.Rebind(`
 		SELECT id, from_node_id, to_node_id, COALESCE(edge_type, '')
 		FROM ` + src + ` AS e
-		WHERE (` + chunkIDs + ` IS NULL OR ` + chunkIDs + ` IN ('', '[]'))
+		WHERE COALESCE(edge_type, '') NOT IN ('has_chunk', 'mentions')
+		  AND (` + chunkIDs + ` IS NULL OR ` + chunkIDs + ` IN ('', '[]'))
 		  AND (` + docID + ` IS NULL OR ` + docID + ` = '')
 		  AND (` + ruleID + ` IS NULL OR ` + ruleID + ` = '')
 		ORDER BY id
