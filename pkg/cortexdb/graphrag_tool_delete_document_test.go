@@ -170,3 +170,79 @@ func TestDeleteDocumentGraphRequiresDocumentID(t *testing.T) {
 		t.Fatalf("expected document_id error, got %v", err)
 	}
 }
+
+// TestDeletingADocumentsGraphIsOneTransaction is the guarantee a replace
+// depends on and did not have.
+//
+// The removal is four write phases — the relation edges, an UPDATE per entity
+// that survives with one fewer source, the nodes, and the vector index sync —
+// and they ran as four independent statements. A failure between them left a
+// graph half removed: edges gone and their endpoints still standing, or some
+// entities detached and the rest still naming a document that no longer exists.
+// Nothing downstream can tell that state from a real one, and re-running the
+// delete does not restore what the first pass took.
+//
+// Tested by doing the work inside a transaction the test rolls back. That
+// asserts the property directly — every write is in one transaction, so
+// abandoning it leaves the graph exactly as it was — rather than trying to
+// crash the process at the one moment that would prove it.
+func TestDeletingADocumentsGraphIsOneTransaction(t *testing.T) {
+	db := openOntologyTestDB(t)
+	ctx := context.Background()
+
+	upsertProseEntities(t, db, "one.md", []string{"Alpha", "Beta"}, "one.md#0")
+	upsertProseEntities(t, db, "two.md", []string{"Beta", "Gamma"}, "two.md#0")
+	if _, err := db.GraphRAGTools().UpsertRelations(ctx, ToolUpsertRelationsRequest{
+		DocumentID: "one.md",
+		Relations:  []ToolRelationInput{{From: "Alpha", To: "Beta", Type: "cites"}},
+	}); err != nil {
+		t.Fatalf("relations: %v", err)
+	}
+
+	before := graphCensus(t, db)
+
+	tx, err := db.SQL().BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	if _, err := db.GraphRAGTools().deleteDocumentGraphTx(ctx, tx, ToolDeleteDocumentGraphRequest{DocumentID: "one.md"}); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("delete inside a transaction: %v", err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+
+	after := graphCensus(t, db)
+	if before != after {
+		t.Fatalf("the graph changed after a rolled-back delete: before %+v, after %+v — "+
+			"the removal is not one transaction, so a failure partway leaves it half done", before, after)
+	}
+
+	// And committed, it still does the whole job.
+	if _, err := db.GraphRAGTools().DeleteDocumentGraph(ctx, ToolDeleteDocumentGraphRequest{DocumentID: "one.md"}); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	done := graphCensus(t, db)
+	if done == before {
+		t.Fatal("a committed delete changed nothing")
+	}
+	// Beta is named by two.md as well, so it is detached and not deleted.
+	if node, err := db.Graph().GetNode(ctx, EntityNodeID("Beta")); err != nil || node == nil {
+		t.Error("Beta was deleted, but two.md still names it")
+	}
+}
+
+type census struct{ nodes, edges int }
+
+func graphCensus(t *testing.T, db *DB) census {
+	t.Helper()
+	var c census
+	if err := db.SQL().QueryRow(`SELECT count(*) FROM graph_nodes`).Scan(&c.nodes); err != nil {
+		t.Fatalf("count nodes: %v", err)
+	}
+	if err := db.SQL().QueryRow(`SELECT count(*) FROM graph_edges`).Scan(&c.edges); err != nil {
+		t.Fatalf("count edges: %v", err)
+	}
+	return c
+}

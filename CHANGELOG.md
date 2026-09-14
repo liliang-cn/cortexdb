@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.108.0] - 2026-09-14
+
+### Fixed
+
+- **Deleting a document's graph is one transaction.** The removal is four write
+  phases — the relation edges, an UPDATE per entity that survives with one
+  fewer source, the nodes, and the vector index sync — and they ran as four
+  independent statements. A failure between any two left a graph half removed:
+  edges gone with their endpoints still standing, or some entities detached and
+  the rest still naming a document that is no longer there. Nothing downstream
+  can tell that state from a real one, and running the delete again does not
+  restore what the first pass took. The reads now happen on the same
+  transaction as the writes, so the plan and what it acts on cannot drift; the
+  index sync stays outside and after the commit, because syncing ids whose rows
+  a rollback restored would be worse than not syncing at all.
+
 ## [2.107.0] - 2026-09-14
 
 The provenance a machine-written fact could not carry.

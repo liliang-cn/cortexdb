@@ -2,9 +2,12 @@ package cortexdb
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
 // Document-scoped graph deletion.
@@ -41,13 +44,61 @@ type ToolDeleteDocumentGraphResponse struct {
 	DocumentNodeDeleted  bool `json:"document_node_deleted"`
 	RelationEdgesDeleted int  `json:"relation_edges_deleted"`
 	DryRun               bool `json:"dry_run,omitempty"`
+
+	// deletedNodeIDs is what the vector index must stop serving, carried out
+	// of the transaction so the sync happens after the commit and never for a
+	// row a rollback put back. Unexported: it is this call's own bookkeeping
+	// and not part of the answer.
+	deletedNodeIDs []string
 }
 
 // DeleteDocumentGraph removes a document's chunk and document nodes, its
 // relation edges, and the entities it alone asserted. Embeddings are not
 // touched: they live in the caller's collection and the caller knows which
 // they are; the graph does not.
+// DeleteDocumentGraph removes one document's graph, in one transaction.
+//
+// The transaction is the whole point and it was missing. The removal is four
+// write phases — the relation edges, an UPDATE per entity that survives with
+// one fewer source, the nodes, and the vector index sync — and running them as
+// four independent statements meant a failure between any two left a graph half
+// removed: edges gone with their endpoints still standing, or some entities
+// detached and the rest still naming a document that is no longer there.
+// Nothing downstream can tell that state from a real one, and running the
+// delete again does not restore what the first pass took.
+//
+// The index sync stays outside, after the commit, because it is not a database
+// write: syncing ids whose rows a rollback restored would be the one thing
+// worse than not syncing at all.
 func (t *GraphRAGToolbox) DeleteDocumentGraph(ctx context.Context, req ToolDeleteDocumentGraphRequest) (*ToolDeleteDocumentGraphResponse, error) {
+	tx, err := t.db.SQL().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("cortexdb: begin the delete of %s: %w", strings.TrimSpace(req.DocumentID), err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	resp, err := t.deleteDocumentGraphTx(ctx, tx, req)
+	if err != nil {
+		return nil, err
+	}
+	if req.DryRun {
+		return resp, nil
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("cortexdb: commit the delete of %s: %w", strings.TrimSpace(req.DocumentID), err)
+	}
+	if len(resp.deletedNodeIDs) > 0 {
+		t.db.graph.SyncDeletedNodeIDs(ctx, resp.deletedNodeIDs)
+	}
+	return resp, nil
+}
+
+// deleteDocumentGraphTx is the work, scoped to a transaction the caller owns.
+//
+// Exported only to the package's own tests, which prove the guarantee by doing
+// the work and rolling back: if the graph is unchanged afterwards, every write
+// was inside the transaction.
+func (t *GraphRAGToolbox) deleteDocumentGraphTx(ctx context.Context, tx *sql.Tx, req ToolDeleteDocumentGraphRequest) (*ToolDeleteDocumentGraphResponse, error) {
 	documentID := strings.TrimSpace(req.DocumentID)
 	if documentID == "" {
 		return nil, fmt.Errorf("document_id is required")
@@ -64,7 +115,7 @@ func (t *GraphRAGToolbox) DeleteDocumentGraph(ctx context.Context, req ToolDelet
 	// edges and nodes written without properties carry an empty string, and
 	// reading a JSON field out of one is an error rather than a miss — and so
 	// does the spelling, which is not the same on the two backends.
-	edgeIDs, err := collectIDs(ctx, t.db,
+	edgeIDs, err := collectIDsTx(ctx, t.db, tx,
 		`SELECT id FROM graph_edges WHERE `+docIDIs(t.db), documentID)
 	if err != nil {
 		return nil, fmt.Errorf("find relation edges: %w", err)
@@ -78,7 +129,7 @@ func (t *GraphRAGToolbox) DeleteDocumentGraph(ctx context.Context, req ToolDelet
 	}
 	var doomed []string
 	var detached []detachment
-	rows, err := t.db.query(ctx, `
+	rows, err := t.db.txQuery(ctx, tx, `
 		SELECT id, properties FROM graph_nodes
 		WHERE `+t.db.Dialect().JSONArrayContains("graph_nodes.properties", "source_document_ids"), documentID)
 	if err != nil {
@@ -115,12 +166,12 @@ func (t *GraphRAGToolbox) DeleteDocumentGraph(ctx context.Context, req ToolDelet
 	// 3. The document's own nodes: its chunks (real and stub) and the document
 	// node itself. Matched by property, and the document node also by its
 	// derived id for graphs written before the property existed.
-	chunkIDs, err := collectIDs(ctx, t.db,
+	chunkIDs, err := collectIDsTx(ctx, t.db, tx,
 		`SELECT id FROM graph_nodes WHERE node_type = 'chunk' AND `+docIDIs(t.db), documentID)
 	if err != nil {
 		return nil, fmt.Errorf("find chunk nodes: %w", err)
 	}
-	docNodeIDs, err := collectIDs(ctx, t.db,
+	docNodeIDs, err := collectIDsTx(ctx, t.db, tx,
 		`SELECT id FROM graph_nodes WHERE node_type = 'document' AND ((`+docIDIs(t.db)+`) OR id = ?)`,
 		documentID, graphDocumentNodeID(documentID))
 	if err != nil {
@@ -136,37 +187,56 @@ func (t *GraphRAGToolbox) DeleteDocumentGraph(ctx context.Context, req ToolDelet
 		return resp, nil
 	}
 
-	if len(edgeIDs) > 0 {
-		if _, err := t.db.graph.DeleteEdgesBatch(ctx, edgeIDs); err != nil {
-			return nil, fmt.Errorf("delete relation edges: %w", err)
-		}
-	}
 	for _, d := range detached {
 		remainingJSON, err := json.Marshal(d.remaining)
 		if err != nil {
 			return nil, fmt.Errorf("encode remaining sources of %s: %w", d.id, err)
 		}
-		if _, err := t.db.exec(ctx,
+		if _, err := t.db.txExec(ctx, tx,
 			`UPDATE graph_nodes SET properties = `+t.db.Dialect().JSONSet("properties", "source_document_ids")+
 				`, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
 			string(remainingJSON), d.id); err != nil {
 			return nil, fmt.Errorf("detach %s: %w", d.id, err)
 		}
 	}
-	// Nodes go through the batch API and then the index sync, so the vector
-	// index does not keep serving ids whose rows are gone. Edges go with their
-	// nodes via ON DELETE CASCADE.
+	// Edges and nodes go together through the one batch call that takes a
+	// transaction. Edges first is not load-bearing — a node's edges go with it
+	// via ON DELETE CASCADE — but the relation edges this document asserted
+	// include ones whose endpoints survive, and those have to be named.
 	nodeIDs := make([]string, 0, len(doomed)+len(chunkIDs)+len(docNodeIDs))
 	nodeIDs = append(nodeIDs, doomed...)
 	nodeIDs = append(nodeIDs, chunkIDs...)
 	nodeIDs = append(nodeIDs, docNodeIDs...)
-	if len(nodeIDs) > 0 {
-		if _, err := t.db.graph.DeleteNodesBatch(ctx, nodeIDs); err != nil {
-			return nil, fmt.Errorf("delete document nodes: %w", err)
+	if len(edgeIDs) > 0 || len(nodeIDs) > 0 {
+		if _, err := t.db.graph.ExecuteBatchTx(ctx, tx, &graph.BatchGraphOperation{
+			EdgeDeletes: edgeIDs, NodeDeletes: nodeIDs,
+		}); err != nil {
+			return nil, fmt.Errorf("delete the graph of %s: %w", documentID, err)
 		}
-		t.db.graph.SyncDeletedNodeIDs(ctx, nodeIDs)
 	}
+	// Carried out rather than synced here: the vector index must not stop
+	// serving ids whose rows a rollback is about to restore.
+	resp.deletedNodeIDs = nodeIDs
 	return resp, nil
+}
+
+// collectIDsTx is collectIDs against a transaction, so the plan is read from
+// the same snapshot the writes will change.
+func collectIDsTx(ctx context.Context, db *DB, tx *sql.Tx, query string, args ...any) ([]string, error) {
+	rows, err := db.txQuery(ctx, tx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	ids := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // collectIDs runs a single-column id query and returns the ids.
