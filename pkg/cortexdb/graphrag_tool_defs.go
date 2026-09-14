@@ -740,6 +740,24 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.db.NeedsAttentionTool(ctx, req)
+	case "fact_provenance":
+		var req ToolFactProvenanceRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.db.FactProvenanceTool(ctx, req)
+	case "uncited_facts":
+		var req ToolUncitedFactsRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.db.UncitedFactsTool(ctx, req)
+	case "vector_dimension_repair":
+		var req VectorDimensionRepairRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.db.RepairVectorDimensions(ctx, req)
 	case "graph_list_all":
 		var req GraphListAllRequest
 		if err := json.Unmarshal(input, &req); err != nil {

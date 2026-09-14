@@ -1,7 +1,10 @@
 package cortexdb
 
 import (
+	"context"
+	"encoding/json"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -218,5 +221,43 @@ func TestTheToolboxIsMostlyReadsSoReadOnlyKeysAreWorthHaving(t *testing.T) {
 	}
 	if reads <= writes {
 		t.Fatalf("%d reads against %d writes: a read-only key can reach less than half the toolbox", reads, writes)
+	}
+}
+
+// TestEveryDefinedToolIsReachableThroughCall closes the gap between the
+// catalogue and the dispatcher.
+//
+// Definitions is what /v1/tools publishes and what authorization is derived
+// from; Call is what every non-MCP caller reaches — the REST port, the gRPC
+// ToolCall, and anything embedding the toolbox. The MCP server does not go
+// through Call at all: it registers each handler against the definition
+// directly, so a tool can be registered there, listed everywhere, and still be
+// unreachable over both ports without a single test failing. Three were:
+// fact_provenance, uncited_facts and vector_dimension_repair.
+//
+// The input here is deliberately malformed. A name the switch knows fails at
+// json.Unmarshal and comes back as "decode <name>"; a name it does not know
+// comes back as "unknown tool" without touching the database. So this walks
+// the whole catalogue, including the writes, and executes none of it.
+func TestEveryDefinedToolIsReachableThroughCall(t *testing.T) {
+	box := &GraphRAGToolbox{}
+	unreachable := make([]string, 0)
+	for _, d := range box.Definitions() {
+		name := d.Name
+		func() {
+			// A dispatched tool on a toolbox with no database may panic before
+			// it ever decodes; that is still proof the name is reachable.
+			defer func() { _ = recover() }()
+			if _, err := box.Call(context.Background(), name, json.RawMessage("{")); err != nil {
+				if strings.Contains(strings.ToLower(err.Error()), "unknown tool") {
+					unreachable = append(unreachable, name)
+				}
+			}
+		}()
+	}
+	sort.Strings(unreachable)
+	if len(unreachable) > 0 {
+		t.Errorf("defined and listed but not dispatchable through Call: %v — "+
+			"registering a tool with the MCP server is not enough, add the case", unreachable)
 	}
 }
