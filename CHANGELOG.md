@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.107.0] - 2026-09-14
+
+The provenance a machine-written fact could not carry.
+
+### Added
+
+- **`RDFTriple.Provenance`, merged onto the edge a triple becomes.** An import
+  wrote triples into the brain carrying nothing about their origin, so a fact
+  read out of a live database could not say which plan was signed to read the
+  table, which run read it, or who authorized it — all of which were in the
+  ledger and on none of the facts. The map lands where the knowledge contract is
+  already read from: edge properties. It cannot overwrite the keys that say what
+  the triple *is*, because a fact able to relabel itself as inferred through the
+  field meant to hold it to account is worse than an anonymous one. It is not
+  part of the triple's identity, so re-importing a row refreshes its provenance
+  rather than forking the fact.
+- **`importflow.WithProvenance`**, stamped by the one sink every triple reaches
+  — column mapping, relation mapping and AI extraction all pass through it, and
+  a path that forgot would produce exactly the anonymous facts this ends. The
+  importer invents nothing: what a row out of somebody's production database is
+  worth is the calling product's decision, not this code's.
+
+### Changed
+
+- **`uncited_facts` counts a named source as an accounting.** A live-database
+  row and a rule-derived edge have no chunk anybody can quote and are not
+  anonymous; reporting them would bury the facts that genuinely came from
+  nowhere under one line per imported row.
+- The two copies of the RDF edge-property construction are one function. They
+  were identical, and a provenance legible through one path and not the other
+  would have been a hole nobody could see.
+
 ## [2.106.0] - 2026-09-14
 
 Two defects on the provenance surface, both found by calling it over a port
