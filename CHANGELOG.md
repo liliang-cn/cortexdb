@@ -2,6 +2,53 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.106.0] - 2026-09-14
+
+Two defects on the provenance surface, both found by calling it over a port
+rather than from a test, and the flag that makes an upgrade checkable.
+
+### Added
+
+- **`-version` on all three binaries.** `cortexdb-grpc -version` prints the
+  version of the file on disk and exits, opening no database, reading no `.env`
+  and touching no network — it answers on a machine where nothing is configured
+  yet, which is the machine you are on right after copying a binary into place.
+  `-health` already reported the version of a server that is *running*; there
+  was no way to ask the artifact, so telling two builds apart meant comparing
+  checksums against a build you still had lying around. Both spellings work,
+  and only as the first argument: in `-db --version` the second word is a
+  database path, and a typo that printed a version and exited 0 would look,
+  under systemd, like a unit that came up. `cortexdb-mcp-stdio` and
+  `cortexdb-connector-mcp` answer the same way, since an MCP client cannot be
+  asked what it launched.
+
+### Fixed
+
+- **`fact_provenance`, `uncited_facts` and `vector_dimension_repair` were
+  listed on every door and reachable through none of them.** All three were in
+  the catalogue `/v1/tools` publishes, classified for authorization, and
+  registered with the MCP server — and absent from `GraphRAGToolbox.Call`,
+  which the REST port and the gRPC `ToolCall` both dispatch through. A caller
+  could read the catalogue, build a valid request from the published schema,
+  and get back `unknown tool: fact_provenance`. Asking a record where it came
+  from is what the store is for, and over both ports it could not be asked.
+  Registering a handler with the MCP server consumes the definition, so it
+  looked like registration and nothing downstream noticed the missing case. A
+  test now walks the catalogue and calls every name with malformed input: a
+  known name fails at decode, an unknown one says so, and no tool executes.
+- **The sweep for uncited facts failed on any brain with a document in it.**
+  `ingest_document` writes one `has_chunk` edge per chunk, and an edge written
+  with no properties gets the empty string in that column. The empty string is
+  not JSON, so `json_extract` on it is an error rather than a null, and one
+  such row failed the whole query — with `malformed JSON`, naming neither the
+  column nor the row. Every brain in use has ingested a document, so the tool
+  that reports which facts cannot say where they came from was itself the one
+  tool that could not be run. The dialect already carried `JSONTextGuarded`,
+  written for exactly this and used by five other queries. Structural edges
+  (`has_chunk`, `mentions`) are excluded while the query is open: a document
+  owning its chunks is not a claim anybody can cite a source for, and one per
+  chunk of every document would bury the facts that are actually uncited.
+
 ## [2.105.0] - 2026-09-14
 
 Four capabilities built from parts the engine already had and nothing could
