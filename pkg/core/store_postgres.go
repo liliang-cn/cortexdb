@@ -370,15 +370,27 @@ func (s *PostgresStore) search(ctx context.Context, query []float32, opts Search
 	return out, rows.Err()
 }
 
-// RangeSearch returns everything within a cosine distance of the query.
+// RangeSearch returns everything within `radius` of the query, closest first.
+//
+// It used to set opts.Threshold = 1 - radius and hand the whole thing to
+// Search, which looked like reuse and was three divergences from the SQLite
+// store at once: the score came back a similarity where SQLite returned a
+// distance, TopK was silently defaulted to 1000 so a wider match set was
+// truncated with nothing said, and a non-positive radius — an error on SQLite
+// — became a threshold that quietly matched everything. The score is now the
+// similarity on both backends and the truncation is gone; see
+// (*PostgresStore).rangeSearch for what replaced it.
 func (s *PostgresStore) RangeSearch(ctx context.Context, query []float32, radius float32, opts SearchOptions) ([]ScoredEmbedding, error) {
-	// Expressed as a similarity threshold on top of the ordered search, so the
-	// two paths cannot disagree about what "close" means.
-	opts.Threshold = float64(1 - radius)
-	if opts.TopK <= 0 {
-		opts.TopK = 1000
-	}
-	return s.Search(ctx, query, opts)
+	// One retry, for a `vector` type replaced under this connection.
+	// See IsStaleTypeCache: the statement never ran, and the failure is
+	// what clears the cache that caused it.
+	var out []ScoredEmbedding
+	err := retryOnStaleTypeCache(func() error {
+		var e error
+		out, e = s.rangeSearch(ctx, query, radius, opts)
+		return e
+	})
+	return out, err
 }
 
 func (s *PostgresStore) Delete(ctx context.Context, id string) error {

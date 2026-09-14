@@ -107,7 +107,16 @@ func (s *SQLiteStore) SearchWithFacets(ctx context.Context, query []float32, opt
 	return results, facetResults, nil
 }
 
-// buildFacetedWhereClause builds SQL WHERE clause from facet filters
+// buildFacetedWhereClause builds SQL WHERE clause from facet filters.
+//
+// Every condition below names e.metadata, not metadata. The query these land in
+// LEFT JOINs collections onto embeddings and both tables have a metadata
+// column, so an unqualified name is ambiguous and SQLite refuses the statement
+// before it reads a row. That is what happened: SearchWithFacets returned
+// "ambiguous column name: metadata" for every facet filter and every
+// opts.Filter it was ever given, so the method worked only when asked to filter
+// nothing. Nothing caught it because nothing calls it — it has no callers
+// outside its own tests, and those never passed a facet.
 func (s *SQLiteStore) buildFacetedWhereClause(facets map[string]FacetFilter) (string, []interface{}) {
 	if len(facets) == 0 {
 		return "", nil
@@ -136,7 +145,7 @@ func (s *SQLiteStore) buildFilterCondition(field string, filter FacetFilter) (st
 	switch filter.Type {
 	case FilterTypeEquals:
 		if len(filter.Values) > 0 {
-			return fmt.Sprintf("json_extract(metadata, '$.%s') = ?", field), filter.Values[:1]
+			return fmt.Sprintf("json_extract(e.metadata, '$.%s') = ?", field), filter.Values[:1]
 		}
 
 	case FilterTypeIn:
@@ -145,7 +154,7 @@ func (s *SQLiteStore) buildFilterCondition(field string, filter FacetFilter) (st
 			for i := range placeholders {
 				placeholders[i] = "?"
 			}
-			return fmt.Sprintf("json_extract(metadata, '$.%s') IN (%s)", field, strings.Join(placeholders, ",")), filter.Values
+			return fmt.Sprintf("json_extract(e.metadata, '$.%s') IN (%s)", field, strings.Join(placeholders, ",")), filter.Values
 		}
 
 	case FilterTypeRange:
@@ -153,11 +162,11 @@ func (s *SQLiteStore) buildFilterCondition(field string, filter FacetFilter) (st
 		args := []interface{}{}
 
 		if filter.Min != nil {
-			conditions = append(conditions, fmt.Sprintf("CAST(json_extract(metadata, '$.%s') AS REAL) >= ?", field))
+			conditions = append(conditions, fmt.Sprintf("CAST(json_extract(e.metadata, '$.%s') AS REAL) >= ?", field))
 			args = append(args, filter.Min)
 		}
 		if filter.Max != nil {
-			conditions = append(conditions, fmt.Sprintf("CAST(json_extract(metadata, '$.%s') AS REAL) <= ?", field))
+			conditions = append(conditions, fmt.Sprintf("CAST(json_extract(e.metadata, '$.%s') AS REAL) <= ?", field))
 			args = append(args, filter.Max)
 		}
 
@@ -167,16 +176,16 @@ func (s *SQLiteStore) buildFilterCondition(field string, filter FacetFilter) (st
 
 	case FilterTypeContains:
 		if filter.Pattern != "" {
-			return fmt.Sprintf("json_extract(metadata, '$.%s') LIKE ?", field), []interface{}{"%" + filter.Pattern + "%"}
+			return fmt.Sprintf("json_extract(e.metadata, '$.%s') LIKE ?", field), []interface{}{"%" + filter.Pattern + "%"}
 		}
 
 	case FilterTypePrefix:
 		if filter.Pattern != "" {
-			return fmt.Sprintf("json_extract(metadata, '$.%s') LIKE ?", field), []interface{}{filter.Pattern + "%"}
+			return fmt.Sprintf("json_extract(e.metadata, '$.%s') LIKE ?", field), []interface{}{filter.Pattern + "%"}
 		}
 
 	case FilterTypeExists:
-		return fmt.Sprintf("json_extract(metadata, '$.%s') IS NOT NULL", field), nil
+		return fmt.Sprintf("json_extract(e.metadata, '$.%s') IS NOT NULL", field), nil
 
 	case FilterTypeNested:
 		return s.buildNestedCondition(field, filter)
@@ -243,7 +252,7 @@ func (s *SQLiteStore) fetchCandidatesWithFacets(ctx context.Context, whereClause
 	// Add metadata filter
 	if opts.Filter != nil {
 		for key, value := range opts.Filter {
-			conditions = append(conditions, fmt.Sprintf("json_extract(metadata, '$.%s') = ?", key))
+			conditions = append(conditions, fmt.Sprintf("json_extract(e.metadata, '$.%s') = ?", key))
 			args = append(args, value)
 		}
 	}
@@ -333,7 +342,47 @@ func (s *SQLiteStore) computeFacetCounts(ctx context.Context, opts FacetedSearch
 	return results, nil
 }
 
-// RangeSearch performs range-based vector search
+// rangeDistance turns a similarity score into the distance a radius is
+// measured against. It is the one place either backend decides what "within
+// radius" means, because the two used to decide it separately and disagreed.
+//
+// The discriminator is the metric's own fixed point — the score it gives a
+// vector against itself — and not, as it used to be, the sign of the score.
+// Every metric here agrees that a vector is maximally similar to itself, so
+// how far below that maximum a score falls is the distance, whatever scale the
+// metric happens to use: cosine's fixed point is 1, EuclideanDist's is 0
+// because it returns the negated distance, and DotProduct's is the query's
+// squared norm, which at least puts it in the right direction.
+//
+// The sign test it replaces was a guess at which metric was in play, and it
+// was wrong for the whole negative half of cosine. Cosine runs -1..1, not
+// 0..1, and negative components are ordinary in real embeddings: a score of
+// -0.5 became a distance of 0.5 rather than 1.5, and an orthogonal pair scored
+// 0 became a distance of 0 — ranked as identical, and admitted by every radius
+// there is. A radius of 0.5 quietly returned vectors anti-correlated with the
+// query, with no error and no way to see it in the result.
+//
+// SimilarityFunc is a bare func with no identity (see similarity.go), so
+// nothing can ask Config.SimilarityFn which metric it is. This asks the
+// function itself, which costs one extra call per query.
+func rangeDistance(selfSimilarity, score float64) float64 {
+	return selfSimilarity - score
+}
+
+// RangeSearch returns every vector within `radius` of the query, closest first.
+//
+// Score is the similarity the store's similarityFn returns — the same quantity
+// Search puts there, on the same scale, sorted the same way. It used to be the
+// distance instead, which inverts the meaning: 0 became "identical" and the
+// sort ran ascending. Nothing in this package noticed, because nothing calls
+// this; what would have noticed is the first caller to hand a range result to
+// a reranker or to the RRF fusion in pkg/cortexdb, both of which read
+// ScoredEmbedding.Score as a similarity and would have ranked the nearest
+// vectors last.
+//
+// The radius is still a distance, in whatever metric the store was configured
+// with. rangeDistance is the conversion, and the PostgreSQL store applies the
+// same one.
 func (s *SQLiteStore) RangeSearch(ctx context.Context, query []float32, radius float32, opts SearchOptions) ([]ScoredEmbedding, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -353,6 +402,10 @@ func (s *SQLiteStore) RangeSearch(ctx context.Context, query []float32, radius f
 		return nil, wrapError("range_search", err)
 	}
 
+	// The metric's fixed point, once per query rather than once per candidate:
+	// it depends only on the query and the metric, and the corpus can be large.
+	selfSimilarity := s.similarityFn(query, query)
+
 	// Filter by radius
 	var results []ScoredEmbedding
 	for _, candidate := range candidates {
@@ -363,34 +416,21 @@ func (s *SQLiteStore) RangeSearch(ctx context.Context, query []float32, radius f
 		}
 
 		score := s.similarityFn(query, candidate.Vector)
-
-		// For range search, we need to handle different similarity metrics:
-		// - Euclidean: score is negative distance, so actual distance = -score
-		// - Cosine: score is similarity (0 to 1), so distance = 1 - score
-		// - DotProduct: not suitable for range search (unbounded)
-
-		var distance float32
-		if score <= 0 {
-			// Euclidean distance (negative score)
-			distance = float32(-score)
-		} else {
-			// Cosine similarity or other bounded metrics
-			distance = float32(1.0 - score)
+		if rangeDistance(selfSimilarity, score) > float64(radius) {
+			continue
 		}
-
-		if distance <= radius {
-			// For display, use the actual distance as the score for range search
-			candidate.Score = float64(distance)
-			results = append(results, candidate)
-		}
+		candidate.Score = score
+		results = append(results, candidate)
 	}
 
-	// Sort by distance (ascending - closer is better for range search)
+	// Closest first, which for a similarity means descending — the order
+	// Search returns and the order every consumer of Score assumes.
 	sort.Slice(results, func(i, j int) bool {
-		return results[i].Score < results[j].Score
+		return results[i].Score > results[j].Score
 	})
 
-	// Apply TopK limit if specified
+	// TopK is a cap the caller asked for, not one this method invents: zero
+	// means every match, however many that is.
 	if opts.TopK > 0 && len(results) > opts.TopK {
 		results = results[:opts.TopK]
 	}
@@ -398,7 +438,11 @@ func (s *SQLiteStore) RangeSearch(ctx context.Context, query []float32, radius f
 	return results, nil
 }
 
-// BatchRangeSearch performs range search for multiple queries
+// BatchRangeSearch performs range search for multiple queries.
+//
+// Results stay grouped by input query and in input order — the index into the
+// outer slice is the index of the query that produced it, which is the only
+// thing tying a result back to its query.
 func (s *SQLiteStore) BatchRangeSearch(ctx context.Context, queries [][]float32, radius float32, opts SearchOptions) ([][]ScoredEmbedding, error) {
 	results := make([][]ScoredEmbedding, len(queries))
 
