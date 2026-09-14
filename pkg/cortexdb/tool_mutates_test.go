@@ -45,6 +45,12 @@ var toolWrites = map[string]bool{
 	"search_text":               false,
 	"search_vector_range":       false,
 	"aggregate_metadata":        false,
+	"graph_schema":              false,
+	"graph_property_values":     false,
+	"rank_graph_nodes":          false,
+	"predict_graph_edges":       false,
+	"graph_statistics":          false,
+	"disambiguate_mentions":     false,
 	"representative_records":    false,
 	"cortex_query":              false,
 	"search_chunks_by_entities": false,
@@ -149,7 +155,7 @@ var toolWrites = map[string]bool{
 // table so that a tool added without a decision cannot slip through by sharing
 // a name with one already listed, and so that a tool quietly disappearing is
 // noticed too. Change it in the same commit that adds the tool and its row.
-const toolCount = 78
+const toolCount = 84
 
 // TestEveryToolDeclaresWhetherItWrites is the test the Mutates doc comment
 // promises: it makes forgetting impossible rather than merely unlikely.

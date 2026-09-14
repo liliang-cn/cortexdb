@@ -70,6 +70,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 					"max_context_chunks":     toolIntegerSchema("Maximum chunks in final context."),
 					"max_context_chars":      toolIntegerSchema("Maximum context character budget."),
 					"per_document_limit":     toolIntegerSchema("Maximum chunks per document."),
+					"chunk_window":           toolIntegerSchema("Widen each retrieved chunk to this many neighbouring chunks either side, in the same document, so an answer split across a chunk boundary arrives whole. 0 (default) is off. Neighbours are context, not matches: they are never scored and never displace a hit."),
 					"diversity_lambda":       toolNumberSchema("Rerank diversity weight between 0 and 1."),
 					"entity_names":           toolStringArraySchema("Optional entities from structured planning."),
 					"keywords":               toolStringArraySchema("LLM-generated keyword bank derived from the goal."),

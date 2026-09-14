@@ -189,6 +189,74 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			),
 		},
 		{
+			Name:        "graph_schema",
+			Description: "Report the knowledge graph's observed schema — which node types and edge types actually exist, how many of each, which node-type pairs every edge type really connects (Person -[WORKS_AT]-> Company (412)), and which property keys each node type carries. Call this before writing any traversal, SPARQL query or entity filter against a graph you have not already inspected in this conversation: a query naming a type or key the graph does not have still runs, matches nothing, and returns a confident wrong negative. This is measured from the stored rows, so it works on graphs built by extraction that have no declared ontology — ontology_get returns a declared schema, which is opt-in and usually absent on exactly the graphs whose shape nobody knows. It does not list property values: once this says a key exists, call graph_property_values before filtering on one, because stored values are often codes. Read the text field; it is the same answer written to be read.",
+			InputSchema: toolObjectSchema(
+				nil,
+				map[string]any{
+					"node_types":        toolStringArraySchema("Only describe these node types, matched exactly as stored. Omit for all."),
+					"edge_types":        toolStringArraySchema("Only describe these edge types, matched exactly as stored. Omit for all."),
+					"max_node_types":    toolIntegerSchema("Cap the node types listed, most numerous first. Default 40."),
+					"max_edge_types":    toolIntegerSchema("Cap the edge types listed, most numerous first. Default 40."),
+					"max_edge_shapes":   toolIntegerSchema("Cap the endpoint-type pairs listed per edge type. Default 6."),
+					"max_property_keys": toolIntegerSchema("Cap the property keys listed per node type. Default 12."),
+				},
+			),
+		},
+		{
+			Name:        "graph_property_values",
+			Description: "List the values one property key actually takes in the knowledge graph, most frequent first, with how many nodes and edges carry each. Call this before writing any filter, WHERE clause or SPARQL literal that compares a property to a value. Stored values are routinely codes, abbreviations, or a spelling nobody would guess from the key's name — asked for color == \"black\", a graph whose rows all say BLK answers \"none\", and that reads like a fact. This is the only way to see the real strings. Get the key name from graph_schema first. The response also reports how many records do not carry the key at all, which is the context a distribution is meaningless without. Match the returned strings exactly; do not substitute the word you expected.",
+			InputSchema: toolObjectSchema(
+				[]string{"key"},
+				map[string]any{
+					"key":   toolStringSchema("The top-level property key to break down, for example \"color\"."),
+					"limit": toolIntegerSchema("Cap the values listed, most frequent first. Default 50; the response says when the list was trimmed."),
+				},
+			),
+		},
+		{
+			Name:        "rank_graph_nodes",
+			Description: "Rank the knowledge graph's nodes by PageRank: structural importance, not keyword frequency. Answers \"what is this knowledge base actually about\" and \"which entities matter here\" by finding the nodes the graph's connections converge on. Each result carries the node's id, label and type beside its score, so the ranking is readable without a second lookup, and it is the honest way to choose what to show first when the graph is too large to show whole. Returns the top 20 by default (maximum 200), highest first, ties broken by id so repeated calls agree; total_nodes says how many were scored and truncated says whether the list was cut. An empty graph returns an empty ranking, not an error. Every call scores every node, so call it once and read the answer rather than in a loop.",
+			InputSchema: toolObjectSchema(
+				nil,
+				map[string]any{
+					"top_n":          toolIntegerSchema("How many of the highest-ranked nodes to return. Default 20, maximum 200."),
+					"iterations":     toolIntegerSchema("Ceiling on the power-iteration count. Default 100. The run stops early once scores settle, so raising this rarely changes the answer."),
+					"damping_factor": toolNumberSchema("Probability the random walk follows an edge rather than restarting, between 0 and 1. Default 0.85. Lower weights local structure more heavily."),
+				},
+			),
+		},
+		{
+			Name:        "predict_graph_edges",
+			Description: "Link prediction: given one node, list the nodes it is NOT connected to but arguably should be, best first. Two different findings come back in the same shape and only the labels tell them apart — a genuinely missing fact worth checking against the sources, or the same entity stored twice under different names, which is a duplicate to merge. Both endpoints are returned named and typed, with the score and the method behind it (\"vector_similarity\" when the two merely look alike, \"combined\" when they also share neighbours; shared neighbours can carry a pair on their own). Requires an existing node id, so use find_nodes first if you only have a name: an unknown id is an error, while a node with no plausible partners is simply an empty list. On a graph whose nodes carry only lexical vectors most of what surfaces will be near-duplicates. It compares the node against every other node, so call it one node at a time and deliberately.",
+			InputSchema: toolObjectSchema(
+				[]string{"node_id"},
+				map[string]any{
+					"node_id":     toolStringSchema("Id of the node to predict connections for, exactly as returned by find_nodes or get_nodes."),
+					"max_results": toolIntegerSchema("How many predictions to return. Default 10, maximum 100."),
+				},
+			),
+		},
+		{
+			Name:        "graph_statistics",
+			Description: "Report the size and shape of the whole knowledge graph: node count, edge count, average degree, density, and the number of connected components. Use it before a large graph operation to know what you are dealing with, to confirm an ingest actually landed, or to diagnose a graph that answers badly — a component count far above 1 usually means entities were written without ever being linked to anything. Takes no arguments and reads the whole graph. An empty graph reports zeros, not an error.",
+			InputSchema: toolObjectSchema(nil, map[string]any{}),
+		},
+		{
+			Name:        "disambiguate_mentions",
+			Description: "Decide which graph entity each ambiguous name refers to, using the other names given alongside it. Returns each mention's candidates ranked by how well the graph connects them to the other mentions' candidates, every connecting path written out as a sentence, and the edge ids behind it — so you can take the top candidate or read the evidence and choose, and either way say afterwards why. Pass every mention from the same sentence or passage in one call: co-occurrence is the entire signal, and a mention sent on its own has nothing to disambiguate against. A mention whose candidates connect to nothing comes back marked unresolved rather than falling back to the closest string match; before reading that as \"not connected\", check search_incomplete and connected_beyond_max_length, which mean a bound stopped the search rather than the graph having no answer. Pass node_types on any brain that keeps documents and chunks as graph nodes: a long document title containing two of the mentions matches both by substring and then scores a perfect 1.0 for each, which ties with the real entity and resolves nothing. Naming the entity-like types — entity, project, protocol, tool, software, person — removes that and is also the cheapest bound there is.",
+			InputSchema: toolObjectSchema(
+				[]string{"mentions"},
+				map[string]any{
+					"mentions":                   toolStringArraySchema("The names to resolve, all from the same sentence or passage. Each one is also the context for the others."),
+					"node_types":                 toolStringArraySchema("Optional candidate type filter. The cheapest bound there is: it cuts candidates before they multiply into pairs."),
+					"max_candidates_per_mention": toolIntegerSchema("Cap on nodes each mention may resolve to. Default 5."),
+					"max_path_length":            toolIntegerSchema("Longest path, in edges, that still counts as support. Default 3. A connection found beyond it is reported, not silently dropped."),
+					"max_path_searches":          toolIntegerSchema("Cap on candidate pairs examined. Default 200. This is the bound that controls runtime."),
+				},
+			),
+		},
+		{
 			Name:        "search_chunks_by_entities",
 			Description: "Find chunks linked to specific entity nodes.",
 			InputSchema: toolObjectSchema(
@@ -281,6 +349,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 					"max_context_chunks":     toolIntegerSchema("Maximum number of chunks to include."),
 					"max_context_chars":      toolIntegerSchema("Maximum total character budget."),
 					"per_document_limit":     toolIntegerSchema("Maximum chunks per document."),
+					"chunk_window":           toolIntegerSchema("Widen each retrieved chunk to this many neighbouring chunks either side, in the same document, so an answer split across a chunk boundary arrives whole. 0 (default) is off. Neighbours are context, not matches: they are never scored and never displace a hit."),
 					"retrieval_mode":         toolEnumSchema("Preferred retrieval strategy for entity enrichment.", RetrievalModeAuto, RetrievalModeLexical, RetrievalModeGraph),
 					"disable_graph":          toolBooleanSchema("Legacy alias. Set true to skip graph-derived entity lookups while packing context."),
 					"graph_light":            toolBooleanSchema("Enable lighter graph enrichment defaults while packing context."),
@@ -321,6 +390,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 					"max_context_chunks":     toolIntegerSchema("Maximum chunks in final context."),
 					"max_context_chars":      toolIntegerSchema("Maximum context character budget."),
 					"per_document_limit":     toolIntegerSchema("Maximum chunks per document."),
+					"chunk_window":           toolIntegerSchema("Widen each retrieved chunk to this many neighbouring chunks either side, in the same document, so an answer split across a chunk boundary arrives whole. 0 (default) is off. Neighbours are context, not matches: they are never scored and never displace a hit."),
 					"disable_rerank":         toolBooleanSchema("Disable reranking and keep chunk order close to retrieval order."),
 					"diversity_lambda":       toolNumberSchema("Rerank diversity weight between 0 and 1."),
 					"entity_names":           toolStringArraySchema("Optional entities from structured LLM planning."),
@@ -434,6 +504,42 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.Query(ctx, req)
+	case "graph_schema":
+		var req GraphSchemaRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.GraphSchema(ctx, req)
+	case "graph_property_values":
+		var req GraphPropertyValuesRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.GraphPropertyValues(ctx, req)
+	case "rank_graph_nodes":
+		var req ToolRankGraphNodesRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.RankGraphNodes(ctx, req)
+	case "predict_graph_edges":
+		var req ToolPredictGraphEdgesRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.PredictGraphEdges(ctx, req)
+	case "graph_statistics":
+		var req ToolGraphStatisticsRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.GraphStatistics(ctx, req)
+	case "disambiguate_mentions":
+		var req ToolDisambiguateMentionsRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.DisambiguateMentions(ctx, req)
 	case "aggregate_metadata":
 		var req ToolAggregateMetadataRequest
 		if err := json.Unmarshal(input, &req); err != nil {

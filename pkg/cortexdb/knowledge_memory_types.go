@@ -98,6 +98,7 @@ type KnowledgeSearchRequest struct {
 	MaxContextChunks    int            `json:"max_context_chunks,omitempty"`
 	MaxContextChars     int            `json:"max_context_chars,omitempty"`
 	PerDocumentLimit    int            `json:"per_document_limit,omitempty"`
+	ChunkWindow         int            `json:"chunk_window,omitempty"`
 	DiversityLambda     float64        `json:"diversity_lambda,omitempty"`
 	DisableRerank       bool           `json:"disable_rerank,omitempty"`
 	EntityNames         []string       `json:"entity_names,omitempty"`

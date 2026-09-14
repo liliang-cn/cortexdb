@@ -221,6 +221,7 @@ type ToolBuildContextRequest struct {
 	MaxContextChunks    int      `json:"max_context_chunks,omitempty"`
 	MaxContextChars     int      `json:"max_context_chars,omitempty"`
 	PerDocumentLimit    int      `json:"per_document_limit,omitempty"`
+	ChunkWindow         int      `json:"chunk_window,omitempty"`
 	RetrievalMode       string   `json:"retrieval_mode,omitempty"`
 	DisableGraph        bool     `json:"disable_graph,omitempty"`
 	GraphLight          bool     `json:"graph_light,omitempty"`
@@ -243,6 +244,7 @@ type ToolSearchGraphRAGLexicalRequest struct {
 	MaxContextChunks    int            `json:"max_context_chunks,omitempty"`
 	MaxContextChars     int            `json:"max_context_chars,omitempty"`
 	PerDocumentLimit    int            `json:"per_document_limit,omitempty"`
+	ChunkWindow         int            `json:"chunk_window,omitempty"`
 	DisableRerank       bool           `json:"disable_rerank,omitempty"`
 	DiversityLambda     float64        `json:"diversity_lambda,omitempty"`
 	EntityNames         []string       `json:"entity_names,omitempty"`

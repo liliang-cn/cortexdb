@@ -37,6 +37,7 @@ type KnowledgeMemoryRecallRequest struct {
 	MaxContextChunks    int            `json:"max_context_chunks,omitempty"`
 	MaxContextChars     int            `json:"max_context_chars,omitempty"`
 	PerDocumentLimit    int            `json:"per_document_limit,omitempty"`
+	ChunkWindow         int            `json:"chunk_window,omitempty"`
 	MaxExpansionSeeds   int            `json:"max_expansion_seeds,omitempty"`
 	MaxTraversalNodes   int            `json:"max_traversal_nodes,omitempty"`
 	MaxEntitiesPerChunk int            `json:"max_entities_per_chunk,omitempty"`
@@ -133,6 +134,7 @@ type KnowledgeMemoryExpandEntityContextRequest struct {
 	MaxContextChunks    int      `json:"max_context_chunks,omitempty"`
 	MaxContextChars     int      `json:"max_context_chars,omitempty"`
 	PerDocumentLimit    int      `json:"per_document_limit,omitempty"`
+	ChunkWindow         int      `json:"chunk_window,omitempty"`
 	RetrievalMode       string   `json:"retrieval_mode,omitempty"`
 	DisableGraph        bool     `json:"disable_graph,omitempty"`
 	GraphLight          bool     `json:"graph_light,omitempty"`

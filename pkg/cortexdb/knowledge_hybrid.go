@@ -41,6 +41,13 @@ func (db *DB) searchKnowledgeHybrid(ctx context.Context, query string, opts Grap
 	}
 	out.Decision.EffectiveMode = RetrievalModeHybrid
 	out.Decision.Reason = "auto used hybrid retrieval (vector + lexical RRF fusion) because an embedder is available"
+	// Widened here too, because an option that works on one retrieval path and
+	// is quietly ignored on another is worse than not having it: the caller
+	// sets ChunkWindow, reads a fragment back, and has no way to tell whether
+	// the window was too small or was never applied.
+	if err := db.widenGraphRAGContext(ctx, out, opts); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 

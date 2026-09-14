@@ -96,6 +96,16 @@ type GraphRAGQueryOptions struct {
 	// raw query (HyDE). The raw query still drives lexical and graph scoring;
 	// only the semantic seed vector comes from this hypothetical answer passage.
 	EmbedText string
+	// ChunkWindow widens every retrieved chunk to the chunks either side of it
+	// in the same document — i-1, i, i+1 at a window of 1 — before the context
+	// is assembled, so a passage that starts mid-argument or says "she" where
+	// the name was a sentence earlier arrives whole.
+	//
+	// Zero, the default, widens nothing and leaves the chunks, their order and
+	// the assembled context exactly as they were before widening existed. The
+	// neighbours it pulls in are context and not hits: they are never scored,
+	// never reranked, and never counted against TopK. See chunk_window.go.
+	ChunkWindow int
 }
 
 // GraphRAGChunkResult is a retrieved chunk plus graph context.
@@ -128,6 +138,12 @@ type GraphRAGQueryResult struct {
 	Chunks   []GraphRAGChunkResult
 	Entities []string
 	Context  string
+	// Windows is populated only when GraphRAGQueryOptions.ChunkWindow asked for
+	// widening. It is the same text Context carries, but structured: one entry
+	// per contiguous run of chunks, each segment marked as the chunk that
+	// matched or as a neighbour brought along for continuity. Chunks stays the
+	// hits alone, so a caller reading it sees no difference.
+	Windows []GraphRAGChunkWindow
 }
 
 // InsertGraphDocument ingests a document into the vector store and graph store for GraphRAG retrieval.
@@ -521,6 +537,9 @@ func (db *DB) SearchGraphRAG(ctx context.Context, query string, opts GraphRAGQue
 		}
 		result.Chunks = packGraphRAGContext(result.Chunks, opts)
 		result.Context = buildGraphRAGContext(result.Chunks)
+		if err := db.widenGraphRAGContext(ctx, result, opts); err != nil {
+			return nil, err
+		}
 		return result, nil
 	}
 
@@ -581,5 +600,8 @@ func (db *DB) SearchGraphRAG(ctx context.Context, query string, opts GraphRAGQue
 
 	result.Entities = sortedKeys(entitySet)
 	result.Context = buildGraphRAGContext(result.Chunks)
+	if err := db.widenGraphRAGContext(ctx, result, opts); err != nil {
+		return nil, err
+	}
 	return result, nil
 }

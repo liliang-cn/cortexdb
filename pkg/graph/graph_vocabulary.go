@@ -113,7 +113,15 @@ func (g *GraphStore) typeCounts(ctx context.Context, query string) (map[string]i
 // Edges whose endpoints are missing are not reported: both endpoints are
 // declared foreign keys, so on a store this package opened they cannot exist.
 func (g *GraphStore) EdgeShapes(ctx context.Context, edgeTypes ...string) ([]EdgeShape, error) {
-	where, args := typeFilter("e.edge_type", edgeTypes)
+	// COALESCE here as well as in the SELECT, and for the same reason
+	// NodePropertyKeys does it: the SELECT presents a NULL edge_type as "", so
+	// "" is the name a caller is handed for the untyped bucket and the only
+	// name it can ask back for — and NULL is equal to nothing, so filtering the
+	// raw column on "" matched none of the rows the unfiltered read had just
+	// counted. Not an error; an empty answer that reads as "there are none of
+	// those". A SELECT and a WHERE that disagree about what NULL is called is
+	// the defect whichever way round it is.
+	where, args := typeFilter("COALESCE(e.edge_type, '')", edgeTypes)
 	rows, err := g.query(ctx, `
 		SELECT COALESCE(e.edge_type, ''),
 		       COALESCE(f.node_type, ''),
@@ -154,7 +162,15 @@ func (g *GraphStore) EdgeShapes(ctx context.Context, edgeTypes ...string) ([]Edg
 // EdgeShapes. This scans one row per distinct (type, from, to) triple, so on a
 // large graph pass the edge types the caller actually cares about.
 func (g *GraphStore) EdgeEndpointPairs(ctx context.Context, edgeTypes ...string) ([]EdgeEndpointPair, error) {
-	where, args := typeFilter("e.edge_type", edgeTypes)
+	// COALESCE here as well as in the SELECT, and for the same reason
+	// NodePropertyKeys does it: the SELECT presents a NULL edge_type as "", so
+	// "" is the name a caller is handed for the untyped bucket and the only
+	// name it can ask back for — and NULL is equal to nothing, so filtering the
+	// raw column on "" matched none of the rows the unfiltered read had just
+	// counted. Not an error; an empty answer that reads as "there are none of
+	// those". A SELECT and a WHERE that disagree about what NULL is called is
+	// the defect whichever way round it is.
+	where, args := typeFilter("COALESCE(e.edge_type, '')", edgeTypes)
 	rows, err := g.query(ctx, `
 		SELECT COALESCE(e.edge_type, ''),
 		       f.id, COALESCE(f.node_type, ''), COALESCE(f.content, ''),

@@ -121,6 +121,48 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *resp, nil
 	})
+	addGraphRAGMCPTool(server, definitions["graph_schema"], func(ctx context.Context, req GraphSchemaRequest) (GraphSchemaResponse, error) {
+		res, err := toolbox.GraphSchema(ctx, req)
+		if err != nil {
+			return GraphSchemaResponse{}, err
+		}
+		return *res, nil
+	})
+	addGraphRAGMCPTool(server, definitions["graph_property_values"], func(ctx context.Context, req GraphPropertyValuesRequest) (GraphPropertyValuesResponse, error) {
+		res, err := toolbox.GraphPropertyValues(ctx, req)
+		if err != nil {
+			return GraphPropertyValuesResponse{}, err
+		}
+		return *res, nil
+	})
+	addGraphRAGMCPTool(server, definitions["rank_graph_nodes"], func(ctx context.Context, req ToolRankGraphNodesRequest) (ToolRankGraphNodesResponse, error) {
+		res, err := toolbox.RankGraphNodes(ctx, req)
+		if err != nil {
+			return ToolRankGraphNodesResponse{}, err
+		}
+		return *res, nil
+	})
+	addGraphRAGMCPTool(server, definitions["predict_graph_edges"], func(ctx context.Context, req ToolPredictGraphEdgesRequest) (ToolPredictGraphEdgesResponse, error) {
+		res, err := toolbox.PredictGraphEdges(ctx, req)
+		if err != nil {
+			return ToolPredictGraphEdgesResponse{}, err
+		}
+		return *res, nil
+	})
+	addGraphRAGMCPTool(server, definitions["graph_statistics"], func(ctx context.Context, req ToolGraphStatisticsRequest) (ToolGraphStatisticsResponse, error) {
+		res, err := toolbox.GraphStatistics(ctx, req)
+		if err != nil {
+			return ToolGraphStatisticsResponse{}, err
+		}
+		return *res, nil
+	})
+	addGraphRAGMCPTool(server, definitions["disambiguate_mentions"], func(ctx context.Context, req ToolDisambiguateMentionsRequest) (DisambiguationResult, error) {
+		res, err := toolbox.DisambiguateMentions(ctx, req)
+		if err != nil {
+			return DisambiguationResult{}, err
+		}
+		return *res, nil
+	})
 	addGraphRAGMCPTool(server, definitions["aggregate_metadata"], func(ctx context.Context, req ToolAggregateMetadataRequest) (ToolAggregateMetadataResponse, error) {
 		res, err := toolbox.AggregateMetadata(ctx, req)
 		if err != nil {

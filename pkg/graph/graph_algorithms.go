@@ -299,16 +299,24 @@ func (g *GraphStore) PredictEdges(ctx context.Context, nodeID string, topK int) 
 	adj := make(map[string]map[string]bool)
 	for edgeRows.Next() {
 		var u, v string
-		if err := edgeRows.Scan(&u, &v); err == nil {
-			if adj[u] == nil {
-				adj[u] = make(map[string]bool)
-			}
-			if adj[v] == nil {
-				adj[v] = make(map[string]bool)
-			}
-			adj[u][v] = true
-			adj[v][u] = true // Treat as undirected for common neighbors
+		// Reported rather than skipped: a dropped edge is a hole in the
+		// topology, and every prediction below is computed from it. Answering
+		// from a graph that is quietly missing edges is worse than not
+		// answering.
+		if err := edgeRows.Scan(&u, &v); err != nil {
+			return nil, fmt.Errorf("scan edge topology: %w", err)
 		}
+		if adj[u] == nil {
+			adj[u] = make(map[string]bool)
+		}
+		if adj[v] == nil {
+			adj[v] = make(map[string]bool)
+		}
+		adj[u][v] = true
+		adj[v][u] = true // Treat as undirected for common neighbors
+	}
+	if err := edgeRows.Err(); err != nil {
+		return nil, fmt.Errorf("read edge topology: %w", err)
 	}
 
 	existingConnections := adj[nodeID]
@@ -334,12 +342,32 @@ func (g *GraphStore) PredictEdges(ctx context.Context, nodeID string, topK int) 
 			}
 		}
 
-		score := similarity
+		// A negative similarity is no evidence, not evidence against: cosine
+		// runs to -1, and letting it go negative here would make the
+		// structural term below amplify rather than temper it.
+		sim := similarity
+		if sim < 0 {
+			sim = 0
+		}
+
+		score := sim
 		method := "vector_similarity"
 
 		if commonNeighbors > 0 {
 			cnScore := float64(commonNeighbors) / float64(len(existingConnections)+1)
-			score = (similarity + cnScore) / 2
+			// Noisy-OR, not an average. Averaging was wrong twice over, and in
+			// the same direction both times. cnScore is strictly below 1, so
+			// halving it put purely structural evidence strictly below the 0.5
+			// a prediction must clear — a pair sharing every neighbour and
+			// nothing else could never be returned at all. And averaging a
+			// strong similarity with a weaker structural score pulled it down,
+			// so a pair that shared neighbours ranked below an equally similar
+			// pair that did not: the branch only ran when there was structure,
+			// which meant structure could only ever hurt. Two signals that
+			// agree have to reinforce. Here the structural term closes some of
+			// the gap the similarity leaves to certainty, so it never lowers a
+			// score and structure alone still carries a pair over the line.
+			score = sim + (1-sim)*cnScore
 			method = "combined"
 		}
 

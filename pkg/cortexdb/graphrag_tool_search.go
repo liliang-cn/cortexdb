@@ -282,6 +282,7 @@ func (t *GraphRAGToolbox) SearchGraphRAGLexical(ctx context.Context, req ToolSea
 		MaxContextChunks:    req.MaxContextChunks,
 		MaxContextChars:     req.MaxContextChars,
 		PerDocumentLimit:    req.PerDocumentLimit,
+		ChunkWindow:         req.ChunkWindow,
 		DisableRerank:       req.DisableRerank,
 		DiversityLambda:     req.DiversityLambda,
 		Rerank:              true,
@@ -410,6 +411,9 @@ func (t *GraphRAGToolbox) SearchGraphRAGLexical(ctx context.Context, req ToolSea
 		allChunks = packGraphRAGContext(allChunks, opts)
 		result.Chunks = allChunks
 		result.Context = buildGraphRAGContext(allChunks)
+		if err := t.db.widenGraphRAGContext(ctx, result, opts); err != nil {
+			return nil, err
+		}
 		return result, nil
 	}
 
@@ -462,5 +466,8 @@ func (t *GraphRAGToolbox) SearchGraphRAGLexical(ctx context.Context, req ToolSea
 	result.Chunks = allChunks
 	result.Entities = sortedKeys(entitySet)
 	result.Context = buildGraphRAGContext(allChunks)
+	if err := t.db.widenGraphRAGContext(ctx, result, opts); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
