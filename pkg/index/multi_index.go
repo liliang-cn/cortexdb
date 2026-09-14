@@ -27,16 +27,16 @@ type MultiIndex struct {
 type MultiIndexConfig struct {
 	// Primary index for fast approximate search
 	PrimaryIndex IndexType
-	
+
 	// Secondary indices for refinement
 	SecondaryIndices []IndexType
-	
+
 	// Strategy for combining results
 	CombineStrategy CombineStrategy
-	
+
 	// Reranking configuration
 	RerankTopK int
-	
+
 	// Parallel search
 	Parallel bool
 }
@@ -47,13 +47,13 @@ type CombineStrategy string
 const (
 	// Take best results from primary index only
 	StrategyPrimaryOnly CombineStrategy = "primary_only"
-	
+
 	// Merge results from all indices
 	StrategyMergeAll CombineStrategy = "merge_all"
-	
+
 	// Use primary for candidates, secondary for reranking
 	StrategyRerank CombineStrategy = "rerank"
-	
+
 	// Voting-based combination
 	StrategyVoting CombineStrategy = "voting"
 )
@@ -85,11 +85,11 @@ func (m *MultiIndex) AddIndex(indexType IndexType, index VectorIndex) {
 func (m *MultiIndex) Insert(id string, vector []float32) error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	if m.config.Parallel {
 		var wg sync.WaitGroup
 		errChan := make(chan error, len(m.indices))
-		
+
 		for _, index := range m.indices {
 			wg.Add(1)
 			go func(idx VectorIndex) {
@@ -99,10 +99,10 @@ func (m *MultiIndex) Insert(id string, vector []float32) error {
 				}
 			}(index)
 		}
-		
+
 		wg.Wait()
 		close(errChan)
-		
+
 		// Check for errors
 		for err := range errChan {
 			if err != nil {
@@ -116,7 +116,7 @@ func (m *MultiIndex) Insert(id string, vector []float32) error {
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -124,7 +124,7 @@ func (m *MultiIndex) Insert(id string, vector []float32) error {
 func (m *MultiIndex) Search(query []float32, k int) ([]string, []float32) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	switch m.config.CombineStrategy {
 	case StrategyPrimaryOnly:
 		return m.searchPrimaryOnly(query, k)
@@ -154,9 +154,9 @@ func (m *MultiIndex) searchMergeAll(query []float32, k int) ([]string, []float32
 		id   string
 		dist float32
 	}
-	
+
 	resultMap := make(map[string]float32)
-	
+
 	// Collect results from all indices
 	for _, index := range m.indices {
 		ids, dists := index.Search(query, k)
@@ -166,30 +166,30 @@ func (m *MultiIndex) searchMergeAll(query []float32, k int) ([]string, []float32
 			}
 		}
 	}
-	
+
 	// Convert to slice and sort
 	results := make([]result, 0, len(resultMap))
 	for id, dist := range resultMap {
 		results = append(results, result{id, dist})
 	}
-	
+
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].dist < results[j].dist
 	})
-	
+
 	// Extract top-k
 	limit := k
 	if limit > len(results) {
 		limit = len(results)
 	}
-	
+
 	ids := make([]string, limit)
 	dists := make([]float32, limit)
 	for i := 0; i < limit; i++ {
 		ids[i] = results[i].id
 		dists[i] = results[i].dist
 	}
-	
+
 	return ids, dists
 }
 
@@ -199,30 +199,30 @@ func (m *MultiIndex) searchWithRerank(query []float32, k int) ([]string, []float
 	if !exists {
 		return []string{}, []float32{}
 	}
-	
+
 	// Get candidates from primary index
 	candidateK := k * 2
 	if m.config.RerankTopK > 0 {
 		candidateK = m.config.RerankTopK
 	}
 	candidateIDs, _ := primary.Search(query, candidateK)
-	
+
 	if len(candidateIDs) == 0 {
 		return []string{}, []float32{}
 	}
-	
+
 	// Rerank using secondary indices
 	type result struct {
 		id        string
 		score     float32
 		voteCount int
 	}
-	
+
 	resultMap := make(map[string]*result)
 	for _, id := range candidateIDs {
 		resultMap[id] = &result{id: id, score: 0, voteCount: 0}
 	}
-	
+
 	// Get refined distances from secondary indices
 	for _, indexType := range m.config.SecondaryIndices {
 		if secondary, exists := m.indices[indexType]; exists {
@@ -235,7 +235,7 @@ func (m *MultiIndex) searchWithRerank(query []float32, k int) ([]string, []float
 			}
 		}
 	}
-	
+
 	// Average scores and sort
 	results := make([]result, 0, len(resultMap))
 	for _, r := range resultMap {
@@ -244,24 +244,24 @@ func (m *MultiIndex) searchWithRerank(query []float32, k int) ([]string, []float
 		}
 		results = append(results, *r)
 	}
-	
+
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].score < results[j].score
 	})
-	
+
 	// Return top-k
 	limit := k
 	if limit > len(results) {
 		limit = len(results)
 	}
-	
+
 	ids := make([]string, limit)
 	dists := make([]float32, limit)
 	for i := 0; i < limit; i++ {
 		ids[i] = results[i].id
 		dists[i] = results[i].score
 	}
-	
+
 	return ids, dists
 }
 
@@ -273,9 +273,9 @@ func (m *MultiIndex) searchWithVoting(query []float32, k int) ([]string, []float
 		count int
 		ranks []int
 	}
-	
+
 	voteMap := make(map[string]*vote)
-	
+
 	// Collect votes from all indices
 	for _, index := range m.indices {
 		ids, dists := index.Search(query, k*2)
@@ -294,7 +294,7 @@ func (m *MultiIndex) searchWithVoting(query []float32, k int) ([]string, []float
 			}
 		}
 	}
-	
+
 	// Calculate voting scores
 	votes := make([]vote, 0, len(voteMap))
 	for _, v := range voteMap {
@@ -303,10 +303,10 @@ func (m *MultiIndex) searchWithVoting(query []float32, k int) ([]string, []float
 		for _, r := range v.ranks {
 			avgRank += r
 		}
-		v.score = v.score / float32(v.count) - float32(v.count)*0.1 // Bonus for more votes
+		v.score = v.score/float32(v.count) - float32(v.count)*0.1 // Bonus for more votes
 		votes = append(votes, *v)
 	}
-	
+
 	// Sort by voting score
 	sort.Slice(votes, func(i, j int) bool {
 		if votes[i].count != votes[j].count {
@@ -314,20 +314,20 @@ func (m *MultiIndex) searchWithVoting(query []float32, k int) ([]string, []float
 		}
 		return votes[i].score < votes[j].score
 	})
-	
+
 	// Return top-k
 	limit := k
 	if limit > len(votes) {
 		limit = len(votes)
 	}
-	
+
 	ids := make([]string, limit)
 	dists := make([]float32, limit)
 	for i := 0; i < limit; i++ {
 		ids[i] = votes[i].id
 		dists[i] = votes[i].score
 	}
-	
+
 	return ids, dists
 }
 
@@ -335,7 +335,7 @@ func (m *MultiIndex) searchWithVoting(query []float32, k int) ([]string, []float
 func (m *MultiIndex) Delete(id string) error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	for _, index := range m.indices {
 		if err := index.Delete(id); err != nil {
 			return err
@@ -348,7 +348,7 @@ func (m *MultiIndex) Delete(id string) error {
 func (m *MultiIndex) Size() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	if primary, exists := m.indices[m.config.PrimaryIndex]; exists {
 		return primary.Size()
 	}
@@ -359,18 +359,18 @@ func (m *MultiIndex) Size() int {
 func (m *MultiIndex) Stats() map[string]interface{} {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	stats := make(map[string]interface{})
 	stats["primary_index"] = m.config.PrimaryIndex
 	stats["secondary_indices"] = m.config.SecondaryIndices
 	stats["combine_strategy"] = m.config.CombineStrategy
-	
+
 	indexStats := make(map[string]int)
 	for indexType, index := range m.indices {
 		indexStats[string(indexType)] = index.Size()
 	}
 	stats["index_sizes"] = indexStats
-	
+
 	return stats
 }
 
@@ -400,7 +400,7 @@ func (h *HybridIndex) Train(vectors [][]float32) error {
 func (h *HybridIndex) Insert(id string, vector []float32) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	
+
 	if err := h.hnsw.Insert(id, vector); err != nil {
 		return err
 	}
@@ -411,20 +411,20 @@ func (h *HybridIndex) Insert(id string, vector []float32) error {
 func (h *HybridIndex) Search(query []float32, k int) ([]string, []float32) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	
+
 	// Get candidates from HNSW (fast)
 	hnswIDs, _ := h.hnsw.Search(query, k*2, 50)
-	
+
 	// Get candidates from IVF (accurate)
 	ivfIDs, ivfDists, _ := h.ivf.Search(query, k)
-	
+
 	// Merge results with preference for IVF (more accurate)
 	seen := make(map[string]bool)
 	results := make([]struct {
 		id   string
 		dist float32
 	}, 0)
-	
+
 	// Add IVF results first (more accurate)
 	for i, id := range ivfIDs {
 		results = append(results, struct {
@@ -433,7 +433,7 @@ func (h *HybridIndex) Search(query []float32, k int) ([]string, []float32) {
 		}{id, ivfDists[i]})
 		seen[id] = true
 	}
-	
+
 	// Add HNSW results not in IVF
 	for _, id := range hnswIDs {
 		if !seen[id] && len(results) < k {
@@ -447,25 +447,25 @@ func (h *HybridIndex) Search(query []float32, k int) ([]string, []float32) {
 			}
 		}
 	}
-	
+
 	// Sort by distance
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].dist < results[j].dist
 	})
-	
+
 	// Extract top-k
 	limit := k
 	if limit > len(results) {
 		limit = len(results)
 	}
-	
+
 	ids := make([]string, limit)
 	dists := make([]float32, limit)
 	for i := 0; i < limit; i++ {
 		ids[i] = results[i].id
 		dists[i] = results[i].dist
 	}
-	
+
 	return ids, dists
 }
 
@@ -473,7 +473,7 @@ func (h *HybridIndex) Search(query []float32, k int) ([]string, []float32) {
 func (h *HybridIndex) Delete(id string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	
+
 	if err := h.hnsw.Delete(id); err != nil {
 		// Log but don't fail - some indices may not support deletion
 		_ = err

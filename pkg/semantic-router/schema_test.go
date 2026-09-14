@@ -17,9 +17,9 @@ func TestSchemaBuilder(t *testing.T) {
 				unit = u
 			}
 			return map[string]interface{}{
-				"city":     city,
-				"temp":     25,
-				"unit":     unit,
+				"city":      city,
+				"temp":      25,
+				"unit":      unit,
 				"condition": "sunny",
 			}, nil
 		}).

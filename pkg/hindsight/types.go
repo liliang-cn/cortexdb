@@ -16,9 +16,9 @@ import "time"
 type MemoryType string
 
 const (
-	WorldMemory      MemoryType = "world"      // Objective facts about the world
-	BankMemory       MemoryType = "bank"       // Agent's own experiences and actions
-	OpinionMemory    MemoryType = "opinion"    // Formed beliefs with confidence scores
+	WorldMemory       MemoryType = "world"       // Objective facts about the world
+	BankMemory        MemoryType = "bank"        // Agent's own experiences and actions
+	OpinionMemory     MemoryType = "opinion"     // Formed beliefs with confidence scores
 	ObservationMemory MemoryType = "observation" // Mental models derived from reflection
 )
 

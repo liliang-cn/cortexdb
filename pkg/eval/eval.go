@@ -23,14 +23,14 @@ func (f RetrieverFunc) Retrieve(ctx context.Context, query string, k int) ([]str
 
 // Report holds aggregate metrics over a query set, plus per-query detail.
 type Report struct {
-	Dataset   string             `json:"dataset"`
-	NumQueries int               `json:"num_queries"`
-	Ks        []int              `json:"ks"`
-	RecallAtK  map[int]float64   `json:"recall_at_k"`
+	Dataset      string          `json:"dataset"`
+	NumQueries   int             `json:"num_queries"`
+	Ks           []int           `json:"ks"`
+	RecallAtK    map[int]float64 `json:"recall_at_k"`
 	PrecisionAtK map[int]float64 `json:"precision_at_k"`
-	NDCGAtK   map[int]float64    `json:"ndcg_at_k"`
-	MRR       float64            `json:"mrr"`
-	PerQuery  []QueryResult      `json:"per_query,omitempty"`
+	NDCGAtK      map[int]float64 `json:"ndcg_at_k"`
+	MRR          float64         `json:"mrr"`
+	PerQuery     []QueryResult   `json:"per_query,omitempty"`
 }
 
 // QueryResult is a single query's retrieval and its reciprocal rank.

@@ -18,19 +18,19 @@ type LSHSearchResult struct {
 // LSHIndex implements Locality Sensitive Hashing for fast approximate nearest neighbor search
 type LSHIndex struct {
 	mu sync.RWMutex
-	
+
 	// LSH parameters
-	numTables      int                    // Number of hash tables (L)
-	numHashFuncs   int                    // Number of hash functions per table (K)
-	dimension      int                    // Vector dimension
-	hashFunctions  [][][]float32          // Random projections for each table
-	hashTables     []map[uint64][]string  // Hash tables mapping hash -> vector IDs
-	
+	numTables     int                   // Number of hash tables (L)
+	numHashFuncs  int                   // Number of hash functions per table (K)
+	dimension     int                   // Vector dimension
+	hashFunctions [][][]float32         // Random projections for each table
+	hashTables    []map[uint64][]string // Hash tables mapping hash -> vector IDs
+
 	// Vector storage
-	vectors        map[string][]float32   // ID -> vector mapping
-	
+	vectors map[string][]float32 // ID -> vector mapping
+
 	// Distance function
-	distFunc       func([]float32, []float32) float32
+	distFunc func([]float32, []float32) float32
 }
 
 // lshEuclideanDistance calculates Euclidean distance between two vectors
@@ -45,9 +45,9 @@ func lshEuclideanDistance(a, b []float32) float32 {
 
 // LSHConfig contains configuration for LSH index
 type LSHConfig struct {
-	NumTables    int  // Number of hash tables (more = better recall, more memory)
-	NumHashFuncs int  // Number of hash functions per table (more = more selective)
-	Dimension    int  // Vector dimension
+	NumTables    int   // Number of hash tables (more = better recall, more memory)
+	NumHashFuncs int   // Number of hash functions per table (more = more selective)
+	Dimension    int   // Vector dimension
 	Seed         int64 // Random seed for reproducibility
 }
 
@@ -59,9 +59,9 @@ func NewLSHIndex(config LSHConfig) *LSHIndex {
 	if config.NumHashFuncs <= 0 {
 		config.NumHashFuncs = 8 // Default number of hash functions
 	}
-	
+
 	rng := rand.New(rand.NewSource(config.Seed))
-	
+
 	// Initialize hash functions (random projections)
 	hashFunctions := make([][][]float32, config.NumTables)
 	for i := 0; i < config.NumTables; i++ {
@@ -74,13 +74,13 @@ func NewLSHIndex(config LSHConfig) *LSHIndex {
 			}
 		}
 	}
-	
+
 	// Initialize hash tables
 	hashTables := make([]map[uint64][]string, config.NumTables)
 	for i := 0; i < config.NumTables; i++ {
 		hashTables[i] = make(map[uint64][]string)
 	}
-	
+
 	return &LSHIndex{
 		numTables:     config.NumTables,
 		numHashFuncs:  config.NumHashFuncs,
@@ -97,19 +97,19 @@ func (lsh *LSHIndex) Insert(id string, vector []float32) error {
 	if len(vector) != lsh.dimension {
 		return fmt.Errorf("dimension mismatch: expected %d, got %d", lsh.dimension, len(vector))
 	}
-	
+
 	lsh.mu.Lock()
 	defer lsh.mu.Unlock()
-	
+
 	// Store the vector
 	lsh.vectors[id] = vector
-	
+
 	// Add to all hash tables
 	for tableIdx := 0; tableIdx < lsh.numTables; tableIdx++ {
 		hash := lsh.computeHash(vector, tableIdx)
 		lsh.hashTables[tableIdx][hash] = append(lsh.hashTables[tableIdx][hash], id)
 	}
-	
+
 	return nil
 }
 
@@ -118,10 +118,10 @@ func (lsh *LSHIndex) Search(query []float32, k int) ([]LSHSearchResult, error) {
 	if len(query) != lsh.dimension {
 		return nil, fmt.Errorf("dimension mismatch: expected %d, got %d", lsh.dimension, len(query))
 	}
-	
+
 	lsh.mu.RLock()
 	defer lsh.mu.RUnlock()
-	
+
 	// Collect candidates from all hash tables
 	candidateSet := make(map[string]bool)
 	for tableIdx := 0; tableIdx < lsh.numTables; tableIdx++ {
@@ -132,7 +132,7 @@ func (lsh *LSHIndex) Search(query []float32, k int) ([]LSHSearchResult, error) {
 			}
 		}
 	}
-	
+
 	// Score all candidates
 	results := make([]LSHSearchResult, 0, len(candidateSet))
 	for id := range candidateSet {
@@ -144,17 +144,17 @@ func (lsh *LSHIndex) Search(query []float32, k int) ([]LSHSearchResult, error) {
 			})
 		}
 	}
-	
+
 	// Sort by distance
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].Distance < results[j].Distance
 	})
-	
+
 	// Return top k
 	if len(results) > k {
 		results = results[:k]
 	}
-	
+
 	return results, nil
 }
 
@@ -163,17 +163,17 @@ func (lsh *LSHIndex) SearchWithMultiProbe(query []float32, k int, numProbes int)
 	if len(query) != lsh.dimension {
 		return nil, fmt.Errorf("dimension mismatch: expected %d, got %d", lsh.dimension, len(query))
 	}
-	
+
 	lsh.mu.RLock()
 	defer lsh.mu.RUnlock()
-	
+
 	candidateSet := make(map[string]bool)
-	
+
 	for tableIdx := 0; tableIdx < lsh.numTables; tableIdx++ {
 		// Get base hash and nearby hashes
 		baseHash := lsh.computeHash(query, tableIdx)
 		probeHashes := lsh.getProbeHashes(query, tableIdx, numProbes)
-		
+
 		// Collect candidates from all probed buckets
 		for _, hash := range probeHashes {
 			if candidates, exists := lsh.hashTables[tableIdx][hash]; exists {
@@ -182,7 +182,7 @@ func (lsh *LSHIndex) SearchWithMultiProbe(query []float32, k int, numProbes int)
 				}
 			}
 		}
-		
+
 		// Also include base hash
 		if candidates, exists := lsh.hashTables[tableIdx][baseHash]; exists {
 			for _, id := range candidates {
@@ -190,7 +190,7 @@ func (lsh *LSHIndex) SearchWithMultiProbe(query []float32, k int, numProbes int)
 			}
 		}
 	}
-	
+
 	// Score and sort candidates
 	results := make([]LSHSearchResult, 0, len(candidateSet))
 	for id := range candidateSet {
@@ -202,15 +202,15 @@ func (lsh *LSHIndex) SearchWithMultiProbe(query []float32, k int, numProbes int)
 			})
 		}
 	}
-	
+
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].Distance < results[j].Distance
 	})
-	
+
 	if len(results) > k {
 		results = results[:k]
 	}
-	
+
 	return results, nil
 }
 
@@ -218,12 +218,12 @@ func (lsh *LSHIndex) SearchWithMultiProbe(query []float32, k int, numProbes int)
 func (lsh *LSHIndex) Delete(id string) bool {
 	lsh.mu.Lock()
 	defer lsh.mu.Unlock()
-	
+
 	vector, exists := lsh.vectors[id]
 	if !exists {
 		return false
 	}
-	
+
 	// Remove from all hash tables
 	for tableIdx := 0; tableIdx < lsh.numTables; tableIdx++ {
 		hash := lsh.computeHash(vector, tableIdx)
@@ -242,7 +242,7 @@ func (lsh *LSHIndex) Delete(id string) bool {
 			}
 		}
 	}
-	
+
 	// Remove from vector storage
 	delete(lsh.vectors, id)
 	return true
@@ -252,7 +252,7 @@ func (lsh *LSHIndex) Delete(id string) bool {
 func (lsh *LSHIndex) Clear() {
 	lsh.mu.Lock()
 	defer lsh.mu.Unlock()
-	
+
 	lsh.vectors = make(map[string][]float32)
 	for i := 0; i < lsh.numTables; i++ {
 		lsh.hashTables[i] = make(map[uint64][]string)
@@ -270,11 +270,11 @@ func (lsh *LSHIndex) Size() int {
 func (lsh *LSHIndex) Stats() map[string]interface{} {
 	lsh.mu.RLock()
 	defer lsh.mu.RUnlock()
-	
+
 	totalBuckets := 0
 	totalItems := 0
 	maxBucketSize := 0
-	
+
 	for tableIdx := 0; tableIdx < lsh.numTables; tableIdx++ {
 		totalBuckets += len(lsh.hashTables[tableIdx])
 		for _, bucket := range lsh.hashTables[tableIdx] {
@@ -285,20 +285,20 @@ func (lsh *LSHIndex) Stats() map[string]interface{} {
 			}
 		}
 	}
-	
+
 	avgBucketSize := float64(0)
 	if totalBuckets > 0 {
 		avgBucketSize = float64(totalItems) / float64(totalBuckets)
 	}
-	
+
 	return map[string]interface{}{
-		"num_vectors":      len(lsh.vectors),
-		"num_tables":       lsh.numTables,
-		"num_hash_funcs":   lsh.numHashFuncs,
-		"total_buckets":    totalBuckets,
-		"avg_bucket_size":  avgBucketSize,
-		"max_bucket_size":  maxBucketSize,
-		"memory_overhead":  totalItems - len(lsh.vectors), // Duplicate entries across tables
+		"num_vectors":     len(lsh.vectors),
+		"num_tables":      lsh.numTables,
+		"num_hash_funcs":  lsh.numHashFuncs,
+		"total_buckets":   totalBuckets,
+		"avg_bucket_size": avgBucketSize,
+		"max_bucket_size": maxBucketSize,
+		"memory_overhead": totalItems - len(lsh.vectors), // Duplicate entries across tables
 	}
 }
 
@@ -306,20 +306,20 @@ func (lsh *LSHIndex) Stats() map[string]interface{} {
 func (lsh *LSHIndex) computeHash(vector []float32, tableIdx int) uint64 {
 	hash := uint64(0)
 	projections := lsh.hashFunctions[tableIdx]
-	
+
 	for i, projection := range projections {
 		// Compute dot product
 		dotProduct := float32(0)
 		for j := 0; j < len(vector); j++ {
 			dotProduct += vector[j] * projection[j]
 		}
-		
+
 		// Binary hash based on sign
 		if dotProduct > 0 {
 			hash |= (1 << uint(i))
 		}
 	}
-	
+
 	return hash
 }
 
@@ -327,14 +327,14 @@ func (lsh *LSHIndex) computeHash(vector []float32, tableIdx int) uint64 {
 func (lsh *LSHIndex) getProbeHashes(vector []float32, tableIdx int, numProbes int) []uint64 {
 	baseHash := lsh.computeHash(vector, tableIdx)
 	probes := make([]uint64, 0, numProbes)
-	
+
 	// Calculate projection values and their distances from threshold
 	projections := lsh.hashFunctions[tableIdx]
 	flipDistances := make([]struct {
 		bit      int
 		distance float32
 	}, lsh.numHashFuncs)
-	
+
 	for i, projection := range projections {
 		dotProduct := float32(0)
 		for j := 0; j < len(vector); j++ {
@@ -348,19 +348,19 @@ func (lsh *LSHIndex) getProbeHashes(vector []float32, tableIdx int, numProbes in
 			distance: float32(math.Abs(float64(dotProduct))),
 		}
 	}
-	
+
 	// Sort by distance (closest to threshold first)
 	sort.Slice(flipDistances, func(i, j int) bool {
 		return flipDistances[i].distance < flipDistances[j].distance
 	})
-	
+
 	// Generate probes by flipping bits
 	for i := 0; i < numProbes && i < len(flipDistances); i++ {
 		// Flip the i-th closest bit
 		probeHash := baseHash ^ (1 << uint(flipDistances[i].bit))
 		probes = append(probes, probeHash)
 	}
-	
+
 	return probes
 }
 

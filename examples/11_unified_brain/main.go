@@ -55,11 +55,11 @@ import (
 )
 
 const (
-	classCustomer = "urn:cortexdb:class:Customer"
-	classParty    = "urn:cortexdb:class:Party"
-	propCity      = "urn:cortexdb:prop:city"
-	relPlaced     = "urn:cortexdb:rel:placed"
-	propStatus    = "urn:cortexdb:prop:status"
+	classCustomer  = "urn:cortexdb:class:Customer"
+	classParty     = "urn:cortexdb:class:Party"
+	propCity       = "urn:cortexdb:prop:city"
+	relPlaced      = "urn:cortexdb:rel:placed"
+	propStatus     = "urn:cortexdb:prop:status"
 	rdfsSubClassOf = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
 )
 

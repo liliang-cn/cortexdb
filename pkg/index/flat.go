@@ -85,7 +85,7 @@ func (f *FlatIndex) Search(query []float32, k int) ([]string, []float32) {
 
 	for id, vector := range f.vectors {
 		dist := f.distFunc(query, vector)
-		
+
 		if h.Len() < k {
 			heap.Push(h, flatHeapItem{id: id, distance: dist})
 		} else if dist < (*h)[0].distance {
@@ -197,11 +197,11 @@ func (f *FlatIndex) BatchInsert(ids []string, vectors [][]float32) error {
 
 		v := make([]float32, f.dimension)
 		copy(v, vectors[i])
-		
+
 		if f.normalized {
 			v = normalize(v)
 		}
-		
+
 		f.vectors[id] = v
 	}
 
@@ -227,11 +227,11 @@ func normalize(v []float32) []float32 {
 	for _, val := range v {
 		sum += val * val
 	}
-	
+
 	if sum == 0 {
 		return v
 	}
-	
+
 	norm := float32(math.Sqrt(float64(sum)))
 	result := make([]float32, len(v))
 	for i, val := range v {

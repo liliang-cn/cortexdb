@@ -3,7 +3,10 @@ package connector
 import "testing"
 
 func TestMaskValue(t *testing.T) {
-	cases := []struct{ kind PiiKind; in, want string }{
+	cases := []struct {
+		kind     PiiKind
+		in, want string
+	}{
 		{PiiPhone, "13812341234", "138****1234"},
 		{PiiEmail, "alice@example.com", "a***@example.com"},
 		{PiiName, "张三丰", "张**"},

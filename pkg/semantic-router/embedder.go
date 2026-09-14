@@ -32,7 +32,7 @@ func (m *MockEmbedder) Embed(ctx context.Context, text string) ([]float32, error
 	for i := range vec {
 		// Generate a pseudo-random value between -1 and 1
 		seed = seed*1664525 + 1013904223
-		vec[i] = float32(int32(seed))/float32(0x7fffffff) * 2
+		vec[i] = float32(int32(seed)) / float32(0x7fffffff) * 2
 	}
 
 	return vec, nil

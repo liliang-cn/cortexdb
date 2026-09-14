@@ -3,7 +3,9 @@
 // LLM extractor.
 //
 // LLM config (any OpenAI-compatible endpoint), via env or a .env (godotenv):
-//   OPENAI_API_KEY + OPENAI_BASE_URL + OPENAI_MODEL   (e.g. DashScope qwen-plus)
+//
+//	OPENAI_API_KEY + OPENAI_BASE_URL + OPENAI_MODEL   (e.g. DashScope qwen-plus)
+//
 // If those are unset it falls back to a local Ollama (OLLAMA_BASE / OLLAMA_MODEL,
 // default http://localhost:11434 + qwen3.5).
 //

@@ -18,9 +18,9 @@ func EncodeVector(vector []float32) ([]byte, error) {
 	if vector == nil {
 		return nil, ErrInvalidVector
 	}
-	
+
 	buf := new(bytes.Buffer)
-	
+
 	// Write the length first - check for overflow
 	vectorLen := len(vector)
 	if vectorLen > 2147483647 { // max int32
@@ -29,14 +29,14 @@ func EncodeVector(vector []float32) ([]byte, error) {
 	if err := binary.Write(buf, binary.LittleEndian, int32(vectorLen)); err != nil {
 		return nil, fmt.Errorf("failed to encode vector length: %w", err)
 	}
-	
+
 	// Write each float32 value
 	for _, val := range vector {
 		if err := binary.Write(buf, binary.LittleEndian, val); err != nil {
 			return nil, fmt.Errorf("failed to encode vector value: %w", err)
 		}
 	}
-	
+
 	return buf.Bytes(), nil
 }
 
@@ -46,29 +46,29 @@ func DecodeVector(data []byte) ([]float32, error) {
 	if len(data) < 4 {
 		return nil, ErrInvalidVector
 	}
-	
+
 	buf := bytes.NewReader(data)
-	
+
 	// Read the length first
 	var length int32
 	if err := binary.Read(buf, binary.LittleEndian, &length); err != nil {
 		return nil, fmt.Errorf("failed to decode vector length: %w", err)
 	}
-	
+
 	if length < 0 {
 		return nil, ErrInvalidVector
 	}
-	
+
 	if length == 0 {
 		return []float32{}, nil
 	}
-	
+
 	// Check if we have enough bytes for the vector
 	expectedBytes := int(length) * 4 // 4 bytes per float32
 	if buf.Len() < expectedBytes {
 		return nil, ErrInvalidVector
 	}
-	
+
 	// Read the vector values
 	vector := make([]float32, length)
 	for i := int32(0); i < length; i++ {
@@ -76,7 +76,7 @@ func DecodeVector(data []byte) ([]float32, error) {
 			return nil, fmt.Errorf("failed to decode vector value at index %d: %w", i, err)
 		}
 	}
-	
+
 	return vector, nil
 }
 
@@ -86,12 +86,12 @@ func EncodeMetadata(metadata map[string]string) (string, error) {
 	if metadata == nil {
 		return "", nil
 	}
-	
+
 	data, err := json.Marshal(metadata)
 	if err != nil {
 		return "", fmt.Errorf("failed to encode metadata: %w", err)
 	}
-	
+
 	return string(data), nil
 }
 
@@ -101,12 +101,12 @@ func DecodeMetadata(jsonStr string) (map[string]string, error) {
 	if jsonStr == "" {
 		return nil, nil
 	}
-	
+
 	var metadata map[string]string
 	if err := json.Unmarshal([]byte(jsonStr), &metadata); err != nil {
 		return nil, fmt.Errorf("failed to decode metadata: %w", err)
 	}
-	
+
 	return metadata, nil
 }
 
@@ -124,11 +124,11 @@ func ValidateVector(vector []float32) error {
 	if vector == nil {
 		return ErrInvalidVector
 	}
-	
+
 	if len(vector) == 0 {
 		return ErrInvalidVector
 	}
-	
+
 	for _, val := range vector {
 		if val != val { // NaN check
 			return ErrInvalidVector
@@ -138,7 +138,6 @@ func ValidateVector(vector []float32) error {
 			return ErrInvalidVector
 		}
 	}
-	
+
 	return nil
 }
-

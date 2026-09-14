@@ -18,21 +18,21 @@ func euclideanDistance(a, b []float32) float32 {
 
 func TestMultiIndexNew(t *testing.T) {
 	config := MultiIndexConfig{
-		PrimaryIndex:     IndexTypeHNSW,
-		CombineStrategy:  StrategyMergeAll,
-		Parallel:         false,
+		PrimaryIndex:    IndexTypeHNSW,
+		CombineStrategy: StrategyMergeAll,
+		Parallel:        false,
 	}
-	
+
 	mi := NewMultiIndex(config)
-	
+
 	if mi.config.PrimaryIndex != IndexTypeHNSW {
 		t.Errorf("Expected primary index HNSW, got %s", mi.config.PrimaryIndex)
 	}
-	
+
 	if mi.config.CombineStrategy != StrategyMergeAll {
 		t.Errorf("Expected merge strategy, got %s", mi.config.CombineStrategy)
 	}
-	
+
 	if len(mi.indices) != 0 {
 		t.Error("Expected empty indices")
 	}
@@ -44,27 +44,27 @@ func TestMultiIndexAddIndex(t *testing.T) {
 		CombineStrategy: StrategyMergeAll,
 	}
 	mi := NewMultiIndex(config)
-	
+
 	// Add HNSW index
 	hnsw := NewHNSWAdapter(16, 8, euclideanDistance)
 	mi.AddIndex(IndexTypeHNSW, hnsw)
-	
-	// Add IVF index  
+
+	// Add IVF index
 	ivf := NewIVFAdapter(16, 4)
 	trainVectors := generateTestVectorsMulti(30, 16)
 	_ = ivf.Train(trainVectors)
 	mi.AddIndex(IndexTypeIVF, ivf)
-	
+
 	if len(mi.indices) != 2 {
 		t.Errorf("Expected 2 indices, got %d", len(mi.indices))
 	}
-	
+
 	if mi.indices[IndexTypeHNSW] == nil {
 		t.Error("HNSW index not added correctly")
 	}
-	
+
 	if mi.indices[IndexTypeIVF] == nil {
-		t.Error("IVF index not added correctly") 
+		t.Error("IVF index not added correctly")
 	}
 }
 
@@ -74,11 +74,11 @@ func TestMultiIndexPrimaryOnlyStrategy(t *testing.T) {
 		CombineStrategy: StrategyPrimaryOnly,
 	}
 	mi := NewMultiIndex(config)
-	
+
 	// Add primary HNSW index
 	hnsw := NewHNSWAdapter(32, 8, euclideanDistance)
 	mi.AddIndex(IndexTypeHNSW, hnsw)
-	
+
 	// Train and add vectors to HNSW
 	vectors := generateTestVectorsMulti(20, 32)
 	for i, vec := range vectors {
@@ -87,20 +87,20 @@ func TestMultiIndexPrimaryOnlyStrategy(t *testing.T) {
 			t.Fatalf("Insert failed: %v", err)
 		}
 	}
-	
+
 	// Search using primary only
 	query := vectors[0]
 	ids, distances := mi.Search(query, 5)
-	
+
 	if len(ids) != 5 {
 		t.Errorf("Expected 5 results, got %d", len(ids))
 	}
-	
+
 	// Should return vec_0 as first result (exact match)
 	if ids[0] != "vec_0" {
 		t.Errorf("Expected vec_0 as first result, got %s", ids[0])
 	}
-	
+
 	// Distances should be sorted
 	for i := 1; i < len(distances); i++ {
 		if distances[i] < distances[i-1] {
@@ -115,17 +115,17 @@ func TestMultiIndexMergeAllStrategy(t *testing.T) {
 		CombineStrategy: StrategyMergeAll,
 	}
 	mi := NewMultiIndex(config)
-	
+
 	// Add HNSW index
 	hnsw := NewHNSWAdapter(16, 8, euclideanDistance)
 	mi.AddIndex(IndexTypeHNSW, hnsw)
-	
+
 	// Add IVF index
 	ivf := NewIVFAdapter(16, 3)
 	trainVectors := generateTestVectorsMulti(30, 16)
 	_ = ivf.Train(trainVectors)
 	mi.AddIndex(IndexTypeIVF, ivf)
-	
+
 	// Insert vectors into both indices
 	testVectors := generateTestVectorsMulti(15, 16)
 	for i, vec := range testVectors {
@@ -134,15 +134,15 @@ func TestMultiIndexMergeAllStrategy(t *testing.T) {
 			t.Fatalf("Insert failed: %v", err)
 		}
 	}
-	
+
 	// Search with merge strategy
 	query := testVectors[0]
 	ids, _ := mi.Search(query, 3)
-	
+
 	if len(ids) == 0 {
 		t.Error("No results returned")
 	}
-	
+
 	// Should find the exact match
 	found := false
 	for _, id := range ids {
@@ -162,28 +162,28 @@ func TestMultiIndexInsertDelete(t *testing.T) {
 		CombineStrategy: StrategyMergeAll,
 	}
 	mi := NewMultiIndex(config)
-	
+
 	// Add indices
 	hnsw := NewHNSWAdapter(16, 8, euclideanDistance)
 	mi.AddIndex(IndexTypeHNSW, hnsw)
-	
+
 	// Insert vector
 	vec := generateVector(16)
 	if err := mi.Insert("test_vec", vec); err != nil {
 		t.Fatalf("Insert failed: %v", err)
 	}
-	
+
 	// Verify it was inserted
 	ids, _ := mi.Search(vec, 1)
 	if len(ids) == 0 || ids[0] != "test_vec" {
 		t.Error("Vector not inserted correctly")
 	}
-	
+
 	// Delete vector
 	if err := mi.Delete("test_vec"); err != nil {
 		t.Fatalf("Delete failed: %v", err)
 	}
-	
+
 	// Verify it was deleted
 	ids, _ = mi.Search(vec, 5)
 	for _, id := range ids {
@@ -195,16 +195,16 @@ func TestMultiIndexInsertDelete(t *testing.T) {
 
 func TestHybridIndex(t *testing.T) {
 	hybrid := NewHybridIndex(32, 8, 4)
-	
+
 	// Test initial state
 	if hybrid.hnsw == nil {
 		t.Error("HNSW not initialized")
 	}
-	
+
 	if hybrid.ivf == nil {
 		t.Error("IVF not initialized")
 	}
-	
+
 	if hybrid.alpha != 0.5 {
 		t.Errorf("Expected alpha=0.5, got %f", hybrid.alpha)
 	}
@@ -212,14 +212,14 @@ func TestHybridIndex(t *testing.T) {
 
 func TestHybridIndexTrainInsertSearch(t *testing.T) {
 	hybrid := NewHybridIndex(16, 8, 3)
-	
+
 	// Train
 	trainVectors := generateTestVectorsMulti(30, 16)
 	err := hybrid.Train(trainVectors)
 	if err != nil {
 		t.Fatalf("Training failed: %v", err)
 	}
-	
+
 	// Insert vectors
 	testVectors := generateTestVectorsMulti(10, 16)
 	for i, vec := range testVectors {
@@ -228,20 +228,20 @@ func TestHybridIndexTrainInsertSearch(t *testing.T) {
 			t.Fatalf("Insert failed: %v", err)
 		}
 	}
-	
+
 	// Search
 	query := testVectors[0]
 	ids, distances := hybrid.Search(query, 3)
-	
+
 	if len(ids) != 3 {
 		t.Errorf("Expected 3 results, got %d", len(ids))
 	}
-	
+
 	// First result should be exact match
 	if ids[0] != "vec_0" {
 		t.Errorf("Expected vec_0 as first result, got %s", ids[0])
 	}
-	
+
 	// Check distance ordering
 	for i := 1; i < len(distances); i++ {
 		if distances[i] < distances[i-1] {
@@ -252,13 +252,13 @@ func TestHybridIndexTrainInsertSearch(t *testing.T) {
 
 func TestHybridIndexAlpha(t *testing.T) {
 	hybrid := NewHybridIndex(16, 8, 3)
-	
+
 	// Train
-	trainVectors := generateTestVectorsMulti(20, 16) 
+	trainVectors := generateTestVectorsMulti(20, 16)
 	if err := hybrid.Train(trainVectors); err != nil {
 		t.Fatalf("Train failed: %v", err)
 	}
-	
+
 	// Insert vectors
 	for i := 0; i < 10; i++ {
 		vec := generateVector(16)
@@ -266,16 +266,16 @@ func TestHybridIndexAlpha(t *testing.T) {
 			t.Fatalf("Insert failed: %v", err)
 		}
 	}
-	
+
 	query := generateVector(16)
-	
+
 	// Test different alpha values
 	alphaValues := []float32{0.0, 0.3, 0.7, 1.0}
-	
+
 	for _, alpha := range alphaValues {
 		hybrid.alpha = alpha
 		ids, _ := hybrid.Search(query, 3)
-		
+
 		if len(ids) == 0 {
 			t.Errorf("No results with alpha=%.1f", alpha)
 		}
@@ -288,16 +288,16 @@ func TestMultiIndexSize(t *testing.T) {
 		CombineStrategy: StrategyMergeAll,
 	}
 	mi := NewMultiIndex(config)
-	
+
 	// Add index
 	hnsw := NewHNSWAdapter(16, 8, euclideanDistance)
 	mi.AddIndex(IndexTypeHNSW, hnsw)
-	
+
 	// Initially empty
 	if mi.Size() != 0 {
 		t.Errorf("Expected size 0, got %d", mi.Size())
 	}
-	
+
 	// Insert vectors
 	for i := 0; i < 5; i++ {
 		vec := generateVector(16)
@@ -305,7 +305,7 @@ func TestMultiIndexSize(t *testing.T) {
 			t.Fatalf("Insert failed: %v", err)
 		}
 	}
-	
+
 	if mi.Size() != 5 {
 		t.Errorf("Expected size 5, got %d", mi.Size())
 	}
@@ -318,16 +318,16 @@ func TestMultiIndexParallelOperations(t *testing.T) {
 		Parallel:        true,
 	}
 	mi := NewMultiIndex(config)
-	
+
 	// Add multiple indices
 	hnsw := NewHNSWAdapter(16, 8, euclideanDistance)
 	mi.AddIndex(IndexTypeHNSW, hnsw)
-	
+
 	ivf := NewIVFAdapter(16, 3)
 	trainVectors := generateTestVectorsMulti(20, 16)
 	_ = ivf.Train(trainVectors)
 	mi.AddIndex(IndexTypeIVF, ivf)
-	
+
 	// Insert with parallel operations enabled
 	for i := 0; i < 10; i++ {
 		vec := generateVector(16)
@@ -336,11 +336,11 @@ func TestMultiIndexParallelOperations(t *testing.T) {
 			t.Errorf("Parallel insert failed: %v", err)
 		}
 	}
-	
+
 	// Search should still work
 	query := generateVector(16)
 	ids, _ := mi.Search(query, 5)
-	
+
 	if len(ids) == 0 {
 		t.Error("No results from parallel multi-index")
 	}
@@ -375,11 +375,11 @@ func BenchmarkMultiIndexSearch(b *testing.B) {
 		CombineStrategy: StrategyMergeAll,
 	}
 	mi := NewMultiIndex(config)
-	
+
 	// Add HNSW index
 	hnsw := NewHNSWAdapter(128, 16, euclideanDistance)
 	mi.AddIndex(IndexTypeHNSW, hnsw)
-	
+
 	// Build index
 	vectors := generateTestVectorsMulti(5000, 128)
 	for i, vec := range vectors {
@@ -387,10 +387,10 @@ func BenchmarkMultiIndexSearch(b *testing.B) {
 			b.Fatalf("Insert failed: %v", err)
 		}
 	}
-	
+
 	query := vectors[0]
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		mi.Search(query, 10)
 	}
@@ -398,22 +398,22 @@ func BenchmarkMultiIndexSearch(b *testing.B) {
 
 func BenchmarkHybridIndexSearch(b *testing.B) {
 	hybrid := NewHybridIndex(128, 16, 20)
-	
+
 	// Train and build
 	vectors := generateTestVectorsMulti(5000, 128)
 	if err := hybrid.Train(vectors[:1000]); err != nil {
 		b.Fatalf("Train failed: %v", err)
 	}
-	
+
 	for i, vec := range vectors {
 		if err := hybrid.Insert(fmt.Sprintf("vec_%d", i), vec); err != nil {
 			b.Fatalf("Insert failed: %v", err)
 		}
 	}
-	
+
 	query := vectors[0]
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		hybrid.Search(query, 10)
 	}

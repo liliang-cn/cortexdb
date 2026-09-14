@@ -5,13 +5,13 @@ import "testing"
 func TestKeepEntityCandidate(t *testing.T) {
 	// freq=1 unless noted: single-occurrence behavior is what matters most.
 	keep := []string{
-		"RAG", "CGO", "JSON", "OIDC", "MCP",       // acronyms
-		"DefaultDBPath", "NewCortexMemoryStore",   // CamelCase
+		"RAG", "CGO", "JSON", "OIDC", "MCP", // acronyms
+		"DefaultDBPath", "NewCortexMemoryStore", // CamelCase
 		"TikTokAIVideoGenerator", "UserPromptSubmit",
-		"smartticket.superleo.app",                 // domain
-		"internal/ossagent",                        // path
-		"IPv4",                                     // has digit
-		"OSS_EMB_KEY",                              // identifier
+		"smartticket.superleo.app", // domain
+		"internal/ossagent",        // path
+		"IPv4",                     // has digit
+		"OSS_EMB_KEY",              // identifier
 	}
 	for _, name := range keep {
 		if !keepEntityCandidate(name, 1) {
@@ -20,13 +20,13 @@ func TestKeepEntityCandidate(t *testing.T) {
 	}
 
 	drop := []string{
-		"git apply --3way",                         // command (whitespace)
-		"cd ~/Things/dev && pnpm build",            // command
-		"{ handle /api/* { reverse_proxy } }",      // config block
-		"Home", "Quick", "Sample", "Verified",      // common words
-		"Deep", "Double", "Zero", "Other", "Get",   // common words
-		"Network", "Admin", "English", "Full",      // common words
-		"A",                                        // too short
+		"git apply --3way",                    // command (whitespace)
+		"cd ~/Things/dev && pnpm build",       // command
+		"{ handle /api/* { reverse_proxy } }", // config block
+		"Home", "Quick", "Sample", "Verified", // common words
+		"Deep", "Double", "Zero", "Other", "Get", // common words
+		"Network", "Admin", "English", "Full", // common words
+		"A", // too short
 	}
 	for _, name := range drop {
 		if keepEntityCandidate(name, 1) {

@@ -295,9 +295,9 @@ func TestConfigOptions(t *testing.T) {
 	embedder := NewMockEmbedder(128)
 
 	tests := []struct {
-		name      string
-		option    ConfigOption
-		check     func(*Router) error
+		name   string
+		option ConfigOption
+		check  func(*Router) error
 	}{
 		{
 			name:   "with threshold",

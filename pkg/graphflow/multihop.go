@@ -80,7 +80,7 @@ func MultiHopSearch(ctx context.Context, db *cortexdb.DB, query string, opts Mul
 	}
 
 	result := &MultiHopResult{Query: original}
-	evidence := make([]string, 0)          // accumulated, deduped snippets
+	evidence := make([]string, 0) // accumulated, deduped snippets
 	seenSnippet := make(map[string]struct{})
 	seenQuery := make(map[string]struct{}) // guards against a looping model
 	answer := ""

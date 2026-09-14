@@ -10,11 +10,11 @@ import (
 
 // Router performs semantic routing using vector similarity.
 type Router struct {
-	routes    []*Route
-	embedder  Embedder
-	config    Config
-	store     core.Store // Optional: use persistent storage for routes
-	mu        sync.RWMutex
+	routes   []*Route
+	embedder Embedder
+	config   Config
+	store    core.Store // Optional: use persistent storage for routes
+	mu       sync.RWMutex
 }
 
 // NewRouter creates a new semantic router.
@@ -444,11 +444,11 @@ func (r *Router) Stats() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"route_count":       len(r.routes),
-		"total_utterances":  totalUtterances,
-		"threshold":         r.config.Threshold,
-		"top_k":             r.config.TopK,
-		"cache_enabled":     r.config.CacheEmbeddings,
+		"route_count":          len(r.routes),
+		"total_utterances":     totalUtterances,
+		"threshold":            r.config.Threshold,
+		"top_k":                r.config.TopK,
+		"cache_enabled":        r.config.CacheEmbeddings,
 		"has_persistent_store": r.store != nil,
 	}
 }

@@ -170,12 +170,12 @@ func ImportLearningGraph(ctx context.Context, db *cortexdb.DB, lg LearningGraph)
 // LearningPathResult is an ordered study plan.
 type LearningPathResult struct {
 	Target string            `json:"target"`
-	Steps  []LearningConcept `json:"steps"`   // prerequisites first, target last
-	Known  []string          `json:"known"`   // already-mastered concepts that were skipped
+	Steps  []LearningConcept `json:"steps"` // prerequisites first, target last
+	Known  []string          `json:"known"` // already-mastered concepts that were skipped
 	// Concepts that genuinely lie on a prerequisite cycle — not merely the ones
 	// waiting behind one. Each appears once. See cyclicConcepts.
-	Cycles []string          `json:"cycles"`
-	Missing bool             `json:"missing"` // target not present in the graph
+	Cycles  []string `json:"cycles"`
+	Missing bool     `json:"missing"` // target not present in the graph
 }
 
 // LearningPath returns an ordered study plan for reaching `target`: every

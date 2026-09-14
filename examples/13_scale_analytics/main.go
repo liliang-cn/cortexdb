@@ -239,7 +239,7 @@ func cdcUnderLoad(ctx context.Context, db *cortexdb.DB, pg *sql.DB, pgDSN string
 	runErr := make(chan error, 1)
 	go func() { runErr <- w.Run(runCtx) }()
 	time.Sleep(1500 * time.Millisecond) // attach replication
-	select { // surface an early replication failure instead of hiding it
+	select {                            // surface an early replication failure instead of hiding it
 	case e := <-runErr:
 		return fmt.Errorf("cdc watcher failed to start: %w", e)
 	default:

@@ -32,8 +32,8 @@ type Coordinate struct {
 
 // GeoPoint represents a point with ID and coordinates
 type GeoPoint struct {
-	ID         string     `json:"id"`
-	Coordinate Coordinate `json:"coordinate"`
+	ID         string                 `json:"id"`
+	Coordinate Coordinate             `json:"coordinate"`
 	Metadata   map[string]interface{} `json:"metadata,omitempty"`
 }
 
@@ -56,7 +56,7 @@ type GeoIndex struct {
 	mu     sync.RWMutex
 	points map[string]*GeoPoint
 	// Grid-based index for faster spatial queries
-	grid   map[int64][]*GeoPoint
+	grid     map[int64][]*GeoPoint
 	gridSize float64 // Size of each grid cell in degrees
 }
 
@@ -74,7 +74,7 @@ func (g *GeoIndex) Insert(point GeoPoint) error {
 	if point.ID == "" {
 		return fmt.Errorf("point ID cannot be empty")
 	}
-	
+
 	if !isValidCoordinate(point.Coordinate) {
 		return fmt.Errorf("invalid coordinate: lat=%f, lng=%f", point.Coordinate.Lat, point.Coordinate.Lng)
 	}
@@ -130,7 +130,7 @@ func (g *GeoIndex) SearchRadius(center Coordinate, radius float64, unit Distance
 	if !isValidCoordinate(center) {
 		return nil, fmt.Errorf("invalid center coordinate")
 	}
-	
+
 	if radius <= 0 {
 		return nil, fmt.Errorf("radius must be positive")
 	}
@@ -140,10 +140,10 @@ func (g *GeoIndex) SearchRadius(center Coordinate, radius float64, unit Distance
 
 	// Convert radius to kilometers for calculations
 	radiusKM := convertToKM(radius, unit)
-	
+
 	// Get candidate cells from grid
 	candidates := g.getCandidateCells(center, radiusKM)
-	
+
 	// Calculate distances and filter
 	var results []GeoSearchResult
 	for _, point := range candidates {
@@ -171,7 +171,7 @@ func (g *GeoIndex) SearchKNN(center Coordinate, k int) ([]GeoSearchResult, error
 	if !isValidCoordinate(center) {
 		return nil, fmt.Errorf("invalid center coordinate")
 	}
-	
+
 	if k <= 0 {
 		return nil, fmt.Errorf("k must be positive")
 	}
@@ -211,7 +211,7 @@ func (g *GeoIndex) SearchBoundingBox(bbox BoundingBox) ([]GeoPoint, error) {
 	defer g.mu.RUnlock()
 
 	var results []GeoPoint
-	
+
 	// Get all grid cells that intersect with bounding box
 	minGridX := int64(bbox.MinLng / g.gridSize)
 	maxGridX := int64(bbox.MaxLng / g.gridSize)
@@ -223,10 +223,10 @@ func (g *GeoIndex) SearchBoundingBox(bbox BoundingBox) ([]GeoPoint, error) {
 			gridKey := (x << 32) | (y & 0xFFFFFFFF)
 			if cells, ok := g.grid[gridKey]; ok {
 				for _, point := range cells {
-					if point.Coordinate.Lat >= bbox.MinLat && 
-					   point.Coordinate.Lat <= bbox.MaxLat &&
-					   point.Coordinate.Lng >= bbox.MinLng && 
-					   point.Coordinate.Lng <= bbox.MaxLng {
+					if point.Coordinate.Lat >= bbox.MinLat &&
+						point.Coordinate.Lat <= bbox.MaxLat &&
+						point.Coordinate.Lng >= bbox.MinLng &&
+						point.Coordinate.Lng <= bbox.MaxLng {
 						results = append(results, *point)
 					}
 				}
@@ -248,15 +248,15 @@ func (g *GeoIndex) SearchPolygon(polygon []Coordinate) ([]GeoPoint, error) {
 
 	// Get bounding box of polygon for initial filtering
 	bbox := getBoundingBoxFromPolygon(polygon)
-	
+
 	var results []GeoPoint
 	for _, point := range g.points {
 		// Quick bounding box check
 		if point.Coordinate.Lat < bbox.MinLat || point.Coordinate.Lat > bbox.MaxLat ||
-		   point.Coordinate.Lng < bbox.MinLng || point.Coordinate.Lng > bbox.MaxLng {
+			point.Coordinate.Lng < bbox.MinLng || point.Coordinate.Lng > bbox.MaxLng {
 			continue
 		}
-		
+
 		// Point-in-polygon test using ray casting algorithm
 		if pointInPolygon(point.Coordinate, polygon) {
 			results = append(results, *point)
@@ -310,10 +310,10 @@ func (g *GeoIndex) getCandidateCells(center Coordinate, radiusKM float64) []*Geo
 	// At equator, 1 degree ≈ 111km
 	degreesRadius := radiusKM / 111.0
 	cellsRadius := int64(math.Ceil(degreesRadius / g.gridSize))
-	
+
 	centerGridX := int64(center.Lng / g.gridSize)
 	centerGridY := int64(center.Lat / g.gridSize)
-	
+
 	var candidates []*GeoPoint
 	for dx := -cellsRadius; dx <= cellsRadius; dx++ {
 		for dy := -cellsRadius; dy <= cellsRadius; dy++ {
@@ -323,7 +323,7 @@ func (g *GeoIndex) getCandidateCells(center Coordinate, radiusKM float64) []*Geo
 			}
 		}
 	}
-	
+
 	return candidates
 }
 
@@ -388,7 +388,7 @@ func getBoundingBoxFromPolygon(polygon []Coordinate) BoundingBox {
 		MinLng: polygon[0].Lng,
 		MaxLng: polygon[0].Lng,
 	}
-	
+
 	for _, coord := range polygon[1:] {
 		if coord.Lat < bbox.MinLat {
 			bbox.MinLat = coord.Lat
@@ -403,7 +403,7 @@ func getBoundingBoxFromPolygon(polygon []Coordinate) BoundingBox {
 			bbox.MaxLng = coord.Lng
 		}
 	}
-	
+
 	return bbox
 }
 
@@ -411,10 +411,10 @@ func getBoundingBoxFromPolygon(polygon []Coordinate) BoundingBox {
 func pointInPolygon(point Coordinate, polygon []Coordinate) bool {
 	inside := false
 	p1 := polygon[0]
-	
+
 	for i := 1; i <= len(polygon); i++ {
 		p2 := polygon[i%len(polygon)]
-		
+
 		if point.Lng > math.Min(p1.Lng, p2.Lng) {
 			if point.Lng <= math.Max(p1.Lng, p2.Lng) {
 				if point.Lat <= math.Max(p1.Lat, p2.Lat) {
@@ -429,6 +429,6 @@ func pointInPolygon(point Coordinate, polygon []Coordinate) bool {
 		}
 		p1 = p2
 	}
-	
+
 	return inside
 }

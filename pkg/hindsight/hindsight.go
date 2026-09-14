@@ -14,8 +14,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
-	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
 // System is the Hindsight memory system built on cortexdb.

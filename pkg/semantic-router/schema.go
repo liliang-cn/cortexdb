@@ -110,9 +110,9 @@ type FunctionRouter struct {
 // NewFunctionRouter creates a new function router.
 func NewFunctionRouter(baseRouter *Router) *FunctionRouter {
 	return &FunctionRouter{
-		routes:   make(map[string]*RouteWithFunction),
+		routes:    make(map[string]*RouteWithFunction),
 		extractor: NewRegexExtractor(),
-		router:   baseRouter,
+		router:    baseRouter,
 	}
 }
 
@@ -287,11 +287,11 @@ func (r *RegexExtractor) extractKeywords(description, paramName string) []string
 
 	// Common keyword mappings
 	keywordMap := map[string][]string{
-		"city":       {"城市", "地点", "在哪里"},
-		"date":       {"日期", "几号", "哪天", "时间"},
-		"amount":     {"金额", "钱", "元", "块"},
-		"product":    {"产品", "商品", "东西"},
-		"quantity":   {"数量", "几个", "多少"},
+		"city":        {"城市", "地点", "在哪里"},
+		"date":        {"日期", "几号", "哪天", "时间"},
+		"amount":      {"金额", "钱", "元", "块"},
+		"product":     {"产品", "商品", "东西"},
+		"quantity":    {"数量", "几个", "多少"},
 		"temperature": {"温度", "气温", "度"},
 	}
 

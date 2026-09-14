@@ -11,13 +11,13 @@ func TestGeoIndexBasic(t *testing.T) {
 
 	// Test data - Major cities
 	cities := []GeoPoint{
-		{ID: "nyc", Coordinate: Coordinate{Lat: 40.7128, Lng: -74.0060}},      // New York
-		{ID: "london", Coordinate: Coordinate{Lat: 51.5074, Lng: -0.1278}},    // London
-		{ID: "tokyo", Coordinate: Coordinate{Lat: 35.6762, Lng: 139.6503}},    // Tokyo
-		{ID: "sydney", Coordinate: Coordinate{Lat: -33.8688, Lng: 151.2093}},  // Sydney
-		{ID: "paris", Coordinate: Coordinate{Lat: 48.8566, Lng: 2.3522}},      // Paris
-		{ID: "sf", Coordinate: Coordinate{Lat: 37.7749, Lng: -122.4194}},      // San Francisco
-		{ID: "la", Coordinate: Coordinate{Lat: 34.0522, Lng: -118.2437}},      // Los Angeles
+		{ID: "nyc", Coordinate: Coordinate{Lat: 40.7128, Lng: -74.0060}},     // New York
+		{ID: "london", Coordinate: Coordinate{Lat: 51.5074, Lng: -0.1278}},   // London
+		{ID: "tokyo", Coordinate: Coordinate{Lat: 35.6762, Lng: 139.6503}},   // Tokyo
+		{ID: "sydney", Coordinate: Coordinate{Lat: -33.8688, Lng: 151.2093}}, // Sydney
+		{ID: "paris", Coordinate: Coordinate{Lat: 48.8566, Lng: 2.3522}},     // Paris
+		{ID: "sf", Coordinate: Coordinate{Lat: 37.7749, Lng: -122.4194}},     // San Francisco
+		{ID: "la", Coordinate: Coordinate{Lat: 34.0522, Lng: -118.2437}},     // Los Angeles
 	}
 
 	// Insert cities
@@ -57,12 +57,12 @@ func TestRadiusSearch(t *testing.T) {
 
 	// California cities
 	cities := []GeoPoint{
-		{ID: "sf", Coordinate: Coordinate{Lat: 37.7749, Lng: -122.4194}},       // San Francisco
-		{ID: "oakland", Coordinate: Coordinate{Lat: 37.8044, Lng: -122.2712}},  // Oakland (~13km from SF)
-		{ID: "berkeley", Coordinate: Coordinate{Lat: 37.8716, Lng: -122.2727}}, // Berkeley (~16km from SF)
-		{ID: "sanjose", Coordinate: Coordinate{Lat: 37.3382, Lng: -121.8863}},  // San Jose (~76km from SF)
+		{ID: "sf", Coordinate: Coordinate{Lat: 37.7749, Lng: -122.4194}},         // San Francisco
+		{ID: "oakland", Coordinate: Coordinate{Lat: 37.8044, Lng: -122.2712}},    // Oakland (~13km from SF)
+		{ID: "berkeley", Coordinate: Coordinate{Lat: 37.8716, Lng: -122.2727}},   // Berkeley (~16km from SF)
+		{ID: "sanjose", Coordinate: Coordinate{Lat: 37.3382, Lng: -121.8863}},    // San Jose (~76km from SF)
 		{ID: "sacramento", Coordinate: Coordinate{Lat: 38.5816, Lng: -121.4944}}, // Sacramento (~120km from SF)
-		{ID: "la", Coordinate: Coordinate{Lat: 34.0522, Lng: -118.2437}},       // Los Angeles (~560km from SF)
+		{ID: "la", Coordinate: Coordinate{Lat: 34.0522, Lng: -118.2437}},         // Los Angeles (~560km from SF)
 	}
 
 	for _, city := range cities {
@@ -258,10 +258,10 @@ func TestInvalidInputs(t *testing.T) {
 
 	// Test invalid coordinates
 	invalidPoints := []GeoPoint{
-		{ID: "invalid1", Coordinate: Coordinate{Lat: 91, Lng: 0}},    // Lat > 90
-		{ID: "invalid2", Coordinate: Coordinate{Lat: -91, Lng: 0}},   // Lat < -90
-		{ID: "invalid3", Coordinate: Coordinate{Lat: 0, Lng: 181}},   // Lng > 180
-		{ID: "invalid4", Coordinate: Coordinate{Lat: 0, Lng: -181}},  // Lng < -180
+		{ID: "invalid1", Coordinate: Coordinate{Lat: 91, Lng: 0}},   // Lat > 90
+		{ID: "invalid2", Coordinate: Coordinate{Lat: -91, Lng: 0}},  // Lat < -90
+		{ID: "invalid3", Coordinate: Coordinate{Lat: 0, Lng: 181}},  // Lng > 180
+		{ID: "invalid4", Coordinate: Coordinate{Lat: 0, Lng: -181}}, // Lng < -180
 	}
 
 	for _, point := range invalidPoints {
@@ -312,31 +312,31 @@ func TestInvalidInputs(t *testing.T) {
 func TestHaversineDistance(t *testing.T) {
 	// Test known distances
 	testCases := []struct {
-		name     string
-		p1       Coordinate
-		p2       Coordinate
-		expected float64 // in km
+		name      string
+		p1        Coordinate
+		p2        Coordinate
+		expected  float64 // in km
 		tolerance float64
 	}{
 		{
-			name:     "Same point",
-			p1:       Coordinate{Lat: 40.7128, Lng: -74.0060},
-			p2:       Coordinate{Lat: 40.7128, Lng: -74.0060},
-			expected: 0,
+			name:      "Same point",
+			p1:        Coordinate{Lat: 40.7128, Lng: -74.0060},
+			p2:        Coordinate{Lat: 40.7128, Lng: -74.0060},
+			expected:  0,
 			tolerance: 0.01,
 		},
 		{
-			name:     "NYC to London",
-			p1:       Coordinate{Lat: 40.7128, Lng: -74.0060},
-			p2:       Coordinate{Lat: 51.5074, Lng: -0.1278},
-			expected: 5570, // Approximately 5570 km
+			name:      "NYC to London",
+			p1:        Coordinate{Lat: 40.7128, Lng: -74.0060},
+			p2:        Coordinate{Lat: 51.5074, Lng: -0.1278},
+			expected:  5570, // Approximately 5570 km
 			tolerance: 10,
 		},
 		{
-			name:     "Equator points",
-			p1:       Coordinate{Lat: 0, Lng: 0},
-			p2:       Coordinate{Lat: 0, Lng: 1},
-			expected: 111.32, // 1 degree at equator
+			name:      "Equator points",
+			p1:        Coordinate{Lat: 0, Lng: 0},
+			p2:        Coordinate{Lat: 0, Lng: 1},
+			expected:  111.32, // 1 degree at equator
 			tolerance: 0.5,
 		},
 	}
@@ -346,7 +346,7 @@ func TestHaversineDistance(t *testing.T) {
 			dist := haversineDistance(tc.p1, tc.p2)
 			diff := math.Abs(dist - tc.expected)
 			if diff > tc.tolerance {
-				t.Errorf("Distance %s: expected %.2f±%.2f km, got %.2f km", 
+				t.Errorf("Distance %s: expected %.2f±%.2f km, got %.2f km",
 					tc.name, tc.expected, tc.tolerance, dist)
 			}
 		})
@@ -389,15 +389,15 @@ func TestUnitConversion(t *testing.T) {
 		from     DistanceUnit
 		expected float64
 	}{
-		{10, Miles, 16.0934},       // 10 miles to km
-		{10, Kilometers, 10},        // 10 km to km
-		{10000, Meters, 10},         // 10000 meters to km
+		{10, Miles, 16.0934}, // 10 miles to km
+		{10, Kilometers, 10}, // 10 km to km
+		{10000, Meters, 10},  // 10000 meters to km
 	}
 
 	for _, tc := range testCases {
 		result := convertToKM(tc.value, tc.from)
 		if math.Abs(result-tc.expected) > 0.01 {
-			t.Errorf("Convert %f %s to km: expected %.2f, got %.2f", 
+			t.Errorf("Convert %f %s to km: expected %.2f, got %.2f",
 				tc.value, tc.from, tc.expected, result)
 		}
 	}
@@ -406,7 +406,7 @@ func TestUnitConversion(t *testing.T) {
 	for _, tc := range testCases {
 		result := convertFromKM(tc.expected, tc.from)
 		if math.Abs(result-tc.value) > 0.01 {
-			t.Errorf("Convert %.2f km to %s: expected %f, got %.2f", 
+			t.Errorf("Convert %.2f km to %s: expected %f, got %.2f",
 				tc.expected, tc.from, tc.value, result)
 		}
 	}
@@ -414,7 +414,7 @@ func TestUnitConversion(t *testing.T) {
 
 func BenchmarkInsert(b *testing.B) {
 	index := NewGeoIndex()
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		point := GeoPoint{
@@ -430,7 +430,7 @@ func BenchmarkInsert(b *testing.B) {
 
 func BenchmarkRadiusSearch(b *testing.B) {
 	index := NewGeoIndex()
-	
+
 	// Insert 10000 random points
 	for i := 0; i < 10000; i++ {
 		point := GeoPoint{
@@ -444,7 +444,7 @@ func BenchmarkRadiusSearch(b *testing.B) {
 	}
 
 	center := Coordinate{Lat: 0, Lng: 0}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = index.SearchRadius(center, 100, Kilometers)
@@ -453,7 +453,7 @@ func BenchmarkRadiusSearch(b *testing.B) {
 
 func BenchmarkKNNSearch(b *testing.B) {
 	index := NewGeoIndex()
-	
+
 	// Insert 10000 random points
 	for i := 0; i < 10000; i++ {
 		point := GeoPoint{
@@ -467,7 +467,7 @@ func BenchmarkKNNSearch(b *testing.B) {
 	}
 
 	center := Coordinate{Lat: 0, Lng: 0}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = index.SearchKNN(center, 10)
@@ -476,7 +476,7 @@ func BenchmarkKNNSearch(b *testing.B) {
 
 func BenchmarkBoundingBoxSearch(b *testing.B) {
 	index := NewGeoIndex()
-	
+
 	// Insert 10000 random points
 	for i := 0; i < 10000; i++ {
 		point := GeoPoint{
@@ -495,7 +495,7 @@ func BenchmarkBoundingBoxSearch(b *testing.B) {
 		MinLng: -10,
 		MaxLng: 10,
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = index.SearchBoundingBox(bbox)
