@@ -121,6 +121,20 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *resp, nil
 	})
+	addGraphRAGMCPTool(server, definitions["aggregate_metadata"], func(ctx context.Context, req ToolAggregateMetadataRequest) (ToolAggregateMetadataResponse, error) {
+		res, err := toolbox.AggregateMetadata(ctx, req)
+		if err != nil {
+			return ToolAggregateMetadataResponse{}, err
+		}
+		return *res, nil
+	})
+	addGraphRAGMCPTool(server, definitions["representative_records"], func(ctx context.Context, req ToolRepresentativeRecordsRequest) (ToolRepresentativeRecordsResponse, error) {
+		res, err := toolbox.RepresentativeRecords(ctx, req)
+		if err != nil {
+			return ToolRepresentativeRecordsResponse{}, err
+		}
+		return *res, nil
+	})
 	addGraphRAGMCPTool(server, definitions["search_vector_range"], func(ctx context.Context, req ToolSearchVectorRangeRequest) (ToolSearchVectorRangeResponse, error) {
 		resp, err := toolbox.SearchVectorRange(ctx, req)
 		if err != nil {

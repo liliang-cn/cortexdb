@@ -186,6 +186,14 @@ func DefaultAutoSaveConfig() AutoSaveConfig {
 
 // Store defines the core interface for vector storage operations.
 // It provides a high-level API for managing embeddings, documents, chat history, and collections.
+//
+// Everything here is implemented by both backends, and that is the point of it
+// being here. BatchRangeSearch, SearchWithFacets, Aggregate and VectorAggregate
+// used to sit on *SQLiteStore alone and outside this interface, which made them
+// unreachable from anything holding a Store — pkg/cortexdb.DB holds one — and
+// made any code that did reach for them break the moment the store behind it
+// was PostgreSQL. A capability that only one backend has does not belong on the
+// type both are addressed through.
 type Store interface {
 	// Init initializes the store, creates necessary tables, and builds/loads indexes.
 	// It must be called before any other operation.
@@ -203,8 +211,27 @@ type Store interface {
 	// It uses the configured index (HNSW or IVF) if available, otherwise falls back to linear search.
 	Search(ctx context.Context, query []float32, opts SearchOptions) ([]ScoredEmbedding, error)
 
-	// RangeSearch finds all vectors within a specified distance (radius) from the query.
+	// RangeSearch finds all vectors within a specified distance (radius) from
+	// the query: everything above a bar rather than a fixed K, which is the
+	// answer a threshold decision needs. Score is the similarity, descending,
+	// like Search; radius is a distance in this store's metric; TopK 0 means
+	// every match.
 	RangeSearch(ctx context.Context, query []float32, radius float32, opts SearchOptions) ([]ScoredEmbedding, error)
+
+	// BatchRangeSearch answers several range queries in one pass, keeping each
+	// result list with the query that produced it, by index.
+	BatchRangeSearch(ctx context.Context, queries [][]float32, radius float32, opts SearchOptions) ([][]ScoredEmbedding, error)
+
+	// SearchWithFacets filters a vector search by metadata facets and can
+	// return the facet counts beside the hits.
+	SearchWithFacets(ctx context.Context, query []float32, opts FacetedSearchOptions) ([]ScoredEmbedding, []FacetResult, error)
+
+	// Aggregate counts, sums, averages and groups over a metadata field.
+	Aggregate(ctx context.Context, req AggregationRequest) (*AggregationResponse, error)
+
+	// VectorAggregate reduces the vectors themselves — centroid, geometric
+	// median, or the medoid, which unlike the other two is a row that exists.
+	VectorAggregate(ctx context.Context, req VectorAggregateRequest) (*VectorAggregateResponse, error)
 
 	// Delete removes an embedding by its unique ID.
 	Delete(ctx context.Context, id string) error

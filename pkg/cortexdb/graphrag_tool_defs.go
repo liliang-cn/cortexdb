@@ -160,6 +160,35 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			),
 		},
 		{
+			Name:        "aggregate_metadata",
+			Description: "Count, sum, average or group the stored records by a metadata field — a question about the collection as a whole, not about one query's neighbourhood. Use it for \"how many records of each kind are there\", \"what values does this field take\", \"what is the average score across this source\": questions a search cannot answer, because a search returns the top few and this returns the totals. type is one of count, sum, avg, min, max, group_by; sum/avg/min/max need a field, group_by needs group_by. A group_by is also how to ask what values a field takes and how often, which is what facet counts are for. Field names must be plain identifiers.",
+			InputSchema: toolObjectSchema(
+				[]string{"type"},
+				map[string]any{
+					"type":       toolEnumSchema("Which aggregation to run.", "count", "sum", "avg", "min", "max", "group_by"),
+					"field":      toolStringSchema("Metadata field to aggregate. Required for sum, avg, min and max."),
+					"group_by":   toolStringArraySchema("Metadata fields to group by. Required for group_by."),
+					"filters":    toolMapSchema("Optional metadata equality filter, applied before aggregating."),
+					"collection": toolStringSchema("Optional collection name."),
+					"order_by":   toolStringSchema("Optional ordering: count, agg_value, or a group-by field name."),
+					"limit":      toolIntegerSchema("Optional maximum number of groups."),
+				},
+			),
+		},
+		{
+			Name:        "representative_records",
+			Description: "Return the one stored record that best represents each group — its medoid, the member closest to all the others. Use it to answer \"what is this cluster actually about\" or \"which of these near-duplicates is the canonical one\" without reading every member and without asking a model to summarise them: the answer is a real record, so it can be quoted and traced. Group with group_by on a metadata field, or omit it to get one representative for everything matched. score is how close that record sits to the rest, so a low score means the group has no real centre and the answer is representative of nothing.",
+			InputSchema: toolObjectSchema(
+				nil,
+				map[string]any{
+					"group_by":      toolStringSchema("Metadata field to group by. Omit for a single group over everything matched."),
+					"filter":        toolMapSchema("Optional metadata equality filter."),
+					"collection":    toolStringSchema("Optional collection name."),
+					"max_per_group": toolIntegerSchema("Optional cap on members considered per group, taken in id order."),
+				},
+			),
+		},
+		{
 			Name:        "search_chunks_by_entities",
 			Description: "Find chunks linked to specific entity nodes.",
 			InputSchema: toolObjectSchema(
@@ -405,6 +434,18 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.Query(ctx, req)
+	case "aggregate_metadata":
+		var req ToolAggregateMetadataRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.AggregateMetadata(ctx, req)
+	case "representative_records":
+		var req ToolRepresentativeRecordsRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.RepresentativeRecords(ctx, req)
 	case "search_vector_range":
 		var req ToolSearchVectorRangeRequest
 		if err := json.Unmarshal(input, &req); err != nil {

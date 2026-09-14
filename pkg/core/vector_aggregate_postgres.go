@@ -42,8 +42,9 @@ func (s *PostgresStore) VectorAggregate(ctx context.Context, req VectorAggregate
 			id         string
 			vectorText string
 			metadata   []byte
+			content    string
 		)
-		if err := rows.Scan(&id, &vectorText, &metadata); err != nil {
+		if err := rows.Scan(&id, &vectorText, &metadata, &content); err != nil {
 			return nil, wrapError("vector_aggregate", fmt.Errorf("failed to scan row: %w", err))
 		}
 		// Fatal, not skipped, and for the same reason as on SQLite: a mean
@@ -54,9 +55,10 @@ func (s *PostgresStore) VectorAggregate(ctx context.Context, req VectorAggregate
 			return nil, wrapError("vector_aggregate", fmt.Errorf("failed to decode vector of %q: %w", id, err))
 		}
 		fetched = append(fetched, vectorAggregateRow{
-			id:     id,
-			vector: vec,
-			meta:   decodeAggregateMetadata(metadata),
+			id:      id,
+			vector:  vec,
+			meta:    decodeAggregateMetadata(metadata),
+			content: content,
 		})
 	}
 	if err := rows.Err(); err != nil {

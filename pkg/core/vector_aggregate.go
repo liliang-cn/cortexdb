@@ -72,7 +72,12 @@ type VectorAggregateGroup struct {
 	Count    int       `json:"count"`               // vectors that went into this group
 	Vector   []float32 `json:"vector,omitempty"`    // centroid / geometric_median; nil for medoid
 	MemberID string    `json:"member_id,omitempty"` // medoid only: the id of the representative record
-	Score    float64   `json:"score,omitempty"`     // medoid only: its mean similarity to the rest of the group
+	// MemberContent is that record's text. It rides along because the rows
+	// were already read to find it: returning an id alone would make every
+	// caller ask for the one thing the question was about in a second round
+	// trip, and a tool caller may have no tool that takes this kind of id.
+	MemberContent string  `json:"member_content,omitempty"` // medoid only
+	Score         float64 `json:"score,omitempty"`          // medoid only: its mean similarity to the rest of the group
 }
 
 // VectorAggregateResponse echoes the request beside the groups, so a result
@@ -137,8 +142,9 @@ func (s *SQLiteStore) VectorAggregate(ctx context.Context, req VectorAggregateRe
 			id          string
 			vectorBytes []byte
 			metadata    []byte
+			content     string
 		)
-		if err := rows.Scan(&id, &vectorBytes, &metadata); err != nil {
+		if err := rows.Scan(&id, &vectorBytes, &metadata, &content); err != nil {
 			return nil, wrapError("vector_aggregate", fmt.Errorf("failed to scan row: %w", err))
 		}
 		// A row that will not decode is fatal here, unlike in the search and
@@ -150,9 +156,10 @@ func (s *SQLiteStore) VectorAggregate(ctx context.Context, req VectorAggregateRe
 			return nil, wrapError("vector_aggregate", fmt.Errorf("failed to decode vector of %q: %w", id, err))
 		}
 		fetched = append(fetched, vectorAggregateRow{
-			id:     id,
-			vector: vec,
-			meta:   decodeAggregateMetadata(metadata),
+			id:      id,
+			vector:  vec,
+			meta:    decodeAggregateMetadata(metadata),
+			content: content,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -172,17 +179,19 @@ func (s *SQLiteStore) VectorAggregate(ctx context.Context, req VectorAggregateRe
 // and the grouping need. Both backends produce this; nothing below here knows
 // which database it came from.
 type vectorAggregateRow struct {
-	id     string
-	vector []float32
-	meta   map[string]string
+	id      string
+	vector  []float32
+	meta    map[string]string
+	content string
 }
 
 // vectorAggregateGroupInput is a group after selection and capping, before any
 // arithmetic. ids and vecs are parallel, both in ascending id order.
 type vectorAggregateGroupInput struct {
-	key  string
-	ids  []string
-	vecs [][]float32
+	key      string
+	ids      []string
+	vecs     [][]float32
+	contents []string
 }
 
 func validateVectorAggregateRequest(req VectorAggregateRequest) error {
@@ -212,7 +221,12 @@ func validateVectorAggregateRequest(req VectorAggregateRequest) error {
 // different (still correct) statement every call, which makes the query
 // unloggable and untestable for no gain.
 func buildVectorAggregateQuery(d sqldialect.Dialect, vectorExpr string, req VectorAggregateRequest) (string, []interface{}) {
-	query := "SELECT id, " + vectorExpr + ", metadata FROM embeddings WHERE 1=1"
+	// content comes back for every kind, not only the medoid that reports it.
+	// A conditional column would have to be matched by a conditional scan in
+	// each backend, which is two places to get the arity wrong; and next to a
+	// vector — several hundred floats, and on pgvector their text form — the
+	// content is the small half of the row.
+	query := "SELECT id, " + vectorExpr + ", metadata, content FROM embeddings WHERE 1=1"
 	args := []interface{}{}
 
 	if req.Collection != "" {
@@ -297,13 +311,15 @@ func groupVectorAggregateRows(rows []vectorAggregateRow, req VectorAggregateRequ
 		}
 
 		g := vectorAggregateGroupInput{
-			key:  k,
-			ids:  make([]string, len(members)),
-			vecs: make([][]float32, len(members)),
+			key:      k,
+			ids:      make([]string, len(members)),
+			vecs:     make([][]float32, len(members)),
+			contents: make([]string, len(members)),
 		}
 		for i, m := range members {
 			g.ids[i] = m.id
 			g.vecs[i] = m.vector
+			g.contents[i] = m.content
 		}
 		groups = append(groups, g)
 	}
@@ -349,6 +365,7 @@ func runVectorAggregate(req VectorAggregateRequest, rows []vectorAggregateRow, s
 				return nil, fmt.Errorf("group %q: %w", g.key, err)
 			}
 			out.MemberID = g.ids[idx]
+			out.MemberContent = g.contents[idx]
 			out.Score = medoidScore(g.vecs, idx, sim)
 		default:
 			return nil, fmt.Errorf("unsupported vector aggregate kind: %s", req.Kind)
