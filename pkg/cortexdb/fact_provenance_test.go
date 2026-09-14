@@ -276,3 +276,42 @@ func TestTheSweepSurvivesABrainThatHasIngestedADocument(t *testing.T) {
 		t.Errorf("swept %v, want exactly [lives_in]", types)
 	}
 }
+
+// TestAFactThatNamesItsSourceIsAccountedFor covers the two producers that have
+// no chunk to quote and are not anonymous: a row read out of a live database,
+// and an edge a declared rule derived. Both record themselves under the
+// contract's source key. Before this, one imported table put one line per row
+// into a report whose only value is being short enough to act on.
+func TestAFactThatNamesItsSourceIsAccountedFor(t *testing.T) {
+	db, tools := provenanceBrain(t)
+	ctx := context.Background()
+
+	if _, err := tools.UpsertEntities(ctx, ToolUpsertEntitiesRequest{Entities: []ToolEntityInput{
+		{Name: "node-a", Type: "Host"}, {Name: "rack-12", Type: "Rack"}, {Name: "ghost", Type: "Thing"},
+	}}); err != nil {
+		t.Fatalf("entities: %v", err)
+	}
+	if _, err := tools.UpsertRelations(ctx, ToolUpsertRelationsRequest{
+		Relations: []ToolRelationInput{
+			{From: "node-a", To: "rack-12", Type: "mounted_in", Metadata: map[string]string{
+				KeySource: "athanor:livedb:plan-7", KeyProducer: ProducerTabular, KeyGrade: GradeAsserted,
+			}},
+			{From: "ghost", To: "rack-12", Type: "claims"},
+		},
+	}); err != nil {
+		t.Fatalf("relations: %v", err)
+	}
+
+	swept, err := db.UncitedFactsTool(ctx, ToolUncitedFactsRequest{})
+	if err != nil {
+		t.Fatalf("uncited_facts: %v", err)
+	}
+	for _, f := range swept.Facts {
+		if f.Type == "mounted_in" {
+			t.Error("a fact naming athanor:livedb:plan-7 was reported as unable to say where it came from")
+		}
+	}
+	if len(swept.Facts) != 1 || (len(swept.Facts) == 1 && swept.Facts[0].Type != "claims") {
+		t.Errorf("swept %d facts, want exactly the one that names nothing", len(swept.Facts))
+	}
+}

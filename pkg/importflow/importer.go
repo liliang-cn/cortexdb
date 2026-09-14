@@ -20,6 +20,11 @@ type Importer struct {
 	extractor graphflow.Extractor
 	batchSize int
 	strict    bool
+
+	// provenance is stamped on every triple this importer writes. Empty means
+	// the triples say nothing about where they came from, which is what every
+	// import did before this existed.
+	provenance map[string]string
 }
 
 // Option configures an Importer.
@@ -39,6 +44,28 @@ func WithBatchSize(n int) Option { return func(im *Importer) { im.batchSize = n 
 
 // WithStrictMode aborts the run on the first row error instead of collecting it.
 func WithStrictMode() Option { return func(im *Importer) { im.strict = true } }
+
+// WithProvenance stamps the given properties onto every triple the importer
+// writes, so a fact read out of a live database can say which import wrote it,
+// under whose authority, and on what grade.
+//
+// The importer does not interpret the map and does not invent one: what a row
+// out of somebody's production database is worth is a decision for the product
+// running the import, not for the code moving the bytes. Keys that collide
+// with a triple's own description are dropped at the store.
+func WithProvenance(p map[string]string) Option {
+	return func(im *Importer) {
+		if len(p) == 0 {
+			im.provenance = nil
+			return
+		}
+		copied := make(map[string]string, len(p))
+		for k, v := range p {
+			copied[k] = v
+		}
+		im.provenance = copied
+	}
+}
 
 // New constructs an Importer over an open cortexdb.DB.
 func New(db *cortexdb.DB, opts ...Option) *Importer {
@@ -77,7 +104,7 @@ func (im *Importer) Run(ctx context.Context, src Source, plan MappingPlan) (*Rep
 		rep.UnparsedStatements = ds.Unparsed()
 	}
 	rag := newRAGSink(im.db, im.batchSize)
-	kg := newKGSink(im.db, im.batchSize)
+	kg := newKGSink(im.db, im.batchSize, im.provenance)
 
 	err := src.Records(ctx, func(r Record) error {
 		rep.RowsRead++

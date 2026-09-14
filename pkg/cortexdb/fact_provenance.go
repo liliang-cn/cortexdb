@@ -187,6 +187,14 @@ func (db *DB) UncitedFacts(ctx context.Context, limit int) ([]FactProvenance, er
 	chunkIDs := d.JSONTextGuarded("properties", "chunk_ids")
 	docID := d.JSONTextGuarded("properties", "document_id")
 	ruleID := d.JSONTextGuarded("properties", "rule_id")
+	// A fact that names its source is accounted for even when it has no chunk
+	// and no document, and two kinds of fact are exactly that: a row read out
+	// of a live database, and an edge derived by a declared rule whose writer
+	// records itself under the contract key rather than as a bare rule_id.
+	// Neither has a chunk anybody could quote, both can say who made them, and
+	// reporting them here would bury the facts that genuinely came from
+	// nowhere under one line per imported row.
+	source := d.JSONTextGuarded("properties", KeySource)
 
 	// has_chunk and mentions are bookkeeping — a document owning its chunks, a
 	// chunk naming an entity. They carry no properties because there is nothing
@@ -202,6 +210,7 @@ func (db *DB) UncitedFacts(ctx context.Context, limit int) ([]FactProvenance, er
 		  AND (` + chunkIDs + ` IS NULL OR ` + chunkIDs + ` IN ('', '[]'))
 		  AND (` + docID + ` IS NULL OR ` + docID + ` = '')
 		  AND (` + ruleID + ` IS NULL OR ` + ruleID + ` = '')
+		  AND (` + source + ` IS NULL OR ` + source + ` = '')
 		ORDER BY id
 		LIMIT ?`)
 

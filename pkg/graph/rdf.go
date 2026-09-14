@@ -65,6 +65,18 @@ type RDFTriple struct {
 	Inferred   bool     `json:"inferred,omitempty"`
 	Rule       string   `json:"rule,omitempty"`
 	SupportIDs []string `json:"support_ids,omitempty"`
+
+	// Provenance is carried onto the edge this triple becomes, so a triple
+	// written by a machine can say which machine, under whose authority, and
+	// on what grade. Nothing here is interpreted; it is the writer's statement
+	// about its own output, and keys that collide with the triple's own
+	// description are dropped rather than allowed to overwrite it.
+	//
+	// The RDF store had no such field, which meant every triple an import
+	// wrote was anonymous: the row it came from, the plan that was signed to
+	// read it, and the operator who signed it were all recoverable from the
+	// ledger and from nothing on the fact itself.
+	Provenance map[string]string `json:"provenance,omitempty"`
 }
 
 // TriplePattern filters triple lookup operations. Nil fields behave as wildcards.
@@ -868,6 +880,7 @@ func (g *GraphStore) normalizeTripleWithNamespaces(triple RDFTriple, namespaces 
 		Inferred:   triple.Inferred,
 		Rule:       strings.TrimSpace(triple.Rule),
 		SupportIDs: append([]string(nil), triple.SupportIDs...),
+		Provenance: triple.Provenance,
 	}, nil
 }
 
@@ -1007,7 +1020,13 @@ func (g *GraphStore) upsertRDFTermNodeWithLabelTx(ctx context.Context, tx *sql.T
 	return nil
 }
 
-func (g *GraphStore) upsertRDFEdgeTx(ctx context.Context, tx *sql.Tx, triple RDFTriple) error {
+// rdfEdgeProperties is what an RDF triple carries once it is an edge.
+//
+// Written once for both upsert paths, which had the same twenty lines copied.
+// The reason it matters that there is one of them is Provenance: a triple that
+// could describe its origin through one path and not the other would be a
+// provenance surface with a hole in it, and the hole would be invisible.
+func rdfEdgeProperties(triple RDFTriple) map[string]any {
 	properties := map[string]any{
 		"rdf":         true,
 		"triple_id":   triple.ID,
@@ -1031,7 +1050,21 @@ func (g *GraphStore) upsertRDFEdgeTx(ctx context.Context, tx *sql.Tx, triple RDF
 	if len(triple.SupportIDs) > 0 {
 		properties["support_ids"] = triple.SupportIDs
 	}
-	propertiesJSON, err := json.Marshal(properties)
+	// Provenance is merged last but cannot win: the keys above describe what
+	// the triple *is*, and a caller that could overwrite "inferred" or
+	// "triple_id" could make a fact lie about itself through the same field
+	// that is supposed to make it accountable.
+	for k, v := range triple.Provenance {
+		if _, taken := properties[k]; taken {
+			continue
+		}
+		properties[k] = v
+	}
+	return properties
+}
+
+func (g *GraphStore) upsertRDFEdgeTx(ctx context.Context, tx *sql.Tx, triple RDFTriple) error {
+	propertiesJSON, err := json.Marshal(rdfEdgeProperties(triple))
 	if err != nil {
 		return fmt.Errorf("encode rdf edge properties: %w", err)
 	}
@@ -1043,30 +1076,7 @@ func (g *GraphStore) upsertRDFEdgeTx(ctx context.Context, tx *sql.Tx, triple RDF
 }
 
 func (g *GraphStore) upsertRDFEdgeWithTypeTx(ctx context.Context, tx *sql.Tx, triple RDFTriple, edgeType string) error {
-	properties := map[string]any{
-		"rdf":         true,
-		"triple_id":   triple.ID,
-		"predicate":   triple.Predicate.Value,
-		"object_kind": triple.Object.Kind,
-		"inferred":    triple.Inferred,
-	}
-	if triple.Object.Datatype != "" {
-		properties["datatype"] = triple.Object.Datatype
-	}
-	if triple.Object.Language != "" {
-		properties["language"] = triple.Object.Language
-	}
-	if triple.Graph != nil {
-		properties["graph_kind"] = triple.Graph.Kind
-		properties["graph_value"] = triple.Graph.Value
-	}
-	if triple.Rule != "" {
-		properties["inference_rule"] = triple.Rule
-	}
-	if len(triple.SupportIDs) > 0 {
-		properties["support_ids"] = triple.SupportIDs
-	}
-	propertiesJSON, err := json.Marshal(properties)
+	propertiesJSON, err := json.Marshal(rdfEdgeProperties(triple))
 	if err != nil {
 		return fmt.Errorf("encode rdf edge properties: %w", err)
 	}
