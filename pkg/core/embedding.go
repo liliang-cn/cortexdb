@@ -271,6 +271,14 @@ type Store interface {
 	CreateDocument(ctx context.Context, doc *Document) error
 	// GetDocument retrieves a document record by its ID.
 	GetDocument(ctx context.Context, id string) (*Document, error)
+	// UpdateDocument replaces a document record that already exists.
+	//
+	// Both backends had it and the interface did not, which is the gap
+	// parity_aggregate_test.go is about: a caller holding the store as an
+	// interface — which cortexdb.DB does — could create a document and delete
+	// one but never write over one, so replacing a record meant delete then
+	// create, with a window where it is neither.
+	UpdateDocument(ctx context.Context, doc *Document) error
 	// DeleteDocument deletes a document and all its linked embeddings (cascading).
 	DeleteDocument(ctx context.Context, id string) error
 	// ListDocumentsWithFilter lists documents matching specific criteria like author.

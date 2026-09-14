@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.109.0] - 2026-09-14
+
+### Added
+
+- **`UpdateDocument` is on the `Store` interface.** Both backends had it and
+  the interface did not, so a caller holding the store as an interface — which
+  `cortexdb.DB` does — could create a document and delete one but never write
+  over one. Replacing a record meant delete then create, with a window where it
+  is neither. Same gap `parity_aggregate_test.go` was written about; the test
+  is next to it and runs on both backends.
+
 ## [2.108.0] - 2026-09-14
 
 ### Fixed

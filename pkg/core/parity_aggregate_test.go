@@ -655,3 +655,33 @@ func sameCounts(got, want map[string]int) bool {
 	}
 	return true
 }
+
+// TestUpdateDocumentIsOnTheInterfaceAndBothBackendsDoIt is the same gap this
+// file was written about, one method later.
+//
+// Both stores had UpdateDocument and the Store interface did not, so a caller
+// holding the store as an interface — which cortexdb.DB does — could create a
+// document and delete one but never write over one. Replacing a record meant
+// delete then create, with a window where the record is neither, and the first
+// caller to need it was alchemy's cortexdb connector replacing a run marker.
+func TestUpdateDocumentIsOnTheInterfaceAndBothBackendsDoIt(t *testing.T) {
+	runOnBothStores(t, 4, func(t *testing.T, s parityBackend) {
+		ctx := context.Background()
+		var store Store = s
+		doc := &Document{ID: "d1", Title: "first", Content: "one", Author: "t", Version: 1}
+		if err := store.CreateDocument(ctx, doc); err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		doc.Title, doc.Content, doc.Version = "second", "two", 2
+		if err := store.UpdateDocument(ctx, doc); err != nil {
+			t.Fatalf("update: %v", err)
+		}
+		got, err := store.GetDocument(ctx, "d1")
+		if err != nil || got == nil {
+			t.Fatalf("get: %v", err)
+		}
+		if got.Title != "second" || got.Content != "two" {
+			t.Errorf("document = %q/%q, want second/two", got.Title, got.Content)
+		}
+	})
+}
