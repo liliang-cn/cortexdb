@@ -138,6 +138,32 @@ func TestClosingTwiceIsSafe(t *testing.T) {
 	}
 }
 
+func TestInitialisingTwiceStartsOneCheckpointer(t *testing.T) {
+	// `Init` is called more than once on the same store: `hindsight.New` opens the database, which
+	// inits it, and then inits the vector store again itself. A second start overwrote the channels
+	// the first goroutine was selecting on — a write racing that goroutine's read, and a goroutine
+	// left running on a store nobody could stop afterwards. Seventeen tests in `pkg/hindsight` failed
+	// under `-race` with exactly that report, and none of them are about checkpointing.
+	store, err := New(filepath.Join(t.TempDir(), "twice-init.db"), 3)
+	if err != nil {
+		t.Fatalf("could not create the store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	ctx := context.Background()
+	if err := store.Init(ctx); err != nil {
+		t.Fatalf("first init failed: %v", err)
+	}
+	first := store.checkpointStop
+
+	if err := store.Init(ctx); err != nil {
+		t.Fatalf("second init failed: %v", err)
+	}
+
+	if store.checkpointStop != first {
+		t.Fatal("a second Init replaced the channel the running checkpointer selects on")
+	}
+}
+
 func TestAnInMemoryStoreStartsNoCheckpointer(t *testing.T) {
 	// There is no file to grow and no log to fold, so there is nothing for a goroutine to do — and a
 	// goroutine per in-memory store is a leak in every test that opens one.

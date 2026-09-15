@@ -33,22 +33,36 @@ import (
 // invisible next to the work itself, since a checkpoint with nothing to do costs a lock and returns.
 const walCheckpointInterval = 30 * time.Second
 
-// startWALCheckpointer runs periodic checkpoints until the store is closed.
+// startWALCheckpointer runs periodic checkpoints until the store is closed. Called with the store
+// lock held, from `Init`.
 //
 // In-memory databases have no write-ahead log and no file to grow, so they get no goroutine.
+//
+// Two details that are not decoration:
+//
+//   - `Init` is called more than once on the same store. `hindsight.New` opens the database — which
+//     inits it — and then inits the vector store again itself; there are other callers like it. A
+//     second start would overwrite the channels the first goroutine is selecting on, leaving it
+//     running forever on a store nobody can stop, so the first one owns the job.
+//   - The goroutine closes over the channels as locals rather than reading `s.checkpointStop`. The
+//     field is written here under the lock and the goroutine holds no lock at all, so reading it
+//     there is a race — and it is exactly the race the detector caught: the write from the second
+//     `Init` against the read in the first goroutine's select.
 func (s *SQLiteStore) startWALCheckpointer() {
-	if isMemoryPath(s.config.Path) {
+	if isMemoryPath(s.config.Path) || s.checkpointStop != nil {
 		return
 	}
-	s.checkpointStop = make(chan struct{})
-	s.checkpointDone = make(chan struct{})
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	s.checkpointStop = stop
+	s.checkpointDone = done
 	go func() {
-		defer close(s.checkpointDone)
+		defer close(done)
 		ticker := time.NewTicker(walCheckpointInterval)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-s.checkpointStop:
+			case <-stop:
 				return
 			case <-ticker.C:
 				s.checkpointWAL(context.Background())
@@ -60,12 +74,19 @@ func (s *SQLiteStore) startWALCheckpointer() {
 
 // stopWALCheckpointer ends the checkpoint goroutine and waits for it, so a closed store leaves
 // nothing running behind it. Safe to call twice, and on a store that never started one.
+//
+// Called *without* the store lock — waiting for a goroutine that takes a read lock of its own while
+// holding the write lock would wait forever — so the fields are read under the lock and let go of
+// before the wait.
 func (s *SQLiteStore) stopWALCheckpointer() {
-	if s.checkpointStop == nil {
+	s.mu.Lock()
+	stop, done := s.checkpointStop, s.checkpointDone
+	s.mu.Unlock()
+	if stop == nil {
 		return
 	}
-	s.checkpointOnce.Do(func() { close(s.checkpointStop) })
-	<-s.checkpointDone
+	s.checkpointOnce.Do(func() { close(stop) })
+	<-done
 }
 
 // checkpointWAL folds the write-ahead log back into the database and truncates it.
