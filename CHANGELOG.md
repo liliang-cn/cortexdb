@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.111.1] - 2026-09-15
+
+### Fixed
+
+- **The checkpointer added in 2.111.0 raced; use this instead.** `Init` is
+  called more than once on the same store — `hindsight.New` opens the database,
+  which inits it, and then inits the vector store again itself — and the second
+  call assigned fresh channels over the ones the running checkpoint goroutine
+  was selecting on. A write under the store lock against a read holding no lock
+  at all, plus a goroutine left running on channels nobody could reach to stop
+  it. Seventeen tests in `pkg/hindsight`, none of them about checkpointing,
+  failed under `-race` with that report. The goroutine now closes over its
+  channels as locals so there is no shared read to race, a second start returns
+  early, and `stopWALCheckpointer` releases the lock before waiting. **2.111.0
+  is on the module proxy and should be skipped.**
+
 ## [2.111.0] - 2026-09-15
 
 ### Fixed
