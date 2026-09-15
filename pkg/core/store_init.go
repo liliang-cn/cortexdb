@@ -84,6 +84,10 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 		s.startAutoSave()
 	}
 
+	// Not optional, and not configurable: a write-ahead log that nothing ever folds back grows until
+	// the disk is full, which is a fault of this package rather than a preference of its caller.
+	s.startWALCheckpointer()
+
 	return nil
 }
 

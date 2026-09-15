@@ -7,6 +7,10 @@ import (
 
 // Close closes the database connection and releases resources
 func (s *SQLiteStore) Close() error {
+	// Outside the lock, and before it. The checkpoint goroutine takes a read lock of its own, so
+	// waiting for it to finish while holding the write lock would wait forever.
+	s.stopWALCheckpointer()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -27,6 +31,10 @@ func (s *SQLiteStore) Close() error {
 	s.closed = true
 
 	if s.db != nil {
+		// One last fold of the write-ahead log, before the pool goes away. A clean shutdown should
+		// leave a database and nothing beside it; SQLite only deletes the log when the last
+		// connection closes, and only if it managed to check-point it first.
+		s.checkpointWALLocked(context.Background())
 		if err := s.db.Close(); err != nil {
 			return err
 		}

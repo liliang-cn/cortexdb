@@ -28,6 +28,12 @@ type SQLiteStore struct {
 	adapter        *DimensionAdapter // Dimension adaptation handler
 	textSimilarity TextSimilarity    // Text similarity calculator
 	logger         Logger            // Logger instance
+	// Stops the periodic write-ahead-log checkpoint, and waits for it. See store_checkpoint.go for
+	// why a store that never checkpoints eventually fills the disk it is on. The Once is what makes
+	// two concurrent `Close` calls safe: closing an already-closed channel panics.
+	checkpointStop chan struct{}
+	checkpointDone chan struct{}
+	checkpointOnce sync.Once
 }
 
 // New creates a new SQLite vector store with the given configuration
