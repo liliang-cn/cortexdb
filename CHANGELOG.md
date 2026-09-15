@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.111.0] - 2026-09-15
+
+### Fixed
+
+- **The write-ahead log no longer grows until the disk is full.** An Athanor
+  instance ingesting 248 documents produced an 11 GB `brain.db-wal` against a
+  636 MB database, filled the 57 GB disk it shared with other services, and
+  took an unrelated application's PostgreSQL down with it — every connection
+  answering `FATAL: could not write init file: No space left on device` for
+  ninety seconds. Nothing in this package had ever called `wal_checkpoint`.
+  SQLite's own automatic checkpoint could not cover it: it can only copy out
+  frames older than the oldest reader still holding a snapshot, and the store
+  keeps a pool of 25 connections with 10 idle for two hours, so during any
+  sustained ingest there is always a reader in flight and every automatic
+  checkpoint gives up silently. The store now checkpoints on a clock of its
+  own, every 30 seconds, with `TRUNCATE` rather than `PASSIVE` — the problem is
+  the file's *size*, and `PASSIVE` leaves the log as long as it ever got. A
+  checkpoint that cannot get its locks reports busy rather than failing, and
+  waits for the next tick. In-memory stores start no goroutine.
+
 ## [2.109.0] - 2026-09-14
 
 ### Added
