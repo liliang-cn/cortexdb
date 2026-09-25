@@ -1,0 +1,24 @@
+<https://example.com/Agent> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> .	rdfs_subclass_declares_class
+<https://example.com/Agent> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Agent> .	rdfs_class_reflexive
+<https://example.com/Org> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> .	rdfs_range_declares_schema
+<https://example.com/Org> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Org> .	rdfs_class_reflexive
+<https://example.com/Person> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> .	rdfs_domain_declares_schema|rdfs_subclass_declares_class
+<https://example.com/Person> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Person> .	rdfs_class_reflexive
+<https://example.com/a> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Agent> .	rdfs_type_via_subclass
+<https://example.com/a> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Person> .	rdfs_domain
+<https://example.com/a> <https://example.com/p1> <https://example.com/b> .	rdfs_subproperty_application
+<https://example.com/a> <https://example.com/p2> <https://example.com/b> .	rdfs_subproperty_application
+<https://example.com/a> <https://example.com/p3> <https://example.com/b> .	rdfs_subproperty_application
+<https://example.com/b> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Org> .	rdfs_range
+<https://example.com/c> <https://example.com/p3> "not an org" .	rdfs_subproperty_application
+<https://example.com/p0> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> .	rdfs_subproperty_declares_property
+<https://example.com/p0> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <https://example.com/p0> .	rdfs_property_reflexive
+<https://example.com/p0> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <https://example.com/p2> .	rdfs_subproperty_transitive
+<https://example.com/p0> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <https://example.com/p3> .	rdfs_subproperty_transitive
+<https://example.com/p1> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> .	rdfs_domain_declares_schema|rdfs_subproperty_declares_property
+<https://example.com/p1> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <https://example.com/p1> .	rdfs_property_reflexive
+<https://example.com/p1> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <https://example.com/p3> .	rdfs_subproperty_transitive
+<https://example.com/p2> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> .	rdfs_subproperty_declares_property
+<https://example.com/p2> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <https://example.com/p2> .	rdfs_property_reflexive
+<https://example.com/p3> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> .	rdfs_range_declares_schema|rdfs_subproperty_declares_property
+<https://example.com/p3> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <https://example.com/p3> .	rdfs_property_reflexive
