@@ -45,6 +45,14 @@ func FuzzExecuteSPARQL(f *testing.F) {
 		"SELECT (COUNT(?x) AS ?c) WHERE { ?x ?p ?o } GROUP BY",
 		"SELECT ?x WHERE { ?x (<a>|<b>)+ ?y }", "DESCRIBE <x>",
 		"SELECT ?x { ?x ?p ?o } ORDER BY ?x OFFSET -1",
+		"SELECT ?s FROM <g> FROM NAMED <h> WHERE { GRAPH ?g { ?s ?p ?o } }",
+		"ASK FROM NAMED <g> { ?s ?p ?o }", "CONSTRUCT FROM <g> WHERE { ?s ?p ?o }",
+		"CONSTRUCT { GRAPH ?g { ?s ?p ?o } } WHERE { GRAPH ?g { ?s ?p ?o } }",
+		`SELECT (SUBSTR("李小龙", 2, 1) AS ?v) (REPLACE(?n, "(a)", "$1$2", "iq") AS ?r) WHERE { ?s ?p ?n }`,
+		`SELECT ?n WHERE { ?s ?p ?n FILTER(REGEX(?n, "((((", "x") || ?n NOT IN (1, "a", ABS(?n))) }`,
+		`SELECT (COUNT(DISTINCT *) AS ?c) (GROUP_CONCAT(DISTINCT ?n; SEPARATOR="|") AS ?g) WHERE { ?s ?p ?n } GROUP BY ?s ORDER BY DESC(?c)`,
+		"SELECT REDUCED ?x WHERE { VALUES ?x { -1 +2 3.5 } BIND(ROUND(?x) / 0 AS ?y) FILTER regex(STR(?y), \"1\") }",
+		"SELECT (IF(BOUND(?x), STRLEN(?x), NOW()) AS ?v) (TIMEZONE(?x) AS ?t) WHERE { FILTER NOT EXISTS { ?x ?p ?o } }",
 	} {
 		f.Add(seed)
 	}

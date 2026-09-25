@@ -3,7 +3,6 @@ package graph
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -67,15 +66,33 @@ type sparqlQuery struct {
 	OrderBy     []sparqlOrderClause
 	Offset      int
 	Limit       int
+	From        []RDFTerm
+	FromNamed   []RDFTerm
+	// DatasetDeclared records that the query named its dataset with FROM /
+	// FROM NAMED, which replaces the engine default entirely (see
+	// sparqlExecOptions).
+	DatasetDeclared bool
+	runtime         *sparqlRuntime
 }
 
 type sparqlGroup struct {
 	Steps []sparqlStep
 }
 
+// sparqlExecOptions is the RDF dataset a query is evaluated against.
+//
+// With DatasetDeclared false this engine uses its own default: patterns
+// outside GRAPH match the unnamed graph plus the property-graph projection
+// (or the USING/WITH graphs of an update), and GRAPH can bind any named graph
+// (or only USING NAMED ones).
+// With DatasetDeclared true — a query that said FROM or FROM NAMED — the
+// dataset is exactly what it declared, as SPARQL 1.1 §13.2 requires: FROM
+// NAMED alone leaves the default graph empty, and FROM alone leaves no named
+// graphs for GRAPH to match.
 type sparqlExecOptions struct {
-	DefaultGraphs []RDFTerm
-	NamedGraphs   []RDFTerm
+	DefaultGraphs   []RDFTerm
+	NamedGraphs     []RDFTerm
+	DatasetDeclared bool
 }
 
 type sparqlStep interface {
@@ -160,64 +177,14 @@ type sparqlFilter interface {
 	EvalGroup(bindings []map[string]RDFTerm) (bool, error)
 }
 
-type sparqlRuntimeFilter interface {
-	EvalRuntime(ctx context.Context, store *GraphStore, opts sparqlExecOptions, binding map[string]RDFTerm) (bool, error)
-	EvalGroupRuntime(ctx context.Context, store *GraphStore, opts sparqlExecOptions, bindings []map[string]RDFTerm) (bool, error)
-}
-
 type sparqlValueExpr interface {
 	Eval(binding map[string]RDFTerm) (RDFTerm, bool, error)
 	EvalGroup(bindings []map[string]RDFTerm) (RDFTerm, bool, error)
 	IsAggregate() bool
 }
 
-type sparqlBoundFilter struct {
-	Variable string
-}
-
-type sparqlCompareFilter struct {
-	Op    string
-	Left  sparqlValueExpr
-	Right sparqlValueExpr
-}
-
-type sparqlContainsFilter struct {
-	Haystack sparqlValueExpr
-	Needle   sparqlValueExpr
-}
-
-type sparqlStrStartsFilter struct {
-	Haystack sparqlValueExpr
-	Prefix   sparqlValueExpr
-}
-
-type sparqlRegexFilter struct {
-	Value   sparqlValueExpr
-	Pattern sparqlValueExpr
-	Flags   sparqlValueExpr
-}
-
-type sparqlAndFilter struct {
-	Left  sparqlFilter
-	Right sparqlFilter
-}
-
-type sparqlOrFilter struct {
-	Left  sparqlFilter
-	Right sparqlFilter
-}
-
-type sparqlNotFilter struct {
-	Inner sparqlFilter
-}
-
 type sparqlExprFilter struct {
 	Expr sparqlValueExpr
-}
-
-type sparqlExistsFilter struct {
-	Group   sparqlGroup
-	Negated bool
 }
 
 type sparqlVarExpr struct {
@@ -226,22 +193,6 @@ type sparqlVarExpr struct {
 
 type sparqlLiteralExpr struct {
 	Term RDFTerm
-}
-
-type sparqlStrFuncExpr struct {
-	Inner sparqlValueExpr
-}
-
-type sparqlLCaseFuncExpr struct {
-	Inner sparqlValueExpr
-}
-
-type sparqlLangFuncExpr struct {
-	Inner sparqlValueExpr
-}
-
-type sparqlDatatypeFuncExpr struct {
-	Inner sparqlValueExpr
 }
 
 type sparqlCountFuncExpr struct {
@@ -273,7 +224,7 @@ type sparqlCoalesceFuncExpr struct {
 }
 
 type sparqlIfFuncExpr struct {
-	Cond sparqlFilter
+	Cond sparqlValueExpr
 	Then sparqlValueExpr
 	Else sparqlValueExpr
 }
@@ -287,13 +238,19 @@ func (sparqlMinusStep) sparqlStep()    {}
 func (sparqlValuesStep) sparqlStep()   {}
 func (sparqlBindStep) sparqlStep()     {}
 
-// ExecuteSPARQL runs a practical SPARQL SELECT/ASK subset against the embedded RDF layer.
+// ExecuteSPARQL runs a practical SPARQL 1.1 subset (queries and updates)
+// against the embedded RDF layer.
 func (g *GraphStore) ExecuteSPARQL(ctx context.Context, query string) (*SPARQLResult, error) {
 	parsed, err := g.parseSPARQL(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 	execOptions := buildSPARQLExecOptions(parsed)
+	if parsed.runtime != nil {
+		parsed.runtime.ctx = ctx
+		parsed.runtime.store = g
+		parsed.runtime.opts = execOptions
+	}
 
 	if parsed.QueryType == SPARQLQueryInsertData {
 		count, err := g.executeSPARQLInsertData(ctx, parsed.Template)
@@ -343,8 +300,10 @@ func (g *GraphStore) ExecuteSPARQL(ctx context.Context, query string) (*SPARQLRe
 		return result, nil
 	}
 
-	if len(parsed.OrderBy) > 0 {
-		sortSPARQLBindings(bindings, parsed.OrderBy)
+	if parsed.QueryType == SPARQLQueryConstruct || parsed.QueryType == SPARQLQueryDescribe {
+		if len(parsed.OrderBy) > 0 {
+			sortSPARQLBindings(bindings, parsed.OrderBy)
+		}
 	}
 
 	if parsed.QueryType == SPARQLQueryConstruct {
@@ -356,7 +315,7 @@ func (g *GraphStore) ExecuteSPARQL(ctx context.Context, query string) (*SPARQLRe
 	}
 	if parsed.QueryType == SPARQLQueryDescribe {
 		bindings = applyOffsetLimit(bindings, parsed.Offset, parsed.Limit)
-		triples, err := g.materializeDescribeTriples(ctx, parsed.Describe, bindings)
+		triples, err := g.materializeDescribeTriples(ctx, parsed.Describe, bindings, execOptions)
 		if err != nil {
 			return nil, err
 		}
@@ -388,6 +347,12 @@ func applyOffsetLimit[T any](values []T, offset, limit int) []T {
 
 func buildSPARQLExecOptions(parsed *sparqlQuery) sparqlExecOptions {
 	opts := sparqlExecOptions{}
+	if parsed.DatasetDeclared {
+		opts.DatasetDeclared = true
+		opts.DefaultGraphs = append(opts.DefaultGraphs, parsed.From...)
+		opts.NamedGraphs = append(opts.NamedGraphs, parsed.FromNamed...)
+		return opts
+	}
 	if len(parsed.Using) > 0 {
 		opts.DefaultGraphs = append(opts.DefaultGraphs, parsed.Using...)
 	} else if parsed.With != nil {
@@ -399,109 +364,139 @@ func buildSPARQLExecOptions(parsed *sparqlQuery) sparqlExecOptions {
 	return opts
 }
 
+// executeSPARQLSelect applies the solution modifiers in the order SPARQL 1.1
+// §18.2.4 defines: grouping and aggregation, HAVING, the SELECT expressions,
+// ORDER BY, projection, DISTINCT/REDUCED, then OFFSET/LIMIT. The order is
+// observable: ORDER BY may name a SELECT alias, and DISTINCT must run before
+// LIMIT or a limited page can come back short.
 func (g *GraphStore) executeSPARQLSelect(ctx context.Context, parsed *sparqlQuery, bindings []map[string]RDFTerm, opts sparqlExecOptions) (*SPARQLResult, error) {
 	result := &SPARQLResult{}
 	isGrouped := len(parsed.GroupBy) > 0 || sparqlQueryUsesGrouping(parsed)
 
+	var (
+		vars      []string
+		projected []map[string]RDFTerm
+	)
 	if !isGrouped {
-		if len(parsed.OrderBy) > 0 {
-			sortSPARQLBindings(bindings, parsed.OrderBy)
-		}
-		vars, projected, err := projectSPARQLBindings(parsed, bindings)
+		extended, err := extendSPARQLBindings(parsed, bindings)
 		if err != nil {
 			return nil, err
 		}
-		if parsed.Distinct {
-			projected = distinctBindings(projected, vars)
+		if len(parsed.OrderBy) > 0 {
+			sortSPARQLBindings(extended, parsed.OrderBy)
 		}
-		projected = applyOffsetLimit(projected, parsed.Offset, parsed.Limit)
-		result.Vars = vars
-		result.Bindings = projected
-		result.Count = len(projected)
-		return result, nil
-	}
-
-	groups, err := buildSPARQLGroups(parsed, bindings)
-	if err != nil {
-		return nil, err
-	}
-	if len(parsed.Having) > 0 {
-		filteredGroups := make([][]map[string]RDFTerm, 0, len(groups))
-		for _, group := range groups {
-			keep := true
-			for _, filter := range parsed.Having {
-				ok, err := evalSPARQLFilterGroup(ctx, g, opts, filter, group)
-				if err != nil {
-					return nil, err
+		vars, projected = projectSPARQLBindings(parsed, extended)
+	} else {
+		groups, err := buildSPARQLGroups(parsed, bindings)
+		if err != nil {
+			return nil, err
+		}
+		if len(parsed.Having) > 0 {
+			filteredGroups := make([][]map[string]RDFTerm, 0, len(groups))
+			for _, group := range groups {
+				keep := true
+				for _, filter := range parsed.Having {
+					ok, err := evalSPARQLFilterGroup(filter, group)
+					if err != nil {
+						return nil, err
+					}
+					if !ok {
+						keep = false
+						break
+					}
 				}
-				if !ok {
-					keep = false
-					break
+				if keep {
+					filteredGroups = append(filteredGroups, group)
 				}
 			}
-			if keep {
-				filteredGroups = append(filteredGroups, group)
-			}
+			groups = filteredGroups
 		}
-		groups = filteredGroups
-	}
-	if len(parsed.OrderBy) > 0 {
-		sortSPARQLGroups(groups, parsed.OrderBy)
-	}
-	groups = applyOffsetLimit(groups, parsed.Offset, parsed.Limit)
-	vars, projected, err := projectSPARQLGroups(parsed, groups)
-	if err != nil {
-		return nil, err
+		vars, projected, err = projectSPARQLGroups(parsed, groups)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if parsed.Distinct {
 		projected = distinctBindings(projected, vars)
 	}
+	projected = applyOffsetLimit(projected, parsed.Offset, parsed.Limit)
 	result.Vars = vars
 	result.Bindings = projected
 	result.Count = len(projected)
 	return result, nil
 }
 
-func projectSPARQLBindings(parsed *sparqlQuery, bindings []map[string]RDFTerm) ([]string, []map[string]RDFTerm, error) {
+// extendSPARQLBindings evaluates the SELECT expressions onto each solution,
+// in order, so a later expression and ORDER BY can both see an earlier alias.
+// An expression error leaves its alias unbound for that solution.
+func extendSPARQLBindings(parsed *sparqlQuery, bindings []map[string]RDFTerm) ([]map[string]RDFTerm, error) {
 	if parsed.SelectAll {
-		vars := collectBindingVars(bindings)
-		projected := make([]map[string]RDFTerm, 0, len(bindings))
-		for _, binding := range bindings {
-			row := make(map[string]RDFTerm, len(vars))
-			for _, variable := range vars {
-				if value, ok := binding[variable]; ok {
-					row[variable] = value
-				}
-			}
-			projected = append(projected, row)
-		}
-		return vars, projected, nil
+		return bindings, nil
 	}
+	extended := make([]map[string]RDFTerm, 0, len(bindings))
+	for _, binding := range bindings {
+		row := binding
+		cloned := false
+		for _, item := range parsed.SelectItems {
+			if varExpr, ok := item.Expr.(sparqlVarExpr); ok && varExpr.Variable == item.Alias {
+				continue
+			}
+			value, ok, err := item.Expr.Eval(row)
+			if err != nil {
+				if isSPARQLExprError(err) {
+					continue
+				}
+				return nil, err
+			}
+			if !ok {
+				continue
+			}
+			if !cloned {
+				row = cloneBinding(binding)
+				cloned = true
+			}
+			row[item.Alias] = value
+		}
+		extended = append(extended, row)
+	}
+	return extended, nil
+}
+
+func projectSPARQLBindings(parsed *sparqlQuery, bindings []map[string]RDFTerm) ([]string, []map[string]RDFTerm) {
 	vars := make([]string, 0, len(parsed.SelectItems))
-	for _, item := range parsed.SelectItems {
-		vars = append(vars, item.Alias)
+	if parsed.SelectAll {
+		vars = collectBindingVars(bindings)
+	} else {
+		for _, item := range parsed.SelectItems {
+			vars = append(vars, item.Alias)
+		}
 	}
 	projected := make([]map[string]RDFTerm, 0, len(bindings))
 	for _, binding := range bindings {
-		row := make(map[string]RDFTerm, len(parsed.SelectItems))
-		for _, item := range parsed.SelectItems {
-			value, ok, err := item.Expr.Eval(binding)
-			if err != nil {
-				return nil, nil, err
-			}
-			if ok {
-				row[item.Alias] = value
+		row := make(map[string]RDFTerm, len(vars))
+		for _, variable := range vars {
+			if value, ok := binding[variable]; ok {
+				row[variable] = value
 			}
 		}
 		projected = append(projected, row)
 	}
-	return vars, projected, nil
+	return vars, projected
 }
 
+// projectSPARQLGroups aggregates each group into one row and orders the rows.
+// Every alias computed for a group is also written into every solution of a
+// copy of the group, so a later SELECT expression or ORDER BY can name it:
+// the value is constant across the group, so COUNT(*) and COUNT(DISTINCT *)
+// over the copy still see what they would have seen over the original. An
+// empty group (an aggregate over no solutions) stays empty, so COUNT(*) is 0.
 func projectSPARQLGroups(parsed *sparqlQuery, groups [][]map[string]RDFTerm) ([]string, []map[string]RDFTerm, error) {
 	if parsed.SelectAll {
 		if len(groups) == 0 {
 			return nil, nil, nil
+		}
+		if len(parsed.OrderBy) > 0 {
+			sortSPARQLGroups(groups, parsed.OrderBy)
 		}
 		projected := make([]map[string]RDFTerm, 0, len(groups))
 		varsSet := make(map[string]struct{})
@@ -526,19 +521,49 @@ func projectSPARQLGroups(parsed *sparqlQuery, groups [][]map[string]RDFTerm) ([]
 	for _, item := range parsed.SelectItems {
 		vars = append(vars, item.Alias)
 	}
-	projected := make([]map[string]RDFTerm, 0, len(groups))
+	type groupRow struct {
+		group []map[string]RDFTerm
+		row   map[string]RDFTerm
+	}
+	rows := make([]groupRow, 0, len(groups))
 	for _, group := range groups {
 		row := make(map[string]RDFTerm, len(parsed.SelectItems))
+		augment := len(group) > 0 && (len(parsed.OrderBy) > 0 || len(parsed.SelectItems) > 1)
+		if augment {
+			group = cloneBindingSlice(group)
+		}
 		for _, item := range parsed.SelectItems {
 			value, ok, err := item.Expr.EvalGroup(group)
 			if err != nil {
+				if isSPARQLExprError(err) {
+					continue
+				}
 				return nil, nil, err
 			}
-			if ok {
-				row[item.Alias] = value
+			if !ok {
+				continue
+			}
+			row[item.Alias] = value
+			if augment {
+				for _, binding := range group {
+					binding[item.Alias] = value
+				}
 			}
 		}
-		projected = append(projected, row)
+		rows = append(rows, groupRow{group: group, row: row})
+	}
+	if len(parsed.OrderBy) > 0 {
+		sort.SliceStable(rows, func(i, j int) bool {
+			return sparqlOrderLess(parsed.OrderBy, func(e sparqlValueExpr) (RDFTerm, bool, error) {
+				return e.EvalGroup(rows[i].group)
+			}, func(e sparqlValueExpr) (RDFTerm, bool, error) {
+				return e.EvalGroup(rows[j].group)
+			})
+		})
+	}
+	projected := make([]map[string]RDFTerm, 0, len(rows))
+	for _, r := range rows {
+		projected = append(projected, r.row)
 	}
 	return vars, projected, nil
 }
@@ -563,26 +588,10 @@ func sparqlQueryUsesGrouping(parsed *sparqlQuery) bool {
 }
 
 func filterUsesAggregate(filter sparqlFilter) bool {
-	switch f := filter.(type) {
-	case sparqlCompareFilter:
-		return f.Left.IsAggregate() || f.Right.IsAggregate()
-	case sparqlContainsFilter:
-		return f.Haystack.IsAggregate() || f.Needle.IsAggregate()
-	case sparqlStrStartsFilter:
-		return f.Haystack.IsAggregate() || f.Prefix.IsAggregate()
-	case sparqlRegexFilter:
-		return f.Value.IsAggregate() || f.Pattern.IsAggregate() || (f.Flags != nil && f.Flags.IsAggregate())
-	case sparqlAndFilter:
-		return filterUsesAggregate(f.Left) || filterUsesAggregate(f.Right)
-	case sparqlOrFilter:
-		return filterUsesAggregate(f.Left) || filterUsesAggregate(f.Right)
-	case sparqlNotFilter:
-		return filterUsesAggregate(f.Inner)
-	case sparqlExprFilter:
+	if f, ok := filter.(sparqlExprFilter); ok {
 		return f.Expr.IsAggregate()
-	default:
-		return false
 	}
+	return false
 }
 
 func buildSPARQLGroups(parsed *sparqlQuery, bindings []map[string]RDFTerm) ([][]map[string]RDFTerm, error) {
@@ -598,10 +607,10 @@ func buildSPARQLGroups(parsed *sparqlQuery, bindings []map[string]RDFTerm) ([][]
 		var key strings.Builder
 		for _, groupKey := range parsed.GroupBy {
 			value, ok, err := groupKey.Expr.Eval(binding)
-			if err != nil {
+			if err != nil && !isSPARQLExprError(err) {
 				return nil, err
 			}
-			if !ok {
+			if err != nil || !ok {
 				key.WriteString(groupKey.Alias)
 				key.WriteString("=;")
 				continue
@@ -630,10 +639,10 @@ func buildSPARQLGroups(parsed *sparqlQuery, bindings []map[string]RDFTerm) ([][]
 				continue
 			}
 			value, ok, err := groupKey.Expr.Eval(binding)
-			if err != nil {
+			if err != nil && !isSPARQLExprError(err) {
 				return nil, err
 			}
-			if ok {
+			if err == nil && ok {
 				groupBinding[groupKey.Alias] = value
 			}
 		}
@@ -648,31 +657,7 @@ func buildSPARQLGroups(parsed *sparqlQuery, bindings []map[string]RDFTerm) ([][]
 
 func sortSPARQLGroups(groups [][]map[string]RDFTerm, clauses []sparqlOrderClause) {
 	sort.SliceStable(groups, func(i, j int) bool {
-		for _, clause := range clauses {
-			left, leftOK, leftErr := clause.Expr.EvalGroup(groups[i])
-			right, rightOK, rightErr := clause.Expr.EvalGroup(groups[j])
-			if leftErr != nil || rightErr != nil {
-				continue
-			}
-			if !leftOK && !rightOK {
-				continue
-			}
-			if !leftOK {
-				return false
-			}
-			if !rightOK {
-				return true
-			}
-			cmp := compareRDFTermsForOrder(left, right)
-			if cmp == 0 {
-				continue
-			}
-			if clause.Desc {
-				return cmp > 0
-			}
-			return cmp < 0
-		}
-		return false
+		return sparqlOrderLess(clauses, evalGrouped(groups[i]), evalGrouped(groups[j]))
 	})
 }
 
@@ -746,7 +731,7 @@ func (g *GraphStore) executeSPARQLGroup(ctx context.Context, group sparqlGroup, 
 		case sparqlFilterStep:
 			nextBindings := make([]map[string]RDFTerm, 0, len(current))
 			for _, binding := range current {
-				keep, err := evalSPARQLFilter(ctx, g, opts, step.Filter, binding)
+				keep, err := evalSPARQLFilter(step.Filter, binding)
 				if err != nil {
 					return nil, err
 				}
@@ -835,13 +820,16 @@ func (g *GraphStore) executeSPARQLGroup(ctx context.Context, group sparqlGroup, 
 			}
 			current = nextBindings
 		case sparqlBindStep:
+			// A BIND whose expression errs or is unbound keeps the solution
+			// and leaves the variable unbound (SPARQL 1.1 §18.6, Extend).
 			nextBindings := make([]map[string]RDFTerm, 0, len(current))
 			for _, binding := range current {
 				value, ok, err := step.Expr.Eval(binding)
-				if err != nil {
+				if err != nil && !isSPARQLExprError(err) {
 					return nil, err
 				}
-				if !ok {
+				if err != nil || !ok {
+					nextBindings = append(nextBindings, binding)
 					continue
 				}
 				merged := cloneBinding(binding)
@@ -900,6 +888,15 @@ func (g *GraphStore) executeSPARQLPattern(ctx context.Context, pattern sparqlPat
 // most brains have, and a query that had to know to ask for it by name would
 // find nothing for everyone who did not.
 func sparqlTripleAllowedForGraph(pattern sparqlPattern, triple RDFTriple, opts sparqlExecOptions) bool {
+	if opts.DatasetDeclared {
+		if triple.Graph == nil {
+			return false
+		}
+		if pattern.Graph == nil {
+			return containsTerm(opts.DefaultGraphs, *triple.Graph)
+		}
+		return containsTerm(opts.NamedGraphs, *triple.Graph)
+	}
 	if pattern.Graph == nil && triple.Graph != nil && len(opts.DefaultGraphs) == 0 && !isPropertyGraphTerm(triple.Graph) {
 		return false
 	}
@@ -923,10 +920,21 @@ func (g *GraphStore) findSPARQLPatternTriples(ctx context.Context, pattern sparq
 	if err != nil {
 		return nil, err
 	}
+	if opts.DatasetDeclared {
+		if pattern.Graph == nil && len(opts.DefaultGraphs) == 0 {
+			return nil, nil
+		}
+		if pattern.Graph != nil && len(opts.NamedGraphs) == 0 {
+			return nil, nil
+		}
+	}
 	if pattern.Graph != nil || len(opts.DefaultGraphs) == 0 {
 		return g.FindTriples(ctx, basePattern)
 	}
+	// The default graph is the RDF merge of the listed graphs, so a triple
+	// asserted in two of them is one triple, not two solutions.
 	out := make([]RDFTriple, 0)
+	seen := make(map[string]struct{})
 	for _, defaultGraph := range opts.DefaultGraphs {
 		graphCopy := defaultGraph
 		patternWithGraph := basePattern
@@ -935,7 +943,16 @@ func (g *GraphStore) findSPARQLPatternTriples(ctx context.Context, pattern sparq
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, triples...)
+		for _, triple := range triples {
+			if len(opts.DefaultGraphs) > 1 {
+				key := triple.Subject.String() + " " + triple.Predicate.String() + " " + triple.Object.String()
+				if _, dup := seen[key]; dup {
+					continue
+				}
+				seen[key] = struct{}{}
+			}
+			out = append(out, triple)
+		}
 	}
 	return out, nil
 }
@@ -1033,12 +1050,19 @@ func (g *GraphStore) findSPARQLRepeatedPathMatches(ctx context.Context, pattern 
 		if !sparqlTripleAllowedForGraph(pattern, triple, opts) {
 			continue
 		}
-		graphKey := sparqlGraphKey(triple.Graph)
+		// Outside GRAPH the default graph is one graph even when it merges
+		// several, so a path may cross from one listed graph into another.
+		graphKey := ""
+		var graphOfTriple *RDFTerm
+		if pattern.Graph != nil {
+			graphKey = sparqlGraphKey(triple.Graph)
+			graphOfTriple = triple.Graph
+		}
 		if _, ok := graphAdj[graphKey]; !ok {
 			graphAdj[graphKey] = make(map[string][]RDFTerm)
 			graphReverse[graphKey] = make(map[string][]RDFTerm)
 			nodesByGraph[graphKey] = make(map[string]RDFTerm)
-			graphTerms[graphKey] = cloneGraphTerm(triple.Graph)
+			graphTerms[graphKey] = cloneGraphTerm(graphOfTriple)
 		}
 		subjectKey := inferenceTermKey(triple.Subject)
 		objectKey := inferenceTermKey(triple.Object)
@@ -1479,7 +1503,10 @@ func materializeTemplateTriplesWithDefaultGraph(templates []sparqlPattern, bindi
 	return out
 }
 
-func (g *GraphStore) materializeDescribeTriples(ctx context.Context, describes []sparqlTermPattern, bindings []map[string]RDFTerm) ([]RDFTriple, error) {
+// materializeDescribeTriples returns each resource's incoming and outgoing
+// triples. Without a dataset clause that is every graph; with FROM it is the
+// declared default graph only.
+func (g *GraphStore) materializeDescribeTriples(ctx context.Context, describes []sparqlTermPattern, bindings []map[string]RDFTerm, opts sparqlExecOptions) ([]RDFTriple, error) {
 	targets := make([]RDFTerm, 0)
 	for _, describe := range describes {
 		if describe.Term != nil {
@@ -1515,6 +1542,9 @@ func (g *GraphStore) materializeDescribeTriples(ctx context.Context, describes [
 			return nil, err
 		}
 		for _, triple := range outgoing {
+			if opts.DatasetDeclared && !sparqlTripleAllowedForGraph(sparqlPattern{}, triple, opts) {
+				continue
+			}
 			key := triple.String()
 			if _, ok := seenTriples[key]; ok {
 				continue
@@ -1527,6 +1557,9 @@ func (g *GraphStore) materializeDescribeTriples(ctx context.Context, describes [
 			return nil, err
 		}
 		for _, triple := range incoming {
+			if opts.DatasetDeclared && !sparqlTripleAllowedForGraph(sparqlPattern{}, triple, opts) {
+				continue
+			}
 			key := triple.String()
 			if _, ok := seenTriples[key]; ok {
 				continue
@@ -1540,452 +1573,64 @@ func (g *GraphStore) materializeDescribeTriples(ctx context.Context, describes [
 
 func sortSPARQLBindings(bindings []map[string]RDFTerm, clauses []sparqlOrderClause) {
 	sort.SliceStable(bindings, func(i, j int) bool {
-		for _, clause := range clauses {
-			left, leftOK, leftErr := clause.Expr.Eval(bindings[i])
-			right, rightOK, rightErr := clause.Expr.Eval(bindings[j])
-			if leftErr != nil || rightErr != nil {
-				continue
-			}
-			if !leftOK && !rightOK {
-				continue
-			}
-			if !leftOK {
-				return false
-			}
-			if !rightOK {
-				return true
-			}
-			cmp := compareRDFTermsForOrder(left, right)
-			if cmp == 0 {
-				continue
-			}
-			if clause.Desc {
-				return cmp > 0
-			}
-			return cmp < 0
-		}
-		return false
+		return sparqlOrderLess(clauses, evalSingle(bindings[i]), evalSingle(bindings[j]))
 	})
 }
 
-func compareRDFTermsForOrder(left, right RDFTerm) int {
-	leftKey := left.Kind + "\x00" + left.Value + "\x00" + left.Language + "\x00" + left.Datatype
-	rightKey := right.Kind + "\x00" + right.Value + "\x00" + right.Language + "\x00" + right.Datatype
-	switch {
-	case leftKey < rightKey:
-		return -1
-	case leftKey > rightKey:
-		return 1
-	default:
-		return 0
-	}
-}
-
-func compareRDFTerms(left, right RDFTerm) (int, error) {
-	leftNumber, leftIsNumber := rdfNumericValue(left)
-	rightNumber, rightIsNumber := rdfNumericValue(right)
-	if leftIsNumber && rightIsNumber {
-		switch {
-		case leftNumber < rightNumber:
-			return -1, nil
-		case leftNumber > rightNumber:
-			return 1, nil
-		default:
-			return 0, nil
+// sparqlOrderLess compares two solutions under ORDER BY. A key that fails to
+// evaluate sorts as unbound, first in ascending order — an error never
+// aborts a sort.
+func sparqlOrderLess(clauses []sparqlOrderClause, left, right sparqlEvalFn) bool {
+	for _, clause := range clauses {
+		leftValue, leftOK, leftErr := left(clause.Expr)
+		rightValue, rightOK, rightErr := right(clause.Expr)
+		cmp := sparqlOrderCompare(leftValue, leftOK && leftErr == nil, rightValue, rightOK && rightErr == nil)
+		if cmp == 0 {
+			continue
 		}
+		if clause.Desc {
+			return cmp > 0
+		}
+		return cmp < 0
 	}
-	return compareRDFTermsForOrder(left, right), nil
-}
-
-func rdfNumericValue(term RDFTerm) (float64, bool) {
-	if term.Kind != RDFTermLiteral {
-		return 0, false
-	}
-	if term.Datatype != "" &&
-		term.Datatype != builtinNamespaces["xsd"]+"integer" &&
-		term.Datatype != builtinNamespaces["xsd"]+"decimal" &&
-		term.Datatype != builtinNamespaces["xsd"]+"double" &&
-		term.Datatype != builtinNamespaces["xsd"]+"float" {
-		return 0, false
-	}
-	value, err := strconv.ParseFloat(term.Value, 64)
-	if err != nil {
-		return 0, false
-	}
-	return value, true
+	return false
 }
 
 func evalArithmeticTerms(op string, left, right RDFTerm) (RDFTerm, bool, error) {
-	leftNumber, leftOK := rdfNumericValue(left)
-	rightNumber, rightOK := rdfNumericValue(right)
-	if !leftOK || !rightOK {
-		return RDFTerm{}, false, fmt.Errorf("arithmetic operator %s requires numeric literals", op)
+	value, err := sparqlArithmetic(op, left, right)
+	if err != nil {
+		return RDFTerm{}, false, err
 	}
-	var result float64
-	switch op {
-	case "+":
-		result = leftNumber + rightNumber
-	case "-":
-		result = leftNumber - rightNumber
-	case "*":
-		result = leftNumber * rightNumber
-	case "/":
-		if rightNumber == 0 {
-			return RDFTerm{}, false, fmt.Errorf("division by zero")
-		}
-		result = leftNumber / rightNumber
-	default:
-		return RDFTerm{}, false, fmt.Errorf("unsupported arithmetic operator: %s", op)
-	}
-	return NewTypedLiteral(strconv.FormatFloat(result, 'f', -1, 64), builtinNamespaces["xsd"]+"decimal"), true, nil
+	return value, true, nil
 }
 
-func effectiveBooleanValue(term RDFTerm) (bool, error) {
-	switch term.Kind {
-	case RDFTermLiteral:
-		if term.Datatype == builtinNamespaces["xsd"]+"boolean" {
-			return strings.EqualFold(term.Value, "true") || term.Value == "1", nil
-		}
-		if value, ok := rdfNumericValue(term); ok {
-			return value != 0, nil
-		}
-		return term.Value != "", nil
-	case RDFTermIRI, RDFTermBlankNode:
-		return term.Value != "", nil
-	default:
-		return false, nil
-	}
-}
-
-func evalSPARQLFilter(ctx context.Context, store *GraphStore, opts sparqlExecOptions, filter sparqlFilter, binding map[string]RDFTerm) (bool, error) {
-	if runtimeFilter, ok := filter.(sparqlRuntimeFilter); ok {
-		return runtimeFilter.EvalRuntime(ctx, store, opts, binding)
-	}
+// evalSPARQLFilter applies a FILTER/HAVING constraint to one solution (or
+// group). An expression error is the spec's "false": the solution is dropped
+// and the query carries on.
+func evalSPARQLFilter(filter sparqlFilter, binding map[string]RDFTerm) (bool, error) {
 	return filter.Eval(binding)
 }
 
-func evalSPARQLFilterGroup(ctx context.Context, store *GraphStore, opts sparqlExecOptions, filter sparqlFilter, bindings []map[string]RDFTerm) (bool, error) {
-	if runtimeFilter, ok := filter.(sparqlRuntimeFilter); ok {
-		return runtimeFilter.EvalGroupRuntime(ctx, store, opts, bindings)
-	}
+func evalSPARQLFilterGroup(filter sparqlFilter, bindings []map[string]RDFTerm) (bool, error) {
 	return filter.EvalGroup(bindings)
 }
 
-func (f sparqlBoundFilter) Eval(binding map[string]RDFTerm) (bool, error) {
-	_, ok := binding[f.Variable]
-	return ok, nil
-}
-
-func (f sparqlBoundFilter) EvalGroup(bindings []map[string]RDFTerm) (bool, error) {
-	if len(bindings) == 0 {
-		return false, nil
-	}
-	return f.Eval(bindings[0])
-}
-
-func (f sparqlCompareFilter) Eval(binding map[string]RDFTerm) (bool, error) {
-	left, leftOK, err := f.Left.Eval(binding)
-	if err != nil {
-		return false, err
-	}
-	right, rightOK, err := f.Right.Eval(binding)
-	if err != nil {
-		return false, err
-	}
-	if !leftOK || !rightOK {
-		return false, nil
-	}
-	switch f.Op {
-	case "=":
-		return termsEqual(left, right), nil
-	case "!=":
-		return !termsEqual(left, right), nil
-	case "<", "<=", ">", ">=":
-		cmp, err := compareRDFTerms(left, right)
-		if err != nil {
-			return false, err
-		}
-		switch f.Op {
-		case "<":
-			return cmp < 0, nil
-		case "<=":
-			return cmp <= 0, nil
-		case ">":
-			return cmp > 0, nil
-		case ">=":
-			return cmp >= 0, nil
-		}
-	default:
-		return false, fmt.Errorf("unsupported filter operator: %s", f.Op)
-	}
-	return false, fmt.Errorf("unsupported filter operator: %s", f.Op)
-}
-
-func (f sparqlCompareFilter) EvalGroup(bindings []map[string]RDFTerm) (bool, error) {
-	left, leftOK, err := f.Left.EvalGroup(bindings)
-	if err != nil {
-		return false, err
-	}
-	right, rightOK, err := f.Right.EvalGroup(bindings)
-	if err != nil {
-		return false, err
-	}
-	if !leftOK || !rightOK {
-		return false, nil
-	}
-	switch f.Op {
-	case "=":
-		return termsEqual(left, right), nil
-	case "!=":
-		return !termsEqual(left, right), nil
-	case "<", "<=", ">", ">=":
-		cmp, err := compareRDFTerms(left, right)
-		if err != nil {
-			return false, err
-		}
-		switch f.Op {
-		case "<":
-			return cmp < 0, nil
-		case "<=":
-			return cmp <= 0, nil
-		case ">":
-			return cmp > 0, nil
-		case ">=":
-			return cmp >= 0, nil
-		}
-	}
-	return false, fmt.Errorf("unsupported filter operator: %s", f.Op)
-}
-
-func (f sparqlContainsFilter) Eval(binding map[string]RDFTerm) (bool, error) {
-	haystack, haystackOK, err := f.Haystack.Eval(binding)
-	if err != nil {
-		return false, err
-	}
-	needle, needleOK, err := f.Needle.Eval(binding)
-	if err != nil {
-		return false, err
-	}
-	if !haystackOK || !needleOK {
-		return false, nil
-	}
-	return strings.Contains(haystack.Value, needle.Value), nil
-}
-
-func (f sparqlContainsFilter) EvalGroup(bindings []map[string]RDFTerm) (bool, error) {
-	haystack, haystackOK, err := f.Haystack.EvalGroup(bindings)
-	if err != nil {
-		return false, err
-	}
-	needle, needleOK, err := f.Needle.EvalGroup(bindings)
-	if err != nil {
-		return false, err
-	}
-	if !haystackOK || !needleOK {
-		return false, nil
-	}
-	return strings.Contains(haystack.Value, needle.Value), nil
-}
-
-func (f sparqlStrStartsFilter) Eval(binding map[string]RDFTerm) (bool, error) {
-	haystack, haystackOK, err := f.Haystack.Eval(binding)
-	if err != nil {
-		return false, err
-	}
-	prefix, prefixOK, err := f.Prefix.Eval(binding)
-	if err != nil {
-		return false, err
-	}
-	if !haystackOK || !prefixOK {
-		return false, nil
-	}
-	return strings.HasPrefix(haystack.Value, prefix.Value), nil
-}
-
-func (f sparqlStrStartsFilter) EvalGroup(bindings []map[string]RDFTerm) (bool, error) {
-	haystack, haystackOK, err := f.Haystack.EvalGroup(bindings)
-	if err != nil {
-		return false, err
-	}
-	prefix, prefixOK, err := f.Prefix.EvalGroup(bindings)
-	if err != nil {
-		return false, err
-	}
-	if !haystackOK || !prefixOK {
-		return false, nil
-	}
-	return strings.HasPrefix(haystack.Value, prefix.Value), nil
-}
-
-func (f sparqlRegexFilter) Eval(binding map[string]RDFTerm) (bool, error) {
-	value, valueOK, err := f.Value.Eval(binding)
-	if err != nil {
-		return false, err
-	}
-	pattern, patternOK, err := f.Pattern.Eval(binding)
-	if err != nil {
-		return false, err
-	}
-	if !valueOK || !patternOK {
-		return false, nil
-	}
-
-	flags := ""
-	if f.Flags != nil {
-		flagValue, flagOK, err := f.Flags.Eval(binding)
-		if err != nil {
-			return false, err
-		}
-		if flagOK {
-			flags = flagValue.Value
-		}
-	}
-
-	expr := pattern.Value
-	if strings.Contains(flags, "i") {
-		expr = "(?i)" + expr
-	}
-	matched, err := regexp.MatchString(expr, value.Value)
-	if err != nil {
-		return false, err
-	}
-	return matched, nil
-}
-
-func (f sparqlRegexFilter) EvalGroup(bindings []map[string]RDFTerm) (bool, error) {
-	value, valueOK, err := f.Value.EvalGroup(bindings)
-	if err != nil {
-		return false, err
-	}
-	pattern, patternOK, err := f.Pattern.EvalGroup(bindings)
-	if err != nil {
-		return false, err
-	}
-	if !valueOK || !patternOK {
-		return false, nil
-	}
-	flags := ""
-	if f.Flags != nil {
-		flagValue, flagOK, err := f.Flags.EvalGroup(bindings)
-		if err != nil {
-			return false, err
-		}
-		if flagOK {
-			flags = flagValue.Value
-		}
-	}
-	expr := pattern.Value
-	if strings.Contains(flags, "i") {
-		expr = "(?i)" + expr
-	}
-	matched, err := regexp.MatchString(expr, value.Value)
-	if err != nil {
-		return false, err
-	}
-	return matched, nil
-}
-
-func (f sparqlAndFilter) Eval(binding map[string]RDFTerm) (bool, error) {
-	left, err := f.Left.Eval(binding)
-	if err != nil || !left {
-		return left, err
-	}
-	return f.Right.Eval(binding)
-}
-
-func (f sparqlAndFilter) EvalGroup(bindings []map[string]RDFTerm) (bool, error) {
-	left, err := f.Left.EvalGroup(bindings)
-	if err != nil || !left {
-		return left, err
-	}
-	return f.Right.EvalGroup(bindings)
-}
-
-func (f sparqlOrFilter) Eval(binding map[string]RDFTerm) (bool, error) {
-	left, err := f.Left.Eval(binding)
-	if err != nil {
-		return false, err
-	}
-	if left {
-		return true, nil
-	}
-	return f.Right.Eval(binding)
-}
-
-func (f sparqlOrFilter) EvalGroup(bindings []map[string]RDFTerm) (bool, error) {
-	left, err := f.Left.EvalGroup(bindings)
-	if err != nil {
-		return false, err
-	}
-	if left {
-		return true, nil
-	}
-	return f.Right.EvalGroup(bindings)
-}
-
-func (f sparqlNotFilter) Eval(binding map[string]RDFTerm) (bool, error) {
-	value, err := f.Inner.Eval(binding)
-	if err != nil {
-		return false, err
-	}
-	return !value, nil
-}
-
-func (f sparqlNotFilter) EvalGroup(bindings []map[string]RDFTerm) (bool, error) {
-	value, err := f.Inner.EvalGroup(bindings)
-	if err != nil {
-		return false, err
-	}
-	return !value, nil
-}
-
 func (f sparqlExprFilter) Eval(binding map[string]RDFTerm) (bool, error) {
-	value, ok, err := f.Expr.Eval(binding)
-	if err != nil {
-		return false, err
-	}
-	if !ok {
-		return false, nil
-	}
-	return effectiveBooleanValue(value)
+	return filterOutcome(evalBoolean(evalSingle(binding), f.Expr))
 }
 
 func (f sparqlExprFilter) EvalGroup(bindings []map[string]RDFTerm) (bool, error) {
-	value, ok, err := f.Expr.EvalGroup(bindings)
+	return filterOutcome(evalBoolean(evalGrouped(bindings), f.Expr))
+}
+
+func filterOutcome(keep bool, err error) (bool, error) {
 	if err != nil {
+		if isSPARQLExprError(err) {
+			return false, nil
+		}
 		return false, err
 	}
-	if !ok {
-		return false, nil
-	}
-	return effectiveBooleanValue(value)
-}
-
-func (f sparqlExistsFilter) Eval(_ map[string]RDFTerm) (bool, error) {
-	return false, fmt.Errorf("EXISTS/NOT EXISTS requires SPARQL execution context")
-}
-
-func (f sparqlExistsFilter) EvalGroup(_ []map[string]RDFTerm) (bool, error) {
-	return false, fmt.Errorf("EXISTS/NOT EXISTS requires SPARQL execution context")
-}
-
-func (f sparqlExistsFilter) EvalRuntime(ctx context.Context, store *GraphStore, opts sparqlExecOptions, binding map[string]RDFTerm) (bool, error) {
-	matches, err := store.executeSPARQLGroup(ctx, f.Group, []map[string]RDFTerm{cloneBinding(binding)}, opts)
-	if err != nil {
-		return false, err
-	}
-	ok := len(matches) > 0
-	if f.Negated {
-		ok = !ok
-	}
-	return ok, nil
-}
-
-func (f sparqlExistsFilter) EvalGroupRuntime(ctx context.Context, store *GraphStore, opts sparqlExecOptions, bindings []map[string]RDFTerm) (bool, error) {
-	if len(bindings) == 0 {
-		return false, nil
-	}
-	return f.EvalRuntime(ctx, store, opts, bindings[0])
+	return keep, nil
 }
 
 func (e sparqlVarExpr) Eval(binding map[string]RDFTerm) (RDFTerm, bool, error) {
@@ -2012,151 +1657,75 @@ func (e sparqlLiteralExpr) EvalGroup(_ []map[string]RDFTerm) (RDFTerm, bool, err
 
 func (e sparqlLiteralExpr) IsAggregate() bool { return false }
 
-func (e sparqlStrFuncExpr) Eval(binding map[string]RDFTerm) (RDFTerm, bool, error) {
-	value, ok, err := e.Inner.Eval(binding)
-	if err != nil || !ok {
-		return RDFTerm{}, ok, err
-	}
-	return NewLiteral(value.Value), true, nil
-}
-
-func (e sparqlStrFuncExpr) EvalGroup(bindings []map[string]RDFTerm) (RDFTerm, bool, error) {
-	value, ok, err := e.Inner.EvalGroup(bindings)
-	if err != nil || !ok {
-		return RDFTerm{}, ok, err
-	}
-	return NewLiteral(value.Value), true, nil
-}
-
-func (e sparqlStrFuncExpr) IsAggregate() bool { return e.Inner.IsAggregate() }
-
-func (e sparqlLCaseFuncExpr) Eval(binding map[string]RDFTerm) (RDFTerm, bool, error) {
-	value, ok, err := e.Inner.Eval(binding)
-	if err != nil || !ok {
-		return RDFTerm{}, ok, err
-	}
-	return NewLiteral(strings.ToLower(value.Value)), true, nil
-}
-
-func (e sparqlLCaseFuncExpr) EvalGroup(bindings []map[string]RDFTerm) (RDFTerm, bool, error) {
-	value, ok, err := e.Inner.EvalGroup(bindings)
-	if err != nil || !ok {
-		return RDFTerm{}, ok, err
-	}
-	return NewLiteral(strings.ToLower(value.Value)), true, nil
-}
-
-func (e sparqlLCaseFuncExpr) IsAggregate() bool { return e.Inner.IsAggregate() }
-
-func (e sparqlLangFuncExpr) Eval(binding map[string]RDFTerm) (RDFTerm, bool, error) {
-	value, ok, err := e.Inner.Eval(binding)
-	if err != nil || !ok {
-		return RDFTerm{}, ok, err
-	}
-	return NewLiteral(value.Language), true, nil
-}
-
-func (e sparqlLangFuncExpr) EvalGroup(bindings []map[string]RDFTerm) (RDFTerm, bool, error) {
-	value, ok, err := e.Inner.EvalGroup(bindings)
-	if err != nil || !ok {
-		return RDFTerm{}, ok, err
-	}
-	return NewLiteral(value.Language), true, nil
-}
-
-func (e sparqlLangFuncExpr) IsAggregate() bool { return e.Inner.IsAggregate() }
-
-func (e sparqlDatatypeFuncExpr) Eval(binding map[string]RDFTerm) (RDFTerm, bool, error) {
-	value, ok, err := e.Inner.Eval(binding)
-	if err != nil || !ok {
-		return RDFTerm{}, ok, err
-	}
-	if value.Kind != RDFTermLiteral || value.Datatype == "" {
-		return RDFTerm{}, false, nil
-	}
-	return NewIRI(value.Datatype), true, nil
-}
-
-func (e sparqlDatatypeFuncExpr) EvalGroup(bindings []map[string]RDFTerm) (RDFTerm, bool, error) {
-	value, ok, err := e.Inner.EvalGroup(bindings)
-	if err != nil || !ok {
-		return RDFTerm{}, ok, err
-	}
-	if value.Kind != RDFTermLiteral || value.Datatype == "" {
-		return RDFTerm{}, false, nil
-	}
-	return NewIRI(value.Datatype), true, nil
-}
-
-func (e sparqlDatatypeFuncExpr) IsAggregate() bool { return e.Inner.IsAggregate() }
-
 func (e sparqlCountFuncExpr) Eval(_ map[string]RDFTerm) (RDFTerm, bool, error) {
 	return RDFTerm{}, false, fmt.Errorf("COUNT cannot be evaluated outside a group")
 }
 
+// EvalGroup counts the solutions for which the expression has a bound,
+// error-free value — an expression error excludes the solution from the
+// count rather than failing the query.
 func (e sparqlCountFuncExpr) EvalGroup(bindings []map[string]RDFTerm) (RDFTerm, bool, error) {
+	count := func(n int) (RDFTerm, bool, error) {
+		return NewTypedLiteral(strconv.Itoa(n), xsdIntegerIRI), true, nil
+	}
 	if e.Wildcard {
-		return NewTypedLiteral(strconv.Itoa(len(bindings)), builtinNamespaces["xsd"]+"integer"), true, nil
+		if e.Distinct {
+			return count(len(distinctBindings(bindings, collectBindingVars(bindings))))
+		}
+		return count(len(bindings))
 	}
 	if e.Inner == nil {
-		return NewTypedLiteral("0", builtinNamespaces["xsd"]+"integer"), true, nil
-	}
-	if !e.Distinct {
-		count := 0
-		for _, binding := range bindings {
-			if _, ok, err := e.Inner.Eval(binding); err != nil {
-				return RDFTerm{}, false, err
-			} else if ok {
-				count++
-			}
-		}
-		return NewTypedLiteral(strconv.Itoa(count), builtinNamespaces["xsd"]+"integer"), true, nil
+		return count(0)
 	}
 	seen := make(map[string]struct{})
+	n := 0
 	for _, binding := range bindings {
 		value, ok, err := e.Inner.Eval(binding)
 		if err != nil {
+			if isSPARQLExprError(err) {
+				continue
+			}
 			return RDFTerm{}, false, err
 		}
 		if !ok {
 			continue
 		}
-		key := value.Kind + "|" + value.Value + "|" + value.Language + "|" + value.Datatype
-		seen[key] = struct{}{}
+		if e.Distinct {
+			key := value.Kind + "|" + value.Value + "|" + value.Language + "|" + value.Datatype
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+		}
+		n++
 	}
-	return NewTypedLiteral(strconv.Itoa(len(seen)), builtinNamespaces["xsd"]+"integer"), true, nil
+	return count(n)
 }
 
 func (e sparqlCountFuncExpr) IsAggregate() bool { return true }
 
 func (e sparqlUnaryNumericExpr) Eval(binding map[string]RDFTerm) (RDFTerm, bool, error) {
-	value, ok, err := e.Inner.Eval(binding)
-	if err != nil || !ok {
-		return RDFTerm{}, ok, err
+	return e.eval(evalSingle(binding))
+}
+
+// eval negates while keeping the operand's numeric type: -3 is an integer.
+func (e sparqlUnaryNumericExpr) eval(eval sparqlEvalFn) (RDFTerm, bool, error) {
+	value, err := evalValue(eval, e.Inner)
+	if err != nil {
+		return RDFTerm{}, false, err
 	}
-	number, ok := rdfNumericValue(value)
-	if !ok {
-		return RDFTerm{}, false, fmt.Errorf("numeric operator %s requires numeric value", e.Op)
+	number, err := sparqlNumericArg("numeric operator "+e.Op, value)
+	if err != nil {
+		return RDFTerm{}, false, err
 	}
 	if e.Op == "-" {
-		number = -number
+		number.value = -number.value
 	}
-	return NewTypedLiteral(strconv.FormatFloat(number, 'f', -1, 64), builtinNamespaces["xsd"]+"decimal"), true, nil
+	return number.term(), true, nil
 }
 
 func (e sparqlUnaryNumericExpr) EvalGroup(bindings []map[string]RDFTerm) (RDFTerm, bool, error) {
-	value, ok, err := e.Inner.EvalGroup(bindings)
-	if err != nil || !ok {
-		return RDFTerm{}, ok, err
-	}
-	number, ok := rdfNumericValue(value)
-	if !ok {
-		return RDFTerm{}, false, fmt.Errorf("numeric operator %s requires numeric value", e.Op)
-	}
-	if e.Op == "-" {
-		number = -number
-	}
-	return NewTypedLiteral(strconv.FormatFloat(number, 'f', -1, 64), builtinNamespaces["xsd"]+"decimal"), true, nil
+	return e.eval(evalGrouped(bindings))
 }
 
 func (e sparqlUnaryNumericExpr) IsAggregate() bool { return e.Inner.IsAggregate() }
@@ -2190,29 +1759,29 @@ func (e sparqlArithmeticExpr) IsAggregate() bool {
 }
 
 func (e sparqlCoalesceFuncExpr) Eval(binding map[string]RDFTerm) (RDFTerm, bool, error) {
+	return e.eval(evalSingle(binding))
+}
+
+// eval returns the first argument that evaluates without error to a bound
+// value; errors in earlier arguments are exactly what COALESCE skips.
+func (e sparqlCoalesceFuncExpr) eval(eval sparqlEvalFn) (RDFTerm, bool, error) {
 	for _, arg := range e.Args {
-		value, ok, err := arg.Eval(binding)
+		value, ok, err := eval(arg)
 		if err != nil {
+			if isSPARQLExprError(err) {
+				continue
+			}
 			return RDFTerm{}, false, err
 		}
 		if ok {
 			return value, true, nil
 		}
 	}
-	return RDFTerm{}, false, nil
+	return RDFTerm{}, false, sparqlTypeErrorf("COALESCE found no bound argument")
 }
 
 func (e sparqlCoalesceFuncExpr) EvalGroup(bindings []map[string]RDFTerm) (RDFTerm, bool, error) {
-	for _, arg := range e.Args {
-		value, ok, err := arg.EvalGroup(bindings)
-		if err != nil {
-			return RDFTerm{}, false, err
-		}
-		if ok {
-			return value, true, nil
-		}
-	}
-	return RDFTerm{}, false, nil
+	return e.eval(evalGrouped(bindings))
 }
 
 func (e sparqlCoalesceFuncExpr) IsAggregate() bool {
@@ -2225,41 +1794,49 @@ func (e sparqlCoalesceFuncExpr) IsAggregate() bool {
 }
 
 func (e sparqlIfFuncExpr) Eval(binding map[string]RDFTerm) (RDFTerm, bool, error) {
-	cond, err := e.Cond.Eval(binding)
+	return e.eval(evalSingle(binding))
+}
+
+// eval evaluates only the chosen branch; an error in the condition is an
+// error of the whole IF.
+func (e sparqlIfFuncExpr) eval(eval sparqlEvalFn) (RDFTerm, bool, error) {
+	cond, err := evalBoolean(eval, e.Cond)
 	if err != nil {
 		return RDFTerm{}, false, err
 	}
 	if cond {
-		return e.Then.Eval(binding)
+		return eval(e.Then)
 	}
-	return e.Else.Eval(binding)
+	return eval(e.Else)
 }
 
 func (e sparqlIfFuncExpr) EvalGroup(bindings []map[string]RDFTerm) (RDFTerm, bool, error) {
-	cond, err := e.Cond.EvalGroup(bindings)
-	if err != nil {
-		return RDFTerm{}, false, err
-	}
-	if cond {
-		return e.Then.EvalGroup(bindings)
-	}
-	return e.Else.EvalGroup(bindings)
+	return e.eval(evalGrouped(bindings))
 }
 
 func (e sparqlIfFuncExpr) IsAggregate() bool {
-	return e.Then.IsAggregate() || e.Else.IsAggregate() || filterUsesAggregate(e.Cond)
+	return e.Then.IsAggregate() || e.Else.IsAggregate() || e.Cond.IsAggregate()
 }
 
 func (e sparqlAggregateFuncExpr) Eval(_ map[string]RDFTerm) (RDFTerm, bool, error) {
 	return RDFTerm{}, false, fmt.Errorf("%s cannot be evaluated outside a group", strings.ToUpper(e.Name))
 }
 
+// EvalGroup aggregates the group's values. Unbound values are skipped; an
+// expression error, or a value the aggregate cannot use (SUM of a string),
+// makes the aggregate itself an error, which leaves its alias unbound for
+// this group only (SPARQL 1.1 §18.5.1). SAMPLE skips errors, since any one
+// value will do.
 func (e sparqlAggregateFuncExpr) EvalGroup(bindings []map[string]RDFTerm) (RDFTerm, bool, error) {
+	name := strings.ToUpper(e.Name)
 	values := make([]RDFTerm, 0, len(bindings))
 	seen := make(map[string]struct{})
 	for _, binding := range bindings {
 		value, ok, err := e.Inner.Eval(binding)
 		if err != nil {
+			if isSPARQLExprError(err) && name == "SAMPLE" {
+				continue
+			}
 			return RDFTerm{}, false, err
 		}
 		if !ok {
@@ -2275,53 +1852,50 @@ func (e sparqlAggregateFuncExpr) EvalGroup(bindings []map[string]RDFTerm) (RDFTe
 		values = append(values, value)
 	}
 
-	switch strings.ToUpper(e.Name) {
+	sum := func() (sparqlNumber, error) {
+		total := sparqlNumber{kind: sparqlNumInteger}
+		for _, value := range values {
+			n, ok := lenientNumber(value)
+			if !ok {
+				return sparqlNumber{}, sparqlTypeErrorf("%s requires numeric literals", name)
+			}
+			total.kind = max(total.kind, n.kind)
+			total.value += n.value
+		}
+		return total, nil
+	}
+
+	switch name {
 	case "SUM":
-		total := 0.0
-		for _, value := range values {
-			n, ok := rdfNumericValue(value)
-			if !ok {
-				return RDFTerm{}, false, fmt.Errorf("SUM requires numeric literals")
-			}
-			total += n
+		total, err := sum()
+		if err != nil {
+			return RDFTerm{}, false, err
 		}
-		return NewTypedLiteral(strconv.FormatFloat(total, 'f', -1, 64), builtinNamespaces["xsd"]+"decimal"), true, nil
+		return total.term(), true, nil
 	case "AVG":
+		// The average of nothing is 0, as the spec defines it.
+		total, err := sum()
+		if err != nil {
+			return RDFTerm{}, false, err
+		}
+		if len(values) == 0 {
+			return total.term(), true, nil
+		}
+		total.kind = max(total.kind, sparqlNumDecimal)
+		total.value /= float64(len(values))
+		return total.term(), true, nil
+	case "MIN", "MAX":
 		if len(values) == 0 {
 			return RDFTerm{}, false, nil
 		}
-		total := 0.0
-		for _, value := range values {
-			n, ok := rdfNumericValue(value)
-			if !ok {
-				return RDFTerm{}, false, fmt.Errorf("AVG requires numeric literals")
-			}
-			total += n
-		}
-		avg := total / float64(len(values))
-		return NewTypedLiteral(strconv.FormatFloat(avg, 'f', -1, 64), builtinNamespaces["xsd"]+"decimal"), true, nil
-	case "MIN":
-		if len(values) == 0 {
-			return RDFTerm{}, false, nil
-		}
-		minValue := values[0]
+		best := values[0]
 		for _, value := range values[1:] {
-			if cmp, err := compareRDFTerms(value, minValue); err == nil && cmp < 0 {
-				minValue = value
+			cmp := sparqlOrderCompare(value, true, best, true)
+			if (name == "MIN" && cmp < 0) || (name == "MAX" && cmp > 0) {
+				best = value
 			}
 		}
-		return minValue, true, nil
-	case "MAX":
-		if len(values) == 0 {
-			return RDFTerm{}, false, nil
-		}
-		maxValue := values[0]
-		for _, value := range values[1:] {
-			if cmp, err := compareRDFTerms(value, maxValue); err == nil && cmp > 0 {
-				maxValue = value
-			}
-		}
-		return maxValue, true, nil
+		return best, true, nil
 	case "SAMPLE":
 		if len(values) == 0 {
 			return RDFTerm{}, false, nil
@@ -2365,6 +1939,12 @@ type sparqlParser struct {
 	tokens   []sparqlToken
 	position int
 	prefixes map[string]string
+	// rt is shared by every expression node of one query, subqueries
+	// included, so NOW(), BNODE(str) and the regex cache are per query.
+	rt *sparqlRuntime
+	// exprGraph is the GRAPH block enclosing the FILTER/BIND being parsed,
+	// so an EXISTS inside it inherits the active graph.
+	exprGraph *sparqlTermPattern
 }
 
 type sparqlTokenType string
@@ -2392,6 +1972,7 @@ func newSPARQLParser(query string, prefixes map[string]string) *sparqlParser {
 	return &sparqlParser{
 		tokens:   tokenizeSPARQL(query),
 		prefixes: prefixes,
+		rt:       newSPARQLRuntime(),
 	}
 }
 
@@ -2408,6 +1989,7 @@ func (p *sparqlParser) parse() (query *sparqlQuery, err error) {
 
 	query = &sparqlQuery{
 		Prefixes: clonePrefixes(p.prefixes),
+		runtime:  p.rt,
 	}
 
 	for p.matchKeyword("PREFIX") {
@@ -2426,7 +2008,7 @@ func (p *sparqlParser) parse() (query *sparqlQuery, err error) {
 
 	switch {
 	case p.matchKeyword("SELECT"):
-		err := p.parseSelectQueryBody(query)
+		err := p.parseSelectQueryBody(query, true)
 		if err != nil {
 			return nil, err
 		}
@@ -2436,10 +2018,31 @@ func (p *sparqlParser) parse() (query *sparqlQuery, err error) {
 		return query, nil
 	case p.matchKeyword("CONSTRUCT"):
 		query.QueryType = SPARQLQueryConstruct
-		template, err := p.parseConstructTemplate(query.Prefixes)
+		if p.peek().Type == sparqlTokenPunct && p.peek().Value == "{" {
+			template, err := p.parseConstructTemplate(query.Prefixes)
+			if err != nil {
+				return nil, err
+			}
+			query.Template = template
+			break
+		}
+		// CONSTRUCT WHERE { ... }: the pattern is its own template, which
+		// is why it may hold only triple patterns.
+		if err := p.parseDatasetClauses(query); err != nil {
+			return nil, err
+		}
+		if !p.matchKeyword("WHERE") {
+			return nil, fmt.Errorf("expected a CONSTRUCT template or WHERE")
+		}
+		group, err := p.parseEnclosedGroup(nil, query.Prefixes)
 		if err != nil {
 			return nil, err
 		}
+		template, err := flattenTemplatePatterns(group)
+		if err != nil {
+			return nil, err
+		}
+		query.Group = group
 		query.Template = template
 	case p.matchKeyword("DESCRIBE"):
 		query.QueryType = SPARQLQueryDescribe
@@ -2531,6 +2134,13 @@ func (p *sparqlParser) parse() (query *sparqlQuery, err error) {
 		return nil, fmt.Errorf("expected SELECT, CONSTRUCT, DESCRIBE, ASK, INSERT DATA, or DELETE")
 	}
 
+	switch query.QueryType {
+	case SPARQLQueryConstruct, SPARQLQueryDescribe, SPARQLQueryAsk:
+		if err := p.parseDatasetClauses(query); err != nil {
+			return nil, err
+		}
+	}
+
 	if query.QueryType == SPARQLQueryModify {
 		for p.matchKeyword("USING") {
 			if p.matchKeyword("NAMED") {
@@ -2581,9 +2191,11 @@ func (p *sparqlParser) parse() (query *sparqlQuery, err error) {
 	return query, nil
 }
 
-func (p *sparqlParser) parseSelectQueryBody(query *sparqlQuery) error {
+func (p *sparqlParser) parseSelectQueryBody(query *sparqlQuery, allowDataset bool) error {
 	query.QueryType = SPARQLQuerySelect
-	if p.matchKeyword("DISTINCT") {
+	// REDUCED permits, but does not require, dropping duplicates; doing
+	// exactly what DISTINCT does is a conforming choice.
+	if p.matchKeyword("DISTINCT") || p.matchKeyword("REDUCED") {
 		query.Distinct = true
 	}
 	if p.matchOperator("*") {
@@ -2602,6 +2214,11 @@ func (p *sparqlParser) parseSelectQueryBody(query *sparqlQuery) error {
 		}
 	}
 
+	if allowDataset {
+		if err := p.parseDatasetClauses(query); err != nil {
+			return err
+		}
+	}
 	if p.matchKeyword("WHERE") {
 		// optional
 	}
@@ -2612,6 +2229,29 @@ func (p *sparqlParser) parseSelectQueryBody(query *sparqlQuery) error {
 	query.Group = group
 
 	p.parseSolutionModifiers(query)
+	return nil
+}
+
+// parseDatasetClauses reads FROM / FROM NAMED. Subqueries and updates never
+// call it: SPARQL gives a dataset to the whole query only, and updates name
+// theirs with USING.
+func (p *sparqlParser) parseDatasetClauses(query *sparqlQuery) error {
+	for p.matchKeyword("FROM") {
+		named := p.matchKeyword("NAMED")
+		term, err := p.parseGraphResourceTerm(query.Prefixes)
+		if err != nil {
+			return err
+		}
+		if term.Kind != RDFTermIRI {
+			return fmt.Errorf("FROM requires a graph IRI")
+		}
+		query.DatasetDeclared = true
+		if named {
+			query.FromNamed = append(query.FromNamed, term)
+		} else {
+			query.From = append(query.From, term)
+		}
+	}
 	return nil
 }
 
@@ -2753,36 +2393,32 @@ func (p *sparqlParser) parseGraphResourceTerm(prefixes map[string]string) (RDFTe
 	return *term.Term, nil
 }
 
+// parseConstructTemplate accepts GRAPH blocks, so a CONSTRUCT can produce
+// quads. That is an extension beyond SPARQL 1.1 (whose templates are
+// triples only), matching what quad stores such as Jena and RDF4J offer.
 func (p *sparqlParser) parseConstructTemplate(prefixes map[string]string) ([]sparqlPattern, error) {
 	group, err := p.parseEnclosedGroup(nil, prefixes)
 	if err != nil {
 		return nil, err
 	}
-	templates := make([]sparqlPattern, 0)
-	if err := appendTemplatePatterns(&templates, group, false); err != nil {
-		return nil, err
-	}
-	return templates, nil
+	return flattenTemplatePatterns(group)
 }
 
 func flattenTemplatePatterns(group sparqlGroup) ([]sparqlPattern, error) {
 	out := make([]sparqlPattern, 0)
-	if err := appendTemplatePatterns(&out, group, true); err != nil {
+	if err := appendTemplatePatterns(&out, group); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func appendTemplatePatterns(out *[]sparqlPattern, group sparqlGroup, allowGraph bool) error {
+func appendTemplatePatterns(out *[]sparqlPattern, group sparqlGroup) error {
 	for _, rawStep := range group.Steps {
 		switch step := rawStep.(type) {
 		case sparqlPatternStep:
-			if step.Pattern.Graph != nil && !allowGraph {
-				return fmt.Errorf("CONSTRUCT templates do not support GRAPH blocks")
-			}
 			*out = append(*out, step.Pattern)
 		case sparqlGroupStep:
-			if err := appendTemplatePatterns(out, step.Group, allowGraph); err != nil {
+			if err := appendTemplatePatterns(out, step.Group); err != nil {
 				return err
 			}
 		default:
@@ -2818,7 +2454,7 @@ func (p *sparqlParser) parseGroupStep(activeGraph *sparqlTermPattern, prefixes m
 		subQuery := &sparqlQuery{
 			Prefixes: prefixes,
 		}
-		err := p.parseSelectQueryBody(subQuery)
+		err := p.parseSelectQueryBody(subQuery, false)
 		if err != nil {
 			return nil, err
 		}
@@ -2833,7 +2469,10 @@ func (p *sparqlParser) parseGroupStep(activeGraph *sparqlTermPattern, prefixes m
 	}
 	if p.matchKeyword("BIND") {
 		p.expectPunct("(")
+		savedGraph := p.exprGraph
+		p.exprGraph = activeGraph
 		expr, err := p.parseValueExpr(prefixes)
+		p.exprGraph = savedGraph
 		if err != nil {
 			return nil, err
 		}
@@ -3079,174 +2718,127 @@ func (p *sparqlParser) parseTriplePatternStatement(activeGraph *sparqlTermPatter
 	return patterns, nil
 }
 
+// parseFilter reads a FILTER or HAVING constraint: a bracketed expression, or
+// a bare built-in call such as FILTER regex(...) or FILTER NOT EXISTS {...}.
 func (p *sparqlParser) parseFilter(activeGraph *sparqlTermPattern, prefixes map[string]string) (sparqlFilter, error) {
-	if isSPARQLExistsFilterStart(p.peek()) || isSPARQLNotExistsFilterStart(p.peek(), p.peekN(1)) {
-		return p.parseFilterExpr(activeGraph, prefixes)
+	savedGraph := p.exprGraph
+	p.exprGraph = activeGraph
+	defer func() { p.exprGraph = savedGraph }()
+
+	var (
+		expr sparqlValueExpr
+		err  error
+	)
+	if p.matchPunct("(") {
+		expr, err = p.parseValueExpr(prefixes)
+		if err != nil {
+			return nil, err
+		}
+		p.expectPunct(")")
+	} else {
+		expr, err = p.parsePrimaryValueExpr(prefixes)
+		if err != nil {
+			return nil, err
+		}
 	}
-	p.expectPunct("(")
-	defer p.expectPunct(")")
-	return p.parseFilterExpr(activeGraph, prefixes)
+	return sparqlExprFilter{Expr: expr}, nil
 }
 
-func (p *sparqlParser) parseFilterExpr(activeGraph *sparqlTermPattern, prefixes map[string]string) (sparqlFilter, error) {
-	return p.parseFilterOr(activeGraph, prefixes)
+// parseValueExpr parses a full SPARQL expression. One grammar serves FILTER,
+// BIND, SELECT, ORDER BY, GROUP BY and HAVING, so a comparison or a boolean
+// function is legal wherever an expression is, as in the spec:
+//
+//	Or  := And ('||' And)*
+//	And := Rel ('&&' Rel)*
+//	Rel := Add (op Add | [NOT] IN '(' list ')')?
+//	Add := Mul (('+'|'-') Mul)*,  Mul := Unary (('*'|'/') Unary)*
+//	Unary := ('!'|'+'|'-') Unary | Primary
+func (p *sparqlParser) parseValueExpr(prefixes map[string]string) (sparqlValueExpr, error) {
+	return p.parseOrExpr(prefixes)
 }
 
-func (p *sparqlParser) parseFilterOr(activeGraph *sparqlTermPattern, prefixes map[string]string) (sparqlFilter, error) {
-	left, err := p.parseFilterAnd(activeGraph, prefixes)
+func (p *sparqlParser) parseOrExpr(prefixes map[string]string) (sparqlValueExpr, error) {
+	left, err := p.parseAndExpr(prefixes)
 	if err != nil {
 		return nil, err
 	}
 	for p.matchOperator("||") {
-		right, err := p.parseFilterAnd(activeGraph, prefixes)
+		right, err := p.parseAndExpr(prefixes)
 		if err != nil {
 			return nil, err
 		}
-		left = sparqlOrFilter{Left: left, Right: right}
+		left = sparqlLogicalExpr{Op: "||", Left: left, Right: right}
 	}
 	return left, nil
 }
 
-func (p *sparqlParser) parseFilterAnd(activeGraph *sparqlTermPattern, prefixes map[string]string) (sparqlFilter, error) {
-	left, err := p.parseFilterUnary(activeGraph, prefixes)
+func (p *sparqlParser) parseAndExpr(prefixes map[string]string) (sparqlValueExpr, error) {
+	left, err := p.parseRelationalExpr(prefixes)
 	if err != nil {
 		return nil, err
 	}
 	for p.matchOperator("&&") {
-		right, err := p.parseFilterUnary(activeGraph, prefixes)
+		right, err := p.parseRelationalExpr(prefixes)
 		if err != nil {
 			return nil, err
 		}
-		left = sparqlAndFilter{Left: left, Right: right}
+		left = sparqlLogicalExpr{Op: "&&", Left: left, Right: right}
 	}
 	return left, nil
 }
 
-func (p *sparqlParser) parseFilterUnary(activeGraph *sparqlTermPattern, prefixes map[string]string) (sparqlFilter, error) {
-	if p.matchOperator("!") {
-		inner, err := p.parseFilterUnary(activeGraph, prefixes)
-		if err != nil {
-			return nil, err
-		}
-		return sparqlNotFilter{Inner: inner}, nil
-	}
-	if p.matchPunct("(") {
-		filter, err := p.parseFilterExpr(activeGraph, prefixes)
-		if err != nil {
-			return nil, err
-		}
-		p.expectPunct(")")
-		return filter, nil
-	}
-	return p.parseFilterPrimary(activeGraph, prefixes)
-}
-
-func (p *sparqlParser) parseFilterPrimary(activeGraph *sparqlTermPattern, prefixes map[string]string) (sparqlFilter, error) {
-	if p.matchKeyword("EXISTS") {
-		group, err := p.parseEnclosedGroup(activeGraph, prefixes)
-		if err != nil {
-			return nil, err
-		}
-		return sparqlExistsFilter{Group: group}, nil
-	}
-	if p.matchKeyword("NOT") {
-		if !p.matchKeyword("EXISTS") {
-			return nil, fmt.Errorf("expected EXISTS after NOT")
-		}
-		group, err := p.parseEnclosedGroup(activeGraph, prefixes)
-		if err != nil {
-			return nil, err
-		}
-		return sparqlExistsFilter{Group: group, Negated: true}, nil
-	}
-	if p.matchKeyword("BOUND") {
-		p.expectPunct("(")
-		variable := strings.TrimPrefix(p.expectType(sparqlTokenVar, "variable").Value, "?")
-		p.expectPunct(")")
-		return sparqlBoundFilter{Variable: variable}, nil
-	}
-	if p.matchKeyword("REGEX") {
-		p.expectPunct("(")
-		valueExpr, err := p.parseValueExpr(prefixes)
-		if err != nil {
-			return nil, err
-		}
-		p.expectPunct(",")
-		patternExpr, err := p.parseValueExpr(prefixes)
-		if err != nil {
-			return nil, err
-		}
-		var flagsExpr sparqlValueExpr
-		if p.matchPunct(",") {
-			flagsExpr, err = p.parseValueExpr(prefixes)
-			if err != nil {
-				return nil, err
-			}
-		}
-		p.expectPunct(")")
-		return sparqlRegexFilter{Value: valueExpr, Pattern: patternExpr, Flags: flagsExpr}, nil
-	}
-	if p.matchKeyword("CONTAINS") {
-		p.expectPunct("(")
-		haystack, err := p.parseValueExpr(prefixes)
-		if err != nil {
-			return nil, err
-		}
-		p.expectPunct(",")
-		needle, err := p.parseValueExpr(prefixes)
-		if err != nil {
-			return nil, err
-		}
-		p.expectPunct(")")
-		return sparqlContainsFilter{Haystack: haystack, Needle: needle}, nil
-	}
-	if p.matchKeyword("STRSTARTS") {
-		p.expectPunct("(")
-		haystack, err := p.parseValueExpr(prefixes)
-		if err != nil {
-			return nil, err
-		}
-		p.expectPunct(",")
-		prefix, err := p.parseValueExpr(prefixes)
-		if err != nil {
-			return nil, err
-		}
-		p.expectPunct(")")
-		return sparqlStrStartsFilter{Haystack: haystack, Prefix: prefix}, nil
-	}
-
-	left, err := p.parseValueExpr(prefixes)
+func (p *sparqlParser) parseRelationalExpr(prefixes map[string]string) (sparqlValueExpr, error) {
+	left, err := p.parseAdditiveExpr(prefixes)
 	if err != nil {
 		return nil, err
 	}
-	if p.matchOperator("=") {
-		right, err := p.parseValueExpr(prefixes)
-		if err != nil {
-			return nil, err
-		}
-		return sparqlCompareFilter{Op: "=", Left: left, Right: right}, nil
-	}
-	if p.matchOperator("!=") {
-		right, err := p.parseValueExpr(prefixes)
-		if err != nil {
-			return nil, err
-		}
-		return sparqlCompareFilter{Op: "!=", Left: left, Right: right}, nil
-	}
-	for _, op := range []string{"<=", ">=", "<", ">"} {
+	for _, op := range []string{"=", "!=", "<=", ">=", "<", ">"} {
 		if p.matchOperator(op) {
-			right, err := p.parseValueExpr(prefixes)
+			right, err := p.parseAdditiveExpr(prefixes)
 			if err != nil {
 				return nil, err
 			}
-			return sparqlCompareFilter{Op: op, Left: left, Right: right}, nil
+			return sparqlCompareExpr{Op: op, Left: left, Right: right}, nil
 		}
 	}
-	return sparqlExprFilter{Expr: left}, nil
+	isIn := func(token sparqlToken) bool {
+		return token.Type == sparqlTokenIdent && strings.EqualFold(token.Value, "IN")
+	}
+	negated := false
+	if p.peek().Type == sparqlTokenKeyword && strings.EqualFold(p.peek().Value, "NOT") && isIn(p.peekN(1)) {
+		p.next()
+		negated = true
+	}
+	if isIn(p.peek()) {
+		p.next()
+		list, err := p.parseExpressionList(prefixes)
+		if err != nil {
+			return nil, err
+		}
+		return sparqlInExpr{Value: left, List: list, Negated: negated}, nil
+	}
+	return left, nil
 }
 
-func (p *sparqlParser) parseValueExpr(prefixes map[string]string) (sparqlValueExpr, error) {
-	return p.parseAdditiveExpr(prefixes)
+// parseExpressionList reads '(' expr (',' expr)* ')', allowing '()'.
+func (p *sparqlParser) parseExpressionList(prefixes map[string]string) ([]sparqlValueExpr, error) {
+	p.expectPunct("(")
+	list := make([]sparqlValueExpr, 0)
+	if p.matchPunct(")") {
+		return list, nil
+	}
+	for {
+		expr, err := p.parseValueExpr(prefixes)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, expr)
+		if !p.matchPunct(",") {
+			break
+		}
+	}
+	p.expectPunct(")")
+	return list, nil
 }
 
 func (p *sparqlParser) parseAdditiveExpr(prefixes map[string]string) (sparqlValueExpr, error) {
@@ -3301,6 +2893,12 @@ func (p *sparqlParser) parseMultiplicativeExpr(prefixes map[string]string) (spar
 
 func (p *sparqlParser) parseUnaryValueExpr(prefixes map[string]string) (sparqlValueExpr, error) {
 	switch {
+	case p.matchOperator("!"):
+		inner, err := p.parseUnaryValueExpr(prefixes)
+		if err != nil {
+			return nil, err
+		}
+		return sparqlNotExpr{Inner: inner}, nil
 	case p.matchOperator("+"):
 		return p.parseUnaryValueExpr(prefixes)
 	case p.matchOperator("-"):
@@ -3365,76 +2963,63 @@ func (p *sparqlParser) parsePrimaryValueExpr(prefixes map[string]string) (sparql
 		p.expectPunct(")")
 		return countExpr, nil
 	}
-	if p.matchKeyword("COALESCE") {
-		p.expectPunct("(")
-		args := make([]sparqlValueExpr, 0)
-		for {
-			arg, err := p.parseValueExpr(prefixes)
-			if err != nil {
-				return nil, err
-			}
-			args = append(args, arg)
-			if !p.matchPunct(",") {
-				break
-			}
+	if p.matchKeyword("EXISTS") {
+		group, err := p.parseEnclosedGroup(p.exprGraph, prefixes)
+		if err != nil {
+			return nil, err
 		}
+		return sparqlExistsExpr{Group: group, rt: p.rt}, nil
+	}
+	if p.peek().Type == sparqlTokenKeyword && strings.EqualFold(p.peek().Value, "NOT") {
+		p.next()
+		if !p.matchKeyword("EXISTS") {
+			return nil, fmt.Errorf("expected EXISTS after NOT")
+		}
+		group, err := p.parseEnclosedGroup(p.exprGraph, prefixes)
+		if err != nil {
+			return nil, err
+		}
+		return sparqlExistsExpr{Group: group, Negated: true, rt: p.rt}, nil
+	}
+	if p.matchKeyword("BOUND") {
+		p.expectPunct("(")
+		variable := strings.TrimPrefix(p.expectType(sparqlTokenVar, "variable").Value, "?")
 		p.expectPunct(")")
+		return sparqlBoundExpr{Variable: variable}, nil
+	}
+	if p.matchKeyword("COALESCE") {
+		args, err := p.parseExpressionList(prefixes)
+		if err != nil {
+			return nil, err
+		}
 		return sparqlCoalesceFuncExpr{Args: args}, nil
 	}
 	if p.matchKeyword("IF") {
-		p.expectPunct("(")
-		cond, err := p.parseFilterExpr(nil, prefixes)
+		args, err := p.parseExpressionList(prefixes)
 		if err != nil {
 			return nil, err
 		}
-		p.expectPunct(",")
-		thenExpr, err := p.parseValueExpr(prefixes)
-		if err != nil {
-			return nil, err
+		if len(args) != 3 {
+			return nil, fmt.Errorf("IF takes 3 arguments, got %d", len(args))
 		}
-		p.expectPunct(",")
-		elseExpr, err := p.parseValueExpr(prefixes)
-		if err != nil {
-			return nil, err
-		}
-		p.expectPunct(")")
-		return sparqlIfFuncExpr{Cond: cond, Then: thenExpr, Else: elseExpr}, nil
+		return sparqlIfFuncExpr{Cond: args[0], Then: args[1], Else: args[2]}, nil
 	}
-	if p.matchKeyword("STR") {
-		p.expectPunct("(")
-		inner, err := p.parseValueExpr(prefixes)
+	if token := p.peek(); (token.Type == sparqlTokenKeyword || token.Type == sparqlTokenIdent) &&
+		p.peekN(1).Type == sparqlTokenPunct && p.peekN(1).Value == "(" {
+		name := strings.ToUpper(token.Value)
+		fn, ok := sparqlFunctions[name]
+		if !ok {
+			return nil, fmt.Errorf("unsupported function %s", token.Value)
+		}
+		p.next()
+		args, err := p.parseExpressionList(prefixes)
 		if err != nil {
 			return nil, err
 		}
-		p.expectPunct(")")
-		return sparqlStrFuncExpr{Inner: inner}, nil
-	}
-	if p.matchKeyword("LCASE") {
-		p.expectPunct("(")
-		inner, err := p.parseValueExpr(prefixes)
-		if err != nil {
-			return nil, err
+		if len(args) < fn.minArgs || (fn.maxArgs >= 0 && len(args) > fn.maxArgs) {
+			return nil, fmt.Errorf("%s: wrong number of arguments (%d)", name, len(args))
 		}
-		p.expectPunct(")")
-		return sparqlLCaseFuncExpr{Inner: inner}, nil
-	}
-	if p.matchKeyword("LANG") {
-		p.expectPunct("(")
-		inner, err := p.parseValueExpr(prefixes)
-		if err != nil {
-			return nil, err
-		}
-		p.expectPunct(")")
-		return sparqlLangFuncExpr{Inner: inner}, nil
-	}
-	if p.matchKeyword("DATATYPE") {
-		p.expectPunct("(")
-		inner, err := p.parseValueExpr(prefixes)
-		if err != nil {
-			return nil, err
-		}
-		p.expectPunct(")")
-		return sparqlDatatypeFuncExpr{Inner: inner}, nil
+		return sparqlFuncExpr{Name: name, Args: args, fn: fn, rt: p.rt}, nil
 	}
 	if p.matchPunct("(") {
 		expr, err := p.parseValueExpr(prefixes)
@@ -3523,6 +3108,22 @@ func (p *sparqlParser) parseTermPattern(prefixes map[string]string, allowLiteral
 		}
 		literal := NewTypedLiteral(strings.ToLower(p.next().Value), builtinNamespaces["xsd"]+"boolean")
 		return sparqlTermPattern{Term: &literal}, nil
+	case sparqlTokenOperator:
+		// A signed number is one literal in data positions (VALUES rows,
+		// triple objects); in expressions the sign is parsed as an operator
+		// before this is reached.
+		if allowLiteral && (token.Value == "-" || token.Value == "+") && p.peekN(1).Type == sparqlTokenNumber {
+			sign := p.next().Value
+			term, err := p.parseTermPattern(prefixes, allowLiteral)
+			if err != nil {
+				return sparqlTermPattern{}, err
+			}
+			if sign == "-" {
+				term.Term.Value = "-" + term.Term.Value
+			}
+			return term, nil
+		}
+		return sparqlTermPattern{}, fmt.Errorf("unexpected token %q", token.Value)
 	default:
 		return sparqlTermPattern{}, fmt.Errorf("unexpected token %q", token.Value)
 	}
@@ -3704,6 +3305,8 @@ func isSPARQLKeyword(value string) bool {
 		strings.EqualFold(value, "CONSTRUCT"),
 		strings.EqualFold(value, "DESCRIBE"),
 		strings.EqualFold(value, "DISTINCT"),
+		strings.EqualFold(value, "REDUCED"),
+		strings.EqualFold(value, "FROM"),
 		strings.EqualFold(value, "ASK"),
 		strings.EqualFold(value, "INSERT"),
 		strings.EqualFold(value, "DELETE"),
@@ -3778,17 +3381,6 @@ func (p *sparqlParser) next() sparqlToken {
 	token := p.tokens[p.position]
 	p.position++
 	return token
-}
-
-func isSPARQLExistsFilterStart(token sparqlToken) bool {
-	return token.Type == sparqlTokenKeyword && strings.EqualFold(token.Value, "EXISTS")
-}
-
-func isSPARQLNotExistsFilterStart(first, second sparqlToken) bool {
-	return first.Type == sparqlTokenKeyword &&
-		second.Type == sparqlTokenKeyword &&
-		strings.EqualFold(first.Value, "NOT") &&
-		strings.EqualFold(second.Value, "EXISTS")
 }
 
 func (p *sparqlParser) matchKeyword(value string) bool {
