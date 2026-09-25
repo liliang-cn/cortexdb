@@ -197,3 +197,41 @@ func TestOntologyInvalidSchemaIsInvalidArgument(t *testing.T) {
 		t.Fatalf("error should keep the validation detail, got %v", err)
 	}
 }
+
+// The sameAs cap has to cross the wire both ways: a typed client sets it, and
+// hears which classes were too large to materialize. The mapping in
+// graphService is field by field, so a field the proto carries and the
+// mapping forgets is silently zero on one side.
+func TestInferenceRefreshCarriesTheSameAsCapAndItsReport(t *testing.T) {
+	conn := newTestConn(t, false, "")
+	client := rpcv1.NewKnowledgeGraphServiceClient(conn)
+	ctx := context.Background()
+
+	same := "http://www.w3.org/2002/07/owl#sameAs"
+	if _, err := client.UpsertKnowledgeGraph(ctx, &rpcv1.UpsertKnowledgeGraphRequest{
+		Triples: []*rpcv1.RdfTriple{
+			{Subject: iri("https://example.com/a"), Predicate: iri(same), Object: iri("https://example.com/b")},
+			{Subject: iri("https://example.com/b"), Predicate: iri(same), Object: iri("https://example.com/c")},
+			{Subject: iri("https://example.com/a"), Predicate: iri("https://schema.org/name"), Object: literal("A")},
+		},
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	ref, err := client.RefreshInference(ctx, &rpcv1.RefreshInferenceRequest{MaxSameAsClassSize: 2})
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	oversized := ref.GetResult().GetOversizedSameAsClasses()
+	if len(oversized) != 1 || oversized[0].GetSize() != 3 || oversized[0].GetCap() != 2 || len(oversized[0].GetMembers()) != 3 {
+		t.Fatalf("oversized = %+v, want one class of 3 over a cap of 2 with its members", oversized)
+	}
+
+	ref, err = client.RefreshInference(ctx, &rpcv1.RefreshInferenceRequest{})
+	if err != nil {
+		t.Fatalf("refresh at the default cap: %v", err)
+	}
+	if n := len(ref.GetResult().GetOversizedSameAsClasses()); n != 0 {
+		t.Fatalf("a class of 3 is under the default cap, yet %d were reported", n)
+	}
+}

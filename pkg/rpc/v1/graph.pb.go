@@ -1431,13 +1431,15 @@ func (x *ValidateShaclResponse) GetReport() *ShaclReport {
 }
 
 type RefreshInferenceRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Mode          string                 `protobuf:"bytes,1,opt,name=mode,proto3" json:"mode,omitempty"`
-	TripleIds     []string               `protobuf:"bytes,2,rep,name=triple_ids,json=tripleIds,proto3" json:"triple_ids,omitempty"`
-	Triples       []*RdfTriple           `protobuf:"bytes,3,rep,name=triples,proto3" json:"triples,omitempty"`
-	Pattern       *TriplePattern         `protobuf:"bytes,4,opt,name=pattern,proto3,oneof" json:"pattern,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Mode      string                 `protobuf:"bytes,1,opt,name=mode,proto3" json:"mode,omitempty"`
+	TripleIds []string               `protobuf:"bytes,2,rep,name=triple_ids,json=tripleIds,proto3" json:"triple_ids,omitempty"`
+	Triples   []*RdfTriple           `protobuf:"bytes,3,rep,name=triples,proto3" json:"triples,omitempty"`
+	Pattern   *TriplePattern         `protobuf:"bytes,4,opt,name=pattern,proto3,oneof" json:"pattern,omitempty"`
+	// Largest owl:sameAs class to materialize; 0 means the default (32).
+	MaxSameAsClassSize int32 `protobuf:"varint,5,opt,name=max_same_as_class_size,json=maxSameAsClassSize,proto3" json:"max_same_as_class_size,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *RefreshInferenceRequest) Reset() {
@@ -1498,20 +1500,90 @@ func (x *RefreshInferenceRequest) GetPattern() *TriplePattern {
 	return nil
 }
 
+func (x *RefreshInferenceRequest) GetMaxSameAsClassSize() int32 {
+	if x != nil {
+		return x.MaxSameAsClassSize
+	}
+	return 0
+}
+
+// An owl:sameAs class too large to materialize, reported instead of copied.
+type OversizedSameAsClass struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Size  int32                  `protobuf:"varint,1,opt,name=size,proto3" json:"size,omitempty"`
+	Cap   int32                  `protobuf:"varint,2,opt,name=cap,proto3" json:"cap,omitempty"`
+	// A sorted sample of at most sixteen members, in N-Triples syntax.
+	Members       []string `protobuf:"bytes,3,rep,name=members,proto3" json:"members,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OversizedSameAsClass) Reset() {
+	*x = OversizedSameAsClass{}
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OversizedSameAsClass) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OversizedSameAsClass) ProtoMessage() {}
+
+func (x *OversizedSameAsClass) ProtoReflect() protoreflect.Message {
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OversizedSameAsClass.ProtoReflect.Descriptor instead.
+func (*OversizedSameAsClass) Descriptor() ([]byte, []int) {
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *OversizedSameAsClass) GetSize() int32 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+func (x *OversizedSameAsClass) GetCap() int32 {
+	if x != nil {
+		return x.Cap
+	}
+	return 0
+}
+
+func (x *OversizedSameAsClass) GetMembers() []string {
+	if x != nil {
+		return x.Members
+	}
+	return nil
+}
+
 type InferenceRefreshResult struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	ExplicitCount         int32                  `protobuf:"varint,1,opt,name=explicit_count,json=explicitCount,proto3" json:"explicit_count,omitempty"`
-	InferredCount         int32                  `protobuf:"varint,2,opt,name=inferred_count,json=inferredCount,proto3" json:"inferred_count,omitempty"`
-	Incremental           bool                   `protobuf:"varint,3,opt,name=incremental,proto3" json:"incremental,omitempty"`
-	AffectedExplicitCount int32                  `protobuf:"varint,4,opt,name=affected_explicit_count,json=affectedExplicitCount,proto3" json:"affected_explicit_count,omitempty"`
-	RemovedInferredCount  int32                  `protobuf:"varint,5,opt,name=removed_inferred_count,json=removedInferredCount,proto3" json:"removed_inferred_count,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	state                  protoimpl.MessageState  `protogen:"open.v1"`
+	ExplicitCount          int32                   `protobuf:"varint,1,opt,name=explicit_count,json=explicitCount,proto3" json:"explicit_count,omitempty"`
+	InferredCount          int32                   `protobuf:"varint,2,opt,name=inferred_count,json=inferredCount,proto3" json:"inferred_count,omitempty"`
+	Incremental            bool                    `protobuf:"varint,3,opt,name=incremental,proto3" json:"incremental,omitempty"`
+	AffectedExplicitCount  int32                   `protobuf:"varint,4,opt,name=affected_explicit_count,json=affectedExplicitCount,proto3" json:"affected_explicit_count,omitempty"`
+	RemovedInferredCount   int32                   `protobuf:"varint,5,opt,name=removed_inferred_count,json=removedInferredCount,proto3" json:"removed_inferred_count,omitempty"`
+	OversizedSameAsClasses []*OversizedSameAsClass `protobuf:"bytes,6,rep,name=oversized_same_as_classes,json=oversizedSameAsClasses,proto3" json:"oversized_same_as_classes,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *InferenceRefreshResult) Reset() {
 	*x = InferenceRefreshResult{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[27]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1523,7 +1595,7 @@ func (x *InferenceRefreshResult) String() string {
 func (*InferenceRefreshResult) ProtoMessage() {}
 
 func (x *InferenceRefreshResult) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[27]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1536,7 +1608,7 @@ func (x *InferenceRefreshResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceRefreshResult.ProtoReflect.Descriptor instead.
 func (*InferenceRefreshResult) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{27}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *InferenceRefreshResult) GetExplicitCount() int32 {
@@ -1574,6 +1646,13 @@ func (x *InferenceRefreshResult) GetRemovedInferredCount() int32 {
 	return 0
 }
 
+func (x *InferenceRefreshResult) GetOversizedSameAsClasses() []*OversizedSameAsClass {
+	if x != nil {
+		return x.OversizedSameAsClasses
+	}
+	return nil
+}
+
 type RefreshInferenceResponse struct {
 	state         protoimpl.MessageState  `protogen:"open.v1"`
 	Result        *InferenceRefreshResult `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
@@ -1583,7 +1662,7 @@ type RefreshInferenceResponse struct {
 
 func (x *RefreshInferenceResponse) Reset() {
 	*x = RefreshInferenceResponse{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[28]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1595,7 +1674,7 @@ func (x *RefreshInferenceResponse) String() string {
 func (*RefreshInferenceResponse) ProtoMessage() {}
 
 func (x *RefreshInferenceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[28]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1608,7 +1687,7 @@ func (x *RefreshInferenceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefreshInferenceResponse.ProtoReflect.Descriptor instead.
 func (*RefreshInferenceResponse) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{28}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *RefreshInferenceResponse) GetResult() *InferenceRefreshResult {
@@ -1626,7 +1705,7 @@ type SummarizeInferenceRequest struct {
 
 func (x *SummarizeInferenceRequest) Reset() {
 	*x = SummarizeInferenceRequest{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[29]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1638,7 +1717,7 @@ func (x *SummarizeInferenceRequest) String() string {
 func (*SummarizeInferenceRequest) ProtoMessage() {}
 
 func (x *SummarizeInferenceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[29]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1651,7 +1730,7 @@ func (x *SummarizeInferenceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SummarizeInferenceRequest.ProtoReflect.Descriptor instead.
 func (*SummarizeInferenceRequest) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{29}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{30}
 }
 
 type InferenceSummary struct {
@@ -1665,7 +1744,7 @@ type InferenceSummary struct {
 
 func (x *InferenceSummary) Reset() {
 	*x = InferenceSummary{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[30]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1677,7 +1756,7 @@ func (x *InferenceSummary) String() string {
 func (*InferenceSummary) ProtoMessage() {}
 
 func (x *InferenceSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[30]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1690,7 +1769,7 @@ func (x *InferenceSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceSummary.ProtoReflect.Descriptor instead.
 func (*InferenceSummary) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{30}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *InferenceSummary) GetExplicitCount() int32 {
@@ -1723,7 +1802,7 @@ type SummarizeInferenceResponse struct {
 
 func (x *SummarizeInferenceResponse) Reset() {
 	*x = SummarizeInferenceResponse{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[31]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1735,7 +1814,7 @@ func (x *SummarizeInferenceResponse) String() string {
 func (*SummarizeInferenceResponse) ProtoMessage() {}
 
 func (x *SummarizeInferenceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[31]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1748,7 +1827,7 @@ func (x *SummarizeInferenceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SummarizeInferenceResponse.ProtoReflect.Descriptor instead.
 func (*SummarizeInferenceResponse) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{31}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *SummarizeInferenceResponse) GetResult() *InferenceSummary {
@@ -1770,7 +1849,7 @@ type InferenceExplanation struct {
 
 func (x *InferenceExplanation) Reset() {
 	*x = InferenceExplanation{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[32]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1782,7 +1861,7 @@ func (x *InferenceExplanation) String() string {
 func (*InferenceExplanation) ProtoMessage() {}
 
 func (x *InferenceExplanation) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[32]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1795,7 +1874,7 @@ func (x *InferenceExplanation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceExplanation.ProtoReflect.Descriptor instead.
 func (*InferenceExplanation) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{32}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *InferenceExplanation) GetTriple() *RdfTriple {
@@ -1839,7 +1918,7 @@ type InferenceTraceEntry struct {
 
 func (x *InferenceTraceEntry) Reset() {
 	*x = InferenceTraceEntry{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[33]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1851,7 +1930,7 @@ func (x *InferenceTraceEntry) String() string {
 func (*InferenceTraceEntry) ProtoMessage() {}
 
 func (x *InferenceTraceEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[33]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1864,7 +1943,7 @@ func (x *InferenceTraceEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceTraceEntry.ProtoReflect.Descriptor instead.
 func (*InferenceTraceEntry) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{33}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *InferenceTraceEntry) GetTripleId() string {
@@ -1912,7 +1991,7 @@ type ExplainInferenceRequest struct {
 
 func (x *ExplainInferenceRequest) Reset() {
 	*x = ExplainInferenceRequest{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[34]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1924,7 +2003,7 @@ func (x *ExplainInferenceRequest) String() string {
 func (*ExplainInferenceRequest) ProtoMessage() {}
 
 func (x *ExplainInferenceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[34]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1937,7 +2016,7 @@ func (x *ExplainInferenceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainInferenceRequest.ProtoReflect.Descriptor instead.
 func (*ExplainInferenceRequest) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{34}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *ExplainInferenceRequest) GetTripleId() string {
@@ -1964,7 +2043,7 @@ type ExplainInferenceResponse struct {
 
 func (x *ExplainInferenceResponse) Reset() {
 	*x = ExplainInferenceResponse{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[35]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1976,7 +2055,7 @@ func (x *ExplainInferenceResponse) String() string {
 func (*ExplainInferenceResponse) ProtoMessage() {}
 
 func (x *ExplainInferenceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[35]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1989,7 +2068,7 @@ func (x *ExplainInferenceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainInferenceResponse.ProtoReflect.Descriptor instead.
 func (*ExplainInferenceResponse) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{35}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *ExplainInferenceResponse) GetExplanation() *InferenceExplanation {
@@ -2016,7 +2095,7 @@ type InferenceMatchExplanation struct {
 
 func (x *InferenceMatchExplanation) Reset() {
 	*x = InferenceMatchExplanation{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[36]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2028,7 +2107,7 @@ func (x *InferenceMatchExplanation) String() string {
 func (*InferenceMatchExplanation) ProtoMessage() {}
 
 func (x *InferenceMatchExplanation) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[36]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2041,7 +2120,7 @@ func (x *InferenceMatchExplanation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceMatchExplanation.ProtoReflect.Descriptor instead.
 func (*InferenceMatchExplanation) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{36}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *InferenceMatchExplanation) GetExplanation() *InferenceExplanation {
@@ -2068,7 +2147,7 @@ type ExplainInferenceMatchRequest struct {
 
 func (x *ExplainInferenceMatchRequest) Reset() {
 	*x = ExplainInferenceMatchRequest{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[37]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2080,7 +2159,7 @@ func (x *ExplainInferenceMatchRequest) String() string {
 func (*ExplainInferenceMatchRequest) ProtoMessage() {}
 
 func (x *ExplainInferenceMatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[37]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2093,7 +2172,7 @@ func (x *ExplainInferenceMatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainInferenceMatchRequest.ProtoReflect.Descriptor instead.
 func (*ExplainInferenceMatchRequest) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{37}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ExplainInferenceMatchRequest) GetPattern() *TriplePattern {
@@ -2119,7 +2198,7 @@ type ExplainInferenceMatchResponse struct {
 
 func (x *ExplainInferenceMatchResponse) Reset() {
 	*x = ExplainInferenceMatchResponse{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[38]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2131,7 +2210,7 @@ func (x *ExplainInferenceMatchResponse) String() string {
 func (*ExplainInferenceMatchResponse) ProtoMessage() {}
 
 func (x *ExplainInferenceMatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[38]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2144,7 +2223,7 @@ func (x *ExplainInferenceMatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainInferenceMatchResponse.ProtoReflect.Descriptor instead.
 func (*ExplainInferenceMatchResponse) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{38}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ExplainInferenceMatchResponse) GetMatches() []*InferenceMatchExplanation {
@@ -2168,7 +2247,7 @@ type OntologyEntityType struct {
 
 func (x *OntologyEntityType) Reset() {
 	*x = OntologyEntityType{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[39]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2180,7 +2259,7 @@ func (x *OntologyEntityType) String() string {
 func (*OntologyEntityType) ProtoMessage() {}
 
 func (x *OntologyEntityType) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[39]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2193,7 +2272,7 @@ func (x *OntologyEntityType) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OntologyEntityType.ProtoReflect.Descriptor instead.
 func (*OntologyEntityType) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{39}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *OntologyEntityType) GetName() string {
@@ -2231,7 +2310,7 @@ type OntologyRelationType struct {
 
 func (x *OntologyRelationType) Reset() {
 	*x = OntologyRelationType{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[40]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2243,7 +2322,7 @@ func (x *OntologyRelationType) String() string {
 func (*OntologyRelationType) ProtoMessage() {}
 
 func (x *OntologyRelationType) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[40]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2256,7 +2335,7 @@ func (x *OntologyRelationType) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OntologyRelationType.ProtoReflect.Descriptor instead.
 func (*OntologyRelationType) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{40}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *OntologyRelationType) GetName() string {
@@ -2317,7 +2396,7 @@ type OntologySchema struct {
 
 func (x *OntologySchema) Reset() {
 	*x = OntologySchema{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[41]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2329,7 +2408,7 @@ func (x *OntologySchema) String() string {
 func (*OntologySchema) ProtoMessage() {}
 
 func (x *OntologySchema) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[41]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2342,7 +2421,7 @@ func (x *OntologySchema) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OntologySchema.ProtoReflect.Descriptor instead.
 func (*OntologySchema) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{41}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *OntologySchema) GetSchemaId() string {
@@ -2445,7 +2524,7 @@ type SaveOntologySchemaRequest struct {
 
 func (x *SaveOntologySchemaRequest) Reset() {
 	*x = SaveOntologySchemaRequest{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[42]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2457,7 +2536,7 @@ func (x *SaveOntologySchemaRequest) String() string {
 func (*SaveOntologySchemaRequest) ProtoMessage() {}
 
 func (x *SaveOntologySchemaRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[42]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2470,7 +2549,7 @@ func (x *SaveOntologySchemaRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveOntologySchemaRequest.ProtoReflect.Descriptor instead.
 func (*SaveOntologySchemaRequest) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{42}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *SaveOntologySchemaRequest) GetSchemaId() string {
@@ -2554,7 +2633,7 @@ type SaveOntologySchemaResponse struct {
 
 func (x *SaveOntologySchemaResponse) Reset() {
 	*x = SaveOntologySchemaResponse{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[43]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2566,7 +2645,7 @@ func (x *SaveOntologySchemaResponse) String() string {
 func (*SaveOntologySchemaResponse) ProtoMessage() {}
 
 func (x *SaveOntologySchemaResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[43]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2579,7 +2658,7 @@ func (x *SaveOntologySchemaResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveOntologySchemaResponse.ProtoReflect.Descriptor instead.
 func (*SaveOntologySchemaResponse) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{43}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *SaveOntologySchemaResponse) GetSchema() *OntologySchema {
@@ -2598,7 +2677,7 @@ type GetOntologySchemaRequest struct {
 
 func (x *GetOntologySchemaRequest) Reset() {
 	*x = GetOntologySchemaRequest{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[44]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2610,7 +2689,7 @@ func (x *GetOntologySchemaRequest) String() string {
 func (*GetOntologySchemaRequest) ProtoMessage() {}
 
 func (x *GetOntologySchemaRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[44]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2623,7 +2702,7 @@ func (x *GetOntologySchemaRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOntologySchemaRequest.ProtoReflect.Descriptor instead.
 func (*GetOntologySchemaRequest) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{44}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *GetOntologySchemaRequest) GetSchemaId() string {
@@ -2642,7 +2721,7 @@ type GetOntologySchemaResponse struct {
 
 func (x *GetOntologySchemaResponse) Reset() {
 	*x = GetOntologySchemaResponse{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[45]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2654,7 +2733,7 @@ func (x *GetOntologySchemaResponse) String() string {
 func (*GetOntologySchemaResponse) ProtoMessage() {}
 
 func (x *GetOntologySchemaResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[45]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2667,7 +2746,7 @@ func (x *GetOntologySchemaResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOntologySchemaResponse.ProtoReflect.Descriptor instead.
 func (*GetOntologySchemaResponse) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{45}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *GetOntologySchemaResponse) GetSchema() *OntologySchema {
@@ -2686,7 +2765,7 @@ type ListOntologySchemasRequest struct {
 
 func (x *ListOntologySchemasRequest) Reset() {
 	*x = ListOntologySchemasRequest{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[46]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2698,7 +2777,7 @@ func (x *ListOntologySchemasRequest) String() string {
 func (*ListOntologySchemasRequest) ProtoMessage() {}
 
 func (x *ListOntologySchemasRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[46]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2711,7 +2790,7 @@ func (x *ListOntologySchemasRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOntologySchemasRequest.ProtoReflect.Descriptor instead.
 func (*ListOntologySchemasRequest) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{46}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *ListOntologySchemasRequest) GetActiveOnly() bool {
@@ -2730,7 +2809,7 @@ type ListOntologySchemasResponse struct {
 
 func (x *ListOntologySchemasResponse) Reset() {
 	*x = ListOntologySchemasResponse{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[47]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2742,7 +2821,7 @@ func (x *ListOntologySchemasResponse) String() string {
 func (*ListOntologySchemasResponse) ProtoMessage() {}
 
 func (x *ListOntologySchemasResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[47]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2755,7 +2834,7 @@ func (x *ListOntologySchemasResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOntologySchemasResponse.ProtoReflect.Descriptor instead.
 func (*ListOntologySchemasResponse) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{47}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ListOntologySchemasResponse) GetSchemas() []*OntologySchema {
@@ -2774,7 +2853,7 @@ type DeleteOntologySchemaRequest struct {
 
 func (x *DeleteOntologySchemaRequest) Reset() {
 	*x = DeleteOntologySchemaRequest{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[48]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2786,7 +2865,7 @@ func (x *DeleteOntologySchemaRequest) String() string {
 func (*DeleteOntologySchemaRequest) ProtoMessage() {}
 
 func (x *DeleteOntologySchemaRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[48]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2799,7 +2878,7 @@ func (x *DeleteOntologySchemaRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteOntologySchemaRequest.ProtoReflect.Descriptor instead.
 func (*DeleteOntologySchemaRequest) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{48}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *DeleteOntologySchemaRequest) GetSchemaId() string {
@@ -2819,7 +2898,7 @@ type DeleteOntologySchemaResponse struct {
 
 func (x *DeleteOntologySchemaResponse) Reset() {
 	*x = DeleteOntologySchemaResponse{}
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[49]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2831,7 +2910,7 @@ func (x *DeleteOntologySchemaResponse) String() string {
 func (*DeleteOntologySchemaResponse) ProtoMessage() {}
 
 func (x *DeleteOntologySchemaResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_graph_proto_msgTypes[49]
+	mi := &file_cortexdb_v1_graph_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2844,7 +2923,7 @@ func (x *DeleteOntologySchemaResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteOntologySchemaResponse.ProtoReflect.Descriptor instead.
 func (*DeleteOntologySchemaResponse) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{49}
+	return file_cortexdb_v1_graph_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *DeleteOntologySchemaResponse) GetSchemaId() string {
@@ -2970,21 +3049,27 @@ const file_cortexdb_v1_graph_proto_rawDesc = "" +
 	"\x14ValidateShaclRequest\x12.\n" +
 	"\x06shapes\x18\x01 \x03(\v2\x16.cortexdb.v1.RdfTripleR\x06shapes\"I\n" +
 	"\x15ValidateShaclResponse\x120\n" +
-	"\x06report\x18\x01 \x01(\v2\x18.cortexdb.v1.ShaclReportR\x06report\"\xc5\x01\n" +
+	"\x06report\x18\x01 \x01(\v2\x18.cortexdb.v1.ShaclReportR\x06report\"\xf9\x01\n" +
 	"\x17RefreshInferenceRequest\x12\x12\n" +
 	"\x04mode\x18\x01 \x01(\tR\x04mode\x12\x1d\n" +
 	"\n" +
 	"triple_ids\x18\x02 \x03(\tR\ttripleIds\x120\n" +
 	"\atriples\x18\x03 \x03(\v2\x16.cortexdb.v1.RdfTripleR\atriples\x129\n" +
-	"\apattern\x18\x04 \x01(\v2\x1a.cortexdb.v1.TriplePatternH\x00R\apattern\x88\x01\x01B\n" +
+	"\apattern\x18\x04 \x01(\v2\x1a.cortexdb.v1.TriplePatternH\x00R\apattern\x88\x01\x01\x122\n" +
+	"\x16max_same_as_class_size\x18\x05 \x01(\x05R\x12maxSameAsClassSizeB\n" +
 	"\n" +
-	"\b_pattern\"\xf6\x01\n" +
+	"\b_pattern\"V\n" +
+	"\x14OversizedSameAsClass\x12\x12\n" +
+	"\x04size\x18\x01 \x01(\x05R\x04size\x12\x10\n" +
+	"\x03cap\x18\x02 \x01(\x05R\x03cap\x12\x18\n" +
+	"\amembers\x18\x03 \x03(\tR\amembers\"\xd4\x02\n" +
 	"\x16InferenceRefreshResult\x12%\n" +
 	"\x0eexplicit_count\x18\x01 \x01(\x05R\rexplicitCount\x12%\n" +
 	"\x0einferred_count\x18\x02 \x01(\x05R\rinferredCount\x12 \n" +
 	"\vincremental\x18\x03 \x01(\bR\vincremental\x126\n" +
 	"\x17affected_explicit_count\x18\x04 \x01(\x05R\x15affectedExplicitCount\x124\n" +
-	"\x16removed_inferred_count\x18\x05 \x01(\x05R\x14removedInferredCount\"W\n" +
+	"\x16removed_inferred_count\x18\x05 \x01(\x05R\x14removedInferredCount\x12\\\n" +
+	"\x19oversized_same_as_classes\x18\x06 \x03(\v2!.cortexdb.v1.OversizedSameAsClassR\x16oversizedSameAsClasses\"W\n" +
 	"\x18RefreshInferenceResponse\x12;\n" +
 	"\x06result\x18\x01 \x01(\v2#.cortexdb.v1.InferenceRefreshResultR\x06result\"\x1b\n" +
 	"\x19SummarizeInferenceRequest\"\xda\x01\n" +
@@ -3117,7 +3202,7 @@ func file_cortexdb_v1_graph_proto_rawDescGZIP() []byte {
 	return file_cortexdb_v1_graph_proto_rawDescData
 }
 
-var file_cortexdb_v1_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 54)
+var file_cortexdb_v1_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 55)
 var file_cortexdb_v1_graph_proto_goTypes = []any{
 	(*RdfTerm)(nil),                       // 0: cortexdb.v1.RdfTerm
 	(*RdfTriple)(nil),                     // 1: cortexdb.v1.RdfTriple
@@ -3146,34 +3231,35 @@ var file_cortexdb_v1_graph_proto_goTypes = []any{
 	(*ValidateShaclRequest)(nil),          // 24: cortexdb.v1.ValidateShaclRequest
 	(*ValidateShaclResponse)(nil),         // 25: cortexdb.v1.ValidateShaclResponse
 	(*RefreshInferenceRequest)(nil),       // 26: cortexdb.v1.RefreshInferenceRequest
-	(*InferenceRefreshResult)(nil),        // 27: cortexdb.v1.InferenceRefreshResult
-	(*RefreshInferenceResponse)(nil),      // 28: cortexdb.v1.RefreshInferenceResponse
-	(*SummarizeInferenceRequest)(nil),     // 29: cortexdb.v1.SummarizeInferenceRequest
-	(*InferenceSummary)(nil),              // 30: cortexdb.v1.InferenceSummary
-	(*SummarizeInferenceResponse)(nil),    // 31: cortexdb.v1.SummarizeInferenceResponse
-	(*InferenceExplanation)(nil),          // 32: cortexdb.v1.InferenceExplanation
-	(*InferenceTraceEntry)(nil),           // 33: cortexdb.v1.InferenceTraceEntry
-	(*ExplainInferenceRequest)(nil),       // 34: cortexdb.v1.ExplainInferenceRequest
-	(*ExplainInferenceResponse)(nil),      // 35: cortexdb.v1.ExplainInferenceResponse
-	(*InferenceMatchExplanation)(nil),     // 36: cortexdb.v1.InferenceMatchExplanation
-	(*ExplainInferenceMatchRequest)(nil),  // 37: cortexdb.v1.ExplainInferenceMatchRequest
-	(*ExplainInferenceMatchResponse)(nil), // 38: cortexdb.v1.ExplainInferenceMatchResponse
-	(*OntologyEntityType)(nil),            // 39: cortexdb.v1.OntologyEntityType
-	(*OntologyRelationType)(nil),          // 40: cortexdb.v1.OntologyRelationType
-	(*OntologySchema)(nil),                // 41: cortexdb.v1.OntologySchema
-	(*SaveOntologySchemaRequest)(nil),     // 42: cortexdb.v1.SaveOntologySchemaRequest
-	(*SaveOntologySchemaResponse)(nil),    // 43: cortexdb.v1.SaveOntologySchemaResponse
-	(*GetOntologySchemaRequest)(nil),      // 44: cortexdb.v1.GetOntologySchemaRequest
-	(*GetOntologySchemaResponse)(nil),     // 45: cortexdb.v1.GetOntologySchemaResponse
-	(*ListOntologySchemasRequest)(nil),    // 46: cortexdb.v1.ListOntologySchemasRequest
-	(*ListOntologySchemasResponse)(nil),   // 47: cortexdb.v1.ListOntologySchemasResponse
-	(*DeleteOntologySchemaRequest)(nil),   // 48: cortexdb.v1.DeleteOntologySchemaRequest
-	(*DeleteOntologySchemaResponse)(nil),  // 49: cortexdb.v1.DeleteOntologySchemaResponse
-	nil,                                   // 50: cortexdb.v1.SparqlBinding.VarsEntry
-	nil,                                   // 51: cortexdb.v1.InferenceSummary.RulesEntry
-	nil,                                   // 52: cortexdb.v1.OntologySchema.MetadataEntry
-	nil,                                   // 53: cortexdb.v1.SaveOntologySchemaRequest.MetadataEntry
-	(*timestamppb.Timestamp)(nil),         // 54: google.protobuf.Timestamp
+	(*OversizedSameAsClass)(nil),          // 27: cortexdb.v1.OversizedSameAsClass
+	(*InferenceRefreshResult)(nil),        // 28: cortexdb.v1.InferenceRefreshResult
+	(*RefreshInferenceResponse)(nil),      // 29: cortexdb.v1.RefreshInferenceResponse
+	(*SummarizeInferenceRequest)(nil),     // 30: cortexdb.v1.SummarizeInferenceRequest
+	(*InferenceSummary)(nil),              // 31: cortexdb.v1.InferenceSummary
+	(*SummarizeInferenceResponse)(nil),    // 32: cortexdb.v1.SummarizeInferenceResponse
+	(*InferenceExplanation)(nil),          // 33: cortexdb.v1.InferenceExplanation
+	(*InferenceTraceEntry)(nil),           // 34: cortexdb.v1.InferenceTraceEntry
+	(*ExplainInferenceRequest)(nil),       // 35: cortexdb.v1.ExplainInferenceRequest
+	(*ExplainInferenceResponse)(nil),      // 36: cortexdb.v1.ExplainInferenceResponse
+	(*InferenceMatchExplanation)(nil),     // 37: cortexdb.v1.InferenceMatchExplanation
+	(*ExplainInferenceMatchRequest)(nil),  // 38: cortexdb.v1.ExplainInferenceMatchRequest
+	(*ExplainInferenceMatchResponse)(nil), // 39: cortexdb.v1.ExplainInferenceMatchResponse
+	(*OntologyEntityType)(nil),            // 40: cortexdb.v1.OntologyEntityType
+	(*OntologyRelationType)(nil),          // 41: cortexdb.v1.OntologyRelationType
+	(*OntologySchema)(nil),                // 42: cortexdb.v1.OntologySchema
+	(*SaveOntologySchemaRequest)(nil),     // 43: cortexdb.v1.SaveOntologySchemaRequest
+	(*SaveOntologySchemaResponse)(nil),    // 44: cortexdb.v1.SaveOntologySchemaResponse
+	(*GetOntologySchemaRequest)(nil),      // 45: cortexdb.v1.GetOntologySchemaRequest
+	(*GetOntologySchemaResponse)(nil),     // 46: cortexdb.v1.GetOntologySchemaResponse
+	(*ListOntologySchemasRequest)(nil),    // 47: cortexdb.v1.ListOntologySchemasRequest
+	(*ListOntologySchemasResponse)(nil),   // 48: cortexdb.v1.ListOntologySchemasResponse
+	(*DeleteOntologySchemaRequest)(nil),   // 49: cortexdb.v1.DeleteOntologySchemaRequest
+	(*DeleteOntologySchemaResponse)(nil),  // 50: cortexdb.v1.DeleteOntologySchemaResponse
+	nil,                                   // 51: cortexdb.v1.SparqlBinding.VarsEntry
+	nil,                                   // 52: cortexdb.v1.InferenceSummary.RulesEntry
+	nil,                                   // 53: cortexdb.v1.OntologySchema.MetadataEntry
+	nil,                                   // 54: cortexdb.v1.SaveOntologySchemaRequest.MetadataEntry
+	(*timestamppb.Timestamp)(nil),         // 55: google.protobuf.Timestamp
 }
 var file_cortexdb_v1_graph_proto_depIdxs = []int32{
 	0,  // 0: cortexdb.v1.RdfTriple.subject:type_name -> cortexdb.v1.RdfTerm
@@ -3191,7 +3277,7 @@ var file_cortexdb_v1_graph_proto_depIdxs = []int32{
 	1,  // 12: cortexdb.v1.FindKnowledgeGraphResponse.triples:type_name -> cortexdb.v1.RdfTriple
 	1,  // 13: cortexdb.v1.DeleteKnowledgeGraphRequest.triples:type_name -> cortexdb.v1.RdfTriple
 	2,  // 14: cortexdb.v1.DeleteKnowledgeGraphRequest.pattern:type_name -> cortexdb.v1.TriplePattern
-	50, // 15: cortexdb.v1.SparqlBinding.vars:type_name -> cortexdb.v1.SparqlBinding.VarsEntry
+	51, // 15: cortexdb.v1.SparqlBinding.vars:type_name -> cortexdb.v1.SparqlBinding.VarsEntry
 	18, // 16: cortexdb.v1.SparqlResult.bindings:type_name -> cortexdb.v1.SparqlBinding
 	1,  // 17: cortexdb.v1.SparqlResult.triples:type_name -> cortexdb.v1.RdfTriple
 	19, // 18: cortexdb.v1.QuerySparqlResponse.result:type_name -> cortexdb.v1.SparqlResult
@@ -3204,68 +3290,69 @@ var file_cortexdb_v1_graph_proto_depIdxs = []int32{
 	23, // 25: cortexdb.v1.ValidateShaclResponse.report:type_name -> cortexdb.v1.ShaclReport
 	1,  // 26: cortexdb.v1.RefreshInferenceRequest.triples:type_name -> cortexdb.v1.RdfTriple
 	2,  // 27: cortexdb.v1.RefreshInferenceRequest.pattern:type_name -> cortexdb.v1.TriplePattern
-	27, // 28: cortexdb.v1.RefreshInferenceResponse.result:type_name -> cortexdb.v1.InferenceRefreshResult
-	51, // 29: cortexdb.v1.InferenceSummary.rules:type_name -> cortexdb.v1.InferenceSummary.RulesEntry
-	30, // 30: cortexdb.v1.SummarizeInferenceResponse.result:type_name -> cortexdb.v1.InferenceSummary
-	1,  // 31: cortexdb.v1.InferenceExplanation.triple:type_name -> cortexdb.v1.RdfTriple
-	32, // 32: cortexdb.v1.InferenceTraceEntry.explanation:type_name -> cortexdb.v1.InferenceExplanation
-	32, // 33: cortexdb.v1.ExplainInferenceResponse.explanation:type_name -> cortexdb.v1.InferenceExplanation
-	33, // 34: cortexdb.v1.ExplainInferenceResponse.trace:type_name -> cortexdb.v1.InferenceTraceEntry
-	32, // 35: cortexdb.v1.InferenceMatchExplanation.explanation:type_name -> cortexdb.v1.InferenceExplanation
-	33, // 36: cortexdb.v1.InferenceMatchExplanation.trace:type_name -> cortexdb.v1.InferenceTraceEntry
-	2,  // 37: cortexdb.v1.ExplainInferenceMatchRequest.pattern:type_name -> cortexdb.v1.TriplePattern
-	36, // 38: cortexdb.v1.ExplainInferenceMatchResponse.matches:type_name -> cortexdb.v1.InferenceMatchExplanation
-	52, // 39: cortexdb.v1.OntologySchema.metadata:type_name -> cortexdb.v1.OntologySchema.MetadataEntry
-	39, // 40: cortexdb.v1.OntologySchema.entity_types:type_name -> cortexdb.v1.OntologyEntityType
-	40, // 41: cortexdb.v1.OntologySchema.relation_types:type_name -> cortexdb.v1.OntologyRelationType
-	54, // 42: cortexdb.v1.OntologySchema.created_at:type_name -> google.protobuf.Timestamp
-	54, // 43: cortexdb.v1.OntologySchema.updated_at:type_name -> google.protobuf.Timestamp
-	53, // 44: cortexdb.v1.SaveOntologySchemaRequest.metadata:type_name -> cortexdb.v1.SaveOntologySchemaRequest.MetadataEntry
-	39, // 45: cortexdb.v1.SaveOntologySchemaRequest.entity_types:type_name -> cortexdb.v1.OntologyEntityType
-	40, // 46: cortexdb.v1.SaveOntologySchemaRequest.relation_types:type_name -> cortexdb.v1.OntologyRelationType
-	41, // 47: cortexdb.v1.SaveOntologySchemaResponse.schema:type_name -> cortexdb.v1.OntologySchema
-	41, // 48: cortexdb.v1.GetOntologySchemaResponse.schema:type_name -> cortexdb.v1.OntologySchema
-	41, // 49: cortexdb.v1.ListOntologySchemasResponse.schemas:type_name -> cortexdb.v1.OntologySchema
-	0,  // 50: cortexdb.v1.SparqlBinding.VarsEntry.value:type_name -> cortexdb.v1.RdfTerm
-	4,  // 51: cortexdb.v1.KnowledgeGraphService.UpsertNamespace:input_type -> cortexdb.v1.UpsertNamespaceRequest
-	6,  // 52: cortexdb.v1.KnowledgeGraphService.ListNamespaces:input_type -> cortexdb.v1.ListNamespacesRequest
-	8,  // 53: cortexdb.v1.KnowledgeGraphService.UpsertKnowledgeGraph:input_type -> cortexdb.v1.UpsertKnowledgeGraphRequest
-	10, // 54: cortexdb.v1.KnowledgeGraphService.FindKnowledgeGraph:input_type -> cortexdb.v1.FindKnowledgeGraphRequest
-	12, // 55: cortexdb.v1.KnowledgeGraphService.DeleteKnowledgeGraph:input_type -> cortexdb.v1.DeleteKnowledgeGraphRequest
-	14, // 56: cortexdb.v1.KnowledgeGraphService.ImportKnowledgeGraph:input_type -> cortexdb.v1.ImportKnowledgeGraphRequest
-	16, // 57: cortexdb.v1.KnowledgeGraphService.ExportKnowledgeGraph:input_type -> cortexdb.v1.ExportKnowledgeGraphRequest
-	20, // 58: cortexdb.v1.KnowledgeGraphService.QuerySparql:input_type -> cortexdb.v1.QuerySparqlRequest
-	24, // 59: cortexdb.v1.KnowledgeGraphService.ValidateShacl:input_type -> cortexdb.v1.ValidateShaclRequest
-	26, // 60: cortexdb.v1.KnowledgeGraphService.RefreshInference:input_type -> cortexdb.v1.RefreshInferenceRequest
-	29, // 61: cortexdb.v1.KnowledgeGraphService.SummarizeInference:input_type -> cortexdb.v1.SummarizeInferenceRequest
-	34, // 62: cortexdb.v1.KnowledgeGraphService.ExplainInference:input_type -> cortexdb.v1.ExplainInferenceRequest
-	37, // 63: cortexdb.v1.KnowledgeGraphService.ExplainInferenceMatch:input_type -> cortexdb.v1.ExplainInferenceMatchRequest
-	42, // 64: cortexdb.v1.KnowledgeGraphService.SaveOntologySchema:input_type -> cortexdb.v1.SaveOntologySchemaRequest
-	44, // 65: cortexdb.v1.KnowledgeGraphService.GetOntologySchema:input_type -> cortexdb.v1.GetOntologySchemaRequest
-	46, // 66: cortexdb.v1.KnowledgeGraphService.ListOntologySchemas:input_type -> cortexdb.v1.ListOntologySchemasRequest
-	48, // 67: cortexdb.v1.KnowledgeGraphService.DeleteOntologySchema:input_type -> cortexdb.v1.DeleteOntologySchemaRequest
-	5,  // 68: cortexdb.v1.KnowledgeGraphService.UpsertNamespace:output_type -> cortexdb.v1.UpsertNamespaceResponse
-	7,  // 69: cortexdb.v1.KnowledgeGraphService.ListNamespaces:output_type -> cortexdb.v1.ListNamespacesResponse
-	9,  // 70: cortexdb.v1.KnowledgeGraphService.UpsertKnowledgeGraph:output_type -> cortexdb.v1.UpsertKnowledgeGraphResponse
-	11, // 71: cortexdb.v1.KnowledgeGraphService.FindKnowledgeGraph:output_type -> cortexdb.v1.FindKnowledgeGraphResponse
-	13, // 72: cortexdb.v1.KnowledgeGraphService.DeleteKnowledgeGraph:output_type -> cortexdb.v1.DeleteKnowledgeGraphResponse
-	15, // 73: cortexdb.v1.KnowledgeGraphService.ImportKnowledgeGraph:output_type -> cortexdb.v1.ImportKnowledgeGraphResponse
-	17, // 74: cortexdb.v1.KnowledgeGraphService.ExportKnowledgeGraph:output_type -> cortexdb.v1.ExportKnowledgeGraphResponse
-	21, // 75: cortexdb.v1.KnowledgeGraphService.QuerySparql:output_type -> cortexdb.v1.QuerySparqlResponse
-	25, // 76: cortexdb.v1.KnowledgeGraphService.ValidateShacl:output_type -> cortexdb.v1.ValidateShaclResponse
-	28, // 77: cortexdb.v1.KnowledgeGraphService.RefreshInference:output_type -> cortexdb.v1.RefreshInferenceResponse
-	31, // 78: cortexdb.v1.KnowledgeGraphService.SummarizeInference:output_type -> cortexdb.v1.SummarizeInferenceResponse
-	35, // 79: cortexdb.v1.KnowledgeGraphService.ExplainInference:output_type -> cortexdb.v1.ExplainInferenceResponse
-	38, // 80: cortexdb.v1.KnowledgeGraphService.ExplainInferenceMatch:output_type -> cortexdb.v1.ExplainInferenceMatchResponse
-	43, // 81: cortexdb.v1.KnowledgeGraphService.SaveOntologySchema:output_type -> cortexdb.v1.SaveOntologySchemaResponse
-	45, // 82: cortexdb.v1.KnowledgeGraphService.GetOntologySchema:output_type -> cortexdb.v1.GetOntologySchemaResponse
-	47, // 83: cortexdb.v1.KnowledgeGraphService.ListOntologySchemas:output_type -> cortexdb.v1.ListOntologySchemasResponse
-	49, // 84: cortexdb.v1.KnowledgeGraphService.DeleteOntologySchema:output_type -> cortexdb.v1.DeleteOntologySchemaResponse
-	68, // [68:85] is the sub-list for method output_type
-	51, // [51:68] is the sub-list for method input_type
-	51, // [51:51] is the sub-list for extension type_name
-	51, // [51:51] is the sub-list for extension extendee
-	0,  // [0:51] is the sub-list for field type_name
+	27, // 28: cortexdb.v1.InferenceRefreshResult.oversized_same_as_classes:type_name -> cortexdb.v1.OversizedSameAsClass
+	28, // 29: cortexdb.v1.RefreshInferenceResponse.result:type_name -> cortexdb.v1.InferenceRefreshResult
+	52, // 30: cortexdb.v1.InferenceSummary.rules:type_name -> cortexdb.v1.InferenceSummary.RulesEntry
+	31, // 31: cortexdb.v1.SummarizeInferenceResponse.result:type_name -> cortexdb.v1.InferenceSummary
+	1,  // 32: cortexdb.v1.InferenceExplanation.triple:type_name -> cortexdb.v1.RdfTriple
+	33, // 33: cortexdb.v1.InferenceTraceEntry.explanation:type_name -> cortexdb.v1.InferenceExplanation
+	33, // 34: cortexdb.v1.ExplainInferenceResponse.explanation:type_name -> cortexdb.v1.InferenceExplanation
+	34, // 35: cortexdb.v1.ExplainInferenceResponse.trace:type_name -> cortexdb.v1.InferenceTraceEntry
+	33, // 36: cortexdb.v1.InferenceMatchExplanation.explanation:type_name -> cortexdb.v1.InferenceExplanation
+	34, // 37: cortexdb.v1.InferenceMatchExplanation.trace:type_name -> cortexdb.v1.InferenceTraceEntry
+	2,  // 38: cortexdb.v1.ExplainInferenceMatchRequest.pattern:type_name -> cortexdb.v1.TriplePattern
+	37, // 39: cortexdb.v1.ExplainInferenceMatchResponse.matches:type_name -> cortexdb.v1.InferenceMatchExplanation
+	53, // 40: cortexdb.v1.OntologySchema.metadata:type_name -> cortexdb.v1.OntologySchema.MetadataEntry
+	40, // 41: cortexdb.v1.OntologySchema.entity_types:type_name -> cortexdb.v1.OntologyEntityType
+	41, // 42: cortexdb.v1.OntologySchema.relation_types:type_name -> cortexdb.v1.OntologyRelationType
+	55, // 43: cortexdb.v1.OntologySchema.created_at:type_name -> google.protobuf.Timestamp
+	55, // 44: cortexdb.v1.OntologySchema.updated_at:type_name -> google.protobuf.Timestamp
+	54, // 45: cortexdb.v1.SaveOntologySchemaRequest.metadata:type_name -> cortexdb.v1.SaveOntologySchemaRequest.MetadataEntry
+	40, // 46: cortexdb.v1.SaveOntologySchemaRequest.entity_types:type_name -> cortexdb.v1.OntologyEntityType
+	41, // 47: cortexdb.v1.SaveOntologySchemaRequest.relation_types:type_name -> cortexdb.v1.OntologyRelationType
+	42, // 48: cortexdb.v1.SaveOntologySchemaResponse.schema:type_name -> cortexdb.v1.OntologySchema
+	42, // 49: cortexdb.v1.GetOntologySchemaResponse.schema:type_name -> cortexdb.v1.OntologySchema
+	42, // 50: cortexdb.v1.ListOntologySchemasResponse.schemas:type_name -> cortexdb.v1.OntologySchema
+	0,  // 51: cortexdb.v1.SparqlBinding.VarsEntry.value:type_name -> cortexdb.v1.RdfTerm
+	4,  // 52: cortexdb.v1.KnowledgeGraphService.UpsertNamespace:input_type -> cortexdb.v1.UpsertNamespaceRequest
+	6,  // 53: cortexdb.v1.KnowledgeGraphService.ListNamespaces:input_type -> cortexdb.v1.ListNamespacesRequest
+	8,  // 54: cortexdb.v1.KnowledgeGraphService.UpsertKnowledgeGraph:input_type -> cortexdb.v1.UpsertKnowledgeGraphRequest
+	10, // 55: cortexdb.v1.KnowledgeGraphService.FindKnowledgeGraph:input_type -> cortexdb.v1.FindKnowledgeGraphRequest
+	12, // 56: cortexdb.v1.KnowledgeGraphService.DeleteKnowledgeGraph:input_type -> cortexdb.v1.DeleteKnowledgeGraphRequest
+	14, // 57: cortexdb.v1.KnowledgeGraphService.ImportKnowledgeGraph:input_type -> cortexdb.v1.ImportKnowledgeGraphRequest
+	16, // 58: cortexdb.v1.KnowledgeGraphService.ExportKnowledgeGraph:input_type -> cortexdb.v1.ExportKnowledgeGraphRequest
+	20, // 59: cortexdb.v1.KnowledgeGraphService.QuerySparql:input_type -> cortexdb.v1.QuerySparqlRequest
+	24, // 60: cortexdb.v1.KnowledgeGraphService.ValidateShacl:input_type -> cortexdb.v1.ValidateShaclRequest
+	26, // 61: cortexdb.v1.KnowledgeGraphService.RefreshInference:input_type -> cortexdb.v1.RefreshInferenceRequest
+	30, // 62: cortexdb.v1.KnowledgeGraphService.SummarizeInference:input_type -> cortexdb.v1.SummarizeInferenceRequest
+	35, // 63: cortexdb.v1.KnowledgeGraphService.ExplainInference:input_type -> cortexdb.v1.ExplainInferenceRequest
+	38, // 64: cortexdb.v1.KnowledgeGraphService.ExplainInferenceMatch:input_type -> cortexdb.v1.ExplainInferenceMatchRequest
+	43, // 65: cortexdb.v1.KnowledgeGraphService.SaveOntologySchema:input_type -> cortexdb.v1.SaveOntologySchemaRequest
+	45, // 66: cortexdb.v1.KnowledgeGraphService.GetOntologySchema:input_type -> cortexdb.v1.GetOntologySchemaRequest
+	47, // 67: cortexdb.v1.KnowledgeGraphService.ListOntologySchemas:input_type -> cortexdb.v1.ListOntologySchemasRequest
+	49, // 68: cortexdb.v1.KnowledgeGraphService.DeleteOntologySchema:input_type -> cortexdb.v1.DeleteOntologySchemaRequest
+	5,  // 69: cortexdb.v1.KnowledgeGraphService.UpsertNamespace:output_type -> cortexdb.v1.UpsertNamespaceResponse
+	7,  // 70: cortexdb.v1.KnowledgeGraphService.ListNamespaces:output_type -> cortexdb.v1.ListNamespacesResponse
+	9,  // 71: cortexdb.v1.KnowledgeGraphService.UpsertKnowledgeGraph:output_type -> cortexdb.v1.UpsertKnowledgeGraphResponse
+	11, // 72: cortexdb.v1.KnowledgeGraphService.FindKnowledgeGraph:output_type -> cortexdb.v1.FindKnowledgeGraphResponse
+	13, // 73: cortexdb.v1.KnowledgeGraphService.DeleteKnowledgeGraph:output_type -> cortexdb.v1.DeleteKnowledgeGraphResponse
+	15, // 74: cortexdb.v1.KnowledgeGraphService.ImportKnowledgeGraph:output_type -> cortexdb.v1.ImportKnowledgeGraphResponse
+	17, // 75: cortexdb.v1.KnowledgeGraphService.ExportKnowledgeGraph:output_type -> cortexdb.v1.ExportKnowledgeGraphResponse
+	21, // 76: cortexdb.v1.KnowledgeGraphService.QuerySparql:output_type -> cortexdb.v1.QuerySparqlResponse
+	25, // 77: cortexdb.v1.KnowledgeGraphService.ValidateShacl:output_type -> cortexdb.v1.ValidateShaclResponse
+	29, // 78: cortexdb.v1.KnowledgeGraphService.RefreshInference:output_type -> cortexdb.v1.RefreshInferenceResponse
+	32, // 79: cortexdb.v1.KnowledgeGraphService.SummarizeInference:output_type -> cortexdb.v1.SummarizeInferenceResponse
+	36, // 80: cortexdb.v1.KnowledgeGraphService.ExplainInference:output_type -> cortexdb.v1.ExplainInferenceResponse
+	39, // 81: cortexdb.v1.KnowledgeGraphService.ExplainInferenceMatch:output_type -> cortexdb.v1.ExplainInferenceMatchResponse
+	44, // 82: cortexdb.v1.KnowledgeGraphService.SaveOntologySchema:output_type -> cortexdb.v1.SaveOntologySchemaResponse
+	46, // 83: cortexdb.v1.KnowledgeGraphService.GetOntologySchema:output_type -> cortexdb.v1.GetOntologySchemaResponse
+	48, // 84: cortexdb.v1.KnowledgeGraphService.ListOntologySchemas:output_type -> cortexdb.v1.ListOntologySchemasResponse
+	50, // 85: cortexdb.v1.KnowledgeGraphService.DeleteOntologySchema:output_type -> cortexdb.v1.DeleteOntologySchemaResponse
+	69, // [69:86] is the sub-list for method output_type
+	52, // [52:69] is the sub-list for method input_type
+	52, // [52:52] is the sub-list for extension type_name
+	52, // [52:52] is the sub-list for extension extendee
+	0,  // [0:52] is the sub-list for field type_name
 }
 
 func init() { file_cortexdb_v1_graph_proto_init() }
@@ -3283,7 +3370,7 @@ func file_cortexdb_v1_graph_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cortexdb_v1_graph_proto_rawDesc), len(file_cortexdb_v1_graph_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   54,
+			NumMessages:   55,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

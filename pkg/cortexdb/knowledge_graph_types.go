@@ -128,7 +128,7 @@ type KnowledgeGraphExportResponse struct {
 	Content string `json:"content"`
 }
 
-// KnowledgeGraphQueryRequest executes a SPARQL SELECT/ASK subset against the embedded knowledge graph.
+// KnowledgeGraphQueryRequest carries a SPARQL 1.1 query or update for QueryKnowledgeGraph.
 type KnowledgeGraphQueryRequest struct {
 	Query string `json:"query"`
 }
@@ -154,6 +154,9 @@ type KnowledgeGraphInferenceRefreshRequest struct {
 	TripleIDs []string                     `json:"triple_ids,omitempty"`
 	Triples   []KnowledgeGraphTriple       `json:"triples,omitempty"`
 	Pattern   *KnowledgeGraphTriplePattern `json:"pattern,omitempty"`
+	// MaxSameAsClassSize caps how large an owl:sameAs class may grow before
+	// it is reported instead of materialized. Zero means the default (32).
+	MaxSameAsClassSize int `json:"max_same_as_class_size,omitempty"`
 }
 
 // KnowledgeGraphInferenceRefreshResponse summarizes an inference refresh run.

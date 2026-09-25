@@ -141,16 +141,23 @@ func (s *graphService) RefreshInference(ctx context.Context, req *rpcv1.RefreshI
 		TripleIDs: req.GetTripleIds(),
 		Triples:   triplesFromProto(req.GetTriples()),
 		Pattern:   patternPtrFromProto(req.GetPattern()),
+
+		MaxSameAsClassSize: int(req.GetMaxSameAsClassSize()),
 	})
 	if err != nil {
 		return nil, toStatus(err)
 	}
+	oversized := make([]*rpcv1.OversizedSameAsClass, 0, len(resp.Result.OversizedSameAsClasses))
+	for _, c := range resp.Result.OversizedSameAsClasses {
+		oversized = append(oversized, &rpcv1.OversizedSameAsClass{Size: int32(c.Size), Cap: int32(c.Cap), Members: c.Members})
+	}
 	return &rpcv1.RefreshInferenceResponse{Result: &rpcv1.InferenceRefreshResult{
-		ExplicitCount:         int32(resp.Result.ExplicitCount),
-		InferredCount:         int32(resp.Result.InferredCount),
-		Incremental:           resp.Result.Incremental,
-		AffectedExplicitCount: int32(resp.Result.AffectedExplicitCount),
-		RemovedInferredCount:  int32(resp.Result.RemovedInferredCount),
+		ExplicitCount:          int32(resp.Result.ExplicitCount),
+		InferredCount:          int32(resp.Result.InferredCount),
+		Incremental:            resp.Result.Incremental,
+		AffectedExplicitCount:  int32(resp.Result.AffectedExplicitCount),
+		RemovedInferredCount:   int32(resp.Result.RemovedInferredCount),
+		OversizedSameAsClasses: oversized,
 	}}, nil
 }
 

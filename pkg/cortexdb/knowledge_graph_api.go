@@ -138,7 +138,10 @@ func (db *DB) ExportKnowledgeGraph(ctx context.Context, req KnowledgeGraphExport
 	}, nil
 }
 
-// QueryKnowledgeGraph executes a SPARQL SELECT/ASK subset against the embedded knowledge graph.
+// QueryKnowledgeGraph executes a SPARQL 1.1 query or update over the embedded
+// knowledge graph, which includes the property graph as read-only triples in
+// <urn:cortexdb:graph:property>. See the knowledge_graph_query tool for the
+// supported subset.
 func (db *DB) QueryKnowledgeGraph(ctx context.Context, req KnowledgeGraphQueryRequest) (*KnowledgeGraphQueryResponse, error) {
 	if strings.TrimSpace(req.Query) == "" {
 		return nil, ErrEmptyText
@@ -178,6 +181,11 @@ func (db *DB) RefreshKnowledgeGraphInference(ctx context.Context, req KnowledgeG
 		}
 	}
 
+	if req.MaxSameAsClassSize < 0 {
+		return nil, fmt.Errorf("max_same_as_class_size must not be negative, got %d", req.MaxSameAsClassSize)
+	}
+	opts := graph.InferenceOptions{MaxSameAsClassSize: req.MaxSameAsClassSize}
+
 	var (
 		result *graph.RDFSInferenceRefreshResult
 		err    error
@@ -202,9 +210,9 @@ func (db *DB) RefreshKnowledgeGraphInference(ctx context.Context, req KnowledgeG
 		if len(seeds) == 0 {
 			return nil, fmt.Errorf("incremental inference refresh requires triples, triple_ids, or a pattern")
 		}
-		result, err = db.graph.RefreshRDFSInferencesIncremental(ctx, seeds)
+		result, err = db.graph.RefreshRDFSInferencesIncrementalWithOptions(ctx, seeds, opts)
 	} else {
-		result, err = db.graph.RefreshRDFSInferences(ctx)
+		result, err = db.graph.RefreshRDFSInferencesWithOptions(ctx, opts)
 	}
 	if err != nil {
 		return nil, err

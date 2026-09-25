@@ -182,7 +182,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 			InputSchema: toolObjectSchema(
 				[]string{"query"},
 				map[string]any{
-					"query": toolStringSchema("SPARQL query text. Supports PREFIX, SELECT, ASK, CONSTRUCT, DESCRIBE, INSERT DATA, INSERT ... WHERE, DELETE DATA, DELETE WHERE, DELETE ... INSERT ... WHERE, WITH, USING, GRAPH, OPTIONAL, UNION, MINUS, VALUES, BIND, FILTER, EXISTS, NOT EXISTS, REGEX, LANG, DATATYPE, COALESCE, IF, arithmetic, GROUP BY, HAVING, COUNT, SUM, AVG, MIN, MAX, SAMPLE, GROUP_CONCAT, ORDER BY, LIMIT, and OFFSET."),
+					"query": toolStringSchema("SPARQL 1.1 query text. Supports PREFIX; SELECT (DISTINCT, REDUCED, (expr AS ?v)), ASK, CONSTRUCT (GRAPH blocks in the template produce quads), DESCRIBE; FROM and FROM NAMED; INSERT DATA, INSERT ... WHERE, DELETE DATA, DELETE WHERE, DELETE ... INSERT ... WHERE, WITH, USING, USING NAMED; GRAPH, OPTIONAL, UNION, MINUS, VALUES, BIND, FILTER, EXISTS, NOT EXISTS, subqueries; property paths ^p, p|q, p+, p*; IN, NOT IN, arithmetic, && || !; functions BOUND, IF, COALESCE, sameTerm, isIRI, isBlank, isLiteral, isNumeric, STR, LANG, LANGMATCHES, DATATYPE, IRI, BNODE, STRDT, STRLANG, UUID, STRUUID, STRLEN, SUBSTR, UCASE, LCASE, STRSTARTS, STRENDS, CONTAINS, STRBEFORE, STRAFTER, ENCODE_FOR_URI, CONCAT, REGEX, REPLACE, ABS, ROUND, CEIL, FLOOR, RAND, NOW, YEAR, MONTH, DAY, HOURS, MINUTES, SECONDS, TIMEZONE, TZ, MD5, SHA1, SHA256, SHA384, SHA512; aggregates COUNT, SUM, AVG, MIN, MAX, SAMPLE, GROUP_CONCAT (all with DISTINCT); GROUP BY, HAVING, ORDER BY ASC/DESC on expressions and aliases, LIMIT, OFFSET. Without FROM the default graph is the unnamed graph plus the property-graph projection. Not supported: XSD casts, / ? ! paths, BASE, SERVICE, LOAD/CLEAR/CREATE/DROP."),
 				},
 			),
 		},
@@ -201,14 +201,15 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 			// Recomputes and persists the RDFS-lite inferred triples. The
 			// _summary and _explain tools beside it only read what this wrote.
 			Mutates:     true,
-			Description: "Recompute persisted RDFS-lite inferred triples. Defaults to a full rebuild; can also run incrementally for affected triples, IDs, or a pattern.",
+			Description: "Recompute persisted inferred triples: RDFS (rdfs:subClassOf, rdfs:subPropertyOf, rdfs:domain, rdfs:range) and an OWL-RL subset (owl:inverseOf, owl:SymmetricProperty, owl:TransitiveProperty, owl:equivalentClass, owl:equivalentProperty, owl:sameAs). Declare axioms with knowledge_graph_query INSERT DATA first — they apply to the property graph too, e.g. cxt:host owl:equivalentClass cxt:Host, cxr:depends_on owl:inverseOf cxr:depended_on_by, or cxn:entity%3Anode_e owl:sameAs cxn:entity%3Asds_e to merge an entity stored twice. Every inferred triple is explainable with knowledge_graph_infer_explain. An owl:sameAs class larger than max_same_as_class_size is reported in oversized_same_as_classes, not materialized. Defaults to a full rebuild; can also run incrementally for affected triples, IDs, or a pattern.",
 			InputSchema: toolObjectSchema(
 				nil,
 				map[string]any{
-					"mode":       toolEnumSchema("Inference refresh mode.", KnowledgeGraphInferenceRefreshModeFull, KnowledgeGraphInferenceRefreshModeIncremental),
-					"triple_ids": toolStringArraySchema("Optional changed triple IDs for incremental refresh."),
-					"triples":    toolKnowledgeGraphTripleArraySchema(),
-					"pattern":    toolKnowledgeGraphTriplePatternSchema(),
+					"mode":                   toolEnumSchema("Inference refresh mode.", KnowledgeGraphInferenceRefreshModeFull, KnowledgeGraphInferenceRefreshModeIncremental),
+					"triple_ids":             toolStringArraySchema("Optional changed triple IDs for incremental refresh."),
+					"triples":                toolKnowledgeGraphTripleArraySchema(),
+					"pattern":                toolKnowledgeGraphTriplePatternSchema(),
+					"max_same_as_class_size": toolIntegerSchema("Largest owl:sameAs class to materialize; larger classes are reported instead. Default 32."),
 				},
 			),
 		},

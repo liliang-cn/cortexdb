@@ -484,3 +484,52 @@ func TestJSONLDImportsThroughTheToolAndAnswersSPARQL(t *testing.T) {
 		t.Fatalf("a remote context must be refused by name, got %v", err)
 	}
 }
+
+// A model sets the sameAs cap through the tool and reads the report back from
+// the same call; both have to survive the JSON round trip.
+func TestTheInferenceToolTakesTheSameAsCapAndReportsWhatItSkipped(t *testing.T) {
+	dbPath := fmt.Sprintf("test_knowledge_graph_sameas_cap_%d.db", testname.Nano())
+	t.Cleanup(func() {
+		for _, suffix := range []string{"", "-wal", "-shm"} {
+			_ = os.Remove(dbPath + suffix)
+		}
+	})
+	db, err := Open(DefaultConfig(dbPath))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := context.Background()
+
+	if _, err := db.QueryKnowledgeGraph(ctx, KnowledgeGraphQueryRequest{Query: `INSERT DATA {
+		<https://example.com/a> owl:sameAs <https://example.com/b> .
+		<https://example.com/b> owl:sameAs <https://example.com/c> .
+		<https://example.com/a> schema:name "A" }`}); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	raw, err := db.GraphRAGTools().Call(ctx, "knowledge_graph_infer_refresh", json.RawMessage(`{"max_same_as_class_size":2}`))
+	if err != nil {
+		t.Fatalf("refresh through the tool: %v", err)
+	}
+	res, ok := raw.(*KnowledgeGraphInferenceRefreshResponse)
+	if !ok {
+		t.Fatalf("dispatch returned %T", raw)
+	}
+	if got := res.Result.OversizedSameAsClasses; len(got) != 1 || got[0].Size != 3 || got[0].Cap != 2 {
+		t.Fatalf("oversized = %+v, want the one class of 3 over a cap of 2", got)
+	}
+
+	// Nothing from the skipped class was copied: c never gained a's name.
+	names, err := db.QueryKnowledgeGraph(ctx, KnowledgeGraphQueryRequest{Query: `SELECT ?n WHERE { <https://example.com/c> schema:name ?n }`})
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if len(names.Result.Bindings) != 0 {
+		t.Fatalf("c has names %+v; a class over the cap must not be materialized", names.Result.Bindings)
+	}
+
+	if _, err := db.GraphRAGTools().Call(ctx, "knowledge_graph_infer_refresh", json.RawMessage(`{"max_same_as_class_size":-1}`)); err == nil {
+		t.Fatal("a negative cap was accepted")
+	}
+}

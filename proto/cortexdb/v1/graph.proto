@@ -111,6 +111,15 @@ message RefreshInferenceRequest {
   repeated string triple_ids = 2;
   repeated RdfTriple triples = 3;
   optional TriplePattern pattern = 4;
+  // Largest owl:sameAs class to materialize; 0 means the default (32).
+  int32 max_same_as_class_size = 5;
+}
+// An owl:sameAs class too large to materialize, reported instead of copied.
+message OversizedSameAsClass {
+  int32 size = 1;
+  int32 cap = 2;
+  // A sorted sample of at most sixteen members, in N-Triples syntax.
+  repeated string members = 3;
 }
 message InferenceRefreshResult {
   int32 explicit_count = 1;
@@ -118,6 +127,7 @@ message InferenceRefreshResult {
   bool incremental = 3;
   int32 affected_explicit_count = 4;
   int32 removed_inferred_count = 5;
+  repeated OversizedSameAsClass oversized_same_as_classes = 6;
 }
 message RefreshInferenceResponse { InferenceRefreshResult result = 1; }
 
