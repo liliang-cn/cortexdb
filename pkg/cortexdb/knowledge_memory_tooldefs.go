@@ -178,7 +178,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 			// and classifying it as a read would hand every read-only key a
 			// way to rewrite the graph.
 			Mutates:     true,
-			Description: "Execute a SPARQL SELECT/ASK/CONSTRUCT/DESCRIBE subset over the embedded knowledge graph.",
+			Description: "Execute a SPARQL SELECT/ASK/CONSTRUCT/DESCRIBE subset over the embedded knowledge graph. The property graph that extraction and upsert_entities/upsert_relations write is readable here too, as read-only triples in graph <urn:cortexdb:graph:property>: nodes are cxn:<id>, node types cxt:<type> (via rdf:type / a), relations cxr:<edge_type>, node properties cxp:<key>, and a node's name (or title) is rdfs:label. Ids and type names are percent-encoded exactly (entity:abc → cxn:entity%3Aabc); non-ASCII ids need the full <urn:cortexdb:node:…> form. Example — who depends on CortexDB: SELECT ?who WHERE { ?x cxr:depends_on ?y . ?y rdfs:label \"CortexDB\" . ?x rdfs:label ?who }. Call graph_schema first to learn which types and relations exist. Deleting or inserting projected triples is refused; change the property graph through its own tools.",
 			InputSchema: toolObjectSchema(
 				[]string{"query"},
 				map[string]any{
@@ -188,7 +188,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "knowledge_graph_shacl_validate",
-			Description: "Validate the embedded knowledge graph with supplied SHACL-lite shape triples.",
+			Description: "Validate the embedded knowledge graph (including the property graph as cxt:/cxr:/cxp: triples) against supplied SHACL shape triples. Supported: sh:targetClass (with subclasses), sh:targetNode, sh:targetSubjectsOf, sh:targetObjectsOf; sh:property with sh:path (predicate or sh:inversePath); sh:class, sh:datatype, sh:nodeKind; sh:minCount, sh:maxCount; sh:minInclusive, sh:maxInclusive, sh:minExclusive, sh:maxExclusive; sh:minLength, sh:maxLength, sh:pattern with sh:flags, sh:languageIn, sh:uniqueLang; sh:in, sh:hasValue; sh:node, sh:not, sh:and, sh:or, sh:xone; sh:closed with sh:ignoredProperties; sh:severity and sh:message. Recursive shapes and other path forms are refused with an error. Any result makes conforms false, whatever its severity.",
 			InputSchema: toolObjectSchema(
 				[]string{"shapes"},
 				map[string]any{
