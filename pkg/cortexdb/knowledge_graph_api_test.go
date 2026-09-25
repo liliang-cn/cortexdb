@@ -394,3 +394,45 @@ func ptrKnowledgeTerm(term KnowledgeGraphTerm) *KnowledgeGraphTerm {
 func ptrBool(value bool) *bool {
 	return &value
 }
+
+// A delete reports what it removed, not how many things it was asked to
+// remove. The count is what a caller — often a model — reads to decide that a
+// fact is gone, so a triple that was never stored must add nothing to it.
+func TestADeleteReportsOnlyTheTriplesItRemoved(t *testing.T) {
+	dbPath := fmt.Sprintf("test_knowledge_graph_delete_count_%d.db", testname.Nano())
+	t.Cleanup(func() {
+		for _, suffix := range []string{"", "-wal", "-shm"} {
+			_ = os.Remove(dbPath + suffix)
+		}
+	})
+	db, err := Open(DefaultConfig(dbPath))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := context.Background()
+
+	stored := KnowledgeGraphTriple{
+		Subject:   graph.NewIRI("https://example.com/alice"),
+		Predicate: graph.NewIRI("https://schema.org/name"),
+		Object:    graph.NewLiteral("Alice"),
+	}
+	neverStored := KnowledgeGraphTriple{
+		Subject:   graph.NewIRI("https://example.com/nobody"),
+		Predicate: graph.NewIRI("https://schema.org/name"),
+		Object:    graph.NewLiteral("Nobody"),
+	}
+	if _, err := db.UpsertKnowledgeGraph(ctx, KnowledgeGraphUpsertRequest{Triples: []KnowledgeGraphTriple{stored}}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	resp, err := db.DeleteKnowledgeGraph(ctx, KnowledgeGraphDeleteRequest{
+		Triples: []KnowledgeGraphTriple{stored, neverStored, stored},
+	})
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if resp.Deleted != 1 {
+		t.Fatalf("deleted = %d, want 1: one of the three was stored, and it can only be removed once", resp.Deleted)
+	}
+}

@@ -532,6 +532,14 @@ func (g *GraphStore) DeleteTriple(ctx context.Context, triple RDFTriple) error {
 	return err
 }
 
+// DeleteTripleCounted is DeleteTriple for callers that report a count: it
+// returns how many stored triples were removed, which is zero for a triple
+// that was never there. A caller that counted calls instead of removals told
+// its own caller that facts were gone which had never existed.
+func (g *GraphStore) DeleteTripleCounted(ctx context.Context, triple RDFTriple) (int, error) {
+	return g.deleteTriple(ctx, triple)
+}
+
 // deleteTriple is DeleteTriple reporting how many stored triples it removed,
 // which is zero for a triple that was never there. Callers that count
 // deletions count this, not their own calls.

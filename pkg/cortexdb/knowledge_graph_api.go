@@ -77,17 +77,19 @@ func (db *DB) DeleteKnowledgeGraph(ctx context.Context, req KnowledgeGraphDelete
 		if err != nil {
 			return nil, err
 		}
-		if err := db.graph.DeleteTriple(ctx, *triple); err != nil {
+		removed, err := db.graph.DeleteTripleCounted(ctx, *triple)
+		if err != nil {
 			return nil, err
 		}
-		deleted++
+		deleted += removed
 	}
 
 	for _, triple := range req.Triples {
-		if err := db.graph.DeleteTriple(ctx, graph.RDFTriple(triple)); err != nil {
+		removed, err := db.graph.DeleteTripleCounted(ctx, graph.RDFTriple(triple))
+		if err != nil {
 			return nil, err
 		}
-		deleted++
+		deleted += removed
 	}
 
 	if req.Pattern != nil {
