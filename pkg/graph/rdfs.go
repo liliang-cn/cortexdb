@@ -36,6 +36,27 @@ type RDFSInferenceRefreshResult struct {
 	Incremental           bool `json:"incremental,omitempty"`
 	AffectedExplicitCount int  `json:"affected_explicit_count,omitempty"`
 	RemovedInferredCount  int  `json:"removed_inferred_count,omitempty"`
+	// OversizedSameAsClasses lists the owl:sameAs equivalence classes that
+	// were larger than the configured cap and so were reported instead of
+	// materialized. Nothing was inferred from their sameAs edges: not the
+	// closure, and not the copied statements. An incremental refresh reports
+	// only the classes inside the neighbourhood it recomputed.
+	OversizedSameAsClasses []OversizedSameAsClass `json:"oversized_same_as_classes,omitempty"`
+}
+
+// InferenceOptions tunes a refresh. The zero value is the default behaviour.
+type InferenceOptions struct {
+	// MaxSameAsClassSize is the largest owl:sameAs equivalence class that is
+	// materialized. Zero or less means DefaultMaxSameAsClassSize. See
+	// OversizedSameAsClass for what happens to a class above it.
+	MaxSameAsClassSize int `json:"max_same_as_class_size,omitempty"`
+}
+
+func (o InferenceOptions) sameAsClassCap() int {
+	if o.MaxSameAsClassSize <= 0 {
+		return DefaultMaxSameAsClassSize
+	}
+	return o.MaxSameAsClassSize
 }
 
 // RDFSInferenceSummary provides persisted inference counts and rule breakdowns.
@@ -73,10 +94,19 @@ type rdfsInferenceRecord struct {
 	Explicit   bool
 	Rule       string
 	SupportIDs []string
+	// key is the record's content key in the engine; see inferenceContentKey.
+	key string
 }
 
-// RefreshRDFSInferences recomputes and persists inferred triples using an RDFS-lite ruleset.
+// RefreshRDFSInferences recomputes and persists inferred triples using an
+// RDFS-lite ruleset and the OWL subset in owl.go, with default options.
 func (g *GraphStore) RefreshRDFSInferences(ctx context.Context) (*RDFSInferenceRefreshResult, error) {
+	return g.RefreshRDFSInferencesWithOptions(ctx, InferenceOptions{})
+}
+
+// RefreshRDFSInferencesWithOptions is RefreshRDFSInferences with the options
+// spelled out.
+func (g *GraphStore) RefreshRDFSInferencesWithOptions(ctx context.Context, opts InferenceOptions) (*RDFSInferenceRefreshResult, error) {
 	if err := g.InitGraphSchema(ctx); err != nil {
 		return nil, err
 	}
@@ -89,27 +119,34 @@ func (g *GraphStore) RefreshRDFSInferences(ctx context.Context) (*RDFSInferenceR
 	if err != nil {
 		return nil, err
 	}
-	records := computeRDFSInferenceRecords(explicitTriples)
+	records, oversized := computeInferenceRecords(explicitTriples, opts)
 	inferredCount, err := g.persistInferredRecords(ctx, records)
 	if err != nil {
 		return nil, err
 	}
 
 	return &RDFSInferenceRefreshResult{
-		ExplicitCount:         len(explicitTriples),
-		InferredCount:         inferredCount,
-		AffectedExplicitCount: len(explicitTriples),
+		ExplicitCount:          len(explicitTriples),
+		InferredCount:          inferredCount,
+		AffectedExplicitCount:  len(explicitTriples),
+		OversizedSameAsClasses: oversized,
 	}, nil
 }
 
 // RefreshRDFSInferencesIncremental recomputes inferred triples only for the neighborhood
 // affected by the supplied changed explicit triples.
 func (g *GraphStore) RefreshRDFSInferencesIncremental(ctx context.Context, changedTriples []RDFTriple) (*RDFSInferenceRefreshResult, error) {
+	return g.RefreshRDFSInferencesIncrementalWithOptions(ctx, changedTriples, InferenceOptions{})
+}
+
+// RefreshRDFSInferencesIncrementalWithOptions is RefreshRDFSInferencesIncremental
+// with the options spelled out.
+func (g *GraphStore) RefreshRDFSInferencesIncrementalWithOptions(ctx context.Context, changedTriples []RDFTriple, opts InferenceOptions) (*RDFSInferenceRefreshResult, error) {
 	if err := g.InitGraphSchema(ctx); err != nil {
 		return nil, err
 	}
 	if len(changedTriples) == 0 {
-		return g.RefreshRDFSInferences(ctx)
+		return g.RefreshRDFSInferencesWithOptions(ctx, opts)
 	}
 
 	explicitOnly := false
@@ -135,18 +172,19 @@ func (g *GraphStore) RefreshRDFSInferencesIncremental(ctx context.Context, chang
 		return nil, err
 	}
 
-	records := computeRDFSInferenceRecords(affectedExplicit)
+	records, oversized := computeInferenceRecords(affectedExplicit, opts)
 	inferredCount, err := g.persistInferredRecords(ctx, records)
 	if err != nil {
 		return nil, err
 	}
 
 	return &RDFSInferenceRefreshResult{
-		ExplicitCount:         len(explicitTriples),
-		InferredCount:         inferredCount,
-		Incremental:           true,
-		AffectedExplicitCount: len(affectedExplicit),
-		RemovedInferredCount:  removed,
+		ExplicitCount:          len(explicitTriples),
+		InferredCount:          inferredCount,
+		Incremental:            true,
+		AffectedExplicitCount:  len(affectedExplicit),
+		RemovedInferredCount:   removed,
+		OversizedSameAsClasses: oversized,
 	}, nil
 }
 
@@ -264,191 +302,315 @@ func (g *GraphStore) explainTripleTrace(ctx context.Context, tripleID, parentTri
 	return nil
 }
 
+// computeRDFSInferenceRecords runs the ruleset with default options. It is the
+// form the benchmarks and the fixture tests call, because they judge the
+// engine and not its configuration.
 func computeRDFSInferenceRecords(explicitTriples []RDFTriple) map[string]rdfsInferenceRecord {
-	records := make(map[string]rdfsInferenceRecord, len(explicitTriples))
-	for _, triple := range explicitTriples {
-		record := rdfsInferenceRecord{
-			Triple:   tripleWithoutInference(triple),
-			Explicit: true,
-		}
-		records[tripleKey(record.Triple)] = record
-	}
-
-	changed := true
-	for changed {
-		changed = false
-		snapshot := make([]rdfsInferenceRecord, 0, len(records))
-		for _, record := range records {
-			snapshot = append(snapshot, record)
-		}
-
-		for _, recordA := range snapshot {
-			a := recordA.Triple
-			if a.Predicate.Value == rdfsSubClassOfIRI {
-				for _, recordB := range snapshot {
-					b := recordB.Triple
-					if b.Predicate.Value != rdfsSubClassOfIRI || !termsEqual(a.Object, b.Subject) {
-						continue
-					}
-					graphTerm := mergeInferenceGraph(a.Graph, b.Graph)
-					changed = addInferredRecord(records, RDFTriple{
-						Subject:   a.Subject,
-						Predicate: NewIRI(rdfsSubClassOfIRI),
-						Object:    b.Object,
-						Graph:     graphTerm,
-					}, rdfsRuleSubClass, supportPair(recordA, recordB)) || changed
-				}
-			}
-			if a.Predicate.Value == rdfsSubPropertyOfIRI {
-				for _, recordB := range snapshot {
-					b := recordB.Triple
-					if b.Predicate.Value != rdfsSubPropertyOfIRI || !termsEqual(a.Object, b.Subject) {
-						continue
-					}
-					graphTerm := mergeInferenceGraph(a.Graph, b.Graph)
-					changed = addInferredRecord(records, RDFTriple{
-						Subject:   a.Subject,
-						Predicate: NewIRI(rdfsSubPropertyOfIRI),
-						Object:    b.Object,
-						Graph:     graphTerm,
-					}, rdfsRuleSubProperty, supportPair(recordA, recordB)) || changed
-				}
-			}
-		}
-
-		for _, record := range snapshot {
-			triple := record.Triple
-
-			switch triple.Predicate.Value {
-			case rdfsSubClassOfIRI:
-				classTerm := NewIRI(rdfsClassIRI)
-				changed = addInferredRecord(records, RDFTriple{
-					Subject:   triple.Subject,
-					Predicate: NewIRI(rdfTypeIRI),
-					Object:    classTerm,
-					Graph:     cloneGraphTerm(triple.Graph),
-				}, rdfsRuleSubclassClass, supportSingle(record)) || changed
-				changed = addInferredRecord(records, RDFTriple{
-					Subject:   triple.Object,
-					Predicate: NewIRI(rdfTypeIRI),
-					Object:    classTerm,
-					Graph:     cloneGraphTerm(triple.Graph),
-				}, rdfsRuleSubclassClass, supportSingle(record)) || changed
-			case rdfsSubPropertyOfIRI:
-				propertyTerm := NewIRI(rdfPropertyIRI)
-				changed = addInferredRecord(records, RDFTriple{
-					Subject:   triple.Subject,
-					Predicate: NewIRI(rdfTypeIRI),
-					Object:    propertyTerm,
-					Graph:     cloneGraphTerm(triple.Graph),
-				}, rdfsRuleSubpropProperty, supportSingle(record)) || changed
-				changed = addInferredRecord(records, RDFTriple{
-					Subject:   triple.Object,
-					Predicate: NewIRI(rdfTypeIRI),
-					Object:    propertyTerm,
-					Graph:     cloneGraphTerm(triple.Graph),
-				}, rdfsRuleSubpropProperty, supportSingle(record)) || changed
-			case rdfsDomainIRI:
-				propertyTerm := NewIRI(rdfPropertyIRI)
-				classTerm := NewIRI(rdfsClassIRI)
-				changed = addInferredRecord(records, RDFTriple{
-					Subject:   triple.Subject,
-					Predicate: NewIRI(rdfTypeIRI),
-					Object:    propertyTerm,
-					Graph:     cloneGraphTerm(triple.Graph),
-				}, rdfsRuleDomainSchema, supportSingle(record)) || changed
-				changed = addInferredRecord(records, RDFTriple{
-					Subject:   triple.Object,
-					Predicate: NewIRI(rdfTypeIRI),
-					Object:    classTerm,
-					Graph:     cloneGraphTerm(triple.Graph),
-				}, rdfsRuleDomainSchema, supportSingle(record)) || changed
-			case rdfsRangeIRI:
-				propertyTerm := NewIRI(rdfPropertyIRI)
-				classTerm := NewIRI(rdfsClassIRI)
-				changed = addInferredRecord(records, RDFTriple{
-					Subject:   triple.Subject,
-					Predicate: NewIRI(rdfTypeIRI),
-					Object:    propertyTerm,
-					Graph:     cloneGraphTerm(triple.Graph),
-				}, rdfsRuleRangeSchema, supportSingle(record)) || changed
-				changed = addInferredRecord(records, RDFTriple{
-					Subject:   triple.Object,
-					Predicate: NewIRI(rdfTypeIRI),
-					Object:    classTerm,
-					Graph:     cloneGraphTerm(triple.Graph),
-				}, rdfsRuleRangeSchema, supportSingle(record)) || changed
-			}
-
-			if triple.Predicate.Value == rdfTypeIRI {
-				if triple.Object.Kind == RDFTermIRI && triple.Object.Value == rdfsClassIRI {
-					changed = addInferredRecord(records, RDFTriple{
-						Subject:   triple.Subject,
-						Predicate: NewIRI(rdfsSubClassOfIRI),
-						Object:    triple.Subject,
-						Graph:     cloneGraphTerm(triple.Graph),
-					}, rdfsRuleClassReflexive, supportSingle(record)) || changed
-				}
-				if triple.Object.Kind == RDFTermIRI && triple.Object.Value == rdfPropertyIRI {
-					changed = addInferredRecord(records, RDFTriple{
-						Subject:   triple.Subject,
-						Predicate: NewIRI(rdfsSubPropertyOfIRI),
-						Object:    triple.Subject,
-						Graph:     cloneGraphTerm(triple.Graph),
-					}, rdfsRulePropReflexive, supportSingle(record)) || changed
-				}
-				for _, schema := range snapshot {
-					if schema.Triple.Predicate.Value != rdfsSubClassOfIRI || !termsEqual(triple.Object, schema.Triple.Subject) {
-						continue
-					}
-					graphTerm := preferInferenceGraph(triple.Graph, schema.Triple.Graph)
-					changed = addInferredRecord(records, RDFTriple{
-						Subject:   triple.Subject,
-						Predicate: NewIRI(rdfTypeIRI),
-						Object:    schema.Triple.Object,
-						Graph:     graphTerm,
-					}, rdfsRuleTypeSubClass, supportPair(record, schema)) || changed
-				}
-			}
-
-			for _, schema := range snapshot {
-				switch schema.Triple.Predicate.Value {
-				case rdfsSubPropertyOfIRI:
-					if termsEqual(triple.Predicate, schema.Triple.Subject) {
-						graphTerm := preferInferenceGraph(triple.Graph, schema.Triple.Graph)
-						changed = addInferredRecord(records, RDFTriple{
-							Subject:   triple.Subject,
-							Predicate: schema.Triple.Object,
-							Object:    triple.Object,
-							Graph:     graphTerm,
-						}, rdfsRuleSubPropertyUse, supportPair(record, schema)) || changed
-					}
-				case rdfsDomainIRI:
-					if termsEqual(triple.Predicate, schema.Triple.Subject) {
-						graphTerm := preferInferenceGraph(triple.Graph, schema.Triple.Graph)
-						changed = addInferredRecord(records, RDFTriple{
-							Subject:   triple.Subject,
-							Predicate: NewIRI(rdfTypeIRI),
-							Object:    schema.Triple.Object,
-							Graph:     graphTerm,
-						}, rdfsRuleDomain, supportPair(record, schema)) || changed
-					}
-				case rdfsRangeIRI:
-					if termsEqual(triple.Predicate, schema.Triple.Subject) && triple.Object.Kind != RDFTermLiteral {
-						graphTerm := preferInferenceGraph(triple.Graph, schema.Triple.Graph)
-						changed = addInferredRecord(records, RDFTriple{
-							Subject:   triple.Object,
-							Predicate: NewIRI(rdfTypeIRI),
-							Object:    schema.Triple.Object,
-							Graph:     graphTerm,
-						}, rdfsRuleRange, supportPair(record, schema)) || changed
-					}
-				}
-			}
-		}
-	}
-
+	records, _ := computeInferenceRecords(explicitTriples, InferenceOptions{})
 	return records
+}
+
+// computeInferenceRecords materializes everything the RDFS and OWL rules
+// derive from the explicit triples, and reports the sameAs classes it refused
+// to materialize.
+//
+// The outer loop exists only for sameAs. Whether a class is too large to
+// materialize is not always known before inference starts: a sameAs edge can
+// itself be derived — through subPropertyOf, inverseOf, or equivalentProperty —
+// and can join two classes that were each under the cap and have each already
+// been materialized. Stopping there would leave half a class's copies in the
+// output, which is the silent truncation the cap exists to prevent. So the
+// engine gives up on that run, and the next run starts knowing the class is
+// oversized and never touches it. Every restart marks at least one term that
+// was not marked before, so the loop is bounded by the number of terms; in a
+// graph with no sameAs edges it runs exactly once.
+func computeInferenceRecords(explicitTriples []RDFTriple, opts InferenceOptions) (map[string]rdfsInferenceRecord, []OversizedSameAsClass) {
+	oversized := make(map[string]bool)
+	for {
+		engine := newInferenceEngine(opts.sameAsClassCap(), oversized)
+		restart := engine.run(explicitTriples)
+		if restart == nil {
+			out := make(map[string]rdfsInferenceRecord, len(engine.records))
+			for key, record := range engine.records {
+				out[key] = *record
+			}
+			return out, engine.sameAs.report()
+		}
+		for _, key := range restart {
+			oversized[key] = true
+		}
+	}
+}
+
+// inferenceEngine evaluates the ruleset semi-naively.
+//
+// The engine it replaces re-joined every pair of records in every round: each
+// round cost the square of everything known so far, and most of that work
+// rediscovered derivations earlier rounds had already made. That was harmless
+// while the input was a few hand-written ontology triples. It stopped being
+// harmless when the property graph began to be projected into the triple
+// store, because tens of thousands of typed instances and edges turned each
+// round into billions of comparisons.
+//
+// Semi-naive evaluation rests on one observation: a derivation that is new in
+// round k must use at least one premise that was new in round k-1, since if
+// every premise had been known earlier the derivation would have been made
+// earlier. So each round joins only the delta — the records the previous round
+// produced — against everything known, through indexes keyed by predicate and
+// by term, and the fixpoint is reached when a round produces nothing. The
+// result is the same least fixpoint the naive loop reached; only the work
+// spent reaching it differs.
+//
+// Records enter the indexes at the start of the round that processes them, so
+// a join made while processing the delta always sees the delta itself as part
+// of "everything known", which is what lets two premises that arrived in the
+// same round find each other. Records derived during a round wait in next and
+// are indexed at the start of the following one.
+type inferenceEngine struct {
+	records map[string]*rdfsInferenceRecord
+
+	byPredicate        map[string][]*rdfsInferenceRecord
+	byPredicateSubject map[string][]*rdfsInferenceRecord
+	byPredicateObject  map[string][]*rdfsInferenceRecord
+	bySubject          map[string][]*rdfsInferenceRecord
+	byObject           map[string][]*rdfsInferenceRecord
+
+	next []*rdfsInferenceRecord
+	// fired is set once any rule has run. Before that, discovering an
+	// oversized sameAs class costs nothing; after it, the class may already
+	// have been partly materialized and the run must restart.
+	fired  bool
+	sameAs *sameAsClasses
+}
+
+// Index keys of the vocabulary the rules join on, computed once rather than
+// for every lookup.
+var (
+	keyRDFType        = engineTermKey(NewIRI(rdfTypeIRI))
+	keySubClassOf     = engineTermKey(NewIRI(rdfsSubClassOfIRI))
+	keySubPropertyOf  = engineTermKey(NewIRI(rdfsSubPropertyOfIRI))
+	keyDomain         = engineTermKey(NewIRI(rdfsDomainIRI))
+	keyRange          = engineTermKey(NewIRI(rdfsRangeIRI))
+	keyOWLInverseOf   = engineTermKey(NewIRI(owlInverseOfIRI))
+	keyOWLSameAs      = engineTermKey(NewIRI(owlSameAsIRI))
+	termRDFType       = NewIRI(rdfTypeIRI)
+	termSubClassOf    = NewIRI(rdfsSubClassOfIRI)
+	termSubPropertyOf = NewIRI(rdfsSubPropertyOfIRI)
+	termRDFSClass     = NewIRI(rdfsClassIRI)
+	termRDFProperty   = NewIRI(rdfPropertyIRI)
+)
+
+func newInferenceEngine(sameAsCap int, oversized map[string]bool) *inferenceEngine {
+	return &inferenceEngine{
+		records:            make(map[string]*rdfsInferenceRecord),
+		byPredicate:        make(map[string][]*rdfsInferenceRecord),
+		byPredicateSubject: make(map[string][]*rdfsInferenceRecord),
+		byPredicateObject:  make(map[string][]*rdfsInferenceRecord),
+		bySubject:          make(map[string][]*rdfsInferenceRecord),
+		byObject:           make(map[string][]*rdfsInferenceRecord),
+		sameAs:             newSameAsClasses(sameAsCap, oversized),
+	}
+}
+
+// run evaluates to the fixpoint, or stops early and returns the members of a
+// sameAs class that became oversized after rules had already fired.
+func (e *inferenceEngine) run(explicitTriples []RDFTriple) []string {
+	// Explicit input is ordered by content before anything else happens, so
+	// the output — including which rule is credited for a triple that can be
+	// derived two ways — does not depend on the order the store returned rows
+	// in. That is also what lets an incremental refresh of one neighbourhood
+	// reproduce what a full refresh wrote for it.
+	explicit := make([]*rdfsInferenceRecord, 0, len(explicitTriples))
+	for _, triple := range explicitTriples {
+		triple = tripleWithoutInference(triple)
+		explicit = append(explicit, &rdfsInferenceRecord{Triple: triple, Explicit: true, key: inferenceContentKey(triple)})
+	}
+	sort.SliceStable(explicit, func(i, j int) bool {
+		if explicit[i].key != explicit[j].key {
+			return explicit[i].key < explicit[j].key
+		}
+		return explicit[i].Triple.ID < explicit[j].Triple.ID
+	})
+
+	// Records are keyed by content, not by id. An explicit triple that came
+	// with an id of its own must still stop the engine from inferring the same
+	// statement a second time, and two explicit rows that say the same thing
+	// are one fact to the rules.
+	delta := make([]*rdfsInferenceRecord, 0, len(explicit))
+	for _, record := range explicit {
+		if _, ok := e.records[record.key]; ok {
+			continue
+		}
+		e.records[record.key] = record
+		delta = append(delta, record)
+	}
+
+	for len(delta) > 0 {
+		for _, record := range delta {
+			if restart := e.index(record); restart != nil {
+				return restart
+			}
+		}
+		for _, record := range delta {
+			e.fire(record)
+		}
+		e.fired = true
+		delta, e.next = e.next, nil
+	}
+	return nil
+}
+
+func (e *inferenceEngine) index(record *rdfsInferenceRecord) []string {
+	t := record.Triple
+	predicate := engineTermKey(t.Predicate)
+	subject := engineTermKey(t.Subject)
+	object := engineTermKey(t.Object)
+	e.byPredicate[predicate] = append(e.byPredicate[predicate], record)
+	e.byPredicateSubject[predicate+"\x01"+subject] = append(e.byPredicateSubject[predicate+"\x01"+subject], record)
+	e.byPredicateObject[predicate+"\x01"+object] = append(e.byPredicateObject[predicate+"\x01"+object], record)
+	e.bySubject[subject] = append(e.bySubject[subject], record)
+	e.byObject[object] = append(e.byObject[object], record)
+	if t.Predicate.Value == owlSameAsIRI {
+		return e.sameAs.observe(t.Subject, t.Object, e.fired)
+	}
+	return nil
+}
+
+// withSubject returns the known records with this predicate and subject.
+func (e *inferenceEngine) withSubject(predicateKey string, subject RDFTerm) []*rdfsInferenceRecord {
+	return e.byPredicateSubject[predicateKey+"\x01"+engineTermKey(subject)]
+}
+
+// withObject returns the known records with this predicate and object.
+func (e *inferenceEngine) withObject(predicateKey string, object RDFTerm) []*rdfsInferenceRecord {
+	return e.byPredicateObject[predicateKey+"\x01"+engineTermKey(object)]
+}
+
+// usingPredicate returns the known records whose predicate is this term.
+func (e *inferenceEngine) usingPredicate(predicate RDFTerm) []*rdfsInferenceRecord {
+	return e.byPredicate[engineTermKey(predicate)]
+}
+
+// derive adds one inferred triple unless it is already known. The first
+// derivation of a triple is the one it is credited to.
+//
+// An inferred record is given the id the store will give it, and that id is
+// what goes into the support list of anything derived from it. The engine
+// before this one left inferred records without ids, so a triple derived from
+// another inferred triple listed only its explicit premises, and a trace could
+// not walk from a two-step inference back to the facts it rested on.
+func (e *inferenceEngine) derive(subject, predicate, object RDFTerm, graph *RDFTerm, rule string, supports ...*rdfsInferenceRecord) {
+	triple := RDFTriple{Subject: subject, Predicate: predicate, Object: object, Graph: graph}
+	key := inferenceContentKey(triple)
+	if _, ok := e.records[key]; ok {
+		return
+	}
+	triple.Graph = cloneGraphTerm(graph)
+	triple.ID = tripleDigest(triple)
+	ids := make([]string, 0, len(supports))
+	for _, support := range supports {
+		ids = append(ids, support.Triple.ID)
+	}
+	record := &rdfsInferenceRecord{Triple: triple, Rule: rule, SupportIDs: uniqueSortedStrings(ids), key: key}
+	e.records[key] = record
+	e.next = append(e.next, record)
+}
+
+// fire applies every rule in which the record can be a premise, joining it
+// against everything known. A record is tried in every premise position it
+// can occupy, because semi-naive evaluation only finds a derivation through
+// whichever of its premises arrived last.
+func (e *inferenceEngine) fire(record *rdfsInferenceRecord) {
+	t := record.Triple
+
+	switch t.Predicate.Value {
+	case rdfsSubClassOfIRI:
+		e.derive(t.Subject, termRDFType, termRDFSClass, t.Graph, rdfsRuleSubclassClass, record)
+		e.derive(t.Object, termRDFType, termRDFSClass, t.Graph, rdfsRuleSubclassClass, record)
+		for _, next := range e.withSubject(keySubClassOf, t.Object) {
+			e.derive(t.Subject, termSubClassOf, next.Triple.Object, mergeInferenceGraph(t.Graph, next.Triple.Graph), rdfsRuleSubClass, record, next)
+		}
+		for _, prev := range e.withObject(keySubClassOf, t.Subject) {
+			e.derive(prev.Triple.Subject, termSubClassOf, t.Object, mergeInferenceGraph(prev.Triple.Graph, t.Graph), rdfsRuleSubClass, prev, record)
+		}
+		for _, instance := range e.withObject(keyRDFType, t.Subject) {
+			e.derive(instance.Triple.Subject, termRDFType, t.Object, preferInferenceGraph(instance.Triple.Graph, t.Graph), rdfsRuleTypeSubClass, instance, record)
+		}
+	case rdfsSubPropertyOfIRI:
+		e.derive(t.Subject, termRDFType, termRDFProperty, t.Graph, rdfsRuleSubpropProperty, record)
+		e.derive(t.Object, termRDFType, termRDFProperty, t.Graph, rdfsRuleSubpropProperty, record)
+		for _, next := range e.withSubject(keySubPropertyOf, t.Object) {
+			e.derive(t.Subject, termSubPropertyOf, next.Triple.Object, mergeInferenceGraph(t.Graph, next.Triple.Graph), rdfsRuleSubProperty, record, next)
+		}
+		for _, prev := range e.withObject(keySubPropertyOf, t.Subject) {
+			e.derive(prev.Triple.Subject, termSubPropertyOf, t.Object, mergeInferenceGraph(prev.Triple.Graph, t.Graph), rdfsRuleSubProperty, prev, record)
+		}
+		for _, use := range e.usingPredicate(t.Subject) {
+			e.derive(use.Triple.Subject, t.Object, use.Triple.Object, preferInferenceGraph(use.Triple.Graph, t.Graph), rdfsRuleSubPropertyUse, use, record)
+		}
+	case rdfsDomainIRI:
+		e.derive(t.Subject, termRDFType, termRDFProperty, t.Graph, rdfsRuleDomainSchema, record)
+		e.derive(t.Object, termRDFType, termRDFSClass, t.Graph, rdfsRuleDomainSchema, record)
+		for _, use := range e.usingPredicate(t.Subject) {
+			e.derive(use.Triple.Subject, termRDFType, t.Object, preferInferenceGraph(use.Triple.Graph, t.Graph), rdfsRuleDomain, use, record)
+		}
+	case rdfsRangeIRI:
+		e.derive(t.Subject, termRDFType, termRDFProperty, t.Graph, rdfsRuleRangeSchema, record)
+		e.derive(t.Object, termRDFType, termRDFSClass, t.Graph, rdfsRuleRangeSchema, record)
+		for _, use := range e.usingPredicate(t.Subject) {
+			if use.Triple.Object.Kind == RDFTermLiteral {
+				continue
+			}
+			e.derive(use.Triple.Object, termRDFType, t.Object, preferInferenceGraph(use.Triple.Graph, t.Graph), rdfsRuleRange, use, record)
+		}
+	case rdfTypeIRI:
+		if t.Object.Kind == RDFTermIRI && t.Object.Value == rdfsClassIRI {
+			e.derive(t.Subject, termSubClassOf, t.Subject, t.Graph, rdfsRuleClassReflexive, record)
+		}
+		if t.Object.Kind == RDFTermIRI && t.Object.Value == rdfPropertyIRI {
+			e.derive(t.Subject, termSubPropertyOf, t.Subject, t.Graph, rdfsRulePropReflexive, record)
+		}
+		for _, schema := range e.withSubject(keySubClassOf, t.Object) {
+			e.derive(t.Subject, termRDFType, schema.Triple.Object, preferInferenceGraph(t.Graph, schema.Triple.Graph), rdfsRuleTypeSubClass, record, schema)
+		}
+	}
+
+	// Every record, schema triples included, is also a use of its predicate,
+	// so the property-schema rules see it in the data position.
+	predicate := engineTermKey(t.Predicate)
+	for _, schema := range e.byPredicateSubject[keySubPropertyOf+"\x01"+predicate] {
+		e.derive(t.Subject, schema.Triple.Object, t.Object, preferInferenceGraph(t.Graph, schema.Triple.Graph), rdfsRuleSubPropertyUse, record, schema)
+	}
+	for _, schema := range e.byPredicateSubject[keyDomain+"\x01"+predicate] {
+		e.derive(t.Subject, termRDFType, schema.Triple.Object, preferInferenceGraph(t.Graph, schema.Triple.Graph), rdfsRuleDomain, record, schema)
+	}
+	if t.Object.Kind != RDFTermLiteral {
+		for _, schema := range e.byPredicateSubject[keyRange+"\x01"+predicate] {
+			e.derive(t.Object, termRDFType, schema.Triple.Object, preferInferenceGraph(t.Graph, schema.Triple.Graph), rdfsRuleRange, record, schema)
+		}
+	}
+
+	e.fireOWL(record)
+}
+
+// engineTermKey identifies a term the way termsEqual compares terms. The
+// separator is a byte no IRI or sensible literal contains; inferenceTermKey's
+// "|" is not, and a literal "a|b" would share its key with a literal "a" typed
+// "b" — harmless for the neighbourhood heuristic that uses it, wrong for an
+// index that decides which triples join.
+func engineTermKey(term RDFTerm) string {
+	return term.Kind + "\x00" + term.Value + "\x00" + term.Datatype + "\x00" + term.Language
+}
+
+// inferenceContentKey identifies a statement by what it says — subject,
+// predicate, object and graph — without hashing, since the engine computes one
+// for every derivation it attempts and most attempts are duplicates.
+func inferenceContentKey(triple RDFTriple) string {
+	graph := ""
+	if triple.Graph != nil {
+		graph = engineTermKey(*triple.Graph)
+	}
+	return engineTermKey(triple.Subject) + "\x01" + engineTermKey(triple.Predicate) + "\x01" + engineTermKey(triple.Object) + "\x01" + graph
 }
 
 func (g *GraphStore) persistInferredRecords(ctx context.Context, records map[string]rdfsInferenceRecord) (int, error) {
@@ -640,9 +802,17 @@ func inferenceTermKey(term RDFTerm) string {
 	return term.Kind + "|" + term.Value + "|" + term.Datatype + "|" + term.Language
 }
 
+// isStructuralInferencePredicate names the vocabulary whose predicate is not
+// itself a term of the neighbourhood. The rules join vocabulary statements
+// through their subjects and objects, so counting these predicates would only
+// tie every sameAs or subClassOf statement in the store into one neighbourhood
+// and make each incremental refresh a full one. The cost is a known blind spot:
+// a statement that makes one of these predicates the subject of its own schema
+// (rdf:type rdfs:subPropertyOf x) is not followed from the triples that use it.
 func isStructuralInferencePredicate(value string) bool {
 	switch value {
-	case rdfTypeIRI, rdfsSubClassOfIRI, rdfsSubPropertyOfIRI, rdfsDomainIRI, rdfsRangeIRI:
+	case rdfTypeIRI, rdfsSubClassOfIRI, rdfsSubPropertyOfIRI, rdfsDomainIRI, rdfsRangeIRI,
+		owlSameAsIRI, owlInverseOfIRI, owlEquivalentClassIRI, owlEquivalentPropertyIRI:
 		return true
 	default:
 		return false
@@ -710,24 +880,6 @@ func chunkStrings(values []string, size int) [][]string {
 	return chunks
 }
 
-func addInferredRecord(records map[string]rdfsInferenceRecord, triple RDFTriple, rule string, supportIDs []string) bool {
-	triple = tripleWithoutInference(triple)
-	key := tripleKey(triple)
-	if existing, ok := records[key]; ok {
-		if existing.Explicit {
-			return false
-		}
-		return false
-	}
-	records[key] = rdfsInferenceRecord{
-		Triple:     triple,
-		Explicit:   false,
-		Rule:       rule,
-		SupportIDs: uniqueSortedStrings(supportIDs),
-	}
-	return true
-}
-
 func tripleWithoutInference(triple RDFTriple) RDFTriple {
 	return RDFTriple{
 		ID:        triple.ID,
@@ -752,24 +904,6 @@ func tripleKey(triple RDFTriple) string {
 		return clone.ID
 	}
 	return tripleDigest(clone)
-}
-
-func supportPair(left, right rdfsInferenceRecord) []string {
-	ids := make([]string, 0, 4)
-	if left.Triple.ID != "" {
-		ids = append(ids, left.Triple.ID)
-	}
-	if right.Triple.ID != "" {
-		ids = append(ids, right.Triple.ID)
-	}
-	return ids
-}
-
-func supportSingle(record rdfsInferenceRecord) []string {
-	if record.Triple.ID == "" {
-		return nil
-	}
-	return []string{record.Triple.ID}
 }
 
 func mergeInferenceGraph(left, right *RDFTerm) *RDFTerm {

@@ -1,0 +1,75 @@
+<https://example.com/Animal> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> .	rdfs_subclass_declares_class
+<https://example.com/Animal> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> <https://example.com/g1> .	rdfs_subclass_declares_class
+<https://example.com/Animal> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> <https://example.com/g2> .	rdfs_subclass_declares_class
+<https://example.com/Animal> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Animal> .	rdfs_class_reflexive
+<https://example.com/Animal> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Animal> <https://example.com/g1> .	rdfs_class_reflexive
+<https://example.com/Animal> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Animal> <https://example.com/g2> .	rdfs_class_reflexive
+<https://example.com/Animal> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Thing> <https://example.com/g1> .	rdfs_subclass_transitive
+<https://example.com/Cat> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> .	rdfs_subclass_declares_class
+<https://example.com/Cat> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> <https://example.com/g1> .	rdfs_subclass_declares_class
+<https://example.com/Cat> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> <https://example.com/g2> .	rdfs_subclass_declares_class
+<https://example.com/Cat> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Animal> .	rdfs_subclass_transitive
+<https://example.com/Cat> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Animal> <https://example.com/g1> .	rdfs_subclass_transitive
+<https://example.com/Cat> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Animal> <https://example.com/g2> .	rdfs_subclass_transitive
+<https://example.com/Cat> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Cat> .	rdfs_class_reflexive
+<https://example.com/Cat> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Cat> <https://example.com/g1> .	rdfs_class_reflexive
+<https://example.com/Cat> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Cat> <https://example.com/g2> .	rdfs_class_reflexive
+<https://example.com/Cat> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Mammal> .	rdfs_subclass_transitive
+<https://example.com/Cat> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Mammal> <https://example.com/g2> .	rdfs_subclass_transitive
+<https://example.com/Cat> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Thing> .	rdfs_subclass_transitive
+<https://example.com/Cat> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Thing> <https://example.com/g1> .	rdfs_subclass_transitive
+<https://example.com/Cat> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Thing> <https://example.com/g2> .	rdfs_subclass_transitive
+<https://example.com/Mammal> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> .	rdfs_subclass_declares_class
+<https://example.com/Mammal> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> <https://example.com/g1> .	rdfs_subclass_declares_class
+<https://example.com/Mammal> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> <https://example.com/g2> .	rdfs_range_declares_schema|rdfs_subclass_declares_class
+<https://example.com/Mammal> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Animal> .	rdfs_subclass_transitive
+<https://example.com/Mammal> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Animal> <https://example.com/g1> .	rdfs_subclass_transitive
+<https://example.com/Mammal> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Mammal> .	rdfs_subclass_transitive
+<https://example.com/Mammal> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Mammal> <https://example.com/g1> .	rdfs_class_reflexive
+<https://example.com/Mammal> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Mammal> <https://example.com/g2> .	rdfs_class_reflexive
+<https://example.com/Mammal> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Thing> .	rdfs_subclass_transitive
+<https://example.com/Mammal> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Thing> <https://example.com/g1> .	rdfs_subclass_transitive
+<https://example.com/Mammal> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Thing> <https://example.com/g2> .	rdfs_subclass_transitive
+<https://example.com/Thing> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> .	rdfs_subclass_declares_class
+<https://example.com/Thing> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> <https://example.com/g1> .	rdfs_subclass_declares_class
+<https://example.com/Thing> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> <https://example.com/g2> .	rdfs_subclass_declares_class
+<https://example.com/Thing> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Thing> .	rdfs_class_reflexive
+<https://example.com/Thing> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Thing> <https://example.com/g1> .	rdfs_class_reflexive
+<https://example.com/Thing> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.com/Thing> <https://example.com/g2> .	rdfs_class_reflexive
+<https://example.com/bob> <https://example.com/hasPet> <https://example.com/tom> .	rdfs_subproperty_application
+<https://example.com/bob> <https://example.com/hasPet> <https://example.com/tom> <https://example.com/g1> .	rdfs_subproperty_application
+<https://example.com/bob> <https://example.com/hasPet> <https://example.com/tom> <https://example.com/g2> .	rdfs_subproperty_application
+<https://example.com/bob> <https://example.com/owns> <https://example.com/tom> <https://example.com/g1> .	rdfs_subproperty_application
+<https://example.com/bob> <https://example.com/owns> <https://example.com/tom> <https://example.com/g2> .	rdfs_subproperty_application
+<https://example.com/carol> <https://example.com/hasPet> <https://example.com/felix> <https://example.com/g1> .	rdfs_subproperty_application
+<https://example.com/felix> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Animal> .	rdfs_type_via_subclass
+<https://example.com/felix> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Animal> <https://example.com/g1> .	rdfs_type_via_subclass
+<https://example.com/felix> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Animal> <https://example.com/g2> .	rdfs_type_via_subclass
+<https://example.com/felix> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Cat> <https://example.com/g1> .	rdfs_type_via_subclass
+<https://example.com/felix> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Cat> <https://example.com/g2> .	rdfs_type_via_subclass
+<https://example.com/felix> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Mammal> .	rdfs_type_via_subclass
+<https://example.com/felix> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Mammal> <https://example.com/g1> .	rdfs_range|rdfs_type_via_subclass
+<https://example.com/felix> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Mammal> <https://example.com/g2> .	rdfs_type_via_subclass
+<https://example.com/felix> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Thing> .	rdfs_type_via_subclass
+<https://example.com/felix> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Thing> <https://example.com/g1> .	rdfs_type_via_subclass
+<https://example.com/felix> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Thing> <https://example.com/g2> .	rdfs_type_via_subclass
+<https://example.com/hasPet> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> .	rdfs_subproperty_declares_property
+<https://example.com/hasPet> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> <https://example.com/g1> .	rdfs_subproperty_declares_property
+<https://example.com/hasPet> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> <https://example.com/g2> .	rdfs_subproperty_declares_property
+<https://example.com/hasPet> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <https://example.com/hasPet> .	rdfs_property_reflexive
+<https://example.com/hasPet> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <https://example.com/hasPet> <https://example.com/g1> .	rdfs_property_reflexive
+<https://example.com/hasPet> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <https://example.com/hasPet> <https://example.com/g2> .	rdfs_property_reflexive
+<https://example.com/owns> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> .	rdfs_subproperty_declares_property
+<https://example.com/owns> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> <https://example.com/g1> .	rdfs_subproperty_declares_property
+<https://example.com/owns> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> <https://example.com/g2> .	rdfs_range_declares_schema
+<https://example.com/owns> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <https://example.com/hasPet> .	rdfs_subproperty_transitive
+<https://example.com/owns> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <https://example.com/hasPet> <https://example.com/g2> .	rdfs_subproperty_transitive
+<https://example.com/owns> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <https://example.com/owns> .	rdfs_subproperty_transitive
+<https://example.com/owns> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <https://example.com/owns> <https://example.com/g1> .	rdfs_property_reflexive
+<https://example.com/owns> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <https://example.com/owns> <https://example.com/g2> .	rdfs_property_reflexive
+<https://example.com/tom> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Animal> <https://example.com/g1> .	rdfs_type_via_subclass
+<https://example.com/tom> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Animal> <https://example.com/g2> .	rdfs_type_via_subclass
+<https://example.com/tom> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Mammal> <https://example.com/g1> .	rdfs_type_via_subclass
+<https://example.com/tom> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Mammal> <https://example.com/g2> .	rdfs_range
+<https://example.com/tom> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Thing> <https://example.com/g1> .	rdfs_type_via_subclass
+<https://example.com/tom> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.com/Thing> <https://example.com/g2> .	rdfs_type_via_subclass
