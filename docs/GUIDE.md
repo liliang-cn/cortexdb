@@ -271,7 +271,15 @@ sinks that does; the other five store the graph and lose the reason.
 
 ## Knowledge Graph
 
-Embedded RDF on the same file: triples/quads, namespaces, N-Triples/Turtle/TriG I/O, a practical SPARQL subset (SELECT/ASK/CONSTRUCT/DESCRIBE, updates, OPTIONAL/UNION/MINUS/VALUES/BIND/FILTER, aggregates, subqueries, property paths `^p p|q p+ p*`), RDFS-lite materialized inference, and SHACL-lite validation.
+Embedded RDF on the same file: triples/quads, namespaces, N-Triples/N-Quads/Turtle/TriG/JSON-LD I/O, a SPARQL 1.1 subset (SELECT/ASK/CONSTRUCT/DESCRIBE, FROM/FROM NAMED, updates, OPTIONAL/UNION/MINUS/VALUES/BIND/FILTER, the function library, aggregates, subqueries, property paths `^p p|q p+ p*`), materialized RDFS + OWL-RL-subset inference, and SHACL validation.
+
+The property graph — what extraction, `upsert_entities` and `upsert_relations` write — is part of it. `FindTriples`, and so SPARQL, inference and SHACL, also return the triples it implies, read-only, in graph `<urn:cortexdb:graph:property>`: node `X` is `cxn:X`, its type `T` is `cxn:X a cxt:T`, an edge of type `R` is `cxr:R`, a property `k` is `cxp:k`, and a node's `name` (or `title`) is its `rdfs:label`. Ids are percent-encoded exactly (`entity:abc` → `cxn:entity%3Aabc`). Nothing is copied, so nothing goes stale; `GraphStore.SetPropertyGraphProjection(false)` turns it off, and writes to it are refused.
+
+```sparql
+SELECT ?who WHERE { ?x cxr:depends_on ?y . ?y rdfs:label "CortexDB" . ?x rdfs:label ?who }
+```
+
+Inference is semi-naive (each round joins only what is new) and covers `rdfs:subClassOf`, `rdfs:subPropertyOf`, `rdfs:domain`, `rdfs:range`, `owl:inverseOf`, `owl:SymmetricProperty`, `owl:TransitiveProperty`, `owl:equivalentClass`, `owl:equivalentProperty` and `owl:sameAs`. Declared over the projection, these fix what LLM extraction gets wrong: `cxt:host owl:equivalentClass cxt:Host` unifies type spellings, `cxr:depends_on owl:inverseOf cxr:depended_on_by` answers the reverse question, and `owl:sameAs` merges an entity stored under two names. A `sameAs` class above a cap (default 32) is reported, not materialized.
 
 ```go
 db.UpsertKnowledgeGraph(ctx, cortexdb.KnowledgeGraphUpsertRequest{Triples: triples})

@@ -244,7 +244,15 @@ prov, _  := db.FactProvenanceFor(ctx, edgeID, true) // fact_provenance，带引�
 
 ## 知识图谱
 
-同一文件内嵌 RDF：triples/quads、namespaces、N-Triples/Turtle/TriG 导入导出，实用 SPARQL 子集（SELECT/ASK/CONSTRUCT/DESCRIBE、更新语句、OPTIONAL/UNION/MINUS/VALUES/BIND/FILTER、聚合、子查询、property path `^p p|q p+ p*`），RDFS-lite 物化推理，以及 SHACL-lite 校验。
+同一文件内嵌 RDF：triples/quads、namespaces、N-Triples/N-Quads/Turtle/TriG/JSON-LD 导入导出，SPARQL 1.1 子集（SELECT/ASK/CONSTRUCT/DESCRIBE、FROM/FROM NAMED、更新语句、OPTIONAL/UNION/MINUS/VALUES/BIND/FILTER、函数库、聚合、子查询、property path `^p p|q p+ p*`），RDFS 加 OWL-RL 子集的物化推理，以及 SHACL 校验。
+
+属性图——抽取、`upsert_entities`、`upsert_relations` 写入的内容——也在其中。`FindTriples`（因此 SPARQL、推理、SHACL 都一样）会同时返回属性图蕴含的三元组，只读，位于图 `<urn:cortexdb:graph:property>`：节点 `X` 是 `cxn:X`，类型 `T` 是 `cxn:X a cxt:T`，类型为 `R` 的边是 `cxr:R`，属性 `k` 是 `cxp:k`，节点的 `name`（没有就用 `title`）是它的 `rdfs:label`。id 做精确的百分号编码（`entity:abc` → `cxn:entity%3Aabc`）。不复制数据，所以不会过期；`GraphStore.SetPropertyGraphProjection(false)` 可以关掉，对它的写入会被拒绝。
+
+```sparql
+SELECT ?who WHERE { ?x cxr:depends_on ?y . ?y rdfs:label "CortexDB" . ?x rdfs:label ?who }
+```
+
+推理用半朴素求值（每轮只 join 新增的部分），覆盖 `rdfs:subClassOf`、`rdfs:subPropertyOf`、`rdfs:domain`、`rdfs:range`、`owl:inverseOf`、`owl:SymmetricProperty`、`owl:TransitiveProperty`、`owl:equivalentClass`、`owl:equivalentProperty`、`owl:sameAs`。在投影上声明这些公理，能修正 LLM 抽取的常见问题：`cxt:host owl:equivalentClass cxt:Host` 统一类型的不同拼写，`cxr:depends_on owl:inverseOf cxr:depended_on_by` 回答反方向的问题，`owl:sameAs` 合并以两个名字存下的同一实体。超过上限（默认 32）的 `sameAs` 类只报告、不物化。
 
 ```go
 db.UpsertKnowledgeGraph(ctx, cortexdb.KnowledgeGraphUpsertRequest{Triples: triples})

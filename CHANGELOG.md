@@ -2,6 +2,84 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.112.0] - 2026-09-25
+
+### Added
+
+- **The property graph answers SPARQL.** The shared brain had 3,812 nodes and
+  5,809 edges in its property graph and zero rows in `kg_triples`, so SPARQL,
+  RDFS inference and SHACL — real features — had nothing to act on:
+  `SELECT ?p (COUNT(*) AS ?n) WHERE { ?s ?p ?o } GROUP BY ?p` returned nothing.
+  `FindTriples`, the one read path all three share, now also returns the
+  triples the property graph implies, read-only, in graph
+  `<urn:cortexdb:graph:property>`: `cxn:` nodes, `cxt:` types, `cxr:`
+  relations, `cxp:` properties, and `rdfs:label` from `name` or `title`. The
+  pattern is pushed down into SQL on both backends, nothing is copied, and
+  deleting or inserting a projected triple is refused. On a snapshot of the
+  brain, "who depends on CortexDB" is
+  `SELECT ?who WHERE { ?x cxr:depends_on ?y . ?y rdfs:label "CortexDB" . ?x rdfs:label ?who }`
+  and returns eleven distinct projects in 14 ms (some twice, because the
+  brain stores them under two nodes — which is what `owl:sameAs` is for).
+- **An OWL-RL subset**: `owl:inverseOf`, `owl:SymmetricProperty`,
+  `owl:TransitiveProperty`, `owl:equivalentClass`, `owl:equivalentProperty` and
+  `owl:sameAs`, each inferred triple explainable back to explicit ones. Aimed at
+  what extraction gets wrong. On the brain snapshot, `cxt:host
+  owl:equivalentClass cxt:Host` unifies two spellings of one type, and
+  `owl:sameAs` between `node-e` and `sds-e` — one machine stored twice, each
+  copy holding half its facts — gives either name all nine relations. A sameAs
+  class above `max_same_as_class_size` (default 32) is reported in
+  `oversized_same_as_classes` rather than materialized, on the tool, the Go API
+  and the typed RPC alike.
+- **SHACL constraints**: `sh:class` (following `rdfs:subClassOf*`),
+  `sh:minExclusive`/`sh:maxExclusive`, `sh:hasValue`, `sh:minLength`/
+  `sh:maxLength`, `sh:languageIn`, `sh:uniqueLang`, `sh:node`, `sh:not`,
+  `sh:and`, `sh:or`, `sh:xone`, `sh:closed` with `sh:ignoredProperties`,
+  `sh:targetSubjectsOf`/`sh:targetObjectsOf`, `sh:inversePath`, `sh:flags`, and
+  constraints on node shapes, not only property shapes. Results name the
+  constraint component. Recursive shapes and malformed lists are errors, not
+  loops or silent passes.
+- **SPARQL**: `FROM` / `FROM NAMED`, GRAPH blocks in CONSTRUCT templates, and
+  the SPARQL 1.1 function library (term tests, strings counted in characters,
+  numerics, dates, hashes). A per-row type error drops the row in FILTER and
+  leaves the variable unbound in BIND, as the spec says, instead of failing the
+  query.
+- **JSON-LD 1.1 import and export** (`jsonld`, also `json-ld`), through
+  `piprate/json-gold` behind a loader that performs no I/O: schema.org's
+  context is answered from memory, any other remote `@context` is refused with
+  an error naming it. json-gold panics on some trivial inputs; those are caught
+  and returned as errors, and kept as fuzz seeds.
+
+### Changed
+
+- **Inference is semi-naive.** Each round joins only what the previous round
+  derived, instead of every pair of triples. 2,044 explicit triples: 11.87 s →
+  60 ms. 20,035: the old engine had not finished after 28 CPU-minutes; the new
+  one takes 1.84 s. Output is identical to the old engine on the golden
+  fixtures, and rule credit no longer depends on map order.
+- SHACL treats a plain literal as `xsd:string` (RDF 1.1), checks the lexical
+  form of common XSD datatypes, and reports malformed shape parameters as
+  errors instead of skipping them.
+
+### Fixed
+
+- **`ORDER BY` on an aggregate alias sorted wrongly.** `GROUP BY ?t ORDER BY
+  DESC(?n)` over the brain returned counts in the order 403, 107, 2015, 2, 1:
+  ORDER BY could not see SELECT aliases in grouped queries, and compared values
+  as text.
+- **A literal joined into a subject position failed the whole query.** `?x ?rel
+  ?y . ?y rdfs:label ?o` binds `?y` to a name whenever `?rel` is a label, and
+  the query died with `rdf subject must be iri or blank node`. That row now
+  simply has no solutions.
+- **Deletes counted requests, not removals.** SPARQL `DELETE WHERE`/`DELETE …
+  INSERT` and `DeleteKnowledgeGraph` added one per triple asked for, including
+  triples that were never stored.
+- **Inferred triples carried incomplete support ids**, so traces stopped at the
+  first inferred step.
+- **The plugin manifests were at 2.109.0** while `version.go` said 2.111.1, so
+  CI failed for 2.110.0 and 2.111.x and no release binaries were built; the
+  plugin's MCP launcher kept downloading the 2.109.0 server. All four now read
+  2.112.0.
+
 ## [2.111.1] - 2026-09-15
 
 ### Fixed

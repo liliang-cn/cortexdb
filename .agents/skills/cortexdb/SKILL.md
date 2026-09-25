@@ -125,9 +125,36 @@ result, _ := db.QueryKnowledgeGraph(ctx, cortexdb.KnowledgeGraphQueryRequest{
 _ = result
 ```
 
-SPARQL is a practical embedded subset. It includes SELECT, ASK, CONSTRUCT, DESCRIBE, update forms, GRAPH, OPTIONAL, UNION, MINUS, VALUES, BIND, FILTER, EXISTS, NOT EXISTS, aggregates, subqueries, and constrained property paths: `^pred`, `p|q`, `p+`, `p*`.
+SPARQL is an embedded SPARQL 1.1 subset: SELECT (DISTINCT, REDUCED, `(expr AS ?v)`), ASK, CONSTRUCT (GRAPH blocks in templates produce quads), DESCRIBE; FROM / FROM NAMED; update forms (INSERT/DELETE DATA, DELETE WHERE, DELETE…INSERT…WHERE, WITH, USING, USING NAMED); GRAPH, OPTIONAL, UNION, MINUS, VALUES, BIND, FILTER, EXISTS, NOT EXISTS, subqueries; property paths `^pred`, `p|q`, `p+`, `p*`; the SPARQL 1.1 function library (term tests, strings with character positions, numerics, dates, hashes); aggregates with DISTINCT, GROUP BY, HAVING; ORDER BY by value on expressions and aliases. A per-row type error drops the row in FILTER and leaves the variable unbound in BIND. Without FROM the default graph is the unnamed graph plus the property-graph projection. Not supported: XSD casts, `/` `?` `!` paths, BASE, SERVICE, LOAD/CLEAR/CREATE/DROP.
 
-RDFS-lite:
+**The property graph is readable as RDF.** Everything extraction, `upsert_entities` and `upsert_relations` write also answers SPARQL, inference and SHACL, as read-only triples in graph `<urn:cortexdb:graph:property>` — nothing is copied, so nothing goes stale:
+
+| Property graph | Triple |
+|---|---|
+| node `X` | `cxn:X` (id percent-encoded exactly: `entity:abc` → `cxn:entity%3Aabc`) |
+| node type `T` | `cxn:X a cxt:T` |
+| edge of type `R` | `cxn:A cxr:R cxn:B` |
+| scalar property `k` | `cxn:X cxp:k "value"` (JSON numbers and booleans keep their XSD type) |
+| `name`, else `title` | `cxn:X rdfs:label "…"` |
+
+```sparql
+SELECT ?who WHERE { ?x cxr:depends_on ?y . ?y rdfs:label "CortexDB" . ?x rdfs:label ?who }
+```
+
+Call `graph_schema` first to learn which types and relations exist. Non-ASCII ids need the full `<urn:cortexdb:node:…>` form. Deleting or inserting projected triples is refused; change the property graph through its own APIs. `GraphStore.SetPropertyGraphProjection(false)` turns the projection off; exports leave it out.
+
+Import and export speak N-Triples, N-Quads, Turtle, TriG and JSON-LD 1.1 (`jsonld`, also accepted as `json-ld`). JSON-LD import never fetches a remote `@context`: schema.org's is answered from memory, any other URL is refused with an error naming it, so inline the context instead.
+
+Inference is semi-naive materialization over RDFS (`rdfs:subClassOf`, `rdfs:subPropertyOf`, `rdfs:domain`, `rdfs:range`) and an OWL-RL subset (`owl:inverseOf`, `owl:SymmetricProperty`, `owl:TransitiveProperty`, `owl:equivalentClass`, `owl:equivalentProperty`, `owl:sameAs`). Every inferred triple records its rule and supports, so `knowledge_graph_infer_explain` traces it back to explicit triples. Declared over the projection, the OWL rules fix what extraction gets wrong: `cxt:host owl:equivalentClass cxt:Host` unifies spellings, `cxr:depends_on owl:inverseOf cxr:depended_on_by` answers the reverse question, `cxn:entity%3Anode_e owl:sameAs cxn:entity%3Asds_e` merges one machine stored under two names. A sameAs class larger than `MaxSameAsClassSize` (default 32) is reported in `OversizedSameAsClasses`, never half-materialized.
+
+```go
+_, _ = db.QueryKnowledgeGraph(ctx, cortexdb.KnowledgeGraphQueryRequest{
+    Query: `INSERT DATA { cxr:depends_on owl:inverseOf cxr:depended_on_by }`,
+})
+_, _ = db.RefreshKnowledgeGraphInference(ctx, cortexdb.KnowledgeGraphInferenceRefreshRequest{})
+```
+
+Incremental refresh:
 
 ```go
 refresh, _ := db.RefreshKnowledgeGraphInference(ctx, cortexdb.KnowledgeGraphInferenceRefreshRequest{
@@ -143,7 +170,7 @@ refresh, _ := db.RefreshKnowledgeGraphInference(ctx, cortexdb.KnowledgeGraphInfe
 _ = refresh
 ```
 
-SHACL-lite:
+SHACL supports targets `sh:targetClass` (with subclasses), `sh:targetNode`, `sh:targetSubjectsOf`, `sh:targetObjectsOf`; `sh:property` with `sh:path` (a predicate or `sh:inversePath`); `sh:class`, `sh:datatype`, `sh:nodeKind`, `sh:minCount`, `sh:maxCount`, `sh:min/maxInclusive`, `sh:min/maxExclusive`, `sh:minLength`, `sh:maxLength`, `sh:pattern` + `sh:flags`, `sh:languageIn`, `sh:uniqueLang`, `sh:in`, `sh:hasValue`, `sh:node`, `sh:not`, `sh:and`, `sh:or`, `sh:xone`, `sh:closed` + `sh:ignoredProperties`, `sh:severity`, `sh:message`, on node and property shapes alike. Results carry the constraint component IRI. Recursive shapes and other path forms are refused with an error; any result makes `conforms` false, whatever its severity. Over the projection it is a quality gate for extracted graphs, e.g. every `cxr:runs_on` must point at an `sh:class cxt:host`.
 
 ```go
 report, _ := db.ValidateKnowledgeGraphSHACL(ctx, cortexdb.KnowledgeGraphSHACLValidateRequest{
