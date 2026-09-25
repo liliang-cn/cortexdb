@@ -2,6 +2,7 @@ package cortexdb
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -434,5 +435,52 @@ func TestADeleteReportsOnlyTheTriplesItRemoved(t *testing.T) {
 	}
 	if resp.Deleted != 1 {
 		t.Fatalf("deleted = %d, want 1: one of the three was stored, and it can only be removed once", resp.Deleted)
+	}
+}
+
+// JSON-LD arrives the way a model sends it: through the tool, spelled either
+// way, naming schema.org's context by URL. That context is answered from
+// memory, so the facts land and SPARQL can read them back.
+func TestJSONLDImportsThroughTheToolAndAnswersSPARQL(t *testing.T) {
+	dbPath := fmt.Sprintf("test_knowledge_graph_jsonld_%d.db", testname.Nano())
+	t.Cleanup(func() {
+		for _, suffix := range []string{"", "-wal", "-shm"} {
+			_ = os.Remove(dbPath + suffix)
+		}
+	})
+	db, err := Open(DefaultConfig(dbPath))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := context.Background()
+	tools := db.GraphRAGTools()
+
+	doc := `{"@context":"https://schema.org/","@id":"https://example.com/ada","@type":"Person","name":"Ada Lovelace","worksFor":{"@id":"https://example.com/engine","@type":"Organization","name":"Analytical Engine"}}`
+	args, _ := json.Marshal(map[string]string{"format": "json-ld", "content": doc})
+	raw, err := tools.Call(ctx, "knowledge_graph_import", args)
+	if err != nil {
+		t.Fatalf("import through the tool: %v", err)
+	}
+	imported, ok := raw.(*KnowledgeGraphImportResponse)
+	if !ok {
+		t.Fatalf("dispatch returned %T", raw)
+	}
+	if imported.Format != KnowledgeGraphFormatJSONLD || imported.Count != 5 {
+		t.Fatalf("import = %+v, want format jsonld and 5 triples (2 types, 2 names, 1 worksFor)", imported)
+	}
+
+	res, err := db.QueryKnowledgeGraph(ctx, KnowledgeGraphQueryRequest{Query: `
+		SELECT ?org WHERE { <https://example.com/ada> schema:worksFor ?o . ?o schema:name ?org }`})
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if len(res.Result.Bindings) != 1 || res.Result.Bindings[0]["org"].Value != "Analytical Engine" {
+		t.Fatalf("bindings = %+v, want the one organization Ada works for", res.Result.Bindings)
+	}
+
+	remote, _ := json.Marshal(map[string]string{"format": "jsonld", "content": `{"@context":"https://example.org/ctx.jsonld","name":"x"}`})
+	if _, err := tools.Call(ctx, "knowledge_graph_import", remote); err == nil || !strings.Contains(err.Error(), "https://example.org/ctx.jsonld") {
+		t.Fatalf("a remote context must be refused by name, got %v", err)
 	}
 }

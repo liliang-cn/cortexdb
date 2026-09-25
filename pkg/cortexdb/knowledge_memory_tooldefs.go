@@ -154,8 +154,8 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 			InputSchema: toolObjectSchema(
 				[]string{"content"},
 				map[string]any{
-					"format":  toolEnumSchema("RDF import format.", KnowledgeGraphFormatNTriples, KnowledgeGraphFormatNQuads, KnowledgeGraphFormatTurtle, KnowledgeGraphFormatTriG),
-					"content": toolStringSchema("RDF payload to import."),
+					"format":  toolEnumSchema("RDF import format.", KnowledgeGraphFormatNTriples, KnowledgeGraphFormatNQuads, KnowledgeGraphFormatTurtle, KnowledgeGraphFormatTriG, KnowledgeGraphFormatJSONLD),
+					"content": toolStringSchema("RDF payload to import. For jsonld, a remote @context URL is never fetched: schema.org's is known, any other must be inlined as an object."),
 				},
 			),
 		},
@@ -165,7 +165,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 			InputSchema: toolObjectSchema(
 				nil,
 				map[string]any{
-					"format": toolEnumSchema("RDF export format.", KnowledgeGraphFormatNTriples, KnowledgeGraphFormatNQuads, KnowledgeGraphFormatTurtle, KnowledgeGraphFormatTriG),
+					"format": toolEnumSchema("RDF export format.", KnowledgeGraphFormatNTriples, KnowledgeGraphFormatNQuads, KnowledgeGraphFormatTurtle, KnowledgeGraphFormatTriG, KnowledgeGraphFormatJSONLD),
 				},
 			),
 		},

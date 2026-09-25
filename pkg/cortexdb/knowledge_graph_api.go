@@ -269,6 +269,10 @@ func parseKnowledgeGraphFormat(value string) (graph.RDFFormat, error) {
 		return graph.RDFFormatTurtle, nil
 	case KnowledgeGraphFormatTriG:
 		return graph.RDFFormatTriG, nil
+	// "json-ld" is how the format is usually written in prose, and a caller
+	// that spells it that way means the same thing.
+	case KnowledgeGraphFormatJSONLD, "json-ld":
+		return graph.RDFFormatJSONLD, nil
 	default:
 		return "", fmt.Errorf("unsupported knowledge graph format: %s", value)
 	}

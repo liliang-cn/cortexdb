@@ -44,6 +44,10 @@ const (
 	KnowledgeGraphFormatTurtle = string(graph.RDFFormatTurtle)
 	// KnowledgeGraphFormatTriG exports quads in TriG format.
 	KnowledgeGraphFormatTriG = string(graph.RDFFormatTriG)
+	// KnowledgeGraphFormatJSONLD reads and writes JSON-LD 1.1. Import never
+	// fetches a remote @context: schema.org's is answered from memory and any
+	// other URL is refused, so a context has to be inlined.
+	KnowledgeGraphFormatJSONLD = string(graph.RDFFormatJSONLD)
 
 	// KnowledgeGraphInferenceRefreshModeFull forces a full inferred-triple rebuild.
 	KnowledgeGraphInferenceRefreshModeFull = "full"
