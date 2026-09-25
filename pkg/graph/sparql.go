@@ -920,6 +920,9 @@ func (g *GraphStore) findSPARQLPatternTriples(ctx context.Context, pattern sparq
 	if err != nil {
 		return nil, err
 	}
+	if !sparqlPatternCanMatch(basePattern) {
+		return nil, nil
+	}
 	if opts.DatasetDeclared {
 		if pattern.Graph == nil && len(opts.DefaultGraphs) == 0 {
 			return nil, nil
@@ -955,6 +958,26 @@ func (g *GraphStore) findSPARQLPatternTriples(ctx context.Context, pattern sparq
 		}
 	}
 	return out, nil
+}
+
+// sparqlPatternCanMatch reports whether a resolved pattern could match any
+// triple at all. A variable is bound by whatever an earlier pattern matched, so
+// a join can put a literal where only an IRI or blank node can stand — ?rel
+// ranging over every predicate binds ?y to a name as often as to a node. No
+// triple has a literal subject, so that row simply has no solutions here.
+// Passing it on to FindTriples would instead fail the whole query, because
+// FindTriples is right to refuse such a pattern from a caller who wrote it.
+func sparqlPatternCanMatch(pattern TriplePattern) bool {
+	if pattern.Subject != nil && pattern.Subject.Kind != RDFTermIRI && pattern.Subject.Kind != RDFTermBlankNode {
+		return false
+	}
+	if pattern.Predicate != nil && pattern.Predicate.Kind != "" && pattern.Predicate.Kind != RDFTermIRI {
+		return false
+	}
+	if pattern.Graph != nil && pattern.Graph.Kind != RDFTermIRI && pattern.Graph.Kind != RDFTermBlankNode {
+		return false
+	}
+	return true
 }
 
 func (g *GraphStore) findSPARQLPathMatches(ctx context.Context, pattern sparqlPattern, binding map[string]RDFTerm, opts sparqlExecOptions) ([]sparqlPathMatch, error) {

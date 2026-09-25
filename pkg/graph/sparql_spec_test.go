@@ -608,3 +608,38 @@ func TestFromCanNameThePropertyGraphProjectionOrLeaveItOut(t *testing.T) {
 		})
 	}
 }
+
+// A variable bound to a literal can be joined into a subject position — ?rel
+// ranges over every predicate, so ?y is sometimes a name — and a literal
+// subject matches no triple. That is an empty solution for that row, not a
+// failed query. Found on the production brain, where the first query below,
+// asking what two hosts are connected to, failed outright with "rdf subject
+// must be iri or blank node".
+func TestALiteralBoundIntoASubjectMatchesNothingInsteadOfFailingTheQuery(t *testing.T) {
+	const ex = "https://example.com/"
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			ctx := context.Background()
+			for _, tr := range []RDFTriple{
+				{Subject: NewIRI(ex + "a"), Predicate: NewIRI(ex + "name"), Object: NewLiteral("A")},
+				{Subject: NewIRI(ex + "a"), Predicate: NewIRI(ex + "knows"), Object: NewIRI(ex + "b")},
+				{Subject: NewIRI(ex + "b"), Predicate: NewIRI(ex + "name"), Object: NewLiteral("B")},
+				{Subject: NewIRI(ex + "b"), Predicate: NewIRI(ex + "knows"), Object: NewIRI(ex + "c")},
+			} {
+				tr := tr
+				if err := b.store.UpsertTriple(ctx, &tr); err != nil {
+					t.Fatalf("upsert: %v", err)
+				}
+			}
+
+			joined := runSPARQL(t, b.store, `SELECT ?o WHERE { <`+ex+`a> ?rel ?y . ?y <`+ex+`name> ?o }`)
+			assertColumn(t, joined, "o", `"B"`)
+
+			valued := runSPARQL(t, b.store, `SELECT ?o WHERE { VALUES ?y { "A" <`+ex+`b> } ?y <`+ex+`name> ?o }`)
+			assertColumn(t, valued, "o", `"B"`)
+
+			pathed := runSPARQL(t, b.store, `SELECT ?z WHERE { <`+ex+`a> ?rel ?y . ?y <`+ex+`knows>+ ?z }`)
+			assertColumn(t, pathed, "z", "<"+ex+"c>")
+		})
+	}
+}
