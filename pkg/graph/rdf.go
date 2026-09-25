@@ -36,6 +36,8 @@ const (
 	RDFFormatTurtle RDFFormat = "turtle"
 	// RDFFormatTriG exports quads in TriG syntax with graph blocks.
 	RDFFormatTriG RDFFormat = "trig"
+	// RDFFormatJSONLD reads and writes JSON-LD 1.1. Remote contexts are never fetched.
+	RDFFormatJSONLD RDFFormat = "jsonld"
 )
 
 // RDFFormat represents a supported RDF serialization format.
@@ -649,6 +651,8 @@ func (g *GraphStore) ExportRDF(ctx context.Context, writer io.Writer, format RDF
 		return g.exportTurtle(ctx, writer, triples)
 	case RDFFormatTriG:
 		return g.exportTriG(ctx, writer, triples)
+	case RDFFormatJSONLD:
+		return g.exportJSONLD(ctx, writer, triples)
 	default:
 		return fmt.Errorf("unsupported rdf format: %s", format)
 	}
@@ -665,6 +669,8 @@ func (g *GraphStore) ImportRDF(ctx context.Context, reader io.Reader, format RDF
 		return g.importTurtle(ctx, reader)
 	case RDFFormatTriG:
 		return g.importTriG(ctx, reader)
+	case RDFFormatJSONLD:
+		return g.importJSONLD(ctx, reader)
 	default:
 		return 0, fmt.Errorf("unsupported rdf import format: %s", format)
 	}

@@ -12,6 +12,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/openai/openai-go/v3 v3.39.0
+	github.com/piprate/json-gold v0.8.0
 	google.golang.org/grpc v1.81.1
 	google.golang.org/protobuf v1.36.11
 	modernc.org/sqlite v1.38.2
@@ -22,6 +23,7 @@ require (
 	github.com/0x51-dev/rids v0.1.0 // indirect
 	github.com/0x51-dev/upeg v0.1.0 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
+	github.com/cayleygraph/quad v1.3.0 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/goccy/go-json v0.10.6 // indirect
@@ -37,6 +39,7 @@ require (
 	github.com/pingcap/failpoint v0.0.0-20260406204437-bbc9d102c19e // indirect
 	github.com/pingcap/log v1.1.1-0.20260227082333-572e590d08f1 // indirect
 	github.com/pingcap/tidb/pkg/parser v0.0.0-20260504140133-511dba1dbe17 // indirect
+	github.com/pquerna/cachecontrol v0.2.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
