@@ -580,8 +580,20 @@ WHERE {
 	if err != nil {
 		t.Fatalf("using delete query: %v", err)
 	}
-	if usingResult.Count != 1 {
-		t.Fatalf("expected USING delete to delete 1 triple, got %+v", usingResult)
+	// USING scopes the WHERE clause, not the DELETE template, so the template
+	// names the triple in the default graph, where there is none. This used to
+	// assert a count of 1 — the count of triples asked for, which was the bug:
+	// the g2 triple was never removed, and the count said it had been.
+	if usingResult.Count != 0 {
+		t.Fatalf("expected USING delete to remove nothing from the default graph, got %+v", usingResult)
+	}
+	g2 := NewIRI("https://example.com/g2")
+	stillThere, err := graphStore.FindTriples(ctx, TriplePattern{Graph: &g2})
+	if err != nil {
+		t.Fatalf("find g2: %v", err)
+	}
+	if len(stillThere) != 1 {
+		t.Fatalf("expected the g2 triple to be untouched, got %v", stillThere)
 	}
 }
 

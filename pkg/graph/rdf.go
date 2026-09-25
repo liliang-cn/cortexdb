@@ -97,6 +97,12 @@ var builtinNamespaces = map[string]string{
 	"schema": "https://schema.org/",
 	"foaf":   "http://xmlns.com/foaf/0.1/",
 	"skos":   "http://www.w3.org/2004/02/skos/core#",
+	// The property-graph projection's vocabulary, built in so a query can be
+	// written by hand or by a model without declaring anything first.
+	"cxn": PropertyNodeNamespace,
+	"cxt": PropertyTypeNamespace,
+	"cxr": PropertyRelNamespace,
+	"cxp": PropertyPropNamespace,
 }
 
 // NewIRI creates an IRI term.
@@ -376,6 +382,9 @@ func (g *GraphStore) GetTriple(ctx context.Context, id string) (*RDFTriple, erro
 	if err := g.InitGraphSchema(ctx); err != nil {
 		return nil, err
 	}
+	if strings.HasPrefix(id, projectedTripleIDPrefix) {
+		return g.getProjectedTriple(ctx, id)
+	}
 	row := g.queryRow(ctx, `
 		SELECT
 			id, graph_kind, graph_value,
@@ -397,7 +406,35 @@ func (g *GraphStore) GetTriple(ctx context.Context, id string) (*RDFTriple, erro
 }
 
 // FindTriples queries triples by pattern.
+//
+// The answer is the stored triples followed by the triples the property graph
+// implies (see graph_projection.go), unless the projection has been turned
+// off. Limit applies to the two together.
 func (g *GraphStore) FindTriples(ctx context.Context, pattern TriplePattern) ([]RDFTriple, error) {
+	stored, err := g.findStoredTriples(ctx, pattern)
+	if err != nil {
+		return nil, err
+	}
+	limit := 0
+	if pattern.Limit > 0 {
+		if len(stored) >= pattern.Limit {
+			return stored, nil
+		}
+		limit = pattern.Limit - len(stored)
+	}
+	projected, err := g.findProjectedTriples(ctx, pattern, limit)
+	if err != nil {
+		return nil, err
+	}
+	return append(stored, projected...), nil
+}
+
+// findStoredTriples queries kg_triples alone.
+//
+// A pattern naming the projection's graph still reads kg_triples: RDFS
+// inferences drawn from projected triples inherit that graph and are stored,
+// and scoping a query to the graph must not hide them.
+func (g *GraphStore) findStoredTriples(ctx context.Context, pattern TriplePattern) ([]RDFTriple, error) {
 	if err := g.InitGraphSchema(ctx); err != nil {
 		return nil, err
 	}
@@ -487,13 +524,27 @@ func (g *GraphStore) FindTriples(ctx context.Context, pattern TriplePattern) ([]
 }
 
 // DeleteTriple removes one RDF triple/quad by its normalized content.
+//
+// A triple the property-graph projection supplies cannot be deleted here and
+// fails with ErrPropertyGraphReadOnly rather than succeeding at nothing.
 func (g *GraphStore) DeleteTriple(ctx context.Context, triple RDFTriple) error {
+	_, err := g.deleteTriple(ctx, triple)
+	return err
+}
+
+// deleteTriple is DeleteTriple reporting how many stored triples it removed,
+// which is zero for a triple that was never there. Callers that count
+// deletions count this, not their own calls.
+func (g *GraphStore) deleteTriple(ctx context.Context, triple RDFTriple) (int, error) {
 	if err := g.InitGraphSchema(ctx); err != nil {
-		return err
+		return 0, err
+	}
+	if err := g.refuseProjectedDeletes(ctx, []RDFTriple{triple}); err != nil {
+		return 0, err
 	}
 	normalized, err := g.normalizeTriple(ctx, triple)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if normalized.ID == "" {
 		normalized.ID = tripleDigest(normalized)
@@ -501,48 +552,69 @@ func (g *GraphStore) DeleteTriple(ctx context.Context, triple RDFTriple) error {
 
 	tx, err := g.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("begin delete triple transaction: %w", err)
+		return 0, fmt.Errorf("begin delete triple transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := g.txExec(ctx, tx, `DELETE FROM kg_triples WHERE id = ?`, normalized.ID); err != nil {
-		return fmt.Errorf("delete kg triple: %w", err)
+	result, err := g.txExec(ctx, tx, `DELETE FROM kg_triples WHERE id = ?`, normalized.ID)
+	if err != nil {
+		return 0, fmt.Errorf("delete kg triple: %w", err)
+	}
+	removed, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("delete kg triple: %w", err)
 	}
 	if _, err := g.txExec(ctx, tx, `DELETE FROM graph_edges WHERE id = ?`, normalized.ID); err != nil {
-		return fmt.Errorf("delete rdf edge: %w", err)
+		return 0, fmt.Errorf("delete rdf edge: %w", err)
 	}
 	if err := g.cleanupOrphanRDFNodeTx(ctx, tx, normalized.Subject); err != nil {
-		return err
+		return 0, err
 	}
 	if err := g.cleanupOrphanRDFNodeTx(ctx, tx, normalized.Object); err != nil {
-		return err
+		return 0, err
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit delete triple transaction: %w", err)
+		return 0, fmt.Errorf("commit delete triple transaction: %w", err)
 	}
-	return nil
+	return int(removed), nil
 }
 
-// DeleteTriples removes all triples matched by the given pattern.
+// DeleteTriples removes all triples matched by the given pattern and reports
+// how many were removed. A pattern that matches a projected triple fails
+// before anything is removed.
 func (g *GraphStore) DeleteTriples(ctx context.Context, pattern TriplePattern) (int, error) {
 	triples, err := g.FindTriples(ctx, pattern)
 	if err != nil {
 		return 0, err
 	}
+	if err := g.refuseProjectedDeletes(ctx, triples); err != nil {
+		return 0, err
+	}
+	return g.deleteTriples(ctx, triples)
+}
+
+func (g *GraphStore) deleteTriples(ctx context.Context, triples []RDFTriple) (int, error) {
 	deleted := 0
 	for _, triple := range triples {
-		if err := g.DeleteTriple(ctx, triple); err != nil {
+		removed, err := g.deleteTriple(ctx, triple)
+		if err != nil {
 			return deleted, err
 		}
-		deleted++
+		deleted += removed
 	}
 	return deleted, nil
 }
 
-// ExportRDF writes triples in the requested RDF format.
+// ExportRDF writes the stored triples in the requested RDF format.
+//
+// The property-graph projection is not exported. An export is read back by
+// ImportRDF, which stores what it reads, so exporting the projection would
+// turn every node and edge into a stored triple on the way back in — a second
+// copy of the property graph that nothing keeps in step with the first. A
+// caller that wants the projection as RDF asks for it with CONSTRUCT.
 func (g *GraphStore) ExportRDF(ctx context.Context, writer io.Writer, format RDFFormat) error {
-	triples, err := g.FindTriples(ctx, TriplePattern{})
+	triples, err := g.findStoredTriples(ctx, TriplePattern{})
 	if err != nil {
 		return err
 	}

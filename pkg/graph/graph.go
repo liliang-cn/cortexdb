@@ -11,6 +11,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -175,6 +176,12 @@ type GraphStore struct {
 	// SQLite backend and any PostgreSQL without pgvector, both of which fall
 	// back to the scan that was always there.
 	vecCap vectorCapability
+
+	// projectionOff turns off the property-graph projection FindTriples adds
+	// to kg_triples (see graph_projection.go). Stored inverted so the zero
+	// value is on, which is the point of it; atomic because a caller may flip
+	// it while queries are running.
+	projectionOff atomic.Bool
 }
 
 // NewGraphStore creates a new graph store from a SQLite store.

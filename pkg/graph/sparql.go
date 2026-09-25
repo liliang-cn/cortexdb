@@ -678,6 +678,9 @@ func sortSPARQLGroups(groups [][]map[string]RDFTerm, clauses []sparqlOrderClause
 
 func (g *GraphStore) executeSPARQLInsertData(ctx context.Context, templates []sparqlPattern) (int, error) {
 	triples := materializeTemplateTriples(templates, []map[string]RDFTerm{{}})
+	if err := refuseProjectedInserts(triples); err != nil {
+		return 0, err
+	}
 	for _, triple := range triples {
 		tripleCopy := triple
 		if err := g.UpsertTriple(ctx, &tripleCopy); err != nil {
@@ -687,40 +690,39 @@ func (g *GraphStore) executeSPARQLInsertData(ctx context.Context, templates []sp
 	return len(triples), nil
 }
 
+// The delete paths count what was removed, not what was asked for: a triple
+// that was not stored removes nothing and counts nothing. One the
+// property-graph projection supplies fails the whole statement before any
+// triple is removed.
 func (g *GraphStore) executeSPARQLDeleteData(ctx context.Context, templates []sparqlPattern) (int, error) {
 	triples := materializeTemplateTriples(templates, []map[string]RDFTerm{{}})
-	deleted := 0
-	for _, triple := range triples {
-		if err := g.DeleteTriple(ctx, triple); err != nil {
-			return deleted, err
-		}
-		deleted++
+	if err := g.refuseProjectedDeletes(ctx, triples); err != nil {
+		return 0, err
 	}
-	return deleted, nil
+	return g.deleteTriples(ctx, triples)
 }
 
 func (g *GraphStore) executeSPARQLDeleteWhere(ctx context.Context, templates []sparqlPattern, bindings []map[string]RDFTerm, defaultGraph *RDFTerm) (int, error) {
 	triples := materializeTemplateTriplesWithDefaultGraph(templates, bindings, defaultGraph)
-	deleted := 0
-	for _, triple := range triples {
-		if err := g.DeleteTriple(ctx, triple); err != nil {
-			return deleted, err
-		}
-		deleted++
+	if err := g.refuseProjectedDeletes(ctx, triples); err != nil {
+		return 0, err
 	}
-	return deleted, nil
+	return g.deleteTriples(ctx, triples)
 }
 
 func (g *GraphStore) executeSPARQLModify(ctx context.Context, deletes, inserts []sparqlPattern, bindings []map[string]RDFTerm, defaultGraph *RDFTerm) (int, error) {
-	changed := 0
 	deleteTriples := materializeTemplateTriplesWithDefaultGraph(deletes, bindings, defaultGraph)
-	for _, triple := range deleteTriples {
-		if err := g.DeleteTriple(ctx, triple); err != nil {
-			return changed, err
-		}
-		changed++
-	}
 	insertTriples := materializeTemplateTriplesWithDefaultGraph(inserts, bindings, defaultGraph)
+	if err := refuseProjectedInserts(insertTriples); err != nil {
+		return 0, err
+	}
+	if err := g.refuseProjectedDeletes(ctx, deleteTriples); err != nil {
+		return 0, err
+	}
+	changed, err := g.deleteTriples(ctx, deleteTriples)
+	if err != nil {
+		return changed, err
+	}
 	for _, triple := range insertTriples {
 		tripleCopy := triple
 		if err := g.UpsertTriple(ctx, &tripleCopy); err != nil {
@@ -893,8 +895,12 @@ func (g *GraphStore) executeSPARQLPattern(ctx context.Context, pattern sparqlPat
 	return nextBindings, nil
 }
 
+// A pattern outside GRAPH reads the default graph, which here is the unnamed
+// triples plus the property-graph projection: the projection is the only RDF
+// most brains have, and a query that had to know to ask for it by name would
+// find nothing for everyone who did not.
 func sparqlTripleAllowedForGraph(pattern sparqlPattern, triple RDFTriple, opts sparqlExecOptions) bool {
-	if pattern.Graph == nil && triple.Graph != nil && len(opts.DefaultGraphs) == 0 {
+	if pattern.Graph == nil && triple.Graph != nil && len(opts.DefaultGraphs) == 0 && !isPropertyGraphTerm(triple.Graph) {
 		return false
 	}
 	if pattern.Graph != nil && triple.Graph == nil {
@@ -3666,8 +3672,10 @@ func isSPARQLIdentPart(ch byte) bool {
 	return unicode.IsLetter(rune(ch)) || unicode.IsDigit(rune(ch)) || ch == '_' || ch == '-'
 }
 
+// '%' is allowed because SPARQL allows a percent-escape in a prefixed name's
+// local part, and the property-graph projection's IRIs are full of them.
 func isSPARQLWordPart(ch byte) bool {
-	return isSPARQLIdentPart(ch) || ch == ':' || ch == '/' || ch == '#' || ch == '.'
+	return isSPARQLIdentPart(ch) || ch == ':' || ch == '/' || ch == '#' || ch == '.' || ch == '%'
 }
 
 func isSPARQLNumberStart(query string, index int) bool {
