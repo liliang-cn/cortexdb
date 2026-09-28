@@ -13,6 +13,14 @@ type Toolbox struct {
 	db        *cortexdb.DB
 	detector  Detector
 	extractor Extractor
+	llm       JSONGenerator
+}
+
+// WithLLM sets the model global_search and build_community_hierarchy use.
+// Optional: without one both run in their no-model mode.
+func (t *Toolbox) WithLLM(llm JSONGenerator) *Toolbox {
+	t.llm = llm
+	return t
 }
 
 // NewToolbox constructs a graphflow tool facade.
@@ -25,7 +33,7 @@ func NewToolbox(db *cortexdb.DB, detector Detector, extractor Extractor) (*Toolb
 
 // Definitions returns JSON-schema-like graphflow tool definitions.
 func (t *Toolbox) Definitions() []cortexdb.ToolDefinition {
-	return []cortexdb.ToolDefinition{
+	return append([]cortexdb.ToolDefinition{
 		{
 			Name:        "graphflow_build",
 			Description: "Persist extraction results into the graph store.",
@@ -82,11 +90,14 @@ func (t *Toolbox) Definitions() []cortexdb.ToolDefinition {
 				},
 			),
 		},
-	}
+	}, GlobalSearchToolDefinitions()...)
 }
 
 // Call dispatches a graphflow tool call.
 func (t *Toolbox) Call(ctx context.Context, name string, input json.RawMessage) (any, error) {
+	if out, ok, err := callGlobalSearchTool(ctx, t.db, t.llm, name, input); ok {
+		return out, err
+	}
 	switch name {
 	case "graphflow_build":
 		var req struct {

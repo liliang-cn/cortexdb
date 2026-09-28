@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
@@ -96,6 +97,16 @@ type GraphPageRankOptions struct {
 	// engine's default of 0.85. Lower values weight local structure more
 	// heavily and converge faster.
 	DampingFactor float64
+
+	// Cache selects whether the stored ranking is used. The zero value
+	// computes fresh and leaves the cache alone; PageRankCacheAuto (what the
+	// rank_graph_nodes tool uses) serves a fresh cache and recomputes a stale
+	// one. See graph_pagerank_cache.go for how staleness is detected.
+	Cache PageRankCacheMode
+
+	// MaxAge, when positive, treats a cached ranking older than this as stale
+	// even if the graph has not visibly changed. Ignored when Cache is off.
+	MaxAge time.Duration
 }
 
 // GraphPageRankResult is the ranking, and how much of it was withheld.
@@ -111,6 +122,9 @@ type GraphPageRankResult struct {
 	// decides whether "these are the important nodes" or "these are the
 	// important nodes we looked at" is the true sentence.
 	Truncated bool `json:"truncated"`
+	// Cache says whether the answer came from the stored ranking, when that
+	// ranking was computed, and whether it is stale. Nil when Cache was off.
+	Cache *PageRankCacheInfo `json:"cache,omitempty"`
 }
 
 // GraphPageRank ranks every node by how much of the graph's structure flows
@@ -132,6 +146,27 @@ type GraphPageRankResult struct {
 // integer topology, times the iteration count. The engine offers no way to rank
 // a subgraph, so this is always the whole graph.
 func (db *DB) GraphPageRank(ctx context.Context, opts GraphPageRankOptions) (*GraphPageRankResult, error) {
+	if opts.Cache != PageRankCacheOff {
+		head, total, info, err := db.graphPageRankCached(ctx, opts)
+		if err != nil {
+			return nil, err
+		}
+		scores := make([]graph.PageRankResult, len(head))
+		for i, h := range head {
+			scores[i] = graph.PageRankResult{NodeID: h.id, Score: h.score}
+		}
+		nodes, err := db.labelRankedNodes(ctx, scores)
+		if err != nil {
+			return nil, err
+		}
+		return &GraphPageRankResult{
+			Nodes:      nodes,
+			TotalNodes: total,
+			Truncated:  opts.TopN > 0 && total > opts.TopN,
+			Cache:      &info,
+		}, nil
+	}
+
 	scores, err := db.graph.PageRank(ctx, opts.Iterations, opts.DampingFactor)
 	if err != nil {
 		return nil, fmt.Errorf("graph pagerank: %w", err)
@@ -159,6 +194,15 @@ func (db *DB) GraphPageRank(ctx context.Context, opts GraphPageRankOptions) (*Gr
 
 	// Labels are resolved after the cut, so a ranking of a hundred thousand
 	// nodes reads back twenty rows rather than a hundred thousand.
+	nodes, err := db.labelRankedNodes(ctx, scores)
+	if err != nil {
+		return nil, err
+	}
+	return &GraphPageRankResult{Nodes: nodes, TotalNodes: total, Truncated: truncated}, nil
+}
+
+// labelRankedNodes resolves each ranked id to its label and type.
+func (db *DB) labelRankedNodes(ctx context.Context, scores []graph.PageRankResult) ([]RankedGraphNode, error) {
 	ids := make([]string, 0, len(scores))
 	for _, score := range scores {
 		ids = append(ids, score.NodeID)
@@ -178,8 +222,7 @@ func (db *DB) GraphPageRank(ctx context.Context, opts GraphPageRankOptions) (*Gr
 			Score:    score.Score,
 		})
 	}
-
-	return &GraphPageRankResult{Nodes: nodes, TotalNodes: total, Truncated: truncated}, nil
+	return nodes, nil
 }
 
 // PredictedGraphEdge is one pair the graph's shape suggests, with both ends
@@ -385,6 +428,14 @@ type ToolRankGraphNodesRequest struct {
 	TopN          int     `json:"top_n,omitempty"`
 	Iterations    int     `json:"iterations,omitempty"`
 	DampingFactor float64 `json:"damping_factor,omitempty"`
+	// Refresh recomputes the ranking even when the cache is fresh.
+	Refresh bool `json:"refresh,omitempty"`
+	// AllowStale serves the cached ranking even when the graph has changed
+	// since it was computed, flagging it stale instead of recomputing.
+	AllowStale bool `json:"allow_stale,omitempty"`
+	// MaxAgeSeconds treats a cache older than this as stale. Zero: no limit
+	// beyond the graph-change check.
+	MaxAgeSeconds int `json:"max_age_seconds,omitempty"`
 }
 
 // ToolRankGraphNodesResponse returns the ranked head of the graph.
@@ -393,6 +444,12 @@ type ToolRankGraphNodesResponse struct {
 	Count      int               `json:"count"`
 	TotalNodes int               `json:"total_nodes"`
 	Truncated  bool              `json:"truncated"`
+	// Cached, ComputedAt, Stale and StaleReason say where the ranking came
+	// from; see PageRankCacheInfo.
+	Cached      bool   `json:"cached"`
+	ComputedAt  string `json:"computed_at,omitempty"`
+	Stale       bool   `json:"stale,omitempty"`
+	StaleReason string `json:"stale_reason,omitempty"`
 }
 
 // RankGraphNodes ranks the graph's nodes by PageRank for a tool caller.
@@ -405,20 +462,41 @@ func (t *GraphRAGToolbox) RankGraphNodes(ctx context.Context, req ToolRankGraphN
 		topN = maxPageRankToolTopN
 	}
 
+	mode := PageRankCacheAuto
+	switch {
+	case req.Refresh:
+		mode = PageRankCacheRefresh
+	case req.AllowStale:
+		mode = PageRankCacheAllowStale
+	}
+	var maxAge time.Duration
+	if req.MaxAgeSeconds > 0 {
+		maxAge = time.Duration(req.MaxAgeSeconds) * time.Second
+	}
+
 	result, err := t.db.GraphPageRank(ctx, GraphPageRankOptions{
 		TopN:          topN,
 		Iterations:    req.Iterations,
 		DampingFactor: req.DampingFactor,
+		Cache:         mode,
+		MaxAge:        maxAge,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &ToolRankGraphNodesResponse{
+	resp := &ToolRankGraphNodesResponse{
 		Nodes:      result.Nodes,
 		Count:      len(result.Nodes),
 		TotalNodes: result.TotalNodes,
 		Truncated:  result.Truncated,
-	}, nil
+	}
+	if c := result.Cache; c != nil {
+		resp.Cached = c.Cached
+		resp.ComputedAt = c.ComputedAt.UTC().Format(time.RFC3339)
+		resp.Stale = c.Stale
+		resp.StaleReason = c.StaleReason
+	}
+	return resp, nil
 }
 
 // ToolPredictGraphEdgesRequest asks what one node should be connected to.

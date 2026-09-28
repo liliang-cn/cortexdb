@@ -505,6 +505,38 @@ means this graph's vectors cannot tell them apart, which is what short lexical
 hashes do to short entity names. Tools: `rank_graph_nodes`, `graph_statistics`,
 `predict_graph_edges`.
 
+`rank_graph_nodes` reads a cached ranking. Scores live in a side table
+(`graph_pagerank_scores`) with the time they were computed; a call on an
+unchanged graph is an indexed `LIMIT` read (on a 2000-node graph: 0.11ms p50
+against 16ms recomputing), and a change to the graph's nodes or edges is
+detected in the database — on SQLite by rowid maxima plus triggers on deletes
+and endpoint rewrites, so writes from another process count; on PostgreSQL by
+a topology aggregate — and triggers a recompute. The answer carries `cached`,
+`computed_at`, `stale`, `stale_reason`; `refresh` forces a recompute,
+`allow_stale` serves an out-of-date ranking without paying for one,
+`max_age_seconds` bounds its age. From Go: `GraphPageRankOptions.Cache`
+(`PageRankCacheAuto` / `Refresh` / `AllowStale`; the zero value computes fresh
+as before), `RefreshPageRankCache`, `InvalidatePageRankCache`, and
+`StartPageRankRefresher(ctx, interval, …)` to keep it warm on a timer.
+
+**Whole-corpus questions (GraphRAG global search).** `global_search` answers
+what retrieval cannot — "what are the main themes", "what does this brain
+cover" — by map-reducing over community reports. The caller chooses it; no
+query is routed to it by its wording. `build_community_hierarchy` detects the
+entity graph's communities with Louvain and keeps every level (0 = finest,
+each level up merges the one below), then writes a report per community
+bottom-up: level 0 from its entities and relations, higher levels from their
+children's reports. `global_search` takes a `level` (default: the coarsest,
+fewest reports, cheapest map) and builds the hierarchy on first use. With a
+model (`graphflow.JSONGenerator`; in the MCP binary `CORTEXDB_LLM_*`) reports
+and answer are the model's; without one reports are assembled
+deterministically and `global_search` returns the lexically most relevant
+reports unsynthesised (`mode: "no_model"`). Go: `graphflow.BuildCommunityHierarchy`,
+`graphflow.GlobalSearch(…, GlobalSearchOptions{Level: &l})`,
+`graph.GraphStore.HierarchicalCommunities`. Registered by
+`graphflow.AddGlobalSearchMCPTools` in `cortexdb-mcp-stdio` (local mode) and in
+`graphflow.NewMCPServer`.
+
 **Disambiguating a name against the graph.** `DisambiguateMentions` resolves an
 ambiguous name using the other names given with it: it finds the shortest paths
 between this mention's candidates and the others', renders each as a sentence,
@@ -903,7 +935,7 @@ Important tools:
 Separate workflow toolboxes:
 
 - memoryflow: `memoryflow_ingest_transcript`, `memoryflow_recall`, `memoryflow_wake_up_layers`, `memoryflow_prepare_reply`
-- graphflow: `graphflow_build`, `graphflow_analyze`, `graphflow_report`, `graphflow_export`, `graphflow_run`
+- graphflow: `graphflow_build`, `graphflow_analyze`, `graphflow_report`, `graphflow_export`, `graphflow_run`, `global_search`, `build_community_hierarchy`
 
 ### Shared brain — one CortexDB, many agents and machines
 

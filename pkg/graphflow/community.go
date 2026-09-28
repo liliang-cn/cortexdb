@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
@@ -124,27 +125,48 @@ type GlobalSearchResult struct {
 	Answer           string   `json:"answer"`
 	CommunitiesUsed  int      `json:"communities_used"`
 	SupportingPoints []string `json:"supporting_points,omitempty"`
+	// Level is the hierarchy level the reports came from, or -1 when the
+	// flat reports of BuildCommunitySummaries were used.
+	Level int `json:"level"`
+	// LevelsAvailable lists the hierarchy levels that have reports.
+	LevelsAvailable []int `json:"levels_available,omitempty"`
+	// Mode is "model" when an LLM ran the map and reduce steps, "no_model"
+	// when no LLM was configured and the reports were ranked lexically
+	// against the question and returned without synthesis.
+	Mode string `json:"mode"`
+	// MapBatches is how many map calls were made (0 in no_model mode).
+	MapBatches int `json:"map_batches"`
+	// Built is true when this call built the community hierarchy first.
+	Built bool `json:"built,omitempty"`
 }
 
 // GlobalSearchOptions configures GlobalSearch.
 type GlobalSearchOptions struct {
-	LLM       JSONGenerator // required
-	MaxPoints int           // top key points fed to the reduce step (default 12)
-	// BuildIfEmpty builds community summaries first when none are persisted yet.
+	// LLM runs the map and reduce steps. Optional: without one the answer is
+	// the most relevant community reports, ranked lexically, unsynthesised.
+	LLM       JSONGenerator
+	MaxPoints int // top key points fed to the reduce step (default 12)
+	// Level picks the hierarchy level to answer from (0 = finest). Nil uses
+	// the coarsest level that has reports — the fewest, broadest reports and
+	// so the cheapest map — or the flat reports when no hierarchy was built.
+	Level *int
+	// BuildIfEmpty builds the community hierarchy first when no reports of
+	// the requested kind exist yet.
 	BuildIfEmpty bool
 }
 
 // GlobalSearch answers a whole-corpus question by map-reducing over community
-// reports (Microsoft-GraphRAG global search): each community's report yields
+// reports (Microsoft-GraphRAG global search): each batch of reports yields
 // query-relevant key points with helpfulness scores (map), and the top points
-// are synthesized into one answer (reduce). Requires community summaries to
-// exist (BuildCommunitySummaries) unless BuildIfEmpty is set.
+// are synthesized into one answer (reduce).
+//
+// Reports come from BuildCommunityHierarchy (at Level, or the coarsest level)
+// or, when no hierarchy has been built, from BuildCommunitySummaries. It is
+// always the caller's choice to run it: nothing routes a query here by its
+// wording.
 func GlobalSearch(ctx context.Context, db *cortexdb.DB, query string, opts GlobalSearchOptions) (*GlobalSearchResult, error) {
 	if db == nil {
 		return nil, fmt.Errorf("graphflow: global search: nil db")
-	}
-	if opts.LLM == nil {
-		return nil, fmt.Errorf("graphflow: global search requires an LLM")
 	}
 	if strings.TrimSpace(query) == "" {
 		return nil, fmt.Errorf("graphflow: global search: empty query")
@@ -154,15 +176,19 @@ func GlobalSearch(ctx context.Context, db *cortexdb.DB, query string, opts Globa
 		maxPoints = 12
 	}
 
-	summaries := loadPersistedCommunities(ctx, db)
-	if len(summaries) == 0 && opts.BuildIfEmpty {
-		if _, err := BuildCommunitySummaries(ctx, db, CommunityOptions{LLM: opts.LLM}); err != nil {
-			return nil, err
-		}
-		summaries = loadPersistedCommunities(ctx, db)
+	result := &GlobalSearchResult{Query: query, Level: -1, Mode: "model"}
+	if opts.LLM == nil {
+		result.Mode = "no_model"
 	}
-	if len(summaries) == 0 {
-		return nil, fmt.Errorf("graphflow: no community summaries — run BuildCommunitySummaries first")
+
+	summaries, err := selectCommunityReports(ctx, db, opts, result)
+	if err != nil {
+		return nil, err
+	}
+	result.CommunitiesUsed = len(summaries)
+
+	if opts.LLM == nil {
+		return globalSearchWithoutModel(query, summaries, maxPoints, result), nil
 	}
 
 	// Map: score each community's contribution to the query, in char-bounded batches.
@@ -172,6 +198,7 @@ func GlobalSearch(ctx context.Context, db *cortexdb.DB, query string, opts Globa
 	}
 	points := make([]scoredPoint, 0)
 	for _, batch := range batchCommunityDocs(summaries, globalMapCharBudget) {
+		result.MapBatches++
 		mapped, err := mapCommunities(ctx, opts.LLM, query, batch)
 		if err != nil {
 			continue
@@ -183,7 +210,8 @@ func GlobalSearch(ctx context.Context, db *cortexdb.DB, query string, opts Globa
 		}
 	}
 	if len(points) == 0 {
-		return &GlobalSearchResult{Query: query, Answer: "No community context was relevant to this question.", CommunitiesUsed: len(summaries)}, nil
+		result.Answer = "No community context was relevant to this question."
+		return result, nil
 	}
 	sort.SliceStable(points, func(i, j int) bool { return points[i].Score > points[j].Score })
 	if len(points) > maxPoints {
@@ -199,12 +227,137 @@ func GlobalSearch(ctx context.Context, db *cortexdb.DB, query string, opts Globa
 	if err != nil {
 		return nil, err
 	}
-	return &GlobalSearchResult{
-		Query:            query,
-		Answer:           answer,
-		CommunitiesUsed:  len(summaries),
-		SupportingPoints: topPoints,
-	}, nil
+	result.Answer = answer
+	result.SupportingPoints = topPoints
+	return result, nil
+}
+
+// selectCommunityReports picks the reports GlobalSearch answers from and
+// records the choice on result.
+func selectCommunityReports(ctx context.Context, db *cortexdb.DB, opts GlobalSearchOptions, result *GlobalSearchResult) ([]CommunitySummary, error) {
+	levels := loadHierarchyLevels(ctx, db)
+	flat := loadPersistedCommunities(ctx, db)
+	build := func() error {
+		if _, err := BuildCommunityHierarchy(ctx, db, HierarchyOptions{LLM: opts.LLM}); err != nil {
+			return err
+		}
+		result.Built = true
+		levels = loadHierarchyLevels(ctx, db)
+		return nil
+	}
+	if len(levels) == 0 && opts.BuildIfEmpty && (opts.Level != nil || len(flat) == 0) {
+		if err := build(); err != nil {
+			return nil, err
+		}
+	}
+	result.LevelsAvailable = sortedLevels(levels)
+
+	if opts.Level != nil {
+		reports := levels[*opts.Level]
+		if len(reports) == 0 {
+			if len(levels) == 0 {
+				return nil, fmt.Errorf("graphflow: no community hierarchy — run BuildCommunityHierarchy (build_community_hierarchy) first")
+			}
+			return nil, fmt.Errorf("graphflow: no community reports at level %d; levels with reports: %v", *opts.Level, result.LevelsAvailable)
+		}
+		result.Level = *opts.Level
+		return reports, nil
+	}
+	if len(levels) > 0 {
+		top := result.LevelsAvailable[len(result.LevelsAvailable)-1]
+		result.Level = top
+		return levels[top], nil
+	}
+	if len(flat) > 0 {
+		return flat, nil
+	}
+	return nil, fmt.Errorf("graphflow: no community summaries — run BuildCommunityHierarchy (build_community_hierarchy) first")
+}
+
+func sortedLevels(levels map[int][]CommunitySummary) []int {
+	out := make([]int, 0, len(levels))
+	for l := range levels {
+		out = append(out, l)
+	}
+	sort.Ints(out)
+	return out
+}
+
+// globalSearchWithoutModel ranks reports by how many of the question's terms
+// each contains and returns the best as the supporting points. It is ranking,
+// not routing: every report is scored the same way whatever the question says.
+func globalSearchWithoutModel(query string, summaries []CommunitySummary, maxPoints int, result *GlobalSearchResult) *GlobalSearchResult {
+	terms := lexicalTerms(query)
+	type scored struct {
+		idx   int
+		score int
+	}
+	ranked := make([]scored, len(summaries))
+	matched := 0
+	for i, s := range summaries {
+		text := strings.ToLower(s.Title + "\n" + s.Summary)
+		score := 0
+		for _, t := range terms {
+			if strings.Contains(text, t) {
+				score++
+			}
+		}
+		if score > 0 {
+			matched++
+		}
+		ranked[i] = scored{idx: i, score: score}
+	}
+	sort.SliceStable(ranked, func(i, j int) bool { return ranked[i].score > ranked[j].score })
+	if len(ranked) > maxPoints {
+		ranked = ranked[:maxPoints]
+	}
+	for _, r := range ranked {
+		s := summaries[r.idx]
+		result.SupportingPoints = append(result.SupportingPoints, strings.TrimSpace(s.Title+": "+s.Summary))
+	}
+	if matched == 0 {
+		result.Answer = fmt.Sprintf("No model is configured, so no answer was synthesised, and no community report shares a term with the question. The %d reports listed are the first at this level; read them directly.", len(result.SupportingPoints))
+	} else {
+		result.Answer = fmt.Sprintf("No model is configured, so no answer was synthesised. %d of %d community reports share terms with the question; the most relevant are listed as supporting points.", matched, len(summaries))
+	}
+	return result
+}
+
+// lexicalTerms lowercases the question and splits it into words; runs of Han
+// characters contribute their bigrams, since they carry no spaces.
+func lexicalTerms(q string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	add := func(t string) {
+		if len([]rune(t)) < 2 {
+			return
+		}
+		if _, ok := seen[t]; ok {
+			return
+		}
+		seen[t] = struct{}{}
+		out = append(out, t)
+	}
+	for _, f := range strings.FieldsFunc(strings.ToLower(q), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	}) {
+		runes := []rune(f)
+		han := false
+		for _, r := range runes {
+			if unicode.Is(unicode.Han, r) {
+				han = true
+				break
+			}
+		}
+		if !han {
+			add(f)
+			continue
+		}
+		for i := 0; i+1 < len(runes); i++ {
+			add(string(runes[i : i+2]))
+		}
+	}
+	return out
 }
 
 // --- LLM steps ---
@@ -226,6 +379,11 @@ func summarizeCommunity(ctx context.Context, llm JSONGenerator, members, relatio
 	if err != nil {
 		return nil, err
 	}
+	return parseCommunityReport(raw)
+}
+
+// parseCommunityReport decodes a {title, summary, findings} model answer.
+func parseCommunityReport(raw []byte) (*CommunitySummary, error) {
 	obj, err := extractJSONObject(raw)
 	if err != nil {
 		return nil, err

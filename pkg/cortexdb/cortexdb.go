@@ -44,6 +44,12 @@ type DB struct {
 	// only for the same reason as above.
 	actionAuditMu    sync.Mutex
 	actionAuditReady bool
+	// PageRank cache: schema creation latches on success like the two above;
+	// pageRankRefreshMu serialises the check-then-recompute so two callers
+	// finding the cache stale at once run the iteration once.
+	pageRankMu          sync.Mutex
+	pageRankSchemaReady bool
+	pageRankRefreshMu   sync.Mutex
 }
 
 // Config represents database configuration
