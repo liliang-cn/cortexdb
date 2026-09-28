@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
 // Entity deletion.
@@ -77,7 +79,8 @@ func (t *GraphRAGToolbox) DeleteEntities(ctx context.Context, req ToolDeleteEnti
 			continue
 		}
 		// Edges go with the node: graph_edges has ON DELETE CASCADE on both ends.
-		if err := t.db.graph.DeleteNode(ctx, id); err != nil {
+		if err := t.db.graph.DeleteNode(graph.WithInvalidation(ctx,
+			graph.Invalidation{Reason: graph.ReasonRetracted, Producer: producerDeleteEntities}), id); err != nil {
 			return nil, fmt.Errorf("delete entity %q: %w", name, err)
 		}
 		resp.Deleted = append(resp.Deleted, name)

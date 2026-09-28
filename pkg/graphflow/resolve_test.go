@@ -9,6 +9,7 @@ import (
 
 	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
 func openResolveTestDB(t *testing.T) (*cortexdb.DB, context.Context) {
@@ -113,8 +114,9 @@ func (f resolveFakeLLM) GenerateJSON(context.Context, string, string) ([]byte, e
 	return []byte(f.resp), nil
 }
 
-// TestResolveEntitiesLLMAcronym verifies the LLM path merges an acronym whose
-// normalized key differs from its full form (K8s vs Kubernetes).
+// TestResolveEntitiesLLMAcronym verifies the LLM path finds an acronym whose
+// normalized key differs from its full form (K8s vs Kubernetes) — and that a
+// model's word alone links the pair for a person rather than merging it.
 func TestResolveEntitiesLLMAcronym(t *testing.T) {
 	db, ctx := openResolveTestDB(t)
 	if _, err := db.GraphRAGTools().UpsertEntities(ctx, cortexdb.ToolUpsertEntitiesRequest{Entities: []cortexdb.ToolEntityInput{
@@ -127,15 +129,50 @@ func TestResolveEntitiesLLMAcronym(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve llm: %v", err)
 	}
+	if report.EntitiesMerged != 0 || report.EntitiesLinked != 1 {
+		t.Fatalf("want 0 merged, 1 linked; got merged=%d linked=%d", report.EntitiesMerged, report.EntitiesLinked)
+	}
+	if !report.Links[0].LLMProposed || report.Links[0].Score < DefaultLinkThreshold || report.Links[0].Score >= DefaultMergeThreshold {
+		t.Fatalf("link evidence = %+v", report.Links[0])
+	}
+	for _, id := range []string{"entity:k8s", "entity:kubernetes"} {
+		if node, _ := db.Graph().GetNode(ctx, id); node == nil {
+			t.Fatalf("%s must survive a link-only pass", id)
+		}
+	}
+}
+
+// The earlier behaviour is still one option away, for callers that relied on
+// a model's grouping being merged outright.
+func TestResolveEntitiesMergeAllKeepsTheOldBehaviour(t *testing.T) {
+	db, ctx := openResolveTestDB(t)
+	if _, err := db.GraphRAGTools().UpsertEntities(ctx, cortexdb.ToolUpsertEntitiesRequest{Entities: []cortexdb.ToolEntityInput{
+		{Name: "K8s"}, {Name: "Kubernetes"},
+	}}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	llm := resolveFakeLLM{resp: `{"groups":[{"canonical":"Kubernetes","aliases":["K8s"]}]}`}
+	report, err := ResolveEntities(ctx, db, ResolveOptions{LLM: llm, Mode: ResolveMergeAll})
+	if err != nil {
+		t.Fatalf("resolve llm: %v", err)
+	}
 	if report.EntitiesMerged != 1 || len(report.Groups) != 1 || !strings.EqualFold(report.Groups[0].Canonical, "Kubernetes") {
 		t.Fatalf("expected K8s merged into Kubernetes, got %+v", report.Groups)
 	}
-	// K8s node is gone; Kubernetes remains.
 	if node, _ := db.Graph().GetNode(ctx, "entity:k8s"); node != nil {
 		t.Fatalf("expected entity:k8s to be merged away")
 	}
 	if node, _ := db.Graph().GetNode(ctx, "entity:kubernetes"); node == nil {
 		t.Fatalf("expected entity:kubernetes to survive")
+	}
+	// The merge is recorded, not erased.
+	hist, err := db.Graph().NodeHistory(ctx, "entity:k8s")
+	if err != nil || len(hist) == 0 {
+		t.Fatalf("alias history = %v, %v", hist, err)
+	}
+	last := hist[len(hist)-1]
+	if last.Reason != graph.ReasonMerged || last.SupersededBy != "entity:kubernetes" || last.Producer != ProducerResolve {
+		t.Fatalf("alias history row = %+v", last.Invalidation)
 	}
 }
 

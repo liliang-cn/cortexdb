@@ -149,6 +149,23 @@ func (db *DB) GraphDiff(ctx context.Context, from, to time.Time, opts graph.Diff
 	return db.Graph().GraphDiff(ctx, from, to, opts)
 }
 
+// NodeHistory and EdgeHistory return every closed version of one record,
+// oldest first, each with why it closed: the reason, the id that superseded
+// it and the producer of the change. See graph.Invalidation.
+func (db *DB) NodeHistory(ctx context.Context, id string) ([]graph.NodeHistoryEntry, error) {
+	if db == nil {
+		return nil, fmt.Errorf("cortexdb: node history: nil db")
+	}
+	return db.Graph().NodeHistory(ctx, id)
+}
+
+func (db *DB) EdgeHistory(ctx context.Context, id string) ([]graph.EdgeHistoryEntry, error) {
+	if db == nil {
+		return nil, fmt.Errorf("cortexdb: edge history: nil db")
+	}
+	return db.Graph().EdgeHistory(ctx, id)
+}
+
 // VacuumGraph physically removes graph history that closed before a cutoff.
 //
 // The only hard delete in the temporal machinery, and the reason everything

@@ -93,8 +93,8 @@ func TestTheAsOfQueryRunsOnPostgres(t *testing.T) {
 			var found []string
 			for rows.Next() {
 				var from, to, etype string
-				var vf, vt, rec sql.NullString
-				if err := rows.Scan(&from, &to, &etype, &vf, &vt, &rec); err != nil {
+				var vf, vt, rec, sup sql.NullString
+				if err := rows.Scan(&from, &to, &etype, &vf, &vt, &rec, &sup); err != nil {
 					t.Fatalf("scan: %v", err)
 				}
 				found = append(found, to)

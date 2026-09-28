@@ -34,7 +34,7 @@ func TestAsOfUsesTheExpressionIndex(t *testing.T) {
 		t.Fatalf("warm: %v", err)
 	}
 
-	vf := db.Dialect().JSONText("properties", factValidFromKey)
+	vf := db.Dialect().JSONTextGuarded("properties", factValidFromKey)
 	q := `SELECT from_node_id FROM graph_edges WHERE ` + vf + ` IS NOT NULL AND ` + vf + ` <= ?`
 	rows, err := db.SQL().QueryContext(ctx, `EXPLAIN QUERY PLAN `+q, base.Format(time.RFC3339))
 	if err != nil {

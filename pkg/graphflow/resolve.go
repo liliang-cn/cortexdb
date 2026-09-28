@@ -9,14 +9,34 @@ import (
 	"unicode"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
-// Entity resolution — merge duplicate/alias entity nodes into one canonical
-// node, so "CortexDB"/"cortexdb"/"Cortex DB" (and, with an LLM,
-// "K8s"/"Kubernetes") stop fragmenting the graph. Deterministic normalization
-// catches spelling/casing/punctuation variants; an optional LLM catches
-// acronyms and synonyms. Merging repoints every edge to the canonical node
-// (via the graph store's MergeEntities) and dedupes the resulting edges.
+// Entity resolution — find duplicate/alias entity nodes, merge the ones the
+// evidence is sure about, and link the ones it is not.
+//
+// Deterministic normalization catches spelling/casing/punctuation variants; a
+// fuzzy name comparison catches near-spellings ("Postgres"/"PostgreSQL"); an
+// optional LLM proposes acronyms and synonyms. None of those is a verdict on
+// its own. Each candidate pair is scored from three pieces of evidence —
+// name similarity, shared neighbours, type agreement — and:
+//
+//	score >= 0.95   merged (MergeEntities repoints every edge, history keeps
+//	                the alias with reason "merged")
+//	0.85 .. 0.95    linked: a possiblySame edge carrying the evidence, graded
+//	                "held" so contract_needs_attention lists it for a person
+//	below 0.85      nothing
+//
+// A merge is destructive and a wrong one is expensive to find: two files both
+// called main.go, a planet and an element both called Mercury, merged into one
+// node with each other's edges. Spelling alone cannot tell those from real
+// aliases; neighbourhoods can, and when they cannot either, a person decides.
+// A person's answer is read back on the next pass: a possiblySame edge set to
+// _grade=verified is merged, one set to refused is never proposed again.
+//
+// ResolveMergeAll restores the earlier behaviour — merge every normalized-key
+// group and every LLM group, no scoring, no links — for callers that relied
+// on it.
 
 // ResolveOptions configures ResolveEntities.
 type ResolveOptions struct {
@@ -38,12 +58,81 @@ type ResolveOptions struct {
 	// Empty means every entity participates, which is what callers had before
 	// this existed.
 	NodeTypes []string
+
+	// Mode chooses between scored link-first resolution (the default) and
+	// the earlier merge-everything behaviour.
+	Mode ResolveMode
+	// MergeThreshold is the score at or above which a pair is merged.
+	// Zero means DefaultMergeThreshold.
+	MergeThreshold float64
+	// LinkThreshold is the score at or above which a pair not merged gets a
+	// possiblySame edge. Zero means DefaultLinkThreshold.
+	LinkThreshold float64
 }
+
+// ResolveMode selects the resolution policy.
+type ResolveMode string
+
+const (
+	// ResolveLinkFirst scores every candidate pair, merges only above the
+	// merge threshold and links the band below it for a person. The default.
+	ResolveLinkFirst ResolveMode = ""
+	// ResolveMergeAll merges every normalized-key group and every LLM group
+	// without scoring, as ResolveEntities did before scoring existed.
+	ResolveMergeAll ResolveMode = "merge_all"
+)
+
+// Default thresholds for link-first resolution.
+const (
+	DefaultMergeThreshold = 0.95
+	DefaultLinkThreshold  = 0.85
+)
+
+// PossiblySameEdgeType is the edge type a link-first pass writes between two
+// entities that may be one thing.
+const PossiblySameEdgeType = "possiblySame"
+
+// ProducerResolve is recorded as the _source of possiblySame edges and as the
+// producer on history rows a resolve merge closes.
+const ProducerResolve = "graphflow.resolve_entities"
 
 // ResolveGroup is one set of entities merged into a canonical name.
 type ResolveGroup struct {
 	Canonical string   `json:"canonical"`
 	Aliases   []string `json:"aliases"`
+	// Evidence is the scored pairs that put the group together. Empty in
+	// ResolveMergeAll mode, which does not score.
+	Evidence []ResolveEvidence `json:"evidence,omitempty"`
+}
+
+// ResolveEvidence is one scored candidate pair and what the score rests on.
+type ResolveEvidence struct {
+	A   string `json:"a"`
+	B   string `json:"b"`
+	AID string `json:"a_id"`
+	BID string `json:"b_id"`
+	// NameSimilarity is 1 for identical names, 0.97 for names equal after
+	// case/space/punctuation normalization, and otherwise a Jaro-Winkler
+	// similarity of the normalized names capped at 0.92 — spelling alone
+	// never merges two names that are spelled differently.
+	NameSimilarity float64 `json:"name_similarity"`
+	// SharedNeighbours counts nodes both entities are connected to;
+	// NeighbourJaccard is that over the union of their neighbours. Both zero
+	// when either entity has no neighbours, which is no evidence either way.
+	SharedNeighbours int     `json:"shared_neighbours"`
+	NeighbourJaccard float64 `json:"neighbour_jaccard"`
+	// NeighboursDisjoint is true when both have neighbours and share none —
+	// the signature of two different things with one name.
+	NeighboursDisjoint bool `json:"neighbours_disjoint,omitempty"`
+	// TypeAgreement is 1 for the same node type and 0.9 when one side is
+	// untyped. Different declared types are never candidates.
+	TypeAgreement float64 `json:"type_agreement"`
+	// LLMProposed is true when the model grouped the pair.
+	LLMProposed bool `json:"llm_proposed,omitempty"`
+	// Confirmed is true when a person graded an earlier possiblySame link
+	// between the pair as verified.
+	Confirmed bool    `json:"confirmed,omitempty"`
+	Score     float64 `json:"score"`
 }
 
 // ResolveReport summarizes an entity-resolution pass.
@@ -51,7 +140,12 @@ type ResolveReport struct {
 	EntitiesBefore int            `json:"entities_before"`
 	EntitiesMerged int            `json:"entities_merged"` // alias nodes removed
 	Groups         []ResolveGroup `json:"groups"`
-	DryRun         bool           `json:"dry_run,omitempty"`
+	// EntitiesLinked counts possiblySame links written (or, in a dry run,
+	// that would be); Links is each with its evidence.
+	EntitiesLinked int               `json:"entities_linked"`
+	Links          []ResolveEvidence `json:"links,omitempty"`
+	Mode           string            `json:"mode,omitempty"`
+	DryRun         bool              `json:"dry_run,omitempty"`
 }
 
 type entityInfo struct {
@@ -61,14 +155,29 @@ type entityInfo struct {
 	degree   int
 }
 
-// ResolveEntities finds duplicate/alias entities and merges each group into a
-// single canonical node. Returns what it did (or would do, when DryRun).
+// ResolveEntities finds duplicate/alias entities, merges the pairs whose
+// evidence scores at or above the merge threshold and links the band below it
+// with possiblySame edges for a person to confirm. Returns what it did (or
+// would do, when DryRun). ResolveMergeAll restores unscored merging.
 func ResolveEntities(ctx context.Context, db *cortexdb.DB, opts ResolveOptions) (*ResolveReport, error) {
 	if db == nil {
 		return nil, fmt.Errorf("graphflow: resolve: nil db")
 	}
+	switch opts.Mode {
+	case ResolveLinkFirst:
+		return resolveLinkFirst(ctx, db, opts)
+	case ResolveMergeAll:
+		return resolveMergeAll(ctx, db, opts)
+	default:
+		return nil, fmt.Errorf("graphflow: resolve: unknown mode %q", opts.Mode)
+	}
+}
+
+// resolveMergeAll is the unscored behaviour: every normalized-key group and
+// every LLM group is merged.
+func resolveMergeAll(ctx context.Context, db *cortexdb.DB, opts ResolveOptions) (*ResolveReport, error) {
 	entities := loadEntityInfos(ctx, db, opts.NodeTypes)
-	report := &ResolveReport{EntitiesBefore: len(entities), DryRun: opts.DryRun}
+	report := &ResolveReport{EntitiesBefore: len(entities), DryRun: opts.DryRun, Mode: string(ResolveMergeAll)}
 	if len(entities) < 2 {
 		return report, nil
 	}
@@ -150,16 +259,24 @@ func ResolveEntities(ctx context.Context, db *cortexdb.DB, opts ResolveOptions) 
 		if opts.DryRun {
 			continue
 		}
-		if err := db.Graph().MergeEntities(ctx, canonical.id, aliasIDs); err != nil {
+		if err := db.Graph().MergeEntities(resolveMergeContext(ctx, canonical.id), canonical.id, aliasIDs); err != nil {
 			return nil, fmt.Errorf("graphflow: resolve merge %q: %w", canonical.name, err)
 		}
 		recordAliases(ctx, db, canonical.id, aliasNames)
 	}
 
 	if !opts.DryRun && report.EntitiesMerged > 0 {
-		dedupeEntityEdges(ctx, db)
+		if err := dedupeEntityEdges(ctx, db); err != nil {
+			return nil, err
+		}
 	}
 	return report, nil
+}
+
+// resolveMergeContext marks the history rows a resolve merge closes.
+func resolveMergeContext(ctx context.Context, canonicalID string) context.Context {
+	return graph.WithInvalidation(ctx, graph.Invalidation{
+		Reason: graph.ReasonMerged, SupersededBy: canonicalID, Producer: ProducerResolve})
 }
 
 // canonicalKey normalizes a name to a case/space/punctuation-insensitive key,
@@ -210,7 +327,8 @@ func pickCanonical(group []entityInfo) entityInfo {
 // loadEntityInfos returns every entity node with its display name and degree.
 func loadEntityInfos(ctx context.Context, db *cortexdb.DB, nodeTypes []string) []entityInfo {
 	degree := make(map[string]int)
-	if rows, err := db.SQL().QueryContext(ctx, `SELECT from_node_id, to_node_id FROM graph_edges`); err == nil {
+	if rows, err := db.SQL().QueryContext(ctx, db.Dialect().Rebind(
+		`SELECT from_node_id, to_node_id FROM graph_edges WHERE edge_type IS NULL OR edge_type <> ?`), PossiblySameEdgeType); err == nil {
 		for rows.Next() {
 			var f, t string
 			if err := rows.Scan(&f, &t); err != nil {
@@ -229,7 +347,7 @@ func loadEntityInfos(ctx context.Context, db *cortexdb.DB, nodeTypes []string) [
 			args = append(args, t)
 		}
 	}
-	rows, err := db.SQL().QueryContext(ctx, query, args...)
+	rows, err := db.SQL().QueryContext(ctx, db.Dialect().Rebind(query), args...)
 	if err != nil {
 		return nil
 	}
@@ -358,14 +476,39 @@ func recordAliases(ctx context.Context, db *cortexdb.DB, canonicalID string, ali
 	_ = db.Graph().UpsertNode(ctx, node)
 }
 
-// dedupeEntityEdges removes duplicate entity↔entity edges (same from/to/type)
-// left behind after repointing, keeping one per group.
-func dedupeEntityEdges(ctx context.Context, db *cortexdb.DB) {
-	_, _ = db.SQL().ExecContext(ctx, `
-		DELETE FROM graph_edges
+// dedupeEntityEdges retracts duplicate entity↔entity edges (same from/to/type)
+// left behind after repointing, keeping the lowest id per group. Through
+// RetractEdgeAt, so each dropped duplicate stays in history with reason
+// "merged" rather than vanishing.
+func dedupeEntityEdges(ctx context.Context, db *cortexdb.DB) error {
+	rows, err := db.SQL().QueryContext(ctx, `
+		SELECT id, from_node_id, to_node_id, COALESCE(edge_type, '')
+		FROM graph_edges
 		WHERE from_node_id LIKE 'entity:%' AND to_node_id LIKE 'entity:%'
-		  AND rowid NOT IN (
-			SELECT MIN(rowid) FROM graph_edges
-			GROUP BY from_node_id, to_node_id, edge_type
-		  )`)
+		ORDER BY from_node_id, to_node_id, edge_type, id`)
+	if err != nil {
+		return fmt.Errorf("graphflow: resolve: dedupe: %w", err)
+	}
+	var dupes []string
+	var lastKey string
+	for rows.Next() {
+		var id, from, to, typ string
+		if err := rows.Scan(&id, &from, &to, &typ); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("graphflow: resolve: dedupe: %w", err)
+		}
+		key := from + "\x00" + to + "\x00" + typ
+		if key == lastKey {
+			dupes = append(dupes, id)
+		}
+		lastKey = key
+	}
+	_ = rows.Close()
+	dctx := graph.WithInvalidation(ctx, graph.Invalidation{Reason: graph.ReasonMerged, Producer: ProducerResolve})
+	for _, id := range dupes {
+		if err := db.Graph().RetractEdgeAt(dctx, id, db.Graph().Now()); err != nil {
+			return fmt.Errorf("graphflow: resolve: dedupe %s: %w", id, err)
+		}
+	}
+	return nil
 }

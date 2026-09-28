@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
 // ActionApplyRequest runs one action type.
@@ -381,7 +383,8 @@ func (db *DB) applyCreateObjectRule(ctx context.Context, scope *actionScope, rul
 // applyObjectTargetRule modifies or deletes the object a rule targets.
 func (db *DB) applyObjectTargetRule(ctx context.Context, scope *actionScope, rule OntologyActionRule, objectID string) (ActionEdit, error) {
 	if rule.Kind == ActionRuleDeleteObject {
-		if err := db.graph.DeleteNode(ctx, objectID); err != nil {
+		if err := db.graph.DeleteNode(graph.WithInvalidation(ctx,
+			graph.Invalidation{Reason: graph.ReasonRetracted, Producer: producerOntologyAction + ":" + scope.action.APIName}), objectID); err != nil {
 			return ActionEdit{}, fmt.Errorf("%w: action %q delete object: %w", ErrInvalidOntology, scope.action.APIName, err)
 		}
 		return ActionEdit{Kind: string(rule.Kind), ObjectID: objectID, ObjectType: rule.ObjectType}, nil

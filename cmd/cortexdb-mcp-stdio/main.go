@@ -120,8 +120,9 @@ func main() {
 		return
 	}
 
-	// `--resolve-entities [--dry-run]` merges duplicate/alias entity nodes into
-	// canonical ones (deterministic; LLM acronym/synonym detection when
+	// `--resolve-entities [--dry-run] [--merge-all]` merges duplicate/alias
+	// entity nodes the evidence is sure about and links the uncertain ones
+	// with possiblySame edges for review (LLM acronym/synonym candidates when
 	// CORTEXDB_LLM_* is set). Used by /cortexdb-resolve-entities.
 	if len(os.Args) > 1 && os.Args[1] == "--resolve-entities" {
 		runResolveEntities(os.Args[2:])

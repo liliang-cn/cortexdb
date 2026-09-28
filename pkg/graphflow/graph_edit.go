@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
 // LLM-driven knowledge-graph maintenance — create, UPDATE and DELETE.
@@ -196,7 +197,7 @@ func ApplyGraphEdits(ctx context.Context, db *cortexdb.DB, plan GraphEditPlan, o
 					report.Applied = append(report.Applied, e)
 					continue
 				}
-				n, derr := deleteRelation(ctx, db, from, to, strings.TrimSpace(e.RelType))
+				n, derr := deleteRelation(editInvalidation(ctx, e), db, from, to, strings.TrimSpace(e.RelType))
 				if derr != nil {
 					return report, derr
 				}
@@ -225,7 +226,7 @@ func ApplyGraphEdits(ctx context.Context, db *cortexdb.DB, plan GraphEditPlan, o
 				continue
 			}
 			// DeleteNode cascades this entity's edges.
-			if derr := db.Graph().DeleteNode(ctx, cortexdb.EntityNodeID(name)); derr != nil {
+			if derr := db.Graph().DeleteNode(editInvalidation(ctx, e), cortexdb.EntityNodeID(name)); derr != nil {
 				return report, fmt.Errorf("graphflow: graph edit: delete entity %q: %w", name, derr)
 			}
 			report.EntitiesDeleted++
@@ -414,24 +415,52 @@ func entityExists(ctx context.Context, db *cortexdb.DB, name string) bool {
 	return err == nil && node != nil
 }
 
-// deleteRelation removes edges between two entities, optionally restricted to
-// one relation type. Returns how many edges were removed.
+// deleteRelation retracts edges between two entities, optionally restricted to
+// one relation type. Returns how many edges were retracted.
+//
+// Through RetractEdgeAt rather than a DELETE, so the fact the model asked to
+// remove is still readable as of before the edit, with the edit's reason on
+// its history row. A bare DELETE here was the one retraction path in the
+// module that left no trace at all.
 func deleteRelation(ctx context.Context, db *cortexdb.DB, from, to, relType string) (int, error) {
 	fromID := cortexdb.EntityNodeID(from)
 	toID := cortexdb.EntityNodeID(to)
-	query := `DELETE FROM graph_edges WHERE from_node_id = ? AND to_node_id = ?`
+	query := `SELECT id FROM graph_edges WHERE from_node_id = ? AND to_node_id = ?`
 	args := []any{fromID, toID}
 	if relType != "" {
 		query += ` AND edge_type = ?`
 		args = append(args, relType)
 	}
-	res, err := db.SQL().ExecContext(ctx, query, args...)
+	rows, err := db.SQL().QueryContext(ctx, db.Dialect().Rebind(query), args...)
 	if err != nil {
 		return 0, fmt.Errorf("graphflow: graph edit: delete relation: %w", err)
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return 0, nil
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return 0, fmt.Errorf("graphflow: graph edit: delete relation: %w", err)
+		}
+		ids = append(ids, id)
 	}
-	return int(n), nil
+	_ = rows.Close()
+	n := 0
+	for _, id := range ids {
+		if err := db.Graph().RetractEdgeAt(ctx, id, db.Graph().Now()); err != nil {
+			return n, fmt.Errorf("graphflow: graph edit: delete relation: %w", err)
+		}
+		n++
+	}
+	return n, nil
+}
+
+// producerGraphEdit is recorded on every history row a graph edit closes.
+const producerGraphEdit = "graphflow.graph_edit"
+
+// editInvalidation marks the rows a delete edit retracts. The reason stays in
+// the closed vocabulary so history can be counted by it; the model's own
+// justification is in the edit report.
+func editInvalidation(ctx context.Context, _ GraphEdit) context.Context {
+	return graph.WithInvalidation(ctx, graph.Invalidation{Reason: graph.ReasonRetracted, Producer: producerGraphEdit})
 }
