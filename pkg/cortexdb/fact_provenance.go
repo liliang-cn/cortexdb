@@ -93,11 +93,7 @@ func (db *DB) FactProvenanceFor(ctx context.Context, edgeID string, withText boo
 			// where it came from, which is what the caller needs to know.
 			return out, nil
 		}
-		out.DocumentID, _ = props["document_id"].(string)
-		out.Source, _ = props["provenance"].(string)
-		out.Rule, _ = props["rule_id"].(string)
-		out.Inferred, _ = props["inferred"].(bool)
-		out.ChunkIDs = stringsFromAny(props["chunk_ids"])
+		out.fillFromProperties(props)
 	}
 
 	if !withText || len(out.ChunkIDs) == 0 {
@@ -122,6 +118,18 @@ func (db *DB) FactProvenanceFor(ctx context.Context, edgeID string, withText boo
 		}
 	}
 	return out, nil
+}
+
+// fillFromProperties reads the provenance keys out of an edge's decoded
+// properties. Shared with verify_claims, which already holds the properties of
+// every edge it weighs and should not go back to the store once per edge to
+// read what it has in hand.
+func (p *FactProvenance) fillFromProperties(props map[string]any) {
+	p.DocumentID, _ = props["document_id"].(string)
+	p.Source, _ = props["provenance"].(string)
+	p.Rule, _ = props["rule_id"].(string)
+	p.Inferred, _ = props["inferred"].(bool)
+	p.ChunkIDs = stringsFromAny(props["chunk_ids"])
 }
 
 // stringsFromAny reads a JSON array of strings back out of a decoded property.
