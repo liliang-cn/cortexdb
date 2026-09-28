@@ -65,6 +65,8 @@ var toolWrites = map[string]bool{
 	"search_graphrag_lexical":   false,
 	"fact_provenance":           false,
 	"uncited_facts":             false,
+	"verify_claims":             false,
+	"graph_health":              false,
 
 	// Ontology.
 	"ontology_save":         true,
@@ -158,7 +160,7 @@ var toolWrites = map[string]bool{
 // table so that a tool added without a decision cannot slip through by sharing
 // a name with one already listed, and so that a tool quietly disappearing is
 // noticed too. Change it in the same commit that adds the tool and its row.
-const toolCount = 84
+const toolCount = 86
 
 // TestEveryToolDeclaresWhetherItWrites is the test the Mutates doc comment
 // promises: it makes forgetting impossible rather than merely unlikely.

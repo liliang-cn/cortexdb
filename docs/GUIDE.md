@@ -257,6 +257,27 @@ rows, _  := db.NeedsAttention(ctx, 20)         // contract_needs_attention
 prov, _  := db.FactProvenanceFor(ctx, edgeID, true) // fact_provenance, with the cited text
 ```
 
+A generated answer can be checked against the same records before it is
+repeated. `VerifyClaims` (tool `verify_claims`) takes (subject, relation,
+object) triples by name or id and returns, for each, `supported`,
+`contradicted` or `absent` with the edges behind the verdict and their
+provenance. Contradicted means a single-valued link (the ontology gives it a
+ONE side, or the caller lists it in `SingleValued`) currently holds another
+value, the fact's `valid_to` has passed, or a current edge names it in
+`_contradicts`. Deterministic; no model.
+
+```go
+res, _ := db.VerifyClaims(ctx, []cortexdb.Claim{{Subject: "Leo", Relation: "lives_in", Object: "Beijing"}},
+	cortexdb.VerifyClaimsOptions{SingleValued: []string{"born_in"}})
+// res.Verdicts[0].Status == "contradicted", Reason == "single_valued_conflict"
+```
+
+`GraphHealth` (tool `graph_health`) is the shelf-wide counterpart: growth per
+producer with spike detection, the high in/out-degree tail, supersessions
+(closed facts, replaced versions, retractions) per day, and temporal
+invariants — a single-valued link with overlapping intervals, or an interval
+that ends before it starts. Each check reports whether it fired.
+
 `ContractTally` counts nodes and edges alike — a graph's assertions are mostly
 edges, and a tally over nodes alone would report a shelf far better established
 than it is — and it reports `untagged` beside the five grades. On a shelf that

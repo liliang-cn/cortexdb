@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **`verify_claims`** (`DB.VerifyClaims`): checks (subject, relation, object)
+  triples against the graph and answers supported / contradicted / absent per
+  claim, with the evidence edges and their provenance and contract fields.
+  Contradicted comes from the store's own notions — ontology cardinality or a
+  caller-declared single-valued relation, an ended `valid_to`, `_contradicts`.
+  Deterministic. On a seeded 337-claim set: supported and contradicted
+  precision 1.00; contradicted recall 0.80 with the ontology alone (the misses
+  are a relation the ontology does not describe) and 1.00 once declared.
+- **`graph_health`** (`DB.GraphHealth`): growth per producer, degree tail,
+  supersessions per day and temporal invariant violations, each reporting
+  whether it fired.
+
 ## [2.112.0] - 2026-09-25
 
 ### Added

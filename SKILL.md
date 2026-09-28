@@ -896,7 +896,8 @@ Important tools:
 - Inference: `apply_inference`, `rules_save`, `rules_list`, `rules_delete`, `rules_apply`, `inference_explain`
 - Decision ledger: `decision_record`, `decision_chain`, `decision_precedents`
 - Aggregates and thresholds: `aggregate_metadata`, `representative_records`, `search_vector_range`
-- Graph introspection: `graph_schema`, `graph_property_values`, `graph_statistics`
+- Graph introspection: `graph_schema`, `graph_property_values`, `graph_statistics`, `graph_health`
+- Claim checking: `verify_claims`, `fact_provenance`, `uncited_facts`
 - Graph analytics: `rank_graph_nodes`, `predict_graph_edges`
 - Disambiguation: `disambiguate_mentions`
 

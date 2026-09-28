@@ -340,6 +340,46 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			),
 		},
 		{
+			Name:        "verify_claims",
+			Description: "Check claims against the knowledge graph before repeating them. Each claim is a (subject, relation, object) triple by name or node id; each comes back supported (a current edge says so), contradicted (the relation reaches only one object and the graph currently holds a different one, the fact's validity interval has ended, or a current edge declares it cannot be true alongside it via the knowledge contract's _contradicts), or absent (the graph says nothing — with the reason: unknown subject, unknown object, no edge, retracted, refused). Every verdict lists the edges it rests on with their provenance (document, chunks, rule, _grade, _producer, _source), so a supported claim can be cited and a contradicted one corrected. Deterministic, no model. A relation counts as single-valued only when the active ontology gives it a ONE side or you list it in single_valued; otherwise a different value is not a contradiction, because many relations legitimately hold several. Names match exactly or ignoring case and punctuation, never by containment.",
+			InputSchema: toolObjectSchema(
+				[]string{"claims"},
+				map[string]any{
+					"claims": map[string]any{
+						"type": "array",
+						"items": toolObjectSchema(
+							[]string{"subject", "relation", "object"},
+							map[string]any{
+								"subject":  toolStringSchema("Subject entity name or node id."),
+								"relation": toolStringSchema("Relation / edge type, e.g. lives_in. Case, spaces and hyphens are folded."),
+								"object":   toolStringSchema("Object entity name or node id."),
+							},
+						),
+					},
+					"single_valued": toolStringArraySchema("Relations you know reach at most one object from a subject, in addition to the ontology's. Applies to this call only."),
+					"at":            toolStringSchema("Optional RFC 3339 instant: check which facts held then (valid time), by what the graph holds now. Default now."),
+					"with_text":     toolBooleanSchema("Also load the supporting chunk text of every evidence edge."),
+				},
+			),
+		},
+		{
+			Name:        "graph_health",
+			Description: "Health checks for a shared graph, each saying whether it fired: growth per producer (a day at spike_factor times a producer's usual volume), the high out- and in-degree tail (hubs far above the median degree, usually extraction artefacts every traversal walks through), supersessions per day (facts closed, versions replaced, edges retracted — bulk churn means writers overwriting each other), and temporal invariants (a single-valued relation holding more than one value over the same time, or an interval ending before it begins). Read-only and deterministic. healthy is false when any check fired; alerts names which. Use graph_statistics for plain size and connectivity.",
+			InputSchema: toolObjectSchema(
+				nil,
+				map[string]any{
+					"window_days":            toolIntegerSchema("Days of history the growth and supersession checks read. Default 30."),
+					"top_n":                  toolIntegerSchema("Nodes listed in each degree tail. Default 10."),
+					"spike_factor":           toolNumberSchema("A day is a spike at this multiple of the median of the other active days. Default 5."),
+					"min_spike":              toolIntegerSchema("A spike must also be at least this many rows. Default 20."),
+					"max_supersedes_per_day": toolIntegerSchema("Fire the supersession check when one day exceeds this, baseline or not. Default 200."),
+					"hub_factor":             toolNumberSchema("A hub has at least this multiple of the median degree. Default 20."),
+					"min_hub_degree":         toolIntegerSchema("A hub also has at least this degree. Default 25."),
+					"single_valued":          toolStringArraySchema("Relations to treat as single-valued in addition to the ontology's."),
+				},
+			),
+		},
+		{
 			Name:        "build_context",
 			Description: "Pack chunk text into a bounded context window.",
 			InputSchema: toolObjectSchema(
@@ -746,6 +786,18 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.db.FactProvenanceTool(ctx, req)
+	case "verify_claims":
+		var req ToolVerifyClaimsRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.db.VerifyClaimsTool(ctx, req)
+	case "graph_health":
+		var req ToolGraphHealthRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.db.GraphHealthTool(ctx, req)
 	case "uncited_facts":
 		var req ToolUncitedFactsRequest
 		if err := json.Unmarshal(input, &req); err != nil {

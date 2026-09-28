@@ -233,6 +233,16 @@ rows, _  := db.NeedsAttention(ctx, 20)         // contract_needs_attention
 prov, _  := db.FactProvenanceFor(ctx, edgeID, true) // fact_provenance，带引文原文
 ```
 
+生成的回答在转述之前可以先对照同一批记录核一遍。`VerifyClaims`（工具
+`verify_claims`）接收按名字或 id 给出的 (主语, 关系, 宾语) 三元组，逐条返回
+`supported`、`contradicted` 或 `absent`，附上判定所依据的边及其来源。contradicted
+指：单值关系（本体里有 ONE 一侧，或调用方在 `SingleValued` 里声明）当前是另一个值、
+事实的 `valid_to` 已过、或有一条当前边在 `_contradicts` 里点名否定它。确定性，不调模型。
+
+`GraphHealth`（工具 `graph_health`）是全书架层面的对应物：按 producer 的增长（带突增检测）、
+入度/出度长尾、每天的 supersede 次数（关闭的事实、被替换的版本、撤回）、时间不变式
+（单值关系上区间重叠，或区间结束早于开始）。每项检查都报告自己是否报警。
+
 `ContractTally` 节点和边一起数 —— 图的断言大多是边，只数节点会把书架报得比实际
 可靠得多 —— 并在五个 grade 之外报出 `untagged`。在早于契约的书架上，或者一个
 生产者写、另一个不写的书架上，这是最大的那个数字；不画它的图表描述的是 3% 的
