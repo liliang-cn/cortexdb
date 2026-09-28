@@ -70,7 +70,9 @@ func temporalToolDefinitions() []ToolDefinition {
 		{
 			Name: "graph_diff",
 			Description: "Report what the graph gained, lost and changed between two instants: added, retracted and changed nodes " +
-				"and edges, each with what it said before and after. Also names how the changed facts about one subject sit in " +
+				"and edges, each with what it said before and after and, for retracted and changed rows, why it ended (invalidation: " +
+				"reason such as superseded, retracted, merged or document_deleted; superseded_by, the id that replaced it; producer, " +
+				"what made the change). Also names how the changed facts about one subject sit in " +
 				"time using Allen's interval relations, so 'this claim ended where that one began' is stated rather than left to " +
 				"be read off two timestamps. Paged; pass the returned cursor back for the next page. Reads only.",
 			InputSchema: toolObjectSchema(

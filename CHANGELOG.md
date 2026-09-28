@@ -2,6 +2,54 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **History says why a row ended.** `graph_node_history` and
+  `graph_edge_history` gain `reason`, `superseded_by` and `producer`, migrated
+  in place on SQLite and PostgreSQL (rows archived before this read with an
+  empty reason — the store does not know, and does not invent one). Every
+  archive path records one: an upsert's replaced version is `superseded` (by
+  its own id), a delete is `retracted`, and the facade's own paths say
+  `document_deleted`, `orphaned`, `pruned` or `merged`. Callers state their own
+  with `graph.WithInvalidation`. Read back through `NodeHistory` /
+  `EdgeHistory` (Go, both on `GraphStore` and the facade), `HistoryReasons`,
+  and on every retracted or changed row of `graph_diff` as `invalidation`.
+  Exercising every invalidation path the facade and graphflow expose: 15 of 15
+  history rows carry a reason, against 0 of 13 before.
+- **Entity resolution links first, merges later.** `graphflow.ResolveEntities`
+  scores each candidate pair — name similarity (normalized key, or
+  Jaro-Winkler capped at 0.92), shared neighbours, type agreement, and whether
+  the model grouped it — and merges only at 0.95 or above. From 0.85 it writes
+  a `possiblySame` edge with the evidence, graded `held` with a `_why`, so
+  `contract_needs_attention` lists it for a person; grading that edge
+  `verified` merges the pair on the next pass, `refused` keeps it apart. On a
+  24-pair labeled fixture (12 aliases, 12 near-miss homonyms and siblings):
+  false merges 5/12 → 0/12 without a model and 6/12 → 0/12 with one; aliases
+  found (merged or linked) 8/12 → 10/12 and 10/12 → 11/12, of which 6 are
+  merged outright. `ResolveOptions.Mode = ResolveMergeAll` (CLI
+  `--merge-all`) restores the unscored behaviour.
+
+### Changed
+
+- **Merges, fact supersession and graph-edit deletes leave history.**
+  `MergeEntities` archives the alias's edges before repointing them, and the
+  alias itself, with reason `merged` and the survivor as `superseded_by`; it
+  no longer drops unrelated self-loops elsewhere in the graph.
+  `graphflow.SupersedeFact` rewrites the closed fact through the graph store
+  (so its open version reaches history) instead of an in-place UPDATE, and
+  runs on PostgreSQL; `SupersedeFactWith` names what replaced it, and
+  `TemporalFact.SupersededBy` reads it back. `ApplyGraphEdits` relation deletes
+  go through `RetractEdgeAt` rather than a bare DELETE, which left no trace.
+
+### Fixed
+
+- **Ingesting after an as-of query failed on SQLite** with "malformed JSON":
+  the as-of expression index was an unguarded `json_extract`, which SQLite
+  evaluates on every insert, and chunk edges carry empty properties. The index
+  is now guarded (and renamed; the old one is dropped on first use).
+
 ## [2.112.0] - 2026-09-25
 
 ### Added

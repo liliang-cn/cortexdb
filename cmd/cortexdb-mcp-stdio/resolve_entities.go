@@ -10,10 +10,16 @@ import (
 	"github.com/liliang-cn/cortexdb/v2/pkg/graphflow"
 )
 
-// runResolveEntities merges duplicate/alias entity nodes into canonical ones.
-// One-shot mode behind `--resolve-entities [--dry-run] [--types T,U]`.
-// Deterministic by default (case/space/punctuation variants); when
-// CORTEXDB_LLM_* is set it also merges acronyms/synonyms (K8s ↔ Kubernetes).
+// runResolveEntities resolves duplicate/alias entity nodes.
+// One-shot mode behind `--resolve-entities [--dry-run] [--types T,U] [--merge-all]`.
+//
+// Link-first by default: a candidate pair is scored on name similarity,
+// shared neighbours and type agreement; at 0.95 or above it is merged, from
+// 0.85 it gets a possiblySame edge graded held for a person
+// (contract_needs_attention lists them). When CORTEXDB_LLM_* is set the model
+// also proposes acronyms/synonyms (K8s ↔ Kubernetes) as candidates.
+// --merge-all restores the earlier behaviour: merge every normalized-key group
+// and every model group without scoring.
 //
 // --types restricts the merge to entities of those node types, which a store
 // holding more than one kind of graph needs: a code graph leaves each symbol's
@@ -21,11 +27,14 @@ import (
 // and would otherwise be merged into one file.
 func runResolveEntities(args []string) {
 	dryRun := false
+	mode := graphflow.ResolveLinkFirst
 	var nodeTypes []string
 	for i, a := range args {
 		switch {
 		case a == "--dry-run" || a == "-n":
 			dryRun = true
+		case a == "--merge-all":
+			mode = graphflow.ResolveMergeAll
 		case a == "--types" && i+1 < len(args):
 			nodeTypes = splitTypes(args[i+1])
 		case strings.HasPrefix(a, "--types="):
@@ -53,6 +62,7 @@ func runResolveEntities(args []string) {
 		LLM:       llm,
 		DryRun:    dryRun,
 		NodeTypes: nodeTypes,
+		Mode:      mode,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cortexdb: resolve entities: %v\n", err)
@@ -72,6 +82,18 @@ func runResolveEntities(args []string) {
 		verb, report.EntitiesMerged, len(report.Groups), report.EntitiesBefore, dbPath)
 	for _, g := range report.Groups {
 		fmt.Printf("  %s  ←  %v\n", g.Canonical, g.Aliases)
+	}
+	if mode == graphflow.ResolveLinkFirst {
+		linkVerb := "linked"
+		if dryRun {
+			linkVerb = "would link"
+		}
+		fmt.Printf("%s %d possible alias pairs for review (possiblySame, held — see contract_needs_attention)\n",
+			linkVerb, report.EntitiesLinked)
+		for _, l := range report.Links {
+			fmt.Printf("  %s  ~  %s  score %.2f (name %.2f, shared neighbours %d, type %.1f)\n",
+				l.A, l.B, l.Score, l.NameSimilarity, l.SharedNeighbours, l.TypeAgreement)
+		}
 	}
 }
 

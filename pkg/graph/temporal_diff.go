@@ -78,18 +78,25 @@ func (v EdgeVersion) Interval() Interval { return IntervalOf(v.ValidFrom, v.Vali
 // before as well as what it says now. Before is nil for an addition and After
 // is nil for a retraction; a diff that reported only ids would send the caller
 // back for two more reads per row.
+//
+// Invalidation says why the `before` version stopped being current — the
+// reason, what replaced it and who made the change — for retracted and
+// changed rows. Nil for an addition, and for a row whose history predates
+// the reason columns and so cannot say.
 type NodeChange struct {
-	ID     string       `json:"id"`
-	Kind   DiffKind     `json:"kind"`
-	Before *NodeVersion `json:"before,omitempty"`
-	After  *NodeVersion `json:"after,omitempty"`
+	ID           string        `json:"id"`
+	Kind         DiffKind      `json:"kind"`
+	Before       *NodeVersion  `json:"before,omitempty"`
+	After        *NodeVersion  `json:"after,omitempty"`
+	Invalidation *Invalidation `json:"invalidation,omitempty"`
 }
 
 type EdgeChange struct {
-	ID     string       `json:"id"`
-	Kind   DiffKind     `json:"kind"`
-	Before *EdgeVersion `json:"before,omitempty"`
-	After  *EdgeVersion `json:"after,omitempty"`
+	ID           string        `json:"id"`
+	Kind         DiffKind      `json:"kind"`
+	Before       *EdgeVersion  `json:"before,omitempty"`
+	After        *EdgeVersion  `json:"after,omitempty"`
+	Invalidation *Invalidation `json:"invalidation,omitempty"`
 }
 
 // DiffOptions bounds a diff.
@@ -186,12 +193,53 @@ func (g *GraphStore) GraphDiff(ctx context.Context, from, to time.Time, opts Dif
 		}
 	}
 
+	if err := g.attachInvalidations(ctx, out, from, to); err != nil {
+		return nil, err
+	}
+
 	rels, err := g.relateChangedEdges(ctx, out.Edges, opts.MaxIntervalPairs)
 	if err != nil {
 		return nil, err
 	}
 	out.IntervalRelations = rels
 	return out, nil
+}
+
+// attachInvalidations reads, for every retracted or changed row, the history
+// row that closed its `before` version. One query per list per page.
+func (g *GraphStore) attachInvalidations(ctx context.Context, out *GraphDiffResult, from, to time.Time) error {
+	var nodeIDs, edgeIDs []string
+	for _, c := range out.Nodes {
+		if c.Kind != DiffAdded {
+			nodeIDs = append(nodeIDs, c.ID)
+		}
+	}
+	for _, c := range out.Edges {
+		if c.Kind != DiffAdded {
+			edgeIDs = append(edgeIDs, c.ID)
+		}
+	}
+	nodeInv, err := g.closingInvalidations(ctx, "graph_node_history", nodeIDs, from, to)
+	if err != nil {
+		return err
+	}
+	edgeInv, err := g.closingInvalidations(ctx, "graph_edge_history", edgeIDs, from, to)
+	if err != nil {
+		return err
+	}
+	for i := range out.Nodes {
+		if inv, ok := nodeInv[out.Nodes[i].ID]; ok && !inv.IsZero() {
+			inv := inv
+			out.Nodes[i].Invalidation = &inv
+		}
+	}
+	for i := range out.Edges {
+		if inv, ok := edgeInv[out.Edges[i].ID]; ok && !inv.IsZero() {
+			inv := inv
+			out.Edges[i].Invalidation = &inv
+		}
+	}
+	return nil
 }
 
 // versioned is what both streams have in common: an id, a fingerprint and a

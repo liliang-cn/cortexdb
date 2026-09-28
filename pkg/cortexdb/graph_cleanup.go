@@ -9,6 +9,18 @@ import (
 	"time"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
+)
+
+// Producers recorded on the history rows this package's own write paths
+// close. See graph.Invalidation.
+const (
+	producerDocumentCleanup = "cortexdb.document_cleanup"
+	producerPruneMemory     = "cortexdb.prune_dangling_memory"
+	producerPruneJunk       = "cortexdb.prune_junk_entities"
+	producerMemoryDelete    = "cortexdb.memory_delete"
+	producerDeleteEntities  = "cortexdb.delete_entities"
+	producerOntologyAction  = "cortexdb.ontology_action"
 )
 
 func (db *DB) cleanupKnowledgeGraphArtifactsTx(ctx context.Context, tx *sql.Tx, knowledgeID string, chunks []*core.Embedding) ([]string, error) {
@@ -38,7 +50,8 @@ func (db *DB) cleanupKnowledgeGraphArtifactsTx(ctx context.Context, tx *sql.Tx, 
 	// an answer. ArchiveNodesTx takes the edges of each node with it, because
 	// the DELETE below cascades to them whether or not they were listed.
 	at := time.Now().UTC()
-	if err := db.graph.ArchiveEdgesTx(ctx, tx, edgeIDs, at); err != nil {
+	docCtx := graph.WithInvalidation(ctx, graph.Invalidation{Reason: graph.ReasonDocumentDeleted, Producer: producerDocumentCleanup})
+	if err := db.graph.ArchiveEdgesTx(docCtx, tx, edgeIDs, at); err != nil {
 		return nil, fmt.Errorf("record document graph edges: %w", err)
 	}
 	if err := deleteStringIDsTx(ctx, db.Dialect(), tx, "graph_edges", "id", edgeIDs); err != nil {
@@ -50,7 +63,7 @@ func (db *DB) cleanupKnowledgeGraphArtifactsTx(ctx context.Context, tx *sql.Tx, 
 	for _, chunk := range chunks {
 		nodeIDs = append(nodeIDs, chunk.ID)
 	}
-	if err := db.graph.ArchiveNodesTx(ctx, tx, nodeIDs, at); err != nil {
+	if err := db.graph.ArchiveNodesTx(docCtx, tx, nodeIDs, at); err != nil {
 		return nil, fmt.Errorf("record graph nodes: %w", err)
 	}
 	if err := deleteStringIDsTx(ctx, db.Dialect(), tx, "graph_nodes", "id", nodeIDs); err != nil {
@@ -61,7 +74,8 @@ func (db *DB) cleanupKnowledgeGraphArtifactsTx(ctx context.Context, tx *sql.Tx, 
 	if err != nil {
 		return nil, fmt.Errorf("get orphan entity nodes: %w", err)
 	}
-	if err := db.graph.ArchiveNodesTx(ctx, tx, orphanIDs, at); err != nil {
+	orphanCtx := graph.WithInvalidation(ctx, graph.Invalidation{Reason: graph.ReasonOrphaned, Producer: producerDocumentCleanup})
+	if err := db.graph.ArchiveNodesTx(orphanCtx, tx, orphanIDs, at); err != nil {
 		return nil, fmt.Errorf("record orphan entity nodes: %w", err)
 	}
 	if err := deleteStringIDsTx(ctx, db.Dialect(), tx, "graph_nodes", "id", orphanIDs); err != nil {

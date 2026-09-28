@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 )
 
@@ -54,6 +55,11 @@ type TemporalFact struct {
 	// RecordedAt is the wall-clock time the fact was written (transaction time).
 	// Set by SaveTemporalFact; read back by QueryFactsAsOf.
 	RecordedAt *time.Time `json:"recorded_at,omitempty"`
+
+	// SupersededBy is the edge id of the fact that later replaced this one,
+	// when SaveTemporalFact superseded it. Read back by QueryFactsAsOf, so a
+	// question about the past can see what the answer changed to.
+	SupersededBy string `json:"superseded_by,omitempty"`
 }
 
 // TemporalFilter optionally scopes QueryFactsAsOf to a subject and/or predicate.
@@ -111,7 +117,11 @@ func SaveTemporalFact(ctx context.Context, db *cortexdb.DB, fact TemporalFact) e
 		supersede = shouldAutoSupersede(ctx, db, fact, typ, validFrom)
 	}
 	if supersede {
-		if _, err := SupersedeFact(ctx, db, fact.From, typ, validFrom); err != nil {
+		// The new fact's edge id, as UpsertRelations below will write it, so
+		// the closed fact's history names what replaced it.
+		newID := fmt.Sprintf("edge:relation:%s:%s:%s",
+			cortexdb.EntityNodeID(fact.From), cortexdb.EntityNodeID(fact.To), typ)
+		if _, err := SupersedeFactWith(ctx, db, fact.From, typ, validFrom, SupersedeOptions{SupersededBy: newID}); err != nil {
 			return err
 		}
 	}
@@ -200,6 +210,35 @@ func shouldAutoSupersede(ctx context.Context, db *cortexdb.DB, fact TemporalFact
 }
 
 func SupersedeFact(ctx context.Context, db *cortexdb.DB, from, typ string, asOf time.Time) (int, error) {
+	return SupersedeFactWith(ctx, db, from, typ, asOf, SupersedeOptions{})
+}
+
+// SupersedeOptions says what replaced the facts SupersedeFactWith closes.
+type SupersedeOptions struct {
+	// SupersededBy is the id of the fact that replaces the closed ones, when
+	// there is one. SaveTemporalFact fills it with the new fact's edge id.
+	SupersededBy string
+	// Producer names the caller; empty records ProducerTemporal.
+	Producer string
+}
+
+// ProducerTemporal is recorded on history rows closed by supersession.
+const ProducerTemporal = "graphflow.temporal"
+
+// factSupersededByKey is written into a closed fact's properties beside
+// valid_to, so a read of the fact as of a time it was still valid can say
+// what later replaced it.
+const factSupersededByKey = "superseded_by"
+
+// SupersedeFactWith is SupersedeFact that records what replaced the closed
+// facts.
+//
+// Each closed fact is rewritten through the graph store, not by an UPDATE in
+// place: the version that was open moves to history with reason
+// "superseded", superseded_by and producer set, so "why did this stop being
+// true, and what replaced it" is answerable from the history — which an
+// in-place UPDATE, the previous implementation, left with no row at all.
+func SupersedeFactWith(ctx context.Context, db *cortexdb.DB, from, typ string, asOf time.Time, opts SupersedeOptions) (int, error) {
 	if db == nil {
 		return 0, fmt.Errorf("graphflow: temporal: nil db")
 	}
@@ -208,25 +247,68 @@ func SupersedeFact(ctx context.Context, db *cortexdb.DB, from, typ string, asOf 
 		return 0, fmt.Errorf("graphflow: supersede: empty subject")
 	}
 	typ = firstNonEmptyTemporal(typ, "related_to")
+	if err := db.Graph().InitGraphSchema(ctx); err != nil {
+		return 0, fmt.Errorf("graphflow: supersede: %w", err)
+	}
 
-	res, err := db.SQL().ExecContext(ctx, `
-		UPDATE graph_edges
-		SET properties = json_set(COALESCE(properties, '{}'), '$.'||?, ?)
-		WHERE from_node_id = ?
-		  AND edge_type = ?
-		  AND json_extract(properties, '$.'||?) IS NOT NULL
-		  AND json_extract(properties, '$.'||?) IS NULL`,
-		factValidToKey, asOf.UTC().Format(time.RFC3339),
-		fromID, typ,
-		factValidFromKey, factValidToKey)
+	d := db.Dialect()
+	validFromCol := d.JSONTextGuarded("properties", factValidFromKey)
+	validToCol := d.JSONTextGuarded("properties", factValidToKey)
+	rows, err := db.SQL().QueryContext(ctx, d.Rebind(`SELECT id FROM graph_edges
+		WHERE from_node_id = ? AND edge_type = ?
+		  AND `+validFromCol+` IS NOT NULL
+		  AND `+validToCol+` IS NULL`), fromID, typ)
 	if err != nil {
 		return 0, fmt.Errorf("graphflow: supersede: %w", err)
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("graphflow: supersede: rows affected: %w", err)
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return 0, fmt.Errorf("graphflow: supersede: %w", err)
+		}
+		ids = append(ids, id)
 	}
-	return int(n), nil
+	_ = rows.Close()
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	producer := strings.TrimSpace(opts.Producer)
+	if producer == "" {
+		producer = ProducerTemporal
+	}
+	wctx := graph.WithInvalidation(ctx, graph.Invalidation{
+		Reason:       graph.ReasonSuperseded,
+		SupersededBy: strings.TrimSpace(opts.SupersededBy),
+		Producer:     producer,
+	})
+	edges, err := db.Graph().GetEdgesBatch(ctx, ids)
+	if err != nil {
+		return 0, fmt.Errorf("graphflow: supersede: %w", err)
+	}
+	closed := 0
+	for _, e := range edges {
+		if e == nil {
+			continue
+		}
+		if e.Properties == nil {
+			e.Properties = map[string]interface{}{}
+		}
+		e.Properties[factValidToKey] = asOf.UTC().Format(time.RFC3339)
+		if opts.SupersededBy != "" {
+			e.Properties[factSupersededByKey] = opts.SupersededBy
+		}
+		// The rewrite opens its version now; carrying the old graph-level
+		// valid_from would close the previous version at the instant it opened.
+		e.ValidFrom = time.Time{}
+		if err := db.Graph().UpsertEdge(wctx, e); err != nil {
+			return closed, fmt.Errorf("graphflow: supersede: %w", err)
+		}
+		closed++
+	}
+	return closed, nil
 }
 
 // QueryFactsAsOf returns the temporal facts whose validity interval contains the
@@ -247,8 +329,15 @@ func ensureTemporalIndex(ctx context.Context, db *cortexdb.DB) error {
 	if err := db.Graph().InitGraphSchema(ctx); err != nil {
 		return fmt.Errorf("graphflow: temporal: init graph schema: %w", err)
 	}
-	stmt := `CREATE INDEX IF NOT EXISTS idx_graph_edges_valid_from ON graph_edges(` +
-		db.Dialect().JSONText("properties", factValidFromKey) + `)`
+	// Guarded, and under a new name. The first version indexed the bare
+	// json_extract, and SQLite evaluates an expression index on every insert:
+	// once any as-of query had run, writing an edge whose properties were
+	// empty — every chunk edge IngestDocument writes — failed with
+	// "malformed JSON". The old index is dropped so a brain that already has
+	// it stops failing those writes.
+	_, _ = db.SQL().ExecContext(ctx, `DROP INDEX IF EXISTS idx_graph_edges_valid_from`)
+	stmt := `CREATE INDEX IF NOT EXISTS idx_graph_edges_valid_from_guarded ON graph_edges(` +
+		db.Dialect().JSONTextGuarded("properties", factValidFromKey) + `)`
 	_, _ = db.SQL().ExecContext(ctx, stmt)
 	return nil
 }
@@ -263,9 +352,10 @@ func asOfQuery(d sqldialect.Dialect, at time.Time, filter TemporalFilter) (strin
 	// Asked of the dialect rather than written out: json_extract is SQLite's
 	// and PostgreSQL has no such function, so a hardcoded query is a feature
 	// that cannot cross backends.
-	validFromCol := d.JSONText("properties", factValidFromKey)
-	validToCol := d.JSONText("properties", factValidToKey)
-	recordedCol := d.JSONText("properties", factRecordedAtKey)
+	validFromCol := d.JSONTextGuarded("properties", factValidFromKey)
+	validToCol := d.JSONTextGuarded("properties", factValidToKey)
+	recordedCol := d.JSONTextGuarded("properties", factRecordedAtKey)
+	supersededCol := d.JSONTextGuarded("properties", factSupersededByKey)
 
 	// The instant is compared in SQL, not in Go.
 	//
@@ -282,7 +372,8 @@ func asOfQuery(d sqldialect.Dialect, at time.Time, filter TemporalFilter) (strin
 	query := `SELECT from_node_id, to_node_id, COALESCE(edge_type, ''),
 	                 ` + validFromCol + `,
 	                 ` + validToCol + `,
-	                 ` + recordedCol + `
+	                 ` + recordedCol + `,
+	                 ` + supersededCol + `
 	          FROM graph_edges
 	          WHERE ` + validFromCol + ` IS NOT NULL
 	            AND ` + validFromCol + ` <= ?
@@ -323,8 +414,8 @@ func QueryFactsAsOf(ctx context.Context, db *cortexdb.DB, at time.Time, filter T
 	out := make([]TemporalFact, 0)
 	for rows.Next() {
 		var fromID, toID, etype string
-		var validFromStr, validToStr, recordedStr sql.NullString
-		if err := rows.Scan(&fromID, &toID, &etype, &validFromStr, &validToStr, &recordedStr); err != nil {
+		var validFromStr, validToStr, recordedStr, supersededStr sql.NullString
+		if err := rows.Scan(&fromID, &toID, &etype, &validFromStr, &validToStr, &recordedStr, &supersededStr); err != nil {
 			return nil, fmt.Errorf("graphflow: query facts: scan: %w", err)
 		}
 
@@ -349,11 +440,12 @@ func QueryFactsAsOf(ctx context.Context, db *cortexdb.DB, at time.Time, filter T
 		}
 
 		fact := TemporalFact{
-			From:      displayNameFor(names, fromID),
-			To:        displayNameFor(names, toID),
-			Type:      etype,
-			ValidFrom: &validFrom,
-			ValidTo:   validTo,
+			From:         displayNameFor(names, fromID),
+			To:           displayNameFor(names, toID),
+			Type:         etype,
+			ValidFrom:    &validFrom,
+			ValidTo:      validTo,
+			SupersededBy: supersededStr.String,
 		}
 		if recordedStr.Valid && recordedStr.String != "" {
 			if ra, err := time.Parse(time.RFC3339, recordedStr.String); err == nil {

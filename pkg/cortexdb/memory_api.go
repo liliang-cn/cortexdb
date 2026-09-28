@@ -368,7 +368,9 @@ func (db *DB) DeleteMemory(ctx context.Context, req MemoryDeleteRequest) (*Memor
 	// RetractNodes archives before it deletes, so the node stays readable
 	// as of before the delete, and a memory that never had a node costs one
 	// no-op statement.
-	nodes, _, err := db.graph.RetractNodes(ctx, []string{memoryGraphNodeID(req.MemoryID)})
+	nodes, _, err := db.graph.RetractNodes(graph.WithInvalidation(ctx,
+		graph.Invalidation{Reason: graph.ReasonRetracted, Producer: producerMemoryDelete}),
+		[]string{memoryGraphNodeID(req.MemoryID)})
 	if err != nil {
 		return nil, fmt.Errorf("retract memory graph node: %w", err)
 	}

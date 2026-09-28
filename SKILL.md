@@ -524,6 +524,24 @@ Without it, one document title holding two of the mentions matches both by
 substring and scores a perfect 1.0 for each — a coincidence of two words that
 ties with the real entity and resolves nothing. Tool: `disambiguate_mentions`.
 
+**Resolving duplicate entities: link first, merge later.**
+`graphflow.ResolveEntities` scores each candidate pair on name similarity,
+shared neighbours and type agreement (plus the model's grouping, if an LLM is
+given). Only a score of 0.95 or more merges; 0.85–0.95 writes a `possiblySame`
+edge carrying that evidence, graded `held`, which `contract_needs_attention`
+lists. Grade the edge `verified` and the next pass merges it; `refused` keeps
+the pair apart. Spelling alone never merges two differently spelled names, and
+two entities with the same name and no neighbour in common (two `main.go`
+files, Mercury the planet and the element) are linked, not merged.
+`ResolveOptions{Mode: graphflow.ResolveMergeAll}` is the old unscored merge.
+
+**Why a fact ended.** Every row that leaves the live graph — superseded,
+retracted, merged, removed with its document — lands in
+`graph_node_history`/`graph_edge_history` with `reason`, `superseded_by` and
+`producer`. Read it with `db.NodeHistory` / `db.EdgeHistory`, or from the
+`invalidation` on each retracted or changed row of `graph_diff`. A caller that
+knows more than the default says so with `graph.WithInvalidation(ctx, …)`.
+
 ## Widening a hit to its neighbours
 
 `GraphRAGQueryOptions.ChunkWindow` (and `chunk_window` on the search tools)

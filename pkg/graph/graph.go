@@ -506,28 +506,85 @@ func (g *GraphStore) GetNode(ctx context.Context, nodeID string) (*GraphNode, er
 // every edge referencing an alias is repointed to canonicalID, self-loops created
 // by the merge are dropped, and the alias nodes are deleted. Used for entity
 // resolution (e.g. unifying "r0" / "DRBD resource" / "resources" into one entity).
+//
+// Nothing a merge touches is lost: each edge's pre-merge version, every dropped
+// self-loop and the alias node itself move to history with reason "merged" and
+// superseded_by naming the canonical node, so an as-of read from before the
+// merge still sees the alias and a later reader can tell a merge from a
+// delete. A caller may state its own reason or producer with WithInvalidation.
 func (g *GraphStore) MergeEntities(ctx context.Context, canonicalID string, aliasIDs []string) error {
 	if canonicalID == "" {
 		return fmt.Errorf("canonicalID required")
 	}
+	if err := errIfAsOf(ctx); err != nil {
+		return err
+	}
+	if err := g.InitGraphSchema(ctx); err != nil {
+		return err
+	}
+	ctx = WithInvalidation(ctx, InvalidationFrom(ctx).withDefaults(ReasonMerged, canonicalID, ProducerGraphMerge))
 	for _, alias := range aliasIDs {
 		if alias == "" || alias == canonicalID {
 			continue
 		}
-		if _, err := g.exec(ctx, `UPDATE graph_edges SET from_node_id = ? WHERE from_node_id = ?`, canonicalID, alias); err != nil {
-			return fmt.Errorf("repoint from-edges: %w", err)
-		}
-		if _, err := g.exec(ctx, `UPDATE graph_edges SET to_node_id = ? WHERE to_node_id = ?`, canonicalID, alias); err != nil {
-			return fmt.Errorf("repoint to-edges: %w", err)
-		}
-		if _, err := g.exec(ctx, `DELETE FROM graph_edges WHERE from_node_id = to_node_id`); err != nil {
-			return fmt.Errorf("drop self-loops: %w", err)
+		if err := g.mergeOne(ctx, canonicalID, alias); err != nil {
+			return err
 		}
 		if err := g.DeleteNode(ctx, alias); err != nil && err.Error() != fmt.Sprintf("node not found: %s", alias) {
 			return err
 		}
 	}
 	return nil
+}
+
+// mergeOne repoints alias's edges onto canonicalID in one transaction, closing
+// each edge's previous version in history first.
+func (g *GraphStore) mergeOne(ctx context.Context, canonicalID, alias string) error {
+	tx, err := g.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	at := g.clock.now()
+	if err := g.archiveEdges(ctx, tx, []string{alias}, at, "endpoint"); err != nil {
+		return err
+	}
+	// A repointed edge says something new, so it opens a new version at the
+	// instant its old one closed — no gap, no overlap.
+	if _, err := g.txExec(ctx, tx, `UPDATE graph_edges SET from_node_id = ?, valid_from = ?, recorded_at = ? WHERE from_node_id = ?`,
+		canonicalID, at, at, alias); err != nil {
+		return fmt.Errorf("repoint from-edges: %w", err)
+	}
+	if _, err := g.txExec(ctx, tx, `UPDATE graph_edges SET to_node_id = ?, valid_from = ?, recorded_at = ? WHERE to_node_id = ?`,
+		canonicalID, at, at, alias); err != nil {
+		return fmt.Errorf("repoint to-edges: %w", err)
+	}
+	// Every self-loop on the canonical node now is one the repoint made (its
+	// pre-merge version was archived above) or one that was already there;
+	// the latter is archived here so the drop leaves a trace either way.
+	var loops []string
+	rows, err := tx.QueryContext(ctx, g.dialect.Rebind(`SELECT id FROM graph_edges WHERE from_node_id = ? AND to_node_id = ? AND (valid_from IS NULL OR valid_from < ?)`),
+		canonicalID, canonicalID, at)
+	if err != nil {
+		return fmt.Errorf("find self-loops: %w", err)
+	}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		loops = append(loops, id)
+	}
+	_ = rows.Close()
+	if err := g.archiveEdges(ctx, tx, loops, at, "id"); err != nil {
+		return err
+	}
+	if _, err := g.txExec(ctx, tx, `DELETE FROM graph_edges WHERE from_node_id = ? AND to_node_id = ?`, canonicalID, canonicalID); err != nil {
+		return fmt.Errorf("drop self-loops: %w", err)
+	}
+	return tx.Commit()
 }
 
 // DeleteNode removes a node and all its edges from the current graph.

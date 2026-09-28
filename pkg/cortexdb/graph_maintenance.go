@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
 // GraphMaintenanceOptions controls PruneJunkEntities and ReindexMemoryGraph.
@@ -67,7 +69,8 @@ func (db *DB) PruneDanglingMemoryNodes(ctx context.Context, opts GraphMaintenanc
 	if opts.DryRun || len(victims) == 0 {
 		return report, nil
 	}
-	nodes, edges, err := db.graph.RetractNodes(ctx, victims)
+	nodes, edges, err := db.graph.RetractNodes(graph.WithInvalidation(ctx,
+		graph.Invalidation{Reason: graph.ReasonPruned, Producer: producerPruneMemory}), victims)
 	if err != nil {
 		return report, fmt.Errorf("prune dangling memory nodes: %w", err)
 	}
@@ -138,7 +141,8 @@ func (db *DB) PruneJunkEntities(ctx context.Context, opts GraphMaintenanceOption
 	for _, v := range victims {
 		ids = append(ids, v.id)
 	}
-	_, edges, err := db.graph.RetractNodes(ctx, ids)
+	_, edges, err := db.graph.RetractNodes(graph.WithInvalidation(ctx,
+		graph.Invalidation{Reason: graph.ReasonPruned, Producer: producerPruneJunk}), ids)
 	if err != nil {
 		return report, fmt.Errorf("prune junk entities: %w", err)
 	}
