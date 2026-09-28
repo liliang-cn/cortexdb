@@ -106,6 +106,17 @@ type GraphRAGQueryOptions struct {
 	// neighbours it pulls in are context and not hits: they are never scored,
 	// never reranked, and never counted against TopK. See chunk_window.go.
 	ChunkWindow int
+	// ReturnPaths also runs path retrieval (see SearchPaths) between the
+	// plan's entity names — or, when the plan names none, the entities the
+	// top three chunks mention — and returns the chains in Result.Paths.
+	// Off by default; the chunks, their order and the context are the same
+	// either way.
+	ReturnPaths bool
+	// PathMaxDepth, RelationPolicies and MaxPaths bound that path search;
+	// zero values take SearchPaths' defaults (3 hops, 10 paths, no policy).
+	PathMaxDepth     int
+	RelationPolicies graph.RelationPolicies
+	MaxPaths         int
 }
 
 // GraphRAGChunkResult is a retrieved chunk plus graph context.
@@ -144,6 +155,10 @@ type GraphRAGQueryResult struct {
 	// matched or as a neighbour brought along for continuity. Chunks stays the
 	// hits alone, so a caller reading it sees no difference.
 	Windows []GraphRAGChunkWindow
+	// Paths is populated only when GraphRAGQueryOptions.ReturnPaths asked for
+	// it: chains of facts among the query's entities, each edge citing its
+	// source chunks.
+	Paths []RetrievedPath `json:",omitempty"`
 }
 
 // InsertGraphDocument ingests a document into the vector store and graph store for GraphRAG retrieval.
@@ -422,6 +437,17 @@ func (db *DB) InsertGraphDocument(ctx context.Context, doc GraphRAGDocument, opt
 
 // SearchGraphRAG performs seed chunk retrieval plus graph neighborhood expansion.
 func (db *DB) SearchGraphRAG(ctx context.Context, query string, opts GraphRAGQueryOptions) (*GraphRAGQueryResult, error) {
+	result, err := db.searchGraphRAG(ctx, query, opts)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.attachGraphRAGPaths(ctx, result, opts); err != nil {
+		return nil, fmt.Errorf("search paths: %w", err)
+	}
+	return result, nil
+}
+
+func (db *DB) searchGraphRAG(ctx context.Context, query string, opts GraphRAGQueryOptions) (*GraphRAGQueryResult, error) {
 	if db.embedder == nil {
 		return nil, ErrEmbedderNotConfigured
 	}

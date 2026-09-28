@@ -158,12 +158,21 @@ type ToolExpandGraphRequest struct {
 	EdgeTypes []string `json:"edge_types,omitempty"`
 	NodeTypes []string `json:"node_types,omitempty"`
 	Limit     int      `json:"limit,omitempty"`
+	// RelationPolicies weights and depth-caps relation types, keyed by type
+	// ("*" for every unlisted type). When set, each start node's neighbours
+	// are scored — relation-weight product / (hops + 1), best path — Limit
+	// keeps the best rather than the first found, and Scores is returned.
+	// Unset, expansion is exactly what it was.
+	RelationPolicies graph.RelationPolicies `json:"relation_policies,omitempty"`
 }
 
 // ToolExpandGraphResponse returns a subgraph around the requested nodes.
 type ToolExpandGraphResponse struct {
 	Nodes []*graph.GraphNode `json:"nodes"`
 	Edges []*graph.GraphEdge `json:"edges"`
+	// Scores is each reached node's best score over the start nodes; only
+	// present when relation_policies was given.
+	Scores map[string]float64 `json:"scores,omitempty"`
 }
 
 // ToolGetNodesRequest fetches graph nodes by ID.
@@ -257,6 +266,12 @@ type ToolSearchGraphRAGLexicalRequest struct {
 	MaxTraversalNodes   int            `json:"max_traversal_nodes,omitempty"`
 	MaxEntitiesPerChunk int            `json:"max_entities_per_chunk,omitempty"`
 	Plan                *RetrievalPlan `json:"plan,omitempty"`
+	// ReturnPaths adds path retrieval among the query's entities; see
+	// GraphRAGQueryOptions.ReturnPaths. The three below bound it.
+	ReturnPaths      bool                   `json:"return_paths,omitempty"`
+	PathMaxDepth     int                    `json:"path_max_depth,omitempty"`
+	RelationPolicies graph.RelationPolicies `json:"relation_policies,omitempty"`
+	MaxPaths         int                    `json:"max_paths,omitempty"`
 }
 
 // HasEmbedder reports whether the DB has an in-process embedder configured.

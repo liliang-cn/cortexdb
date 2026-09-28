@@ -524,6 +524,43 @@ Without it, one document title holding two of the mentions matches both by
 substring and scores a perfect 1.0 for each — a coincidence of two words that
 ties with the real entity and resolves nothing. Tool: `disambiguate_mentions`.
 
+**Path retrieval for multi-hop questions.** Chunk search ranks passages by how
+much they look like the question; for "how is Alice Chen connected to Kestrel?"
+the passage stating the middle link ("Borealis Labs built Kestrel") does not
+look like it, and one that merely shares its words does. `SearchPaths` walks
+the graph between the entities the question names — bounded breadth-first
+search, at most `MaxDepth` edges (default 3), scored `decay^(hops-1)` times the
+product of relation weights — and returns each chain as edges that cite the
+chunk they were extracted from (`chunk_ids` / `source_chunk_id` on the edge).
+With one seed it returns the paths leaving it, which is the shape of "the city
+of the company Alice works for". Paths never run through chunk or document
+nodes unless `IncludeBookkeeping` is set: a shared chunk is a co-mention, not a
+relation.
+
+```go
+resp, err := db.SearchPaths(ctx, cortexdb.ToolSearchPathsRequest{
+    EntityNames:      []string{"Alice Chen", "Kestrel"},
+    RelationPolicies: graph.RelationPolicies{"co_occurs_with": {Weight: 0.2, MaxDepth: 1}},
+    WithText:         true,
+})
+// resp.Paths[i].Edges[j].ChunkIDs — the evidence, link by link; resp.ChunkIDs — all of it, in path order
+```
+
+`GraphRAGQueryOptions.ReturnPaths` (`return_paths` on `search_graphrag_lexical`)
+adds the same chains to a GraphRAG result, seeded by the plan's entity names or,
+without any, by the entities the top three chunks mention; chunks and context
+are unchanged. Tool: `search_paths`.
+
+**Per-relation-type weight and depth.** `graph.RelationPolicies` maps a relation
+type to `{Weight, MaxDepth}` — weight multiplies a path's score (0 = 1.0,
+negative = never follow), max depth is the farthest hop from the start at which
+the type is still followed — with `"*"` for every unlisted type. It is accepted
+by `SearchPaths`, `expand_graph` (`relation_policies`; the response then carries
+a score per node and `limit` keeps the best), `Neighbors`/`ScoredNeighbors`
+(`TraversalOptions.Relations`) and `HybridSearch` (`GraphFilter.Relations`,
+where `GraphScore` becomes the relation-weight product over `distance+1`).
+Unset, every one of them behaves exactly as before.
+
 ## Widening a hit to its neighbours
 
 `GraphRAGQueryOptions.ChunkWindow` (and `chunk_window` on the search tools)
@@ -899,6 +936,7 @@ Important tools:
 - Graph introspection: `graph_schema`, `graph_property_values`, `graph_statistics`
 - Graph analytics: `rank_graph_nodes`, `predict_graph_edges`
 - Disambiguation: `disambiguate_mentions`
+- Path retrieval: `search_paths` (and `return_paths` on `search_graphrag_lexical`, `relation_policies` on `expand_graph`)
 
 Separate workflow toolboxes:
 

@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **`search_paths` — path retrieval for multi-hop questions.** Bounded
+  breadth-first search between the entities a question names (or every path
+  out of one), scored `decay^(hops-1)` × relation weights, each path returned
+  as edges that cite their source chunks, plus the deduplicated evidence set
+  in path order. MCP tool, `DB.SearchPaths`, `graph.GraphStore.SearchPaths`,
+  and `ReturnPaths` on GraphRAG queries (`return_paths` on
+  `search_graphrag_lexical`). Measured on a 10-question fixture (2–3 hops,
+  look-alike distractors, lexical mode, k=5): full-evidence hit rate 0.50 for
+  `search_text` and `search_graphrag_lexical`, 0.80 for `search_paths`;
+  distractor share 0.43 / 0.36 / 0.20. On the six questions naming both ends
+  of the chain, 1.00 against 0.67 at best. On the four naming one end, paths
+  tie lexical search at 0.50 — with one seed the walk does not know which way
+  the question goes. A homonym merged into one node (a chef sharing a
+  founder's name) yields a one-hop path that outranks the true chain; only
+  entity resolution fixes that.
+- **Per-relation-type weight and depth.** `graph.RelationPolicies`
+  (`{type: {weight, max_depth}}`, `"*"` for the rest) on `SearchPaths`,
+  `expand_graph` (`relation_policies`, which also returns per-node scores and
+  makes `limit` keep the best), `Neighbors`/`ScoredNeighbors` and
+  `HybridSearch` (`GraphFilter.Relations`). Unset, all of them behave as
+  before. Around five entities whose real facts sit among co-occurrence edges,
+  down-weighting `co_occurs_with` to 0.2 and capping it at one hop took
+  precision@5 from 0.40 to 0.80 and nDCG@10 from 0.88 to 1.00 — a weighting
+  chosen knowing the fixture, so it shows the mechanism, not a forecast.
+
+### Fixed
+
+- `HybridSearch` breaks score ties by node id; equal scores used to come out
+  in map order, differently from run to run.
+
 ## [2.112.0] - 2026-09-25
 
 ### Added

@@ -66,6 +66,11 @@ type GraphFilter struct {
 	NodeTypes []string `json:"node_types,omitempty"`
 	EdgeTypes []string `json:"edge_types,omitempty"`
 	MaxDepth  int      `json:"max_depth,omitempty"`
+	// Relations weights and depth-caps relation types during HybridSearch's
+	// traversal (see RelationPolicies). Unset, every relation counts the same
+	// and GraphScore is 1/(distance+1) as it always was; set, GraphScore is
+	// that times the product of the relation weights on the best path.
+	Relations RelationPolicies `json:"relations,omitempty"`
 	// Properties scopes a query to nodes whose properties JSON carries every
 	// one of these top-level string fields with these values.
 	//

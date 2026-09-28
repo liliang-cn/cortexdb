@@ -269,16 +269,38 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			),
 		},
 		{
+			Name:        "search_paths",
+			Description: "Path retrieval for multi-hop questions: find the chains of facts that connect the entities a question names, and return each chain as a list of edges where every edge cites the chunk(s) it was extracted from. Use it when the answer is a connection (\"how is A related to B\", \"which X links A and B\") or a composition (\"the city of the company Alice works for\") — chunk search ranks passages by how much they look like the question, and the passage stating a middle link usually does not. With two or more resolvable entities it returns paths between pairs of them; with one it returns every path leaving it, shortest and best first. Paths are scored decay^(hops-1) × the product of relation weights, so name relation_policies to demote statistical edges (co_occurs, related_to) or cap how far a type may be followed. chunk_ids in the response is the cited evidence in path order; pass with_text to get the text too. truncated=true means max_expansions stopped the search, so a missing path is not proof there is none. Paths never run through chunk/document nodes unless include_bookkeeping is set, because two entities mentioned by the same chunk are co-mentioned, not related.",
+			InputSchema: toolObjectSchema(
+				nil,
+				map[string]any{
+					"entity_names":        toolStringArraySchema("Entities the question names. Resolved by the writer's entity id first, then exact and case-folded name matches; a containment match is never used, and unresolved names are reported."),
+					"node_ids":            toolStringArraySchema("Seed node ids, used as given."),
+					"max_depth":           toolIntegerSchema("Longest path in edges. Default 3, maximum 6."),
+					"direction":           toolEnumSchema("Edge direction to follow. Default both, since relations are stored in whichever direction the extractor chose.", "both", "out", "in"),
+					"edge_types":          toolStringArraySchema("Optional: only these relation types may appear on a path."),
+					"relation_policies":   toolRelationPoliciesSchema(),
+					"decay":               toolNumberSchema("Per-hop score factor in (0,1]. Default 0.5."),
+					"use_edge_weights":    toolBooleanSchema("Also multiply each edge's stored weight into the path score."),
+					"max_paths":           toolIntegerSchema("Paths to return, best first. Default 10."),
+					"max_expansions":      toolIntegerSchema("Cap on edges examined; the bound that controls runtime. Default 5000."),
+					"include_bookkeeping": toolBooleanSchema("Allow paths through chunk and document nodes (co-mention paths). Default false."),
+					"with_text":           toolBooleanSchema("Load the text of every cited chunk into chunks."),
+				},
+			),
+		},
+		{
 			Name:        "expand_graph",
-			Description: "Expand a graph neighborhood and return a subgraph.",
+			Description: "Expand a graph neighborhood and return a subgraph. Pass relation_policies to weight and depth-cap relation types individually; the response then carries a score per reached node and limit keeps the best-scored rather than the first found.",
 			InputSchema: toolObjectSchema(
 				[]string{"node_ids"},
 				map[string]any{
-					"node_ids":   toolStringArraySchema("Starting node IDs."),
-					"max_hops":   toolIntegerSchema("Traversal depth."),
-					"edge_types": toolStringArraySchema("Optional edge type filter."),
-					"node_types": toolStringArraySchema("Optional node type filter."),
-					"limit":      toolIntegerSchema("Optional node result limit."),
+					"node_ids":          toolStringArraySchema("Starting node IDs."),
+					"max_hops":          toolIntegerSchema("Traversal depth."),
+					"edge_types":        toolStringArraySchema("Optional edge type filter."),
+					"node_types":        toolStringArraySchema("Optional node type filter."),
+					"limit":             toolIntegerSchema("Optional node result limit."),
+					"relation_policies": toolRelationPoliciesSchema(),
 				},
 			),
 		},
@@ -403,6 +425,10 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 					"max_traversal_nodes":    toolIntegerSchema("Optional cap on how many graph nodes will be inspected during expansion."),
 					"max_entities_per_chunk": toolIntegerSchema("Optional cap on graph-derived entities attached to each chunk."),
 					"plan":                   toolRetrievalPlanSchema("Preferred structured retrieval plan produced by the external LLM before search."),
+					"return_paths":           toolBooleanSchema("Also return Paths: chains of facts among entity_names (or, if none, among the entities the top three chunks mention), each edge citing its source chunks. See search_paths."),
+					"path_max_depth":         toolIntegerSchema("Longest returned path in edges. Default 3."),
+					"relation_policies":      toolRelationPoliciesSchema(),
+					"max_paths":              toolIntegerSchema("Paths to return. Default 10."),
 				},
 			),
 		},
@@ -564,6 +590,12 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.SearchChunksByEntities(ctx, req)
+	case "search_paths":
+		var req ToolSearchPathsRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.SearchPaths(ctx, req)
 	case "expand_graph":
 		var req ToolExpandGraphRequest
 		if err := json.Unmarshal(input, &req); err != nil {
@@ -889,6 +921,18 @@ func toolMapSchema(description string) map[string]any {
 		"type":                 "object",
 		"description":          description,
 		"additionalProperties": true,
+	}
+}
+
+// toolRelationPoliciesSchema describes graph.RelationPolicies.
+func toolRelationPoliciesSchema() map[string]any {
+	return map[string]any{
+		"type":        "object",
+		"description": "Per relation type: {\"weight\": multiplier (0 = 1.0, negative = never follow), \"max_depth\": farthest hop from the start at which this type may still be followed (0 = no cap)}. The key \"*\" applies to every unlisted type. Example: {\"co_occurs\": {\"weight\": 0.2, \"max_depth\": 1}}.",
+		"additionalProperties": toolObjectSchema(nil, map[string]any{
+			"weight":    toolNumberSchema("Score multiplier for edges of this type."),
+			"max_depth": toolIntegerSchema("Farthest hop, from the start, at which this type is followed."),
+		}),
 	}
 }
 
