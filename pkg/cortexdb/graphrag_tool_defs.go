@@ -216,13 +216,16 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 		},
 		{
 			Name:        "rank_graph_nodes",
-			Description: "Rank the knowledge graph's nodes by PageRank: structural importance, not keyword frequency. Answers \"what is this knowledge base actually about\" and \"which entities matter here\" by finding the nodes the graph's connections converge on. Each result carries the node's id, label and type beside its score, so the ranking is readable without a second lookup, and it is the honest way to choose what to show first when the graph is too large to show whole. Returns the top 20 by default (maximum 200), highest first, ties broken by id so repeated calls agree; total_nodes says how many were scored and truncated says whether the list was cut. An empty graph returns an empty ranking, not an error. Every call scores every node, so call it once and read the answer rather than in a loop.",
+			Description: "Rank the knowledge graph's nodes by PageRank: structural importance, not keyword frequency. Answers \"what is this knowledge base actually about\" and \"which entities matter here\" by finding the nodes the graph's connections converge on. Each result carries the node's id, label and type beside its score, so the ranking is readable without a second lookup, and it is the honest way to choose what to show first when the graph is too large to show whole. Returns the top 20 by default (maximum 200), highest first, ties broken by id so repeated calls agree; total_nodes says how many were scored and truncated says whether the list was cut. An empty graph returns an empty ranking, not an error. Scores are cached with the time they were computed: a call on an unchanged graph reads the stored ranking instead of recomputing, and a change to the graph's nodes or edges (detected in the database, so writes from any process count) triggers a recompute. cached, computed_at, stale and stale_reason say which happened; pass refresh to force a recompute, allow_stale to accept an out-of-date ranking without paying for one, max_age_seconds to bound how old a cached ranking may be.",
 			InputSchema: toolObjectSchema(
 				nil,
 				map[string]any{
-					"top_n":          toolIntegerSchema("How many of the highest-ranked nodes to return. Default 20, maximum 200."),
-					"iterations":     toolIntegerSchema("Ceiling on the power-iteration count. Default 100. The run stops early once scores settle, so raising this rarely changes the answer."),
-					"damping_factor": toolNumberSchema("Probability the random walk follows an edge rather than restarting, between 0 and 1. Default 0.85. Lower weights local structure more heavily."),
+					"refresh":         toolBooleanSchema("Recompute the ranking now even if the cached one is fresh."),
+					"allow_stale":     toolBooleanSchema("Serve the cached ranking even if the graph changed since it was computed; the answer is flagged stale instead of recomputed. Computes only when no cache exists."),
+					"max_age_seconds": toolIntegerSchema("Treat a cached ranking older than this many seconds as stale. Default: no age limit, only graph changes make it stale."),
+					"top_n":           toolIntegerSchema("How many of the highest-ranked nodes to return. Default 20, maximum 200."),
+					"iterations":      toolIntegerSchema("Ceiling on the power-iteration count. Default 100. The run stops early once scores settle, so raising this rarely changes the answer."),
+					"damping_factor":  toolNumberSchema("Probability the random walk follows an edge rather than restarting, between 0 and 1. Default 0.85. Lower weights local structure more heavily."),
 				},
 			),
 		},

@@ -19,6 +19,8 @@ type MCPServerOptions struct {
 	Implementation *mcp.Implementation
 	Instructions   string
 	Logger         *slog.Logger
+	// LLM backs global_search and build_community_hierarchy. Optional.
+	LLM JSONGenerator
 }
 
 // NewMCPServer returns an MCP server that exposes the graphflow tool surface.
@@ -81,6 +83,7 @@ func NewMCPServer(db *cortexdb.DB, detector Detector, extractor Extractor, opts 
 		}
 		return pipeline.Run(ctx, db, req)
 	})
+	AddGlobalSearchMCPTools(server, db, opts.LLM)
 
 	return server, nil
 }

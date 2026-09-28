@@ -11,6 +11,7 @@ import (
 
 	cortexdbroot "github.com/liliang-cn/cortexdb/v2"
 	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/graphflow"
 )
 
 func main() {
@@ -232,6 +233,11 @@ func main() {
 	addRenderGraphHTMLTool(server)
 	addServeGraph3DTool(server)
 	addSideGraphTools(server, sideGraphs_)
+	// global_search / build_community_hierarchy live in graphflow, which the
+	// facade cannot import, so they are registered here. The model is the
+	// same CORTEXDB_LLM_* one the CLI modes use; without it both tools run
+	// in their no-model mode rather than disappearing.
+	graphflow.AddGlobalSearchMCPTools(server, db, newOrganizeLLM())
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("run mcp stdio server: %v", err)
 	}

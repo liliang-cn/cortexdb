@@ -306,7 +306,7 @@ Important tools:
 Separate workflow toolboxes:
 
 - memoryflow: `memoryflow_ingest_transcript`, `memoryflow_recall`, `memoryflow_wake_up_layers`, `memoryflow_prepare_reply`
-- graphflow: `graphflow_build`, `graphflow_analyze`, `graphflow_report`, `graphflow_export`, `graphflow_run`
+- graphflow: `graphflow_build`, `graphflow_analyze`, `graphflow_report`, `graphflow_export`, `graphflow_run`, `global_search`, `build_community_hierarchy` (the last two are also on the `cortexdb-mcp-stdio` server)
 
 ## OpenClaw and Hermes Plugins
 
