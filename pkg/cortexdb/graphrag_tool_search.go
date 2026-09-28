@@ -175,18 +175,40 @@ func (t *GraphRAGToolbox) ExpandGraph(ctx context.Context, req ToolExpandGraphRe
 	}
 
 	nodeSet := make(map[string]struct{}, len(req.NodeIDs))
+	var scores map[string]float64
+	if len(req.RelationPolicies) > 0 {
+		scores = map[string]float64{}
+	}
 	for _, nodeID := range req.NodeIDs {
 		if nodeID == "" {
 			continue
 		}
 		nodeSet[nodeID] = struct{}{}
-		neighbors, err := t.db.graph.Neighbors(ctx, nodeID, graph.TraversalOptions{
+		if scores != nil {
+			scores[nodeID] = 1
+		}
+		opts := graph.TraversalOptions{
 			MaxDepth:  req.MaxHops,
 			Direction: "both",
 			EdgeTypes: req.EdgeTypes,
 			NodeTypes: nodeTypes,
 			Limit:     req.Limit,
-		})
+			Relations: req.RelationPolicies,
+		}
+		if scores != nil {
+			scored, err := t.db.graph.ScoredNeighbors(ctx, nodeID, opts)
+			if err != nil {
+				return nil, err
+			}
+			for _, n := range scored {
+				nodeSet[n.NodeID] = struct{}{}
+				if n.Score > scores[n.NodeID] {
+					scores[n.NodeID] = n.Score
+				}
+			}
+			continue
+		}
+		neighbors, err := t.db.graph.Neighbors(ctx, nodeID, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -200,7 +222,7 @@ func (t *GraphRAGToolbox) ExpandGraph(ctx context.Context, req ToolExpandGraphRe
 	if err != nil {
 		return nil, err
 	}
-	return &ToolExpandGraphResponse{Nodes: subgraph.Nodes, Edges: subgraph.Edges}, nil
+	return &ToolExpandGraphResponse{Nodes: subgraph.Nodes, Edges: subgraph.Edges, Scores: scores}, nil
 }
 
 // GetNodes fetches graph nodes by ID.
@@ -258,6 +280,22 @@ func (t *GraphRAGToolbox) BuildContext(ctx context.Context, req ToolBuildContext
 
 // SearchGraphRAGLexical performs no-embedder GraphRAG retrieval for external LLM orchestration.
 func (t *GraphRAGToolbox) SearchGraphRAGLexical(ctx context.Context, req ToolSearchGraphRAGLexicalRequest) (*GraphRAGQueryResult, error) {
+	result, err := t.searchGraphRAGLexical(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if err := t.db.attachGraphRAGPaths(ctx, result, GraphRAGQueryOptions{
+		ReturnPaths:      req.ReturnPaths,
+		PathMaxDepth:     req.PathMaxDepth,
+		RelationPolicies: req.RelationPolicies,
+		MaxPaths:         req.MaxPaths,
+	}); err != nil {
+		return nil, fmt.Errorf("search paths: %w", err)
+	}
+	return result, nil
+}
+
+func (t *GraphRAGToolbox) searchGraphRAGLexical(ctx context.Context, req ToolSearchGraphRAGLexicalRequest) (*GraphRAGQueryResult, error) {
 	resolution := resolveRetrievalPlan(retrievalPlanInput{
 		Query:               req.Query,
 		Plan:                req.Plan,

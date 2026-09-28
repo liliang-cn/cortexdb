@@ -197,6 +197,13 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *resp, nil
 	})
+	addGraphRAGMCPTool(server, definitions["search_paths"], func(ctx context.Context, req ToolSearchPathsRequest) (ToolSearchPathsResponse, error) {
+		resp, err := toolbox.SearchPaths(ctx, req)
+		if err != nil {
+			return ToolSearchPathsResponse{}, err
+		}
+		return *resp, nil
+	})
 	addGraphRAGMCPTool(server, definitions["expand_graph"], func(ctx context.Context, req ToolExpandGraphRequest) (ToolExpandGraphResponse, error) {
 		resp, err := toolbox.ExpandGraph(ctx, req)
 		if err != nil {

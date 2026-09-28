@@ -286,7 +286,7 @@ _ = server
 
 Important tools:
 
-- GraphRAG: `ingest_document`, `search_text`, `expand_graph`, `build_context`
+- GraphRAG: `ingest_document`, `search_text`, `expand_graph`, `build_context`, `search_paths` (multi-hop: chains of facts between named entities, each edge citing its chunk)
 - Knowledge/memory: `knowledge_save`, `knowledge_search`, `memory_save`, `memory_search`
 - Knowledge graph: `knowledge_graph_upsert`, `knowledge_graph_query`, `knowledge_graph_shacl_validate`, `knowledge_graph_infer_refresh`
 - KnowledgeMemory: `knowledge_memory_recall`, `knowledge_memory_build_context_pack`, `knowledge_memory_reflect`, `knowledge_memory_consolidate`

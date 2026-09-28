@@ -15,6 +15,10 @@ type TraversalOptions struct {
 	NodeTypes []string `json:"node_types,omitempty"`
 	Direction string   `json:"direction"` // "out", "in", "both"
 	Limit     int      `json:"limit"`
+	// Relations weights and depth-caps relation types (see RelationPolicies).
+	// When set, Neighbors orders its result best score first and applies
+	// Limit after scoring, instead of returning breadth-first order.
+	Relations RelationPolicies `json:"relations,omitempty"`
 }
 
 // PathResult represents a path in the graph
@@ -32,6 +36,17 @@ func (g *GraphStore) Neighbors(ctx context.Context, nodeID string, opts Traversa
 	}
 	if opts.Direction == "" {
 		opts.Direction = "both"
+	}
+	if len(opts.Relations) > 0 {
+		scored, err := g.ScoredNeighbors(ctx, nodeID, opts)
+		if err != nil {
+			return nil, err
+		}
+		ids := make([]string, 0, len(scored))
+		for _, n := range scored {
+			ids = append(ids, n.NodeID)
+		}
+		return g.loadNeighborNodes(ctx, ids, nil)
 	}
 
 	visited := make(map[string]bool)
@@ -97,6 +112,44 @@ func (g *GraphStore) Neighbors(ctx context.Context, nodeID string, opts Traversa
 	}
 
 	return g.loadNeighborNodes(ctx, neighborIDs, opts.NodeTypes)
+}
+
+// ScoredNeighbors is Neighbors with scores: every node reachable under
+// opts.Relations, best first (see WeightedNeighbors), filtered by NodeTypes
+// and then cut to Limit — so a limit keeps the best, not the first found.
+func (g *GraphStore) ScoredNeighbors(ctx context.Context, nodeID string, opts TraversalOptions) ([]ScoredNeighbor, error) {
+	if opts.MaxDepth <= 0 {
+		opts.MaxDepth = 1
+	}
+	scored, err := g.WeightedNeighbors(ctx, nodeID, opts.MaxDepth, opts.Direction, opts.EdgeTypes, opts.Relations)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get edges: %w", err)
+	}
+	if len(opts.NodeTypes) > 0 {
+		ids := make([]string, 0, len(scored))
+		for _, n := range scored {
+			ids = append(ids, n.NodeID)
+		}
+		nodes, err := g.loadNeighborNodes(ctx, ids, opts.NodeTypes)
+		if err != nil {
+			return nil, err
+		}
+		keep := make(map[string]bool, len(nodes))
+		for _, n := range nodes {
+			keep[n.ID] = true
+		}
+		filtered := scored[:0]
+		for _, n := range scored {
+			if keep[n.NodeID] {
+				filtered = append(filtered, n)
+			}
+		}
+		scored = filtered
+	}
+	if opts.Limit > 0 && len(scored) > opts.Limit {
+		scored = scored[:opts.Limit]
+	}
+	return scored, nil
 }
 
 // ShortestPath finds the shortest path between two nodes using BFS

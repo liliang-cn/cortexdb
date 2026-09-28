@@ -85,7 +85,7 @@ func (g *GraphStore) HybridSearch(ctx context.Context, query *HybridQuery) ([]*H
 		// Add graph score if available
 		if graphResults != nil {
 			if gd, exists := graphResults[nodeID]; exists {
-				result.GraphScore = 1.0 / float64(gd.distance+1) // Inverse distance
+				result.GraphScore = gd.proximity() // Inverse distance
 				result.Distance = gd.distance
 			}
 		}
@@ -112,7 +112,7 @@ func (g *GraphStore) HybridSearch(ctx context.Context, query *HybridQuery) ([]*H
 			result := &HybridResult{
 				Node:        node,
 				VectorScore: 0,
-				GraphScore:  1.0 / float64(gd.distance+1),
+				GraphScore:  gd.proximity(),
 				Distance:    gd.distance,
 			}
 
@@ -135,8 +135,13 @@ func (g *GraphStore) HybridSearch(ctx context.Context, query *HybridQuery) ([]*H
 		results = append(results, result)
 	}
 
+	// Ties broken by id: the candidates come out of maps, so without a
+	// tiebreak equal scores were ordered differently run to run.
 	sort.Slice(results, func(i, j int) bool {
-		return results[i].CombinedScore > results[j].CombinedScore
+		if results[i].CombinedScore != results[j].CombinedScore {
+			return results[i].CombinedScore > results[j].CombinedScore
+		}
+		return results[i].Node.ID < results[j].Node.ID
 	})
 
 	// Apply TopK limit
@@ -297,6 +302,19 @@ func (g *GraphStore) GetAllNodes(ctx context.Context, filter *GraphFilter) ([]*G
 type graphDistance struct {
 	distance int
 	weight   float64
+	// typeWeight is the product of RelationPolicies weights along the path;
+	// zero means no policy was in force and counts as 1.
+	typeWeight float64
+}
+
+// proximity is the graph score: inverse distance, scaled by the relation
+// weights of the path when a policy set them.
+func (gd *graphDistance) proximity() float64 {
+	tw := gd.typeWeight
+	if tw == 0 {
+		tw = 1
+	}
+	return tw / float64(gd.distance+1)
 }
 
 func (g *GraphStore) vectorCandidates(ctx context.Context, query *HybridQuery) ([]*GraphNode, error) {
@@ -368,6 +386,22 @@ func (g *GraphStore) collectGraphDistances(ctx context.Context, startNodeID stri
 		maxDepth = filter.MaxDepth
 	}
 
+	if filter != nil && len(filter.Relations) > 0 {
+		scored, err := g.WeightedNeighbors(ctx, startNodeID, maxDepth, "out", filter.EdgeTypes, filter.Relations)
+		if err != nil {
+			return nil, err
+		}
+		graphResults[startNodeID] = &graphDistance{distance: 0, weight: 1, typeWeight: 1}
+		for _, n := range scored {
+			graphResults[n.NodeID] = &graphDistance{
+				distance:   n.Distance,
+				weight:     n.EdgeWeight,
+				typeWeight: n.RelationWeight,
+			}
+		}
+		return g.filterGraphDistancesByNodeType(ctx, graphResults, filter)
+	}
+
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
@@ -408,6 +442,10 @@ func (g *GraphStore) collectGraphDistances(ctx context.Context, startNodeID stri
 		}
 	}
 
+	return g.filterGraphDistancesByNodeType(ctx, graphResults, filter)
+}
+
+func (g *GraphStore) filterGraphDistancesByNodeType(ctx context.Context, graphResults map[string]*graphDistance, filter *GraphFilter) (map[string]*graphDistance, error) {
 	if filter != nil && len(filter.NodeTypes) > 0 {
 		nodeIDs := make([]string, 0, len(graphResults))
 		for nodeID := range graphResults {
