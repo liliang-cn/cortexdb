@@ -286,3 +286,31 @@ func BenchmarkHNSWSearch(b *testing.B) {
 		hnsw.Search(query, 10, 50)
 	}
 }
+
+// Levels follow mL = 1/ln(M): each layer holds about 1/M of the one below.
+//
+// Promotion used to be a coin flip per level whatever M was, which gave a
+// thousand nodes at M = 16 some ten layers instead of two or three, and upper
+// layers too sparse to route a search; see selectLevel.
+func TestHNSWLevelsThinOutByAFactorOfM(t *testing.T) {
+	const m, n = 16, 20000
+	h := NewHNSW(m, 200, EuclideanDistance)
+	counts := map[int]int{}
+	maxLevel := 0
+	for i := 0; i < n; i++ {
+		l := h.selectLevel()
+		counts[l]++
+		maxLevel = max(maxLevel, l)
+	}
+	// Expected share at level >= 1 is 1/M = 6.25%, i.e. ~1250 of 20000. A coin
+	// flip gives 10000.
+	atLeastOne := n - counts[0]
+	if atLeastOne < 900 || atLeastOne > 1600 {
+		t.Errorf("%d of %d nodes above level 0, want about %d (1/M)", atLeastOne, n, n/m)
+	}
+	// P(level >= 5) = 16^-5 ≈ 1e-6 per node; 20000 draws reach it with p ≈ 2%.
+	// A coin flip reaches level 14 or so.
+	if maxLevel > 5 {
+		t.Errorf("max level %d over %d nodes, want at most 5 at M = %d", maxLevel, n, m)
+	}
+}

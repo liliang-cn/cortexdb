@@ -63,7 +63,7 @@ func NewHNSW(M, efConstruction int, distFunc func(a, b []float32) float32) *HNSW
 		M:              M,
 		MaxM:           M * 2, // MaxM = 2*M for layer 0
 		EfConstruction: efConstruction,
-		ML:             1.0 / math.Log(2.0), // This is approximately 1.44
+		ML:             levelMultiplier(M),
 		Seed:           seed,
 		Nodes:          make(map[string]*HNSWNode),
 		DistFunc:       distFunc,
@@ -175,16 +175,39 @@ func (h *HNSW) Load(r io.Reader) error {
 	return nil
 }
 
-// selectLevel randomly selects level for a new node
+// levelMultiplier is HNSW's mL = 1/ln(M): a node reaches level l with
+// probability M^-l, so each layer holds about 1/M of the one below it.
+func levelMultiplier(m int) float64 {
+	if m < 2 {
+		m = 2
+	}
+	return 1 / math.Log(float64(m))
+}
+
+// maxNodeLevel caps a node's level. With M = 16 the chance of passing it is
+// 16^-16; it only guards against a degenerate M.
+const maxNodeLevel = 16
+
+// selectLevel draws a new node's level as floor(-ln(U) * mL).
+//
+// It used to promote with probability 1/2 per level whatever M was, which is
+// mL = 1/ln 2 instead of 1/ln M. With M = 16 that built about ten layers for a
+// thousand nodes where the paper's rule builds two or three, each upper layer a
+// handful of nodes wired to one another: greedy descent entered the bottom layer
+// far from the query, and a vector searched for by its own coordinates was
+// occasionally not found at all (CI, v2.114.0: vec_0 returned vec_378 at
+// distance 8.0). The ML field held the same wrong constant and was never read.
+//
+// The multiplier comes from M rather than the stored ML, so an index saved with
+// the old value builds its new nodes correctly.
 func (h *HNSW) selectLevel() int {
-	// Standard HNSW level assignment with exponential decay
-	// Probability of level l is: ML^l * (1-ML)
-	level := 0
-	for h.rng.Float64() < 0.5 { // 50% chance to go to next level
-		level++
-		if level > 16 { // Cap at reasonable maximum
-			break
-		}
+	u := h.rng.Float64()
+	if u <= 0 {
+		u = math.SmallestNonzeroFloat64
+	}
+	level := int(math.Floor(-math.Log(u) * levelMultiplier(h.M)))
+	if level > maxNodeLevel {
+		level = maxNodeLevel
 	}
 	return level
 }
