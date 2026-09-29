@@ -542,7 +542,16 @@ func (db *DB) ftsSearch(ctx context.Context, query string, opts TextSearchOption
 			log.Printf("[FTS] skipped a chunk that would not scan: %v", err)
 			continue
 		}
-		normalizedScore := 1.0 / (1.0 + (-score))
+		// bm25() is negative and lower for a better match; both backends'
+		// lexical rank keep that convention. 1/(1+(-bm25)) was highest for the
+		// weakest match, so the SQL ORDER BY returned rows best first and every
+		// caller that sorted by Score put them worst first. Same fix as the
+		// memory path: relevance rises as the raw rank falls.
+		relevance := -score
+		if relevance < 0 {
+			relevance = 0
+		}
+		normalizedScore := relevance / (1 + relevance)
 		if opts.Threshold > 0 && normalizedScore < opts.Threshold {
 			continue
 		}
