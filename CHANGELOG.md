@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.114.0] - 2026-09-29
+
+### Added
+
+- **A Chinese question finds its answer without an embedder.** The word index
+  saw `微信机器人为什么从来不主动给我发提醒` as one seventeen-character token and
+  asked the trigram index for it as a phrase — and a trigram index cannot match
+  the two-character words most Chinese is made of anyway. On a snapshot of the
+  shared brain, five of six Chinese sentence queries in the golden set returned
+  an empty list while the memory answering them was there. Lexical search now
+  also cuts a CJK question at function words (的, 了, 为什么, 那个, …), breaks the
+  rest into character bigrams, finds candidates by substring and ranks them with
+  BM25, merged beside the word-index results. It covers memory recall,
+  `SearchKnowledge`, `SearchTextOnly` and the `search_text` tool, on SQLite and
+  PostgreSQL alike, and runs inside the authorization gate.
+  A row is returned only when it matches more than one word of the question —
+  two separate stretches, one stretch of four characters, or all of a one-word
+  question — and at least 30% of its content characters. Measured on the real
+  golden set (48 labelled queries, 7 negatives, lexical, no LLM): hit@5 0.604 →
+  0.875, MRR 0.503 → 0.734, Chinese natural questions 0.50 → 0.86, and every
+  Chinese negative still returns nothing. 29–46 ms per query over 20,000 chunks.
+- `pkg/eval` gains `BuiltinChinese()`, an invented Chinese ops notebook with
+  sentence queries and negatives, and `Dataset.Negatives` for queries that must
+  come back empty. CI holds it at recall@5 ≥ 0.90 and MRR ≥ 0.85.
+
+### Fixed
+
+- **A keyword search ranked the best match last.** `SearchTextOnly` with
+  keywords or alternate queries — and the FTS fallback behind hybrid search —
+  mapped FTS5's `bm25()`, which is negative and lower for a better match, to a
+  score with `1/(1+(-bm25))`: highest for the weakest match. SQL returned rows
+  best first and the merge re-sorted them worst first, on both backends. This is
+  the path an agent reaches by expanding keywords, which is what every tool
+  description tells it to do when there is no embedder. The memory path had the
+  same inversion and was fixed earlier; this one was missed.
+
 ## [2.113.0] - 2026-09-28
 
 ### Added
