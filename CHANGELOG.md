@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.114.1] - 2026-09-29
+
+### Fixed
+
+- **HNSW built ten layers where it should build two or three.** `selectLevel`
+  promoted a node with probability 1/2 per level whatever `M` was — mL = 1/ln 2
+  instead of the paper's 1/ln M — and the `ML` field held the same wrong
+  constant and was never read. At M = 16 a thousand nodes reached level 8–13;
+  the upper layers were a handful of nodes wired to one another, greedy descent
+  entered the bottom layer far from the query, and a vector searched for by its
+  own coordinates was occasionally not found: `TestHNSWLargeScale` failed the
+  v2.114.0 tag build with `vec_0` answered by `vec_378` at distance 8.0. Levels
+  now follow floor(-ln U · 1/ln M), taken from `M` rather than the stored `ML`
+  so a saved index builds its new nodes correctly; the same test passed 400 of
+  400 runs afterwards, and a new test holds the level distribution to 1/M.
+  **2.114.0 is on the module proxy but its release build failed, so it has no
+  binaries; use this instead.** Everything 2.114.0 added is here.
+
 ## [2.114.0] - 2026-09-29
 
 ### Added
