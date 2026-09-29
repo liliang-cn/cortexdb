@@ -2,7 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/liliang-cn/cortexdb/v2.svg)](https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2) [![CI](https://github.com/liliang-cn/cortexdb/actions/workflows/ci.yml/badge.svg)](https://github.com/liliang-cn/cortexdb/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/liliang-cn/cortexdb/branch/main/graph/badge.svg)](https://codecov.io/gh/liliang-cn/cortexdb) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A pure-Go, single-file AI memory and knowledge graph. One SQLite file holds vectors, hybrid RAG search, scoped agent memory, an RDF/SPARQL knowledge graph, a Palantir-style ontology, and 60+ agent tools — embedded in your Go program, or installed as a shared brain for Claude Code / Codex. Works with **no embedder** (lexical mode, no API key) or any OpenAI-compatible embeddings endpoint. No service to run.
+A pure-Go, single-file AI memory and knowledge graph. One SQLite file holds vectors, hybrid RAG search, scoped agent memory, an RDF/SPARQL knowledge graph, a Palantir-style ontology, and 60+ agent tools — embedded in your Go program, or installed as a shared brain for Claude Code / Codex. Works with **no embedder** (lexical mode, no API key — including Chinese questions asked as sentences) or any OpenAI-compatible embeddings endpoint. No service to run.
 
 ```bash
 go get github.com/liliang-cn/cortexdb/v2

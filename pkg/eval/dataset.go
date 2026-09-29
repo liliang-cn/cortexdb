@@ -20,20 +20,39 @@ type Query struct {
 	Relevant []string `json:"relevant"`
 }
 
+// Negative is a query the corpus holds nothing about. A retriever that returns
+// anything for it is inventing an answer; Run does not score these, and a test
+// asserts they come back empty.
+type Negative struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
+}
+
 // Dataset is a corpus plus a labeled query set.
 type Dataset struct {
 	Name        string     `json:"name"`
 	Description string     `json:"description"`
 	Documents   []Document `json:"documents"`
 	Queries     []Query    `json:"queries"`
+	Negatives   []Negative `json:"negatives,omitempty"`
 }
 
 //go:embed testdata/dataset.json
 var embeddedDataset []byte
 
+//go:embed testdata/dataset_zh.json
+var embeddedChineseDataset []byte
+
 // Builtin returns the bundled retrieval-quality dataset.
 func Builtin() (*Dataset, error) {
 	return Parse(embeddedDataset)
+}
+
+// BuiltinChinese returns the bundled Chinese dataset: sentence queries written
+// in different words from the notes that answer them, and negatives that share
+// one word with a note at most.
+func BuiltinChinese() (*Dataset, error) {
+	return Parse(embeddedChineseDataset)
 }
 
 // Parse decodes a Dataset from JSON and validates referential integrity: every

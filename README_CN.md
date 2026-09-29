@@ -2,7 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/liliang-cn/cortexdb/v2.svg)](https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2) [![CI](https://github.com/liliang-cn/cortexdb/actions/workflows/ci.yml/badge.svg)](https://github.com/liliang-cn/cortexdb/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/liliang-cn/cortexdb/branch/main/graph/badge.svg)](https://codecov.io/gh/liliang-cn/cortexdb) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-纯 Go、单文件的 AI 记忆与知识图谱。一个 SQLite 文件装下:向量、混合 RAG 检索、分作用域的 agent 记忆、RDF/SPARQL 知识图谱、Palantir 风格 ontology、60+ agent 工具——既可嵌进你的 Go 程序,也可作为 Claude Code / Codex 的共享大脑插件。**无 embedder 也能跑**(词法模式,无需 API key),或接任何 OpenAI 兼容 embeddings 端点。零外部服务。
+纯 Go、单文件的 AI 记忆与知识图谱。一个 SQLite 文件装下:向量、混合 RAG 检索、分作用域的 agent 记忆、RDF/SPARQL 知识图谱、Palantir 风格 ontology、60+ agent 工具——既可嵌进你的 Go 程序,也可作为 Claude Code / Codex 的共享大脑插件。**无 embedder 也能跑**(词法模式,无需 API key,中文整句提问同样能召回),或接任何 OpenAI 兼容 embeddings 端点。零外部服务。
 
 ```bash
 go get github.com/liliang-cn/cortexdb/v2

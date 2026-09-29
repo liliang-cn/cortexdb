@@ -159,9 +159,9 @@ func normalizeToolToken(token string) string {
 //
 // CJK note: the FTS indexes use the trigram tokenizer (see core.migrateFTSTokenizer),
 // which matches substrings of three characters or more. Chinese text has no spaces, so
-// a phrase arrives here as one quoted token and matches as a substring — but a query
-// that is only one or two CJK characters long (e.g. "函数") produces no trigrams and
-// therefore no rows. Such queries have to lean on vector search.
+// a sentence arrives here as one quoted token and matches only as that exact substring.
+// Sentence queries and two-character words are handled by the bigram path in
+// lexical_cjk.go, which the search entry points merge in beside these results.
 // Each whitespace-separated token is wrapped in a double-quoted string literal,
 // so FTS5 operators in the raw text (':' column filter, '*', '-', '^', 'OR',
 // 'NEAR', parentheses, …) are treated as literal terms rather than query

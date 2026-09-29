@@ -1,0 +1,333 @@
+{
+  "name": "cortexdb-zh-lexical-v1",
+  "description": "Chinese sentence queries over an invented ops/dev notebook, written in different words from the notes they answer, plus negatives that share one word with a note at most (推荐 with the coffee note; 周末去 likewise). Guards the CJK bigram path of no-embedder retrieval.",
+  "documents": [
+    {
+      "id": "wechat-push",
+      "title": "微信机器人推送限制",
+      "content": "微信机器人只能在用户先发消息后的一段时间内回复，没有主动推送的能力，所以定时提醒一直发不出去，后来把提醒改到 Telegram 发送。"
+    },
+    {
+      "id": "ws-fragment",
+      "title": "WebSocket 大消息",
+      "content": "浏览器通过 WebSocket 发送大消息时会被分成多个帧，服务端只读了第一帧，所以只收到一半内容；修复方法是在服务端做分片重组。"
+    },
+    {
+      "id": "rage-loop",
+      "title": "调度器循环派发",
+      "content": "调度器在任务字段为空时会反复把同一个任务重新派发给执行器，形成停不下来的循环；加了空字段校验后循环消失。"
+    },
+    {
+      "id": "wal-growth",
+      "title": "预写日志增长",
+      "content": "数据库的预写日志文件一直增长，从来没有执行过检查点，最后把磁盘写满；现在后台定期执行 wal_checkpoint。"
+    },
+    {
+      "id": "cache-hit",
+      "title": "提示词缓存",
+      "content": "长任务的提示词前缀里每次都带着当前时间，导致缓存命中率只有百分之十三；把时间移出系统提示词后命中率恢复正常。"
+    },
+    {
+      "id": "gold-peak",
+      "title": "金价新高",
+      "content": "八月份国际金价创下历史最高，每盎司突破两千六百美元，主要原因是降息预期和避险需求。"
+    },
+    {
+      "id": "lima-death",
+      "title": "Lima 虚拟机",
+      "content": "Mac 上的 Lima 虚拟机在网络切换后会静默死掉，socket_vmnet 进程还在但已经不转发流量，需要重启 vmnet 服务。"
+    },
+    {
+      "id": "restart-failover",
+      "title": "主节点重启",
+      "content": "在主节点上直接执行 systemctl restart 会让高可用管理器认为资源故障，从而触发一次计划外的故障转移；升级时应该先驱逐资源再替换。"
+    },
+    {
+      "id": "git-emails",
+      "title": "两个 git 邮箱",
+      "content": "我有两个 git 邮箱，一个是 gmail，一个是 hotmail，都属于本人，提交记录里出现两个邮箱是正常的。"
+    },
+    {
+      "id": "cargo-feature",
+      "title": "cargo 特性统一",
+      "content": "在 cargo 工作区里整体编译会做特性统一，某个包少声明的特性被别的包顺带打开了，单独编译这个包才会报错。"
+    },
+    {
+      "id": "aigui-release",
+      "title": "aigui 发布",
+      "content": "aigui 的包只通过 CI 发布，本地只负责打标签，不要在本地执行 npm publish。"
+    },
+    {
+      "id": "planstore",
+      "title": "计划存储",
+      "content": "智能体的计划存储保持使用文件，不迁移到数据库，因为计划需要人能直接打开阅读和修改。"
+    },
+    {
+      "id": "vip-cloud",
+      "title": "云上节点",
+      "content": "阿里云节点接管服务后，浮动地址只挂在回环网卡上，局域网内的客户端无法访问，所以把这台机器从候选节点中移除。"
+    },
+    {
+      "id": "gpu-train",
+      "title": "显存不足",
+      "content": "训练大模型时显存不够可以使用梯度累积和混合精度，也可以把优化器状态放到内存里。"
+    },
+    {
+      "id": "k8s-probe",
+      "title": "存活探针",
+      "content": "Kubernetes 的存活探针设置得太激进，容器启动慢的时候会被反复杀掉重启，调大初始延迟后恢复稳定。"
+    },
+    {
+      "id": "backup-restore",
+      "title": "备份策略",
+      "content": "每天凌晨对数据库做一次全量备份，每小时做一次增量备份，恢复演练每个季度进行一次。"
+    },
+    {
+      "id": "tls-expire",
+      "title": "证书过期",
+      "content": "证书过期导致所有请求握手失败，现在用自动续期脚本并在到期前十四天告警。"
+    },
+    {
+      "id": "dns-cache",
+      "title": "解析缓存",
+      "content": "服务切换地址后部分客户端仍然访问旧地址，原因是本地解析缓存的有效期太长，把 TTL 调短到六十秒。"
+    },
+    {
+      "id": "disk-slow",
+      "title": "存储池超时",
+      "content": "存储池查询总是超时，原因是底层逻辑卷在做同步，磁盘繁忙导致命令卡住。"
+    },
+    {
+      "id": "rate-limit",
+      "title": "接口限流",
+      "content": "接口被爬虫刷爆，加上按来源地址限流之后，每分钟超过一百次请求的来源会被拒绝。"
+    },
+    {
+      "id": "mem-leak",
+      "title": "内存上涨",
+      "content": "服务运行几天后内存不断上涨，排查发现是连接池没有释放，每次请求都新建连接。"
+    },
+    {
+      "id": "timezone",
+      "title": "夏令时",
+      "content": "定时任务在夏令时切换那天执行了两次，因为调度器使用本地时区，改成统一使用协调世界时后问题消失。"
+    },
+    {
+      "id": "log-rotate",
+      "title": "日志轮转",
+      "content": "日志文件没有轮转，单个文件超过五十个吉字节，改成按天切割并保留七天。"
+    },
+    {
+      "id": "python-venv",
+      "title": "虚拟环境",
+      "content": "在新装的 Debian 虚拟机上创建 Python 虚拟环境失败，是因为缺少单独的 venv 软件包，改用 uv 创建环境。"
+    },
+    {
+      "id": "proxy",
+      "title": "出网代理",
+      "content": "虚拟机访问外网需要走家里的代理，代理地址已经写进 /etc/environment，远程登录执行的命令会自动继承。"
+    },
+    {
+      "id": "font",
+      "title": "中文字体",
+      "content": "前端页面中文字体显示成宋体，因为没有加载网络字体，改为自托管字体文件。"
+    },
+    {
+      "id": "coffee",
+      "title": "咖啡店",
+      "content": "周末去了一家新开的咖啡店，手冲很好喝，老板推荐了一款埃塞俄比亚的豆子。"
+    },
+    {
+      "id": "running",
+      "title": "跑步记录",
+      "content": "这个月跑步累计一百二十公里，配速比上个月快了二十秒。"
+    },
+    {
+      "id": "moving",
+      "title": "搬家",
+      "content": "下个月搬家，需要提前联系宽带师傅迁移网络，并把服务器暂时关机。"
+    }
+  ],
+  "queries": [
+    {
+      "id": "q-wechat",
+      "text": "微信机器人为什么从来不主动给我发提醒",
+      "relevant": [
+        "wechat-push"
+      ]
+    },
+    {
+      "id": "q-ws",
+      "text": "浏览器发大消息只收到一半是什么问题",
+      "relevant": [
+        "ws-fragment"
+      ]
+    },
+    {
+      "id": "q-loop",
+      "text": "那个停不下来一直重复派活的循环是怎么回事",
+      "relevant": [
+        "rage-loop"
+      ]
+    },
+    {
+      "id": "q-wal",
+      "text": "日志文件越来越大把磁盘写满了",
+      "relevant": [
+        "wal-growth"
+      ]
+    },
+    {
+      "id": "q-cache",
+      "text": "为什么缓存命中率这么低",
+      "relevant": [
+        "cache-hit"
+      ]
+    },
+    {
+      "id": "q-gold",
+      "text": "金价最高涨到多少",
+      "relevant": [
+        "gold-peak"
+      ]
+    },
+    {
+      "id": "q-lima",
+      "text": "虚拟机网络切换后就没反应了",
+      "relevant": [
+        "lima-death"
+      ]
+    },
+    {
+      "id": "q-restart",
+      "text": "能不能直接重启主节点上的服务",
+      "relevant": [
+        "restart-failover"
+      ]
+    },
+    {
+      "id": "q-git",
+      "text": "为什么提交记录里有两个邮箱",
+      "relevant": [
+        "git-emails"
+      ]
+    },
+    {
+      "id": "q-cargo",
+      "text": "整体编译通过但单独编译某个包报错",
+      "relevant": [
+        "cargo-feature"
+      ]
+    },
+    {
+      "id": "q-aigui",
+      "text": "可以在本地发布 npm 包吗",
+      "relevant": [
+        "aigui-release"
+      ]
+    },
+    {
+      "id": "q-plan",
+      "text": "计划要不要存到数据库里",
+      "relevant": [
+        "planstore"
+      ]
+    },
+    {
+      "id": "q-vip",
+      "text": "阿里云那台为什么不再作为候选节点",
+      "relevant": [
+        "vip-cloud"
+      ]
+    },
+    {
+      "id": "q-k8s",
+      "text": "容器老是被杀掉重启",
+      "relevant": [
+        "k8s-probe"
+      ]
+    },
+    {
+      "id": "q-tls",
+      "text": "证书过期了怎么办",
+      "relevant": [
+        "tls-expire"
+      ]
+    },
+    {
+      "id": "q-dns",
+      "text": "换了地址以后客户端还在访问旧的",
+      "relevant": [
+        "dns-cache"
+      ]
+    },
+    {
+      "id": "q-disk",
+      "text": "查存储池总是超时",
+      "relevant": [
+        "disk-slow"
+      ]
+    },
+    {
+      "id": "q-leak",
+      "text": "服务跑几天内存就涨上去",
+      "relevant": [
+        "mem-leak"
+      ]
+    },
+    {
+      "id": "q-tz",
+      "text": "定时任务为什么执行了两次",
+      "relevant": [
+        "timezone"
+      ]
+    },
+    {
+      "id": "q-venv",
+      "text": "新虚拟机上创建虚拟环境失败",
+      "relevant": [
+        "python-venv"
+      ]
+    },
+    {
+      "id": "q-proxy",
+      "text": "虚拟机怎么访问外网",
+      "relevant": [
+        "proxy"
+      ]
+    },
+    {
+      "id": "q-backup",
+      "text": "数据库多久备份一次",
+      "relevant": [
+        "backup-restore"
+      ]
+    }
+  ],
+  "negatives": [
+    {
+      "id": "n-rain",
+      "text": "北京明天会下雨吗"
+    },
+    {
+      "id": "n-tomato",
+      "text": "番茄炒蛋怎么做才好吃"
+    },
+    {
+      "id": "n-movie",
+      "text": "推荐几部好看的科幻电影"
+    },
+    {
+      "id": "n-guitar",
+      "text": "如何学会弹吉他"
+    },
+    {
+      "id": "n-stock",
+      "text": "股票明天会涨吗"
+    },
+    {
+      "id": "n-hike",
+      "text": "周末去哪里爬山"
+    }
+  ]
+}

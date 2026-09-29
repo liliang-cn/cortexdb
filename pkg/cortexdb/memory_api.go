@@ -555,6 +555,19 @@ func (db *DB) searchMemoryLexical(ctx context.Context, bucketID, query string, k
 			return nil, fmt.Errorf("close lexical memory rows: %w", err)
 		}
 	}
+	// A CJK sentence is one token to the word index; see lexical_cjk.go.
+	if core.ContainsCJK(query) {
+		cjk, err := db.searchMemoryCJK(ctx, bucketID, query, topK)
+		if err != nil {
+			log.Printf("cortexdb: cjk bigram memory search skipped: %v", err)
+		}
+		for _, hit := range cjk {
+			if existing, ok := merged[hit.Memory.ID]; !ok || hit.Score > existing.score {
+				merged[hit.Memory.ID] = scoredMemory{record: hit.Memory, score: hit.Score}
+			}
+		}
+	}
+
 	if len(merged) == 0 && firstErr != nil {
 		return nil, firstErr
 	}

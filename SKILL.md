@@ -192,6 +192,8 @@ _, _ = db.SaveMemory(ctx, cortexdb.MemorySaveRequest{
 
 No-embedder mode is supported. Use lexical retrieval plus LLM-planned `Keywords`, `AlternateQueries`, `EntityNames`, and `RetrievalMode`.
 
+Chinese (and other CJK) questions work in lexical mode as written. A sentence such as `微信机器人为什么从来不主动给我发提醒` is cut at function words (的, 了, 为什么, 那个, …), broken into character bigrams, matched by substring and ranked with BM25, then merged beside the word-index results — for memory, `SearchKnowledge`, `SearchTextOnly` and the `search_text` tool alike, on both backends, and inside the authorization gate. A row is returned only when it matches more than one word of the question (two separate stretches, or one of four characters or more, or the whole of a one-word question) and at least 30% of its content characters, so a question the store knows nothing about still returns nothing.
+
 ## Knowledge Graph APIs
 
 High-level APIs live in `pkg/cortexdb`:

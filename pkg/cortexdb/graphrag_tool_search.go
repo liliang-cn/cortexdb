@@ -3,6 +3,7 @@ package cortexdb
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 
@@ -53,6 +54,9 @@ func (t *GraphRAGToolbox) searchTextCandidates(ctx context.Context, req ToolSear
 		Collection: applyRetrievalPlanCollection(req.Collection, resolution.Plan.Filters),
 		TopK:       req.TopK,
 		Threshold:  req.Threshold,
+		// Each phrasing below is a variant of one question; the CJK bigram
+		// path runs once on the question itself, after the loop.
+		skipCJKBigrams: true,
 	}
 
 	queries := lexicalSearchQueries(resolution.Plan.Query, resolution.Plan.Keywords, resolution.Plan.AlternateQueries)
@@ -86,6 +90,19 @@ func (t *GraphRAGToolbox) searchTextCandidates(ctx context.Context, req ToolSear
 		}
 		if idx == 0 && len(merged) >= searchOpts.TopK {
 			break
+		}
+	}
+
+	// A CJK sentence is one token to the word index; see lexical_cjk.go.
+	if core.ContainsCJK(resolution.Plan.Query) {
+		cjk, err := t.db.searchTextCJK(ctx, resolution.Plan.Query, searchOpts)
+		if err != nil {
+			log.Printf("cortexdb: cjk bigram search skipped: %v", err)
+		}
+		for _, result := range cjk {
+			if existing, ok := merged[result.ID]; !ok || result.Score > existing.Score {
+				merged[result.ID] = result
+			}
 		}
 	}
 

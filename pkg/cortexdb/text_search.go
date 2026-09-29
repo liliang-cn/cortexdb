@@ -42,6 +42,11 @@ type TextSearchOptions struct {
 	// below the threshold — a relevance floor that prevents weak tail matches
 	// from being surfaced.
 	MinScore float64
+
+	// skipCJKBigrams is set by callers that run several phrasings of one
+	// question through SearchTextOnly and add the CJK bigram path once
+	// themselves, so it is not repeated for every phrasing.
+	skipCJKBigrams bool
 }
 
 // InsertText inserts text with automatic embedding generation.
@@ -314,6 +319,21 @@ func (db *DB) SearchTextOnly(ctx context.Context, query string, opts TextSearchO
 		return out, nil
 	}
 
+	results, err := db.searchTextOnlyWords(ctx, query, opts)
+	if err != nil || opts.skipCJKBigrams || !core.ContainsCJK(query) {
+		return results, err
+	}
+	// A CJK sentence is one token to the word index; see lexical_cjk.go.
+	cjk, cjkErr := db.searchTextCJK(ctx, query, opts)
+	if cjkErr != nil {
+		log.Printf("cortexdb: cjk bigram search skipped: %v", cjkErr)
+		return results, nil
+	}
+	return mergeScoredEmbeddings(opts.TopK, results, cjk), nil
+}
+
+// searchTextOnlyWords is SearchTextOnly over the FTS indexes alone.
+func (db *DB) searchTextOnlyWords(ctx context.Context, query string, opts TextSearchOptions) ([]core.ScoredEmbedding, error) {
 	if len(opts.Keywords) > 0 || len(opts.AlternateQueries) > 0 {
 		return db.searchTextOnlyExpanded(ctx, query, opts)
 	}
@@ -524,6 +544,13 @@ func (db *DB) ftsSearch(ctx context.Context, query string, opts TextSearchOption
 	if err != nil {
 		return nil, fmt.Errorf("FTS search failed: %w", err)
 	}
+	return scanFTSRows(rows, opts.Threshold)
+}
+
+// scanFTSRows reads rows shaped like ftsSearchQuery's result — the chunk columns
+// then a raw lexical rank — into scored embeddings, and closes them. Shared with
+// the CJK bigram path so both return rows authorization and filtering treat alike.
+func scanFTSRows(rows *sql.Rows, threshold float64) ([]core.ScoredEmbedding, error) {
 	defer func() { _ = rows.Close() }()
 
 	var results []core.ScoredEmbedding
@@ -552,7 +579,7 @@ func (db *DB) ftsSearch(ctx context.Context, query string, opts TextSearchOption
 			relevance = 0
 		}
 		normalizedScore := relevance / (1 + relevance)
-		if opts.Threshold > 0 && normalizedScore < opts.Threshold {
+		if threshold > 0 && normalizedScore < threshold {
 			continue
 		}
 		metadata, _ := encoding.DecodeMetadata(metadataJSON)
