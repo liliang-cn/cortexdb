@@ -1,31 +1,44 @@
 # CortexDB
 
-> CortexDB is a pure-Go, single-file AI memory and knowledge graph library. One SQLite file (via modernc.org/sqlite, zero CGO) holds vectors, FTS5 full-text search, RAG knowledge, scoped agent memory, and an RDF knowledge graph with SPARQL, RDFS-lite inference, and SHACL-lite validation. It exposes MCP tools for AI agents and a gRPC sidecar with a typed Rust client.
+> CortexDB is an open-source, pure-Go library that keeps an AI agent's memory and knowledge in one SQLite file: vectors, FTS5 full-text search, RAG knowledge, scoped agent memory, and an RDF 1.2 knowledge graph with SPARQL, RDFS and OWL 2 RL inference, SHACL validation and read-only Cypher. It works without an embedding model, exposes 80+ tools over MCP, ships as a Claude Code and Codex plugin, and serves the same brain over gRPC with Rust, Python and Node.js clients. MIT licensed. Latest version: v2.115.0 (2026-10-02).
 
 Key facts:
-- Language: Go (module github.com/liliang-cn/cortexdb/v2), with a Rust client (cortexdb-client on crates.io) via the cortexdb-grpc sidecar
-- Storage: a single SQLite file; no server required, no CGO
-- License: MIT, free for commercial use
-- LLM-independent: never imports an LLM SDK; embeddings and extraction are optional interfaces; lexical retrieval works with zero configuration
-- Retrieval: vector, lexical (FTS5), and hybrid GraphRAG with graph expansion
-- Knowledge graph: RDF triples/quads, practical SPARQL subset, RDFS-lite incremental inference, SHACL-lite validation, Turtle/N-Triples/N-Quads/TriG import/export
-- Workflows: MemoryFlow (conversation memory), GraphFlow (corpus → knowledge graph), ImportFlow (CSV / MySQL / PostgreSQL dumps → RAG + KG)
-- Agent integration: MCP server (stdio), in-process toolbox, gRPC ToolsService
+- Module: github.com/liliang-cn/cortexdb/v2 (Go 1.25+, no CGO — modernc.org/sqlite)
+- Storage: one SQLite file by default; a postgres:// DSN runs the same brain on PostgreSQL + pgvector
+- Models are optional: CortexDB never imports an LLM SDK. Without an embedder, retrieval is lexical (FTS5 with CJK bigrams, so whole-sentence Chinese and Japanese questions work) and the entity graph is still built
+- Retrieval modes: lexical, vector, hybrid, graph, ppr (Personalized PageRank, HippoRAG 2 style) and auto; lanes fuse by rank
+- Measured recall@5 through the public API, no embedder, lexical → auto (cortexdb-bench): 2WikiMultiHopQA 0.657 → 0.807, MuSiQue 0.457 → 0.542, LoCoMo 0.493 → 0.495, LongMemEval 0.861 → 0.862; p95 under 30 ms
+- Knowledge graph: RDF 1.2 triple terms, SPARQL 1.1 subset + SPARQL 1.2 (in-scope W3C suites pass on SQLite and PostgreSQL), read-only Cypher/GQL (0 wrong answers across 3,897 openCypher TCK scenarios), RDFS + OWL 2 RL subset kept current automatically, SHACL + SHACL-AF triple rules, contradictions reported with the conflicting triples
+- Change feed: every committed write in commit order, exactly once, nothing from a rolled-back transaction (changes_since, db.Changes)
+- Vectors: HNSW, IVF, flat, scalar/product quantization, binary 1-bit codes with exact rescoring (recall@10 0.979–0.996 at 1/32 memory)
+- Ontology: Palantir-style typed objects, links, interfaces, object sets, governed action types with audit trail
+- Not a distributed vector database and not an enterprise RDF server: embedded, inspectable, local-first
 
 ## Docs
 
-- [Project README](https://github.com/liliang-cn/cortexdb/blob/main/README.md): full feature and API documentation
-- [Go API reference](https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2): package documentation
-- [Project overview](https://liliang-cn.github.io/cortexdb/PROJECT_OVERVIEW.md): structure, features, and usage in one page
-- [Rust client](https://crates.io/crates/cortexdb-client): typed gRPC client crate with managed-server feature
-
-## Examples
-
-- [Runnable examples](https://github.com/liliang-cn/cortexdb/tree/main/examples): core vectors, RAG, memoryflow, knowledge graph/SPARQL, graphflow, MCP tools, importflow, and a self-knowledge-graph demo
-- [Self knowledge graph demo](https://github.com/liliang-cn/cortexdb/tree/main/examples/08_self_knowledge_graph): CortexDB turning its own docs into a queryable knowledge graph, with deterministic Q&A over graph edges
+- [Website](https://liliang-cn.github.io/cortexdb/): overview, quick start, benchmarks, FAQ ([中文](https://liliang-cn.github.io/cortexdb/zh/))
+- [Full documentation as one text file](https://liliang-cn.github.io/cortexdb/llms-full.txt): README and the complete guide
+- [README](https://github.com/liliang-cn/cortexdb/blob/main/README.md): features and API
+- [Guide](https://github.com/liliang-cn/cortexdb/blob/main/docs/GUIDE.md): layers, retrieval, knowledge graph, ontology, shared-brain operations ([中文指南](https://github.com/liliang-cn/cortexdb/blob/main/docs/GUIDE_CN.md))
+- [Go API reference](https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2)
+- [Changelog](https://github.com/liliang-cn/cortexdb/blob/main/CHANGELOG.md)
 
 ## Install
 
-- Go library: go get github.com/liliang-cn/cortexdb/v2
-- gRPC sidecar: go install github.com/liliang-cn/cortexdb/v2/cmd/cortexdb-grpc@latest
-- Rust client: cargo add cortexdb-client
+- Go library: `go get github.com/liliang-cn/cortexdb/v2`
+- Claude Code plugin: `/plugin marketplace add liliang-cn/cortexdb` then `/plugin install cortexdb@cortexdb`
+- Codex plugin: `codex plugin marketplace add liliang-cn/cortexdb && codex plugin add cortexdb@cortexdb`
+- gRPC server: `go install github.com/liliang-cn/cortexdb/v2/cmd/cortexdb-grpc@latest`, or a release binary
+- Clients: `cargo add cortexdb-client` · `pip install cortexdb-client` · `npm install cortexdb-client`
+
+## Examples
+
+- [Runnable examples](https://github.com/liliang-cn/cortexdb/tree/main/examples): core vectors, RAG, memoryflow, knowledge graph and SPARQL, graphflow, MCP tools, importflow, ontology
+- [Benchmark harness](https://github.com/liliang-cn/cortexdb/tree/main/cmd/cortexdb-bench): LongMemEval, LoCoMo, MuSiQue and 2WikiMultiHopQA through the public API
+
+## Optional
+
+- [Rust client](https://crates.io/crates/cortexdb-client)
+- [Python client](https://pypi.org/project/cortexdb-client/)
+- [Node.js client](https://www.npmjs.com/package/cortexdb-client)
+- [Releases](https://github.com/liliang-cn/cortexdb/releases)

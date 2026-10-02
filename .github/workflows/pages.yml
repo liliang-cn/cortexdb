@@ -7,6 +7,8 @@ on:
       - main
     paths:
       - 'docs/**'
+      - 'README.md'
+      - 'scripts/gen-llms-full.sh'
       
   # Allow manual trigger
   workflow_dispatch:
@@ -33,6 +35,11 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
+
+      # llms-full.txt is the README and the guide in one file; rebuilt here so
+      # the deployed copy never lags behind them.
+      - name: Generate llms-full.txt
+        run: ./scripts/gen-llms-full.sh
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

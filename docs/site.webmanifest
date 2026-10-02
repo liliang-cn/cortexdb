@@ -1,0 +1,15 @@
+{
+  "name": "CortexDB",
+  "short_name": "CortexDB",
+  "description": "AI memory and a knowledge graph in one SQLite file.",
+  "start_url": "/cortexdb/",
+  "scope": "/cortexdb/",
+  "display": "browser",
+  "background_color": "#faf9f6",
+  "theme_color": "#faf9f6",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "assets/img/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "assets/img/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

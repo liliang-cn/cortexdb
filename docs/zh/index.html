@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CortexDB — 一个 SQLite 文件装下 AI 记忆与知识图谱（纯 Go）</title>
+<meta name="description" content="CortexDB 是开源的纯 Go 库：一个 SQLite 文件装下向量、全文检索、RAG 知识、Agent 记忆和 RDF/SPARQL 知识图谱。不需要 embedding 模型也能用，MIT 协议。">
+<link rel="canonical" href="https://liliang-cn.github.io/cortexdb/zh/">
+<link rel="alternate" hreflang="en" href="https://liliang-cn.github.io/cortexdb/">
+<link rel="alternate" hreflang="zh-CN" href="https://liliang-cn.github.io/cortexdb/zh/">
+<link rel="alternate" hreflang="x-default" href="https://liliang-cn.github.io/cortexdb/">
+<link rel="alternate" type="text/plain" title="LLM summary" href="https://liliang-cn.github.io/cortexdb/llms.txt">
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+<meta name="author" content="Liang Li">
+<meta name="theme-color" content="#faf9f6">
+<meta name="color-scheme" content="light">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CortexDB">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:url" content="https://liliang-cn.github.io/cortexdb/zh/">
+<meta property="og:title" content="CortexDB — 一个 SQLite 文件装下 AI 记忆与知识图谱">
+<meta property="og:description" content="向量、全文检索、RAG、Agent 记忆和 RDF/SPARQL 知识图谱都在一个文件里。纯 Go、无 CGO，不需要 embedding 模型。">
+<meta property="og:image" content="https://liliang-cn.github.io/cortexdb/assets/img/og-zh.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="CortexDB：把 AI 记忆和知识图谱装进一个 SQLite 文件">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="CortexDB — 一个 SQLite 文件装下 AI 记忆与知识图谱">
+<meta name="twitter:description" content="向量、全文检索、RAG、Agent 记忆和 RDF/SPARQL 知识图谱都在一个文件里。纯 Go，不需要 embedding 模型。">
+<meta name="twitter:image" content="https://liliang-cn.github.io/cortexdb/assets/img/og-zh.png">
+
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../assets/img/apple-touch-icon.png">
+<link rel="manifest" href="../site.webmanifest">
+<link rel="preload" href="../assets/fonts/instrument-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../assets/site.css?v=2026100201">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareSourceCode",
+      "@id": "https://liliang-cn.github.io/cortexdb/#code",
+      "name": "CortexDB",
+      "description": "纯 Go、单文件的 AI 记忆与知识图谱库。一个 SQLite 文件装下向量、FTS5 全文检索、RAG 知识、分作用域的 Agent 记忆，以及支持 SPARQL、RDFS 与 OWL 2 RL 推理、SHACL 校验和只读 Cypher 的 RDF 1.2 知识图谱，并提供 80 多个 MCP 工具。不需要 embedding 模型；可选 PostgreSQL + pgvector 后端。",
+      "url": "https://liliang-cn.github.io/cortexdb/zh/",
+      "codeRepository": "https://github.com/liliang-cn/cortexdb",
+      "programmingLanguage": "Go",
+      "license": "https://opensource.org/licenses/MIT",
+      "version": "2.115.0",
+      "inLanguage": "zh-CN"
+    },
+    {
+      "@type": "WebPage",
+      "@id": "https://liliang-cn.github.io/cortexdb/zh/#page",
+      "url": "https://liliang-cn.github.io/cortexdb/zh/",
+      "name": "CortexDB — 一个 SQLite 文件装下 AI 记忆与知识图谱",
+      "isPartOf": { "@id": "https://liliang-cn.github.io/cortexdb/#website" },
+      "about": { "@id": "https://liliang-cn.github.io/cortexdb/#code" },
+      "inLanguage": "zh-CN",
+      "dateModified": "2026-10-02"
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://liliang-cn.github.io/cortexdb/zh/#faq",
+      "inLanguage": "zh-CN",
+      "mainEntity": [
+        { "@type": "Question", "name": "CortexDB 是什么？", "acceptedAnswer": { "@type": "Answer", "text": "CortexDB 是一个开源 Go 库，把 AI Agent 的记忆和知识存进一个 SQLite 文件：向量、全文检索、RAG 文档、分作用域的记忆，以及可以用 SPARQL 或只读 Cypher 查询的 RDF 知识图谱。它运行在你的程序里，不需要单独部署服务，采用 MIT 协议。" } },
+        { "@type": "Question", "name": "CortexDB 需要 embedding 模型或大模型吗？", "acceptedAnswer": { "@type": "Answer", "text": "不需要。CortexDB 不引入任何大模型 SDK。没有 embedder 时使用词法检索（FTS5，中文、日文整句提问都能召回），并照样建立实体图供图游走检索使用。接入任意 OpenAI 兼容的 embeddings 端点（例如 Ollama）即可启用向量和混合检索。" } },
+        { "@type": "Question", "name": "CortexDB 和向量数据库有什么区别？", "acceptedAnswer": { "@type": "Answer", "text": "向量数据库存 embedding、回答最近邻查询。CortexDB 是嵌入式库，除了向量，还管理分作用域的 Agent 记忆、RAG 文档，以及带推理和校验的知识图谱，全部在代码旁边的一个文件里。它不是分布式向量数据库，也不是企业级 RDF 服务器。" } },
+        { "@type": "Question", "name": "Go 以外的语言能用 CortexDB 吗？", "acceptedAnswer": { "@type": "Answer", "text": "可以。cortexdb-grpc 服务端通过 gRPC 提供同一个大脑，并有 Rust（cargo add cortexdb-client）、Python（pip install cortexdb-client）和 Node.js（npm install cortexdb-client）的类型化客户端。Agent 也可以通过它的 MCP 服务端使用。" } },
+        { "@type": "Question", "name": "CortexDB 能接入 Claude Code 和 Codex 吗？", "acceptedAnswer": { "@type": "Answer", "text": "能。它为两者都提供插件。在 Claude Code 中运行 /plugin marketplace add liliang-cn/cortexdb，再运行 /plugin install cortexdb@cortexdb。插件默认词法模式，无需 API key，在 ~/.cortexdb/cortexdb.db 保存一个全局大脑；多台机器指向同一个 cortexdb-grpc 服务即可共享。" } },
+        { "@type": "Question", "name": "CortexDB 支持哪些数据库？", "acceptedAnswer": { "@type": "Answer", "text": "默认 SQLite，使用纯 Go 的 modernc.org/sqlite 驱动，因此没有 CGO。用 postgres:// 连接串即可把同一个大脑搬到 PostgreSQL + pgvector；向量、混合检索、记忆和 RDF 图在两者上行为一致。" } },
+        { "@type": "Question", "name": "CortexDB 支持哪些图查询？", "acceptedAnswer": { "@type": "Answer", "text": "SPARQL 1.1（有文档说明的实用子集）及 SPARQL 1.2 三元组项，属性图上的只读 Cypher，随事实变化自动保持最新的 RDFS 与 OWL 2 RL 子集推理，SHACL 校验和 SHACL-AF 三元组规则。范围内的 W3C RDF 1.2 与 SPARQL 1.2 测试集在 SQLite 和 PostgreSQL 上均通过。" } },
+        { "@type": "Question", "name": "不用 embedder 时，CortexDB 的检索效果如何？", "acceptedAnswer": { "@type": "Answer", "text": "用 cortexdb-bench 经公开 API 实测，不接 embedder，默认 auto 模式与纯词法检索的 recall@5 对比：2WikiMultiHopQA 0.807 对 0.657，MuSiQue 0.542 对 0.457，LoCoMo 0.495 对 0.493，LongMemEval 0.862 对 0.861，p95 延迟低于 30 毫秒。多跳问题的提升来自在实体图上做的个性化 PageRank 游走。" } }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">跳到正文</a>
+
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="./" aria-label="CortexDB 首页">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#15171c"/><path d="M20 42 L32 20 L45 40 Z" fill="none" stroke="#5fd3b4" stroke-width="3.4" stroke-linecap="round" opacity=".55"/><circle cx="32" cy="20" r="6.5" fill="#5fd3b4"/><circle cx="20" cy="42" r="6.5" fill="#fff"/><circle cx="45" cy="40" r="6.5" fill="#fff"/></svg>
+      CortexDB
+    </a>
+    <nav aria-label="主导航">
+      <ul class="nav-links">
+        <li><a href="#features">功能</a></li>
+        <li><a href="#start">快速开始</a></li>
+        <li><a href="#benchmarks">评测</a></li>
+        <li><a href="#faq">常见问题</a></li>
+        <li><a href="https://github.com/liliang-cn/cortexdb/blob/main/docs/GUIDE_CN.md">指南</a></li>
+      </ul>
+    </nav>
+    <div class="bar-actions">
+      <a class="lang" href="../" hreflang="en" lang="en">English</a>
+      <a class="btn btn-primary btn-sm" href="https://github.com/liliang-cn/cortexdb">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.8 1.19 1.83 1.19 3.09 0 4.42-2.7 5.4-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></svg>
+        <span class="label">GitHub</span>
+      </a>
+      <details class="menu">
+        <summary aria-label="菜单"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></summary>
+        <div class="menu-panel">
+          <a href="#features">功能</a>
+          <a href="#start">快速开始</a>
+          <a href="#benchmarks">评测</a>
+          <a href="#faq">常见问题</a>
+          <a href="https://github.com/liliang-cn/cortexdb/blob/main/docs/GUIDE_CN.md">指南</a>
+        </div>
+      </details>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <a class="eyebrow" href="https://github.com/liliang-cn/cortexdb/releases/tag/v2.115.0" style="text-decoration:none"><span class="dot"></span>v2.115.0 · 沿着图走的检索</a>
+      <h1><span class="ph">把 AI 记忆</span><span class="ph">和知识图谱，</span><span class="ph">装进<em>一个</em></span><span class="ph"><em>SQLite 文件</em>。</span></h1>
+      <p class="lede"><strong>CortexDB</strong> 是一个开源的 Go 库，给 Agent 做记忆。一个文件里装着向量、全文检索、RAG 文档、分作用域的记忆，以及带 SPARQL、推理和校验的 RDF 知识图谱。它就运行在你的程序里，不需要 embedding 模型也能用，MIT 协议。</p>
+      <div class="install">
+        <code id="install-go"><span class="prompt">$ </span>go get github.com/liliang-cn/cortexdb/v2</code>
+        <button class="copy" type="button" data-copy="install-go" data-done="已复制" aria-label="复制安装命令"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span>复制</span></button>
+      </div>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="#start">快速开始</a>
+        <a class="btn btn-ghost" href="https://github.com/liliang-cn/cortexdb/blob/main/docs/GUIDE_CN.md">阅读中文指南</a>
+      </div>
+    </div>
+    <figure style="margin:0">
+      <div class="screen">
+        <div class="screen-bar" aria-hidden="true"><i></i><i></i><i></i><span>serve_graph_3d — live brain</span></div>
+        <img src="../assets/img/live-3d-openclaw-cluster-1600.webp"
+             srcset="../assets/img/live-3d-openclaw-cluster-800.webp 800w, ../assets/img/live-3d-openclaw-cluster-1600.webp 1600w"
+             sizes="(min-width: 980px) 540px, 100vw"
+             width="1600" height="1000" fetchpriority="high"
+             alt="CortexDB 知识图谱的 3D 视图：2000 个实体、5953 条关系，按节点类型着色">
+      </div>
+      <figcaption class="caption">一个真实的共享大脑，支撑着一个 OpenClaw 集群：2000 个实体、5953 条关系，节点类型都是 Agent 自己写进去的。</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="facts-title" style="padding-top:0">
+  <div class="wrap">
+    <h2 id="facts-title" class="kicker" style="font-size:13px;letter-spacing:.08em">一览</h2>
+    <dl class="facts">
+      <div><dt>是什么</dt><dd>嵌入式 AI 记忆 + 知识图谱</dd></div>
+      <div><dt>语言</dt><dd>Go，无 CGO · Rust、Python、Node 客户端</dd></div>
+      <div><dt>存储</dt><dd>一个 SQLite 文件，或 PostgreSQL + pgvector</dd></div>
+      <div><dt>模型</dt><dd>可选 — 词法模式无需 API key</dd></div>
+      <div><dt>图谱</dt><dd>RDF 1.2、SPARQL、OWL 2 RL、SHACL、Cypher</dd></div>
+      <div><dt>Agent</dt><dd>80+ MCP 工具 · Claude Code 与 Codex 插件</dd></div>
+      <div><dt>协议</dt><dd>MIT</dd></div>
+      <div><dt>最新版本</dt><dd>v2.115.0 · <time datetime="2026-10-02">2026 年 10 月 2 日</time></dd></div>
+    </dl>
+  </div>
+</section>
+
+<section class="section" id="features" aria-labelledby="features-title">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="kicker">功能</p>
+      <h2 id="features-title"><span class="ph">Agent 需要记住的一切，</span><span class="ph">都在代码旁边</span><span class="ph">那个文件里。</span></h2>
+      <p>不用部署服务，也不用同步第二个数据库：默认 SQLite，一个文件装不下时换 PostgreSQL + pgvector。</p>
+    </div>
+    <div class="grid">
+      <article class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6c0 2.2 1.2 3.6 2 4.5V17h8v-3.5c.8-.9 2-2.3 2-4.5a6 6 0 0 0-6-6z"/><path d="M9 21h6"/></svg></div>
+        <h3>Agent 记忆</h3>
+        <p>在用户、会话、全局三种作用域上 <code>Remember</code>、<code>Recall</code>、<code>Reflect</code>、<code>Consolidate</code>。Recall 返回可直接放进提示词、带出处的上下文包；关系类问题以图边事实作答，比如 <em>Alice —uses→ Apollo</em>。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></div>
+        <h3>沿着图走的检索</h3>
+        <p>向量、词法、混合、图四条通道按排名融合，再加上个性化 PageRank（HippoRAG 2），专门对付答案隔了两跳的问题。<code>auto</code> 只在问题点名了具体实体时才走图。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="9" cy="18" r="2.5"/><path d="M8.3 7.1 15.6 7.6M7 8.4 8.4 15.6M16.6 10.1 10.9 16.4"/></svg></div>
+        <h3>真正的知识图谱</h3>
+        <p>RDF 1.2 三元组项、SPARQL 1.1 与 1.2、只读 Cypher、RDFS 与 OWL 2 RL 子集、SHACL 校验和 SHACL-AF 规则。每条推理出的三元组都能解释来源；矛盾会被报告，绝不靠猜来消解。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7"/><path d="m16 15 3 3-3 3"/></svg></div>
+        <h3>变更事件流</h3>
+        <p>每一次已提交的写入，都在同一个事务里写进 <code>change_log</code>：按提交顺序、恰好一次、回滚的写入不留痕。推理结果靠它自动保持最新，同步和触发器也建在它上面。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></svg></div>
+        <h3>为 Agent 而生</h3>
+        <p>80 多个工具，进程内和 MCP 上名字一样。插件让 Claude Code 和 Codex 共用一个大脑，带 <code>/remember</code>、<code>/recall</code> 和自动召回钩子；gRPC 服务让多台机器共享它。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="9"/></svg></div>
+        <h3>不依赖模型</h3>
+        <p>CortexDB 不引入任何大模型 SDK。没有 embedder 时走词法检索——整句的中文提问也能召回——并照样建立实体图。接上任意 OpenAI 兼容的 embeddings 端点就有向量检索。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16v10H4z"/><path d="M8 7V5h8v2M9 12h6"/></svg></div>
+        <h3>本体与受控动作</h3>
+        <p>带主键和基数的对象、链接、接口类型，对象集代数，留审计记录的动作类型，以及能发现破坏性变更的 schema diff——Palantir 式本体，同在一个文件里。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg></div>
+        <h3>紧凑的向量</h3>
+        <p>HNSW、IVF、Flat 索引，标量和乘积量化，以及先用 1 比特编码筛选、再精确重排的二值量化：在真实的 768 维 embedding 上 recall@10 为 0.979–0.996，内存只要 1/32。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 12l2 2 4-4"/><path d="M12 3l8 4v5c0 5-3.4 8.3-8 9-4.6-.7-8-4-8-9V7z"/></svg></div>
+        <h3>答案说得出自己从哪来</h3>
+        <p>每条记录都可以带上来源、分块、生产者和可信等级——已核实、仅断言、已拒绝。<code>Authorize</code> 回调把关每一个检索候选，权限控制落在检索层。</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="start" aria-labelledby="start-title">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="kicker">快速开始</p>
+      <h2 id="start-title">三种用法。</h2>
+      <p>嵌进 Go 程序，给编码 Agent 加上记忆，或者跑一个服务让多个客户端共享。</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <h3><span>01</span>在 Go 程序里</h3>
+        <p>打开文件，记住，召回。不需要 embedder。</p>
+        <div class="code">
+          <div class="code-head">main.go<button class="copy" type="button" data-copy="code-go" data-done="已复制" aria-label="复制 Go 示例"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span>复制</span></button></div>
+<pre id="code-go"><code>db, _ := cortexdb.<span class="tok-f">Open</span>(cortexdb.<span class="tok-f">DefaultConfig</span>(<span class="tok-s">"brain.db"</span>))
+<span class="tok-k">defer</span> db.<span class="tok-f">Close</span>()
+brain := db.<span class="tok-f">KnowledgeMemory</span>()
+
+brain.<span class="tok-f">Remember</span>(ctx, cortexdb.KnowledgeMemoryRememberRequest{
+    Content: <span class="tok-s">"Alice 喜欢用 tab 缩进。"</span>, Scope: <span class="tok-s">"user"</span>,
+})
+rec, _ := brain.<span class="tok-f">Recall</span>(ctx, cortexdb.KnowledgeMemoryRecallRequest{
+    Query: <span class="tok-s">"Alice 喜欢什么缩进？"</span>,
+})
+fmt.<span class="tok-f">Println</span>(rec.ContextPack.Text) <span class="tok-c">// 带出处</span></code></pre>
+        </div>
+      </div>
+      <div class="step">
+        <h3><span>02</span>在 Claude Code 或 Codex 里</h3>
+        <p>一个全局大脑、斜杠命令和自动召回，无需 API key。</p>
+        <div class="code">
+          <div class="code-head">plugin<button class="copy" type="button" data-copy="code-plugin" data-done="已复制" aria-label="复制插件命令"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span>复制</span></button></div>
+<pre id="code-plugin"><code><span class="tok-c"># Claude Code</span>
+/plugin marketplace add liliang-cn/cortexdb
+/plugin install cortexdb@cortexdb
+
+<span class="tok-c"># Codex</span>
+codex plugin marketplace add liliang-cn/cortexdb
+codex plugin add cortexdb@cortexdb
+
+<span class="tok-c"># 之后在任何会话里</span>
+/remember 预发数据库在 45432 端口
+/recall 预发数据库</code></pre>
+        </div>
+      </div>
+      <div class="step">
+        <h3><span>03</span>任何语言</h3>
+        <p>跑一次 gRPC 服务，客户端和 Agent 都连它。</p>
+        <div class="code">
+          <div class="code-head">shell<button class="copy" type="button" data-copy="code-grpc" data-done="已复制" aria-label="复制服务端和客户端命令"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span>复制</span></button></div>
+<pre id="code-grpc"><code>go install github.com/liliang-cn/cortexdb/v2/cmd/cortexdb-grpc@latest
+
+<span class="tok-c"># 类型化客户端</span>
+cargo add cortexdb-client
+pip install cortexdb-client
+npm install cortexdb-client
+
+<span class="tok-c"># 多台机器共享一个大脑</span>
+export CORTEXDB_REMOTE=host:port</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="benchmarks" aria-labelledby="bench-title">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="kicker">评测</p>
+      <h2 id="bench-title"><span class="ph">不用 embedding 模型，</span><span class="ph">多跳召回</span><span class="ph">提升 15 个点。</span></h2>
+      <p>标准检索评测走的是应用实际调用的同一套公开 API——先 <code>SaveKnowledge</code>，再 <code>SearchKnowledge</code>——用 <code>cortexdb-bench</code> 跑。不接 embedder；<code>auto</code> 是默认模式。</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <caption>完整问题集上的 recall@5（LongMemEval 为固定种子抽取的 100 题）。CortexDB v2.115.0，SQLite，Apple M2 Pro。</caption>
+        <thead>
+          <tr><th scope="col">评测集</th><th scope="col">类型</th><th scope="col" class="num">词法</th><th scope="col" class="num">Auto</th><th scope="col" class="bar-cell">Auto 对比词法</th><th scope="col" class="num">p95</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">2WikiMultiHopQA</th><td>多跳</td><td class="num">0.657</td><td class="num gain">0.807</td><td class="bar-cell"><div class="meter" role="img" aria-label="0.657 到 0.807"><b style="width:80.7%"></b><s style="width:65.7%"></s></div></td><td class="num">21 ms</td></tr>
+          <tr><th scope="row">MuSiQue</th><td>多跳</td><td class="num">0.457</td><td class="num gain">0.542</td><td class="bar-cell"><div class="meter" role="img" aria-label="0.457 到 0.542"><b style="width:54.2%"></b><s style="width:45.7%"></s></div></td><td class="num">28 ms</td></tr>
+          <tr><th scope="row">LoCoMo</th><td>对话</td><td class="num">0.493</td><td class="num">0.495</td><td class="bar-cell"><div class="meter" role="img" aria-label="0.493 到 0.495"><b style="width:49.5%"></b><s style="width:49.3%"></s></div></td><td class="num">8 ms</td></tr>
+          <tr><th scope="row">LongMemEval</th><td>对话</td><td class="num">0.861</td><td class="num">0.862</td><td class="bar-cell"><div class="meter" role="img" aria-label="0.861 到 0.862"><b style="width:86.2%"></b><s style="width:86.1%"></s></div></td><td class="num">15 ms</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">多跳提升来自在 <code>SaveKnowledge</code> 建立的实体图上做个性化 PageRank 游走；在单跳的对话记忆上，<code>auto</code> 保持词法的召回，因为大多数段落都提到的实体（比如对话里的说话人）不会被用作游走起点。数据集用 sha256 固定；用 <a href="https://github.com/liliang-cn/cortexdb/tree/main/cmd/cortexdb-bench"><code>go run ./cmd/cortexdb-bench</code></a> 复现。</p>
+    <div class="stats">
+      <div class="stat"><b>0.979–0.996</b><span>1 比特二值编码加精确重排的 recall@10，内存只要 1/32</span></div>
+      <div class="stat"><b>0 错误</b><span>3897 个 openCypher TCK 场景零错误答案——做不到的，直接拒绝</span></div>
+      <div class="stat"><b>W3C 测试集</b><span>范围内的 RDF 1.2 与 SPARQL 1.2 测试在 SQLite 和 PostgreSQL 上通过</span></div>
+      <div class="stat"><b>恰好一次</b><span>每次已提交写入都按提交顺序进入变更事件流；回滚不留痕</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="see-title">
+  <div class="wrap split">
+    <div>
+      <p class="kicker">看得见</p>
+      <h2 id="see-title">一个能看进去的大脑。</h2>
+      <p class="lede" style="font-size:1.06rem">CortexDB 生来可检查。<code>serve_graph_3d</code> 直接从处理调用的 MCP 服务里提供实时视图，Agent 碰到哪里，图就在哪里亮起来。<code>graph_schema</code> 报告数据实际呈现的 schema，每条推理出的事实都能追溯到它所依据的事实。</p>
+      <ul class="checks">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>一个文件：备份、拷贝、比对，或直接用 <code>sqlite3</code> 打开</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>可按游标读取的变更事件流</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>每条推理都有解释，每个矛盾都有报告</span></li>
+      </ul>
+    </div>
+    <figure style="margin:0">
+      <div class="screen">
+        <div class="screen-bar" aria-hidden="true"><i></i><i></i><i></i><span>orbit</span></div>
+        <video src="../assets/img/brain-orbit.mp4" poster="../assets/img/brain-orbit-poster.webp" width="960" height="600" muted loop playsinline controls preload="none" aria-label="CortexDB 大脑的 3D 旋转视图"></video>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="fit-title">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="kicker">适用场景</p>
+      <h2 id="fit-title">嵌入式、可检查、本地优先。</h2>
+    </div>
+    <div class="fit">
+      <div class="card">
+        <h3>适合</h3>
+        <ul class="checks">
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>Agent 需要记忆和知识图谱，又不想多运维一个服务</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>检索要能离线工作、不需要 API key</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>答案必须说清出处和可信程度</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>多个 Agent 或多台机器要共享一个大脑</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>不适合</h3>
+        <ul class="checks no">
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg><span>需要跨集群分片的分布式向量数据库</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg><span>需要完整 SPARQL 1.1 和 OWL DL 推理的企业级 RDF 三元组库</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg><span>要给大量租户低延迟地服务数十亿向量</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="faq" aria-labelledby="faq-title">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="kicker">常见问题</p>
+      <h2 id="faq-title">直接回答。</h2>
+    </div>
+    <div class="faq">
+      <details open><summary>CortexDB 是什么？</summary><div><p>CortexDB 是一个开源 Go 库，把 AI Agent 的记忆和知识存进一个 SQLite 文件：向量、全文检索、RAG 文档、分作用域的记忆，以及可以用 SPARQL 或只读 Cypher 查询的 RDF 知识图谱。它运行在你的程序里，不需要单独部署服务，采用 MIT 协议。</p></div></details>
+      <details><summary>CortexDB 需要 embedding 模型或大模型吗？</summary><div><p>不需要。CortexDB 不引入任何大模型 SDK。没有 embedder 时使用词法检索（FTS5，中文、日文整句提问都能召回），并照样建立实体图供图游走检索使用。接入任意 OpenAI 兼容的 embeddings 端点（例如 Ollama）即可启用向量和混合检索。</p></div></details>
+      <details><summary>CortexDB 和向量数据库有什么区别？</summary><div><p>向量数据库存 embedding、回答最近邻查询。CortexDB 是嵌入式库，除了向量，还管理分作用域的 Agent 记忆、RAG 文档，以及带推理和校验的知识图谱，全部在代码旁边的一个文件里。它不是分布式向量数据库，也不是企业级 RDF 服务器。</p></div></details>
+      <details><summary>Go 以外的语言能用 CortexDB 吗？</summary><div><p>可以。<code>cortexdb-grpc</code> 服务端通过 gRPC 提供同一个大脑，并有 Rust（<code>cargo add cortexdb-client</code>）、Python（<code>pip install cortexdb-client</code>）和 Node.js（<code>npm install cortexdb-client</code>）的类型化客户端。Agent 也可以通过它的 MCP 服务端使用。</p></div></details>
+      <details><summary>CortexDB 能接入 Claude Code 和 Codex 吗？</summary><div><p>能。它为两者都提供插件。在 Claude Code 中运行 <code>/plugin marketplace add liliang-cn/cortexdb</code>，再运行 <code>/plugin install cortexdb@cortexdb</code>。插件默认词法模式，无需 API key，在 <code>~/.cortexdb/cortexdb.db</code> 保存一个全局大脑；多台机器指向同一个 <code>cortexdb-grpc</code> 服务即可共享。</p></div></details>
+      <details><summary>CortexDB 支持哪些数据库？</summary><div><p>默认 SQLite，使用纯 Go 的 modernc.org/sqlite 驱动，因此没有 CGO。用 <code>postgres://</code> 连接串即可把同一个大脑搬到 PostgreSQL + pgvector；向量、混合检索、记忆和 RDF 图在两者上行为一致。</p></div></details>
+      <details><summary>CortexDB 支持哪些图查询？</summary><div><p>SPARQL 1.1（有文档说明的实用子集）及 SPARQL 1.2 三元组项，属性图上的只读 Cypher，随事实变化自动保持最新的 RDFS 与 OWL 2 RL 子集推理，SHACL 校验和 SHACL-AF 三元组规则。范围内的 W3C RDF 1.2 与 SPARQL 1.2 测试集在 SQLite 和 PostgreSQL 上均通过。</p></div></details>
+      <details><summary>不用 embedder 时，CortexDB 的检索效果如何？</summary><div><p>用 <code>cortexdb-bench</code> 经公开 API 实测，不接 embedder，默认 <code>auto</code> 模式与纯词法检索的 recall@5 对比：2WikiMultiHopQA 0.807 对 0.657，MuSiQue 0.542 对 0.457，LoCoMo 0.495 对 0.493，LongMemEval 0.862 对 0.861，p95 延迟低于 30 毫秒。多跳问题的提升来自在实体图上做的个性化 PageRank 游走。</p></div></details>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="cta-title">
+  <div class="wrap">
+    <div class="cta">
+      <div>
+        <h2 id="cta-title">今天就给你的 Agent 装上记忆。</h2>
+        <p>MIT 协议开源。一条命令加进 Go 模块。</p>
+      </div>
+      <div class="hero-cta" style="margin:0">
+        <a class="btn btn-primary" href="https://github.com/liliang-cn/cortexdb">在 GitHub 上 Star</a>
+        <a class="btn btn-ghost" href="https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2">API 文档</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="./"><svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#15171c"/><path d="M20 42 L32 20 L45 40 Z" fill="none" stroke="#5fd3b4" stroke-width="3.4" stroke-linecap="round" opacity=".55"/><circle cx="32" cy="20" r="6.5" fill="#5fd3b4"/><circle cx="20" cy="42" r="6.5" fill="#fff"/><circle cx="45" cy="40" r="6.5" fill="#fff"/></svg>CortexDB</a>
+        <p style="margin-top:12px;max-width:28em">一个 SQLite 文件装下 AI 记忆与知识图谱。纯 Go。</p>
+      </div>
+      <div>
+        <h4>文档</h4>
+        <ul>
+          <li><a href="https://github.com/liliang-cn/cortexdb/blob/main/docs/GUIDE_CN.md">中文指南</a></li>
+          <li><a href="https://github.com/liliang-cn/cortexdb/blob/main/README_CN.md">中文 README</a></li>
+          <li><a href="https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2">Go API 文档</a></li>
+          <li><a href="https://github.com/liliang-cn/cortexdb/blob/main/CHANGELOG.md">更新日志</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>客户端</h4>
+        <ul>
+          <li><a href="https://crates.io/crates/cortexdb-client">Rust</a></li>
+          <li><a href="https://pypi.org/project/cortexdb-client/">Python</a></li>
+          <li><a href="https://www.npmjs.com/package/cortexdb-client">Node.js</a></li>
+          <li><a href="https://github.com/liliang-cn/cortexdb/releases">gRPC 服务端二进制</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>更多</h4>
+        <ul>
+          <li><a href="https://github.com/liliang-cn/cortexdb">GitHub</a></li>
+          <li><a href="../llms.txt">llms.txt</a></li>
+          <li><a href="../" hreflang="en" lang="en">English</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="fine">
+      <span>© 2026 Liang Li · MIT 协议</span>
+      <span>更新于 <time datetime="2026-10-02">2026 年 10 月 2 日</time> · v2.115.0</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../assets/site.js?v=2026100201" defer></script>
+<script data-goatcounter="https://stats.superleo.app/count" async src="https://stats.superleo.app/count.js"></script>
+</body>
+</html>
