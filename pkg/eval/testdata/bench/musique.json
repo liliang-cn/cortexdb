@@ -1,0 +1,29 @@
+[
+  {
+    "id": "2hop__100_200",
+    "question": "Who founded the club Messi joined as a boy?",
+    "answer": "Joan Gamper",
+    "answer_aliases": [],
+    "answerable": true,
+    "question_decomposition": [],
+    "paragraphs": [
+      {"idx": 0, "title": "Lionel Messi", "paragraph_text": "Messi joined the youth academy of FC Barcelona.", "is_supporting": true},
+      {"idx": 1, "title": "FC Barcelona", "paragraph_text": "FC Barcelona was founded by Joan Gamper in 1899.", "is_supporting": true},
+      {"idx": 2, "title": "Real Madrid", "paragraph_text": "Real Madrid plays at the Bernabeu.", "is_supporting": false}
+    ]
+  },
+  {
+    "id": "3hop1__300_400_500",
+    "question": "In which country is the river that flows past the capital where the author of Ulysses was born?",
+    "answer": "Ireland",
+    "answer_aliases": [],
+    "answerable": true,
+    "question_decomposition": [],
+    "paragraphs": [
+      {"idx": 0, "title": "James Joyce", "paragraph_text": "James Joyce, author of Ulysses, was born in Dublin.", "is_supporting": true},
+      {"idx": 1, "title": "Dublin", "paragraph_text": "The River Liffey flows through Dublin.", "is_supporting": true},
+      {"idx": 2, "title": "River Liffey", "paragraph_text": "The Liffey is a river in Ireland.", "is_supporting": true},
+      {"idx": 3, "title": "Real Madrid", "paragraph_text": "Real Madrid plays at the Bernabeu.", "is_supporting": false}
+    ]
+  }
+]

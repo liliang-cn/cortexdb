@@ -1,0 +1,27 @@
+[
+  {
+    "_id": "abc123",
+    "type": "compositional",
+    "question": "When did Lothair II's mother die?",
+    "context": [
+      ["Teutberga", ["Teutberga was a queen of Lotharingia.", "She married Lothair II."]],
+      ["Lothair II", ["Lothair II was a king.", "His mother was Ermengarde of Tours."]],
+      ["Ermengarde of Tours", ["Ermengarde of Tours died on 20 March 851."]]
+    ],
+    "supporting_facts": [["Lothair II", 1], ["Ermengarde of Tours", 0], ["Lothair II", 0]],
+    "evidences": [],
+    "answer": "20 March 851"
+  },
+  {
+    "_id": "def456",
+    "type": "comparison",
+    "question": "Which queen married a king of Lotharingia?",
+    "context": [
+      ["Teutberga", ["Teutberga was a queen of Lotharingia.", "She married Lothair II."]],
+      ["Lothair II", ["Lothair II was a king.", "His mother was Ermengarde of Tours."]]
+    ],
+    "supporting_facts": [["Teutberga", 1]],
+    "evidences": [],
+    "answer": "Teutberga"
+  }
+]
