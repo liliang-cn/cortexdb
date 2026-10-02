@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -28,7 +29,7 @@ func (s stubKnowledgeMemoryReflector) Reflect(_ context.Context, _ KnowledgeMemo
 }
 
 func TestKnowledgeMemoryRememberRecallAndContextPack(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_memory_recall_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_knowledge_memory_recall_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -98,7 +99,7 @@ func TestKnowledgeMemoryRememberRecallAndContextPack(t *testing.T) {
 }
 
 func TestKnowledgeMemoryPromoteExpandAndTraverse(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_memory_graph_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_knowledge_memory_graph_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -179,7 +180,7 @@ func TestKnowledgeMemoryPromoteExpandAndTraverse(t *testing.T) {
 }
 
 func TestKnowledgeMemoryReflectAndConsolidate(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_memory_reflect_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_knowledge_memory_reflect_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath), WithKnowledgeMemoryReflector(stubKnowledgeMemoryReflector{summary: "Focus on the Acme launch and dinner logistics."}))

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 )
 
 func TestRDFTripleLifecycle(t *testing.T) {
-	dbPath := fmt.Sprintf("test_rdf_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_rdf_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 32)
@@ -110,7 +111,7 @@ func TestRDFTripleLifecycle(t *testing.T) {
 }
 
 func TestRDFTripleBatchPartialFailure(t *testing.T) {
-	dbPath := fmt.Sprintf("test_rdf_partial_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_rdf_partial_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)
@@ -165,7 +166,7 @@ func TestRDFTripleBatchPartialFailure(t *testing.T) {
 }
 
 func TestRDFImportRoundTrip(t *testing.T) {
-	dbPath := fmt.Sprintf("test_rdf_roundtrip_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_rdf_roundtrip_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)
@@ -202,7 +203,7 @@ func TestRDFImportRoundTrip(t *testing.T) {
 }
 
 func TestRDFImportTurtleAndExportTriG(t *testing.T) {
-	dbPath := fmt.Sprintf("test_rdf_turtle_trig_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_rdf_turtle_trig_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	store, err := core.New(dbPath, 16)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -17,7 +18,7 @@ import (
 // would have to be all three and would then prove none of them.
 func openGraphAnalyticsBrain(t *testing.T) *DB {
 	t.Helper()
-	path := fmt.Sprintf("test_graph_analytics_%d.db", testname.Nano())
+	path := filepath.Join(t.TempDir(), fmt.Sprintf("test_graph_analytics_%d.db", testname.Nano()))
 	db, err := Open(DefaultConfig(path))
 	if err != nil {
 		t.Fatalf("open: %v", err)

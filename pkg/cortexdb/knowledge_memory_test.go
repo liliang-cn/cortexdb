@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -38,7 +39,7 @@ func (e *failingTestEmbedder) Dim() int {
 }
 
 func TestKnowledgeDBAPIWithoutEmbedder(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_knowledge_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -152,7 +153,7 @@ func TestKnowledgeDBAPIWithoutEmbedder(t *testing.T) {
 }
 
 func TestDeleteKnowledgeCleansArtifacts(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_cleanup_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_knowledge_cleanup_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -221,7 +222,7 @@ func TestDeleteKnowledgeCleansArtifacts(t *testing.T) {
 }
 
 func TestUpdateKnowledgePreservesExistingArtifactsOnPlanFailure(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_atomic_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_knowledge_atomic_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath), WithEmbedder(&failingTestEmbedder{
@@ -292,7 +293,7 @@ func TestUpdateKnowledgePreservesExistingArtifactsOnPlanFailure(t *testing.T) {
 }
 
 func TestMemoryDBAPIWithEmbedder(t *testing.T) {
-	dbPath := fmt.Sprintf("test_memory_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_memory_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath), WithEmbedder(NewMockEmbedder(8)))

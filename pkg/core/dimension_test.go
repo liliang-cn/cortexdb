@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -126,7 +127,7 @@ func TestDimensionAdapter(t *testing.T) {
 
 func TestAutoDetectDimension(t *testing.T) {
 	// Create temporary database file
-	dbPath := "test_autodetect_" + time.Now().Format("20060102_150405") + ".db"
+	dbPath := filepath.Join(t.TempDir(), "test_autodetect_"+time.Now().Format("20060102_150405")+".db")
 	defer func() {
 		if err := os.Remove(dbPath); err != nil {
 			_ = err // Ignore cleanup errors
@@ -194,7 +195,7 @@ func TestAutoDetectDimension(t *testing.T) {
 
 func TestMixedDimensionSearch(t *testing.T) {
 	// Create temporary database file
-	dbPath := "test_mixed_search_" + time.Now().Format("20060102_150405") + ".db"
+	dbPath := filepath.Join(t.TempDir(), "test_mixed_search_"+time.Now().Format("20060102_150405")+".db")
 	defer func() {
 		if err := os.Remove(dbPath); err != nil {
 			_ = err // Ignore cleanup errors
@@ -302,7 +303,7 @@ func TestDimensionPolicies(t *testing.T) {
 	for _, p := range policies {
 		t.Run(p.name, func(t *testing.T) {
 			// Create temporary database file
-			dbPath := fmt.Sprintf("test_%s_%s.db", p.name, time.Now().Format("20060102_150405"))
+			dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_%s_%s.db", p.name, time.Now().Format("20060102_150405")))
 			defer func() {
 				if err := os.Remove(dbPath); err != nil {
 					_ = err
@@ -360,7 +361,7 @@ func TestDimensionPolicies(t *testing.T) {
 
 func TestStrictMode(t *testing.T) {
 	// Create temporary database file
-	dbPath := "test_strict_" + time.Now().Format("20060102_150405") + ".db"
+	dbPath := filepath.Join(t.TempDir(), "test_strict_"+time.Now().Format("20060102_150405")+".db")
 	defer func() {
 		if err := os.Remove(dbPath); err != nil {
 			_ = err
@@ -396,7 +397,7 @@ func TestStrictMode(t *testing.T) {
 
 func TestWarnOnlyPolicy(t *testing.T) {
 	// Create temporary database file
-	dbPath := "test_warnonly_" + time.Now().Format("20060102_150405") + ".db"
+	dbPath := filepath.Join(t.TempDir(), "test_warnonly_"+time.Now().Format("20060102_150405")+".db")
 	defer func() {
 		if err := os.Remove(dbPath); err != nil {
 			_ = err

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -26,7 +27,7 @@ type storeUnderTest struct {
 func storesUnderTest(t *testing.T) []storeUnderTest {
 	t.Helper()
 
-	path := fmt.Sprintf("test_parity_%d.db", testname.Nano())
+	path := filepath.Join(t.TempDir(), fmt.Sprintf("test_parity_%d.db", testname.Nano()))
 	lite, err := New(path, 4)
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)

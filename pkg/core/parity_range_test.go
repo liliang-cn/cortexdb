@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -68,7 +69,7 @@ func runOnBothStores(t *testing.T, dim int, body func(t *testing.T, s parityBack
 
 func newParitySQLite(t *testing.T, dim int) parityBackend {
 	t.Helper()
-	path := fmt.Sprintf("test_parity_range_%d.db", testname.Nano())
+	path := filepath.Join(t.TempDir(), fmt.Sprintf("test_parity_range_%d.db", testname.Nano()))
 	cfg := DefaultConfig()
 	cfg.Path = path
 	cfg.VectorDim = dim

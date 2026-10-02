@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 func TestQueryAPIFusesPrefetchesAndAppliesFormula(t *testing.T) {
-	dbPath := fmt.Sprintf("test_query_api_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_query_api_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -76,7 +77,7 @@ func TestQueryAPIFusesPrefetchesAndAppliesFormula(t *testing.T) {
 }
 
 func TestQueryAPIDBSFAndMustNotFilter(t *testing.T) {
-	dbPath := fmt.Sprintf("test_query_api_dbsf_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_query_api_dbsf_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -125,7 +126,7 @@ func TestQueryAPIDBSFAndMustNotFilter(t *testing.T) {
 }
 
 func TestQueryAPIGraphPrefetchFindsEntityLinkedChunks(t *testing.T) {
-	dbPath := fmt.Sprintf("test_query_api_graph_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_query_api_graph_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))

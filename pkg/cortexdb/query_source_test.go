@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -29,7 +30,7 @@ func (f *fakeSource) Search(_ context.Context, req QuerySourceRequest) ([]QueryS
 
 func openSourceTestDB(t *testing.T) *DB {
 	t.Helper()
-	dbPath := fmt.Sprintf("test_query_source_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_query_source_%d.db", testname.Nano()))
 	t.Cleanup(func() { _ = os.Remove(dbPath) })
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -25,7 +26,7 @@ func TestADSNPicksTheBackend(t *testing.T) {
 		}
 	}
 
-	path := fmt.Sprintf("test_registry_%d.db", testname.Nano())
+	path := filepath.Join(t.TempDir(), fmt.Sprintf("test_registry_%d.db", testname.Nano()))
 	defer os.Remove(path)
 
 	store, err := OpenStore(path, Config{VectorDim: 4})
@@ -77,7 +78,7 @@ func TestARegisteredNameCannotBeQuietlyReplaced(t *testing.T) {
 // Opening through the registry has to produce a store that actually works,
 // not just one of the right type.
 func TestAStoreOpenedByDSNWorks(t *testing.T) {
-	path := fmt.Sprintf("test_registry_live_%d.db", testname.Nano())
+	path := filepath.Join(t.TempDir(), fmt.Sprintf("test_registry_live_%d.db", testname.Nano()))
 	defer os.Remove(path)
 
 	store, err := OpenStore(path, Config{VectorDim: 4})

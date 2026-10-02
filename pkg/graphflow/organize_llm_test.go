@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -30,7 +31,7 @@ func (f *organizeFakeLLM) GenerateJSON(_ context.Context, _ string, userPrompt s
 // wrapped in a <think> block and prose), writes typed entity nodes, and creates
 // the stated relation edge with the model's relation type.
 func TestOrganizeFromBrainLLMDistillsTypedGraph(t *testing.T) {
-	dbPath := fmt.Sprintf("test_organize_llm_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_organize_llm_%d.db", testname.Nano()))
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)

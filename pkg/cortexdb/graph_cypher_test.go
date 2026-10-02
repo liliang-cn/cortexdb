@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -14,7 +15,7 @@ import (
 
 func openCypherTestDB(t *testing.T) *DB {
 	t.Helper()
-	dbPath := fmt.Sprintf("test_cypher_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_cypher_%d.db", testname.Nano()))
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/testname"
@@ -15,7 +16,7 @@ import (
 // and knowledge lexical paths flow through lexicalSearchQueries, so both must
 // tolerate arbitrary natural-language input.
 func TestLexicalSearchHandlesFTSOperatorChars(t *testing.T) {
-	dbPath := fmt.Sprintf("test_fts_sanitize_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_fts_sanitize_%d.db", testname.Nano()))
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)

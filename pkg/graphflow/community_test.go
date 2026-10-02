@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -37,7 +38,7 @@ func (f *routingFakeLLM) GenerateJSON(_ context.Context, system, _ string) ([]by
 // clear community, summarizes it, and runs global search end-to-end against a
 // routing fake LLM.
 func TestCommunitySummariesAndGlobalSearch(t *testing.T) {
-	dbPath := fmt.Sprintf("test_community_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_community_%d.db", testname.Nano()))
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -96,7 +97,7 @@ func TestCommunitySummariesAndGlobalSearch(t *testing.T) {
 // TestGlobalSearchWithoutCommunitiesErrors verifies the guard when no summaries
 // exist and BuildIfEmpty is not set.
 func TestGlobalSearchWithoutCommunitiesErrors(t *testing.T) {
-	dbPath := fmt.Sprintf("test_community_empty_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_community_empty_%d.db", testname.Nano()))
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)

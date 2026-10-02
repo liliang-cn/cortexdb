@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -85,7 +86,7 @@ func (m *mockExtractState) receivedAt(i int) []*core.Message {
 // Cleanup is registered on t.
 func newChatTestSystem(t *testing.T, dim int) (*System, string) {
 	t.Helper()
-	dbPath := fmt.Sprintf("test_chat_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_chat_%d.db", testname.Nano()))
 	t.Cleanup(func() { _ = os.Remove(dbPath) })
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: dim})

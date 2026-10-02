@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -95,7 +96,7 @@ func TestSemanticRetrievalQuality(t *testing.T) {
 	}
 	emb := &httpEmbedder{base: base, key: key, model: model, dim: dim, c: &http.Client{Timeout: 30 * time.Second}}
 
-	dbPath := fmt.Sprintf("test_semeval_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_semeval_%d.db", testname.Nano()))
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath), cortexdb.WithEmbedder(emb))
 	if err != nil {
 		t.Fatalf("open: %v", err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/testname"
@@ -13,7 +14,7 @@ import (
 // and a caller who names none must not be quietly confined to whichever collection ingest writes
 // into by default.
 func TestSearchHonoursTheCollectionAskedForAndNothingMore(t *testing.T) {
-	dbPath := fmt.Sprintf("test_collection_scope_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_collection_scope_%d.db", testname.Nano()))
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open db: %v", err)

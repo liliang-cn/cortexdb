@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/testname"
@@ -11,7 +12,7 @@ import (
 )
 
 func setupTestGraph(t testing.TB) (*core.SQLiteStore, *GraphStore, func()) {
-	dbPath := fmt.Sprintf("test_graph_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_graph_%d.db", testname.Nano()))
 
 	store, err := core.New(dbPath, 3)
 	if err != nil {

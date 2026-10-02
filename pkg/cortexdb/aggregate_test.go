@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -19,7 +20,7 @@ import (
 // either.
 func openAggregateBrain(t *testing.T) *DB {
 	t.Helper()
-	path := fmt.Sprintf("test_aggregate_%d.db", testname.Nano())
+	path := filepath.Join(t.TempDir(), fmt.Sprintf("test_aggregate_%d.db", testname.Nano()))
 	config := DefaultConfig(path)
 	config.Dimensions = 3
 	config.SimilarityFn = core.CosineSimilarity

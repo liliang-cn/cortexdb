@@ -27,7 +27,7 @@ func TestImportAgentMemory(t *testing.T) {
 	write(memDir, "graph.md", "---\nname: relational-queries\ndescription: use graph for relational questions\nmetadata:\n  type: reference\n---\n\nFor who-uses-X questions use expand_graph, not lexical recall.")
 	write(root, "CLAUDE.md", "Global rules: no co-author. Use ports above 3000.")
 
-	dbPath := fmt.Sprintf("test_import_mem_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_import_mem_%d.db", testname.Nano()))
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)

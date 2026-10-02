@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -16,7 +17,7 @@ import (
 // tool, on both backends: a service that runs on a host typed node joins the
 // cluster; one that runs on a vm does not.
 func TestSHACLRulesOverThePropertyGraphInferExplainableClusterMembershipOnSQLite(t *testing.T) {
-	dbPath := fmt.Sprintf("test_shacl_rules_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_shacl_rules_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {

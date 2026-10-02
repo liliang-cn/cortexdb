@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -14,7 +15,7 @@ import (
 )
 
 func TestMCPServerToolFlow(t *testing.T) {
-	dbPath := fmt.Sprintf("test_mcp_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_mcp_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))

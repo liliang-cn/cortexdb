@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 )
 
 func TestApplyInferenceRulesAndCleanup(t *testing.T) {
-	dbPath := fmt.Sprintf("test_inference_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_inference_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -103,7 +104,7 @@ func TestApplyInferenceRulesAndCleanup(t *testing.T) {
 }
 
 func TestUpsertRelationsStoresInferenceProvenance(t *testing.T) {
-	dbPath := fmt.Sprintf("test_inference_provenance_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_inference_provenance_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -183,7 +184,7 @@ func TestUpsertRelationsStoresInferenceProvenance(t *testing.T) {
 }
 
 func TestApplyInferenceRulesPreservesReservedProvenanceFields(t *testing.T) {
-	dbPath := fmt.Sprintf("test_inference_reserved_fields_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_inference_reserved_fields_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))

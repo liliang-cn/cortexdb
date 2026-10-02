@@ -14,7 +14,7 @@ import (
 func newStore(t *testing.T) (*agentmem.Store, func()) {
 	t.Helper()
 	dir := t.TempDir()
-	path := filepath.Join(dir, fmt.Sprintf("agentmem_%d.db", testname.Nano()))
+	path := filepath.Join(dir, filepath.Join(t.TempDir(), fmt.Sprintf("agentmem_%d.db", testname.Nano())))
 	cdb, err := cortexdb.Open(cortexdb.DefaultConfig(path))
 	if err != nil {
 		t.Fatalf("open cortexdb: %v", err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 
 func openTemporalTestDB(t *testing.T) (*cortexdb.DB, context.Context) {
 	t.Helper()
-	dbPath := fmt.Sprintf("test_temporal_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_temporal_%d.db", testname.Nano()))
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)

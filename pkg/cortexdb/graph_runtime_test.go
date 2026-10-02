@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/testname"
 )
 
 func TestGraphRAGGraphCostControls(t *testing.T) {
-	dbPath := fmt.Sprintf("test_graph_runtime_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_graph_runtime_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath), WithEmbedder(newKeywordEmbedder(
@@ -85,7 +86,7 @@ func TestGraphRAGGraphCostControls(t *testing.T) {
 }
 
 func TestSearchTextMaxEntitiesPerChunk(t *testing.T) {
-	dbPath := fmt.Sprintf("test_graph_runtime_text_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_graph_runtime_text_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))

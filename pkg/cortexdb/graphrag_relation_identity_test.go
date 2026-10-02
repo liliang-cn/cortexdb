@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/testname"
@@ -113,7 +114,7 @@ func TestUpsertRelationsMergesChunkIDsOfARepeatedEdge(t *testing.T) {
 
 func relationTestStore(t *testing.T) (*DB, *GraphRAGToolbox, context.Context) {
 	t.Helper()
-	path := fmt.Sprintf("test_relation_identity_%d.db", testname.Nano())
+	path := filepath.Join(t.TempDir(), fmt.Sprintf("test_relation_identity_%d.db", testname.Nano()))
 	db, err := Open(DefaultConfig(path))
 	if err != nil {
 		t.Fatalf("open db: %v", err)

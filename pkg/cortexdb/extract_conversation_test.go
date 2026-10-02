@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -12,7 +13,7 @@ import (
 )
 
 func TestExtractConversation(t *testing.T) {
-	dbPath := fmt.Sprintf("test_extract_conv_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_extract_conv_%d.db", testname.Nano()))
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)

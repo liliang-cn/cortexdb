@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -18,7 +19,7 @@ import (
 // allowed to be approximate about exactly that.
 func openChunkWindowBrain(t *testing.T, vocabulary ...string) *DB {
 	t.Helper()
-	path := fmt.Sprintf("test_chunk_window_%d.db", testname.Nano())
+	path := filepath.Join(t.TempDir(), fmt.Sprintf("test_chunk_window_%d.db", testname.Nano()))
 	config := DefaultConfig(path)
 	config.IndexType = core.IndexTypeFlat
 

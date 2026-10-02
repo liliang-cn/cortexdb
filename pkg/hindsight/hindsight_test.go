@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -28,7 +29,7 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 func TestNewSystem(t *testing.T) {
-	dbPath := fmt.Sprintf("test_hindsight_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_hindsight_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: 128})
@@ -175,7 +176,7 @@ func TestDispositionValidation(t *testing.T) {
 }
 
 func TestBankManagement(t *testing.T) {
-	dbPath := fmt.Sprintf("test_banks_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_banks_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: 128})
@@ -269,7 +270,7 @@ func TestBankManagement(t *testing.T) {
 }
 
 func TestRetain(t *testing.T) {
-	dbPath := fmt.Sprintf("test_retain_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_retain_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: 64})
@@ -380,7 +381,7 @@ func TestRetain(t *testing.T) {
 }
 
 func TestRecall(t *testing.T) {
-	dbPath := fmt.Sprintf("test_recall_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_recall_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: 64})
@@ -508,7 +509,7 @@ func TestRecall(t *testing.T) {
 }
 
 func TestRecallWithStrategies(t *testing.T) {
-	dbPath := fmt.Sprintf("test_strategies_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_strategies_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: 64})
@@ -637,7 +638,7 @@ func TestRecallWithStrategies(t *testing.T) {
 }
 
 func TestReflect(t *testing.T) {
-	dbPath := fmt.Sprintf("test_reflect_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_reflect_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: 64})
@@ -739,7 +740,7 @@ func TestReflect(t *testing.T) {
 }
 
 func TestObserve(t *testing.T) {
-	dbPath := fmt.Sprintf("test_observe_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_observe_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: 64})
@@ -812,7 +813,7 @@ func TestObserve(t *testing.T) {
 }
 
 func TestObservationManagement(t *testing.T) {
-	dbPath := fmt.Sprintf("test_observation_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_observation_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: 64})
@@ -914,7 +915,7 @@ func TestDefaultStrategy(t *testing.T) {
 }
 
 func TestSystemClose(t *testing.T) {
-	dbPath := fmt.Sprintf("test_close_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_close_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	sys, err := New(&Config{DBPath: dbPath, VectorDim: 64})

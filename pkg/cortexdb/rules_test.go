@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,7 +16,7 @@ import (
 
 func openRuleTestDB(t *testing.T) (*DB, context.Context) {
 	t.Helper()
-	dbPath := fmt.Sprintf("test_rules_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_rules_%d.db", testname.Nano()))
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open db: %v", err)

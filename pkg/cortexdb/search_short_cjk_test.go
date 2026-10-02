@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/testname"
@@ -13,7 +14,7 @@ import (
 // The trigram index cannot hold a token that short, so MATCH finds none of them however many
 // chunks contain the term — the search reports nothing rather than reporting it cannot look.
 func TestShortCJKQueryStillFindsTheTermInTheCorpus(t *testing.T) {
-	dbPath := fmt.Sprintf("test_short_cjk_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_short_cjk_%d.db", testname.Nano()))
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open db: %v", err)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -14,7 +15,7 @@ import (
 // newDisambiguationDB opens an empty database for one test.
 func newDisambiguationDB(t *testing.T) (*DB, *GraphRAGToolbox, context.Context) {
 	t.Helper()
-	dbPath := fmt.Sprintf("test_disambiguate_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_disambiguate_%d.db", testname.Nano()))
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open db: %v", err)

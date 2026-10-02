@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/testname"
@@ -14,7 +15,7 @@ import (
 // the store because prefixes are namespace rows, so the parser needs one.
 func mutatesTestStore(t *testing.T) *GraphStore {
 	t.Helper()
-	dbPath := fmt.Sprintf("test_sparql_mutates_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_sparql_mutates_%d.db", testname.Nano()))
 	t.Cleanup(func() { _ = os.Remove(dbPath) })
 	store, err := core.New(dbPath, 16)
 	if err != nil {

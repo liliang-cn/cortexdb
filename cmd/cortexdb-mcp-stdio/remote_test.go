@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ import (
 // the remote bridge writes actually lands in the shared file.
 func startTestBrain(t *testing.T, token string) (string, *cortexdb.DB) {
 	t.Helper()
-	dbPath := fmt.Sprintf("test_remote_%d.db", time.Now().UnixNano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_remote_%d.db", time.Now().UnixNano()))
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)

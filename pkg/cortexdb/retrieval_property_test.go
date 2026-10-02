@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -16,7 +17,7 @@ import (
 // token is retrieved by lexical search for that token. This guards tokenizer /
 // FTS indexing regressions (including CJK and punctuation-adjacent content).
 func TestPropertyDistinctiveTokenIsFindable(t *testing.T) {
-	dbPath := fmt.Sprintf("test_prop_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_prop_%d.db", testname.Nano()))
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)

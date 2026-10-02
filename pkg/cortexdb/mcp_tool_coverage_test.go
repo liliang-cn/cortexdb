@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/testname"
@@ -23,7 +24,7 @@ import (
 // Nothing about the symptom points at the cause: a host asking for the tool is
 // told it does not exist, by a server whose release notes say it does.
 func TestEveryToolDefinitionIsReachableOverMCP(t *testing.T) {
-	dbPath := fmt.Sprintf("test_mcp_coverage_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_mcp_coverage_%d.db", testname.Nano()))
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open db: %v", err)

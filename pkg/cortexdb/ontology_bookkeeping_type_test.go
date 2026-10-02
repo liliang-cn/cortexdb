@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -19,7 +20,7 @@ import (
 // embedder-backed knowledge — were therefore mutually exclusive, and the error
 // blamed the user's schema for a type the library had invented.
 func TestSaveKnowledgeWithAnEmbedderSurvivesAnActiveOntology(t *testing.T) {
-	dbPath := fmt.Sprintf("test_bookkeeping_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_bookkeeping_%d.db", testname.Nano()))
 	cfg := DefaultConfig(dbPath)
 	cfg.Dimensions = 4
 	db, err := Open(cfg, WithEmbedder(newKeywordEmbedder("runbook", "quorum", "replica", "partition")))
@@ -76,7 +77,7 @@ func TestAnUndeclaredDomainTypeIsStillRefused(t *testing.T) {
 // exemption is a fallback for a name nobody claimed, not an override of a
 // schema that claimed it.
 func TestADeclaredEntityTypeIsStillValidated(t *testing.T) {
-	dbPath := fmt.Sprintf("test_declared_entity_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_declared_entity_%d.db", testname.Nano()))
 	cfg := DefaultConfig(dbPath)
 	cfg.Dimensions = 4
 	db, err := Open(cfg, WithEmbedder(newKeywordEmbedder("drbd", "linstor", "standalone")))

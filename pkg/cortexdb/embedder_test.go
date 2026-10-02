@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/testname"
@@ -59,7 +60,7 @@ func (m *MockEmbedder) normalize(vec []float32) []float32 {
 }
 
 func TestEmbedderIntegration(t *testing.T) {
-	dbPath := fmt.Sprintf("test_embedder_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_embedder_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	dim := 4
@@ -139,7 +140,7 @@ func TestEmbedderIntegration(t *testing.T) {
 }
 
 func TestSearchTextOnly(t *testing.T) {
-	dbPath := fmt.Sprintf("test_textonly_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_textonly_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))

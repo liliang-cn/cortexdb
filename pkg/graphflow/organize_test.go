@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,7 +16,7 @@ import (
 // memories (which have no graph presence) gain entity nodes and entity↔entity
 // co-occurrence relations after an organize pass — deterministically, no LLM.
 func TestOrganizeFromBrainBuildsEntityGraphFromMemories(t *testing.T) {
-	dbPath := fmt.Sprintf("test_organize_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_organize_%d.db", testname.Nano()))
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open: %v", err)

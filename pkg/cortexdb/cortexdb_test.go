@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/testname"
@@ -29,7 +30,7 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 func TestOpen(t *testing.T) {
-	dbPath := fmt.Sprintf("test_cortexdb_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_cortexdb_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	config := DefaultConfig(dbPath)
@@ -62,7 +63,7 @@ func TestOpenInvalidPath(t *testing.T) {
 }
 
 func TestDBInterfaces(t *testing.T) {
-	dbPath := fmt.Sprintf("test_interfaces_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_interfaces_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	config := DefaultConfig(dbPath)
@@ -99,7 +100,7 @@ func TestDBInterfaces(t *testing.T) {
 }
 
 func TestQuickAdd(t *testing.T) {
-	dbPath := fmt.Sprintf("test_quick_add_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_quick_add_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	config := Config{
@@ -181,7 +182,7 @@ func TestQuickAdd(t *testing.T) {
 }
 
 func TestQuickSearch(t *testing.T) {
-	dbPath := fmt.Sprintf("test_quick_search_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_quick_search_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	config := Config{
@@ -297,7 +298,7 @@ func TestGenerateID(t *testing.T) {
 }
 
 func TestDBInfo(t *testing.T) {
-	dbPath := fmt.Sprintf("test_info_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_info_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	config := Config{
@@ -324,7 +325,7 @@ func TestDBInfo(t *testing.T) {
 }
 
 func TestDBClose(t *testing.T) {
-	dbPath := fmt.Sprintf("test_close_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_close_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	config := DefaultConfig(dbPath)
@@ -348,7 +349,7 @@ func TestDBClose(t *testing.T) {
 }
 
 func TestConfigVariations(t *testing.T) {
-	dbPath := fmt.Sprintf("test_config_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_config_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	t.Run("CustomDimensions", func(t *testing.T) {
@@ -397,7 +398,7 @@ func TestConfigVariations(t *testing.T) {
 }
 
 func TestIntegrationWorkflow(t *testing.T) {
-	dbPath := fmt.Sprintf("test_integration_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_integration_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	// Open database

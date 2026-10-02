@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/testname"
@@ -15,7 +16,7 @@ import (
 // held dozens of matches. Every other test in this package passes TopK explicitly, which is exactly
 // why nothing caught it.
 func TestSearchTextWithoutTopKStillReturnsWhatMatched(t *testing.T) {
-	dbPath := fmt.Sprintf("test_default_topk_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_default_topk_%d.db", testname.Nano()))
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open db: %v", err)

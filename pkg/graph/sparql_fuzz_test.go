@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 // query must return an error, never panic — the parser/executor is a large
 // surface and untrusted input (agent- or user-authored queries) reaches it.
 func FuzzExecuteSPARQL(f *testing.F) {
-	dbPath := fmt.Sprintf("fuzz_sparql_%d.db", testname.Nano())
+	dbPath := filepath.Join(f.TempDir(), fmt.Sprintf("fuzz_sparql_%d.db", testname.Nano()))
 	store, err := core.New(dbPath, 16)
 	if err != nil {
 		f.Fatalf("store: %v", err)

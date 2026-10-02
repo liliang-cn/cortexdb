@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -64,7 +65,7 @@ func TestOntologySchemaAPIAndToolValidation(t *testing.T) {
 // path: entity types come from an extractor rather than the caller, so it is
 // the one write path where nothing upstream has already checked them.
 func TestInsertGraphDocumentRespectsActiveOntologySchema(t *testing.T) {
-	dbPath := fmt.Sprintf("test_ontology_extract_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_ontology_extract_%d.db", testname.Nano()))
 	db, err := Open(DefaultConfig(dbPath), WithEmbedder(newKeywordEmbedder("alice", "acme", "works")))
 	if err != nil {
 		t.Fatalf("open db: %v", err)

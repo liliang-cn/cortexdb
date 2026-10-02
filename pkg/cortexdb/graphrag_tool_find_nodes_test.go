@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/testname"
@@ -11,7 +12,7 @@ import (
 
 func findNodesTestDB(t *testing.T) (*DB, *GraphRAGToolbox, context.Context) {
 	t.Helper()
-	dbPath := fmt.Sprintf("test_find_nodes_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_find_nodes_%d.db", testname.Nano()))
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		t.Fatalf("open db: %v", err)

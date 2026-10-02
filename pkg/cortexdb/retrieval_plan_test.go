@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/testname"
@@ -74,7 +75,7 @@ func TestResolveRetrievalPlanMergesFieldsAndDecisions(t *testing.T) {
 }
 
 func TestSearchTextPlanAppliesDocumentFilters(t *testing.T) {
-	dbPath := fmt.Sprintf("test_retrieval_plan_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_retrieval_plan_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 )
 
 func TestKnowledgeGraphAPI(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_graph_api_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_knowledge_graph_api_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -132,7 +133,7 @@ SELECT ?name WHERE {
 }
 
 func TestKnowledgeGraphToolboxCall(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_graph_toolbox_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_knowledge_graph_toolbox_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -163,7 +164,7 @@ func TestKnowledgeGraphToolboxCall(t *testing.T) {
 }
 
 func TestKnowledgeGraphInferenceAPI(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_graph_inference_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_knowledge_graph_inference_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -249,7 +250,7 @@ func TestKnowledgeGraphInferenceAPI(t *testing.T) {
 }
 
 func TestKnowledgeGraphInferenceIncrementalAPI(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_graph_inference_incremental_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_knowledge_graph_inference_incremental_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -294,7 +295,7 @@ func TestKnowledgeGraphInferenceIncrementalAPI(t *testing.T) {
 }
 
 func TestKnowledgeGraphSHACLValidateAPI(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_graph_shacl_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_knowledge_graph_shacl_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -335,7 +336,7 @@ func TestKnowledgeGraphSHACLValidateAPI(t *testing.T) {
 }
 
 func TestKnowledgeGraphSHACLAdvancedValidateAPI(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_graph_shacl_advanced_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_knowledge_graph_shacl_advanced_%d.db", testname.Nano()))
 	defer func() { _ = os.Remove(dbPath) }()
 
 	db, err := Open(DefaultConfig(dbPath))
@@ -400,7 +401,7 @@ func ptrBool(value bool) *bool {
 // remove. The count is what a caller — often a model — reads to decide that a
 // fact is gone, so a triple that was never stored must add nothing to it.
 func TestADeleteReportsOnlyTheTriplesItRemoved(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_graph_delete_count_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_knowledge_graph_delete_count_%d.db", testname.Nano()))
 	t.Cleanup(func() {
 		for _, suffix := range []string{"", "-wal", "-shm"} {
 			_ = os.Remove(dbPath + suffix)
@@ -442,7 +443,7 @@ func TestADeleteReportsOnlyTheTriplesItRemoved(t *testing.T) {
 // way, naming schema.org's context by URL. That context is answered from
 // memory, so the facts land and SPARQL can read them back.
 func TestJSONLDImportsThroughTheToolAndAnswersSPARQL(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_graph_jsonld_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_knowledge_graph_jsonld_%d.db", testname.Nano()))
 	t.Cleanup(func() {
 		for _, suffix := range []string{"", "-wal", "-shm"} {
 			_ = os.Remove(dbPath + suffix)
@@ -488,7 +489,7 @@ func TestJSONLDImportsThroughTheToolAndAnswersSPARQL(t *testing.T) {
 // A contradiction found by inference reaches the model through the tool, as
 // JSON, with the ids of the statements that conflict.
 func TestTheInferenceToolReportsContradictions(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_graph_inconsistency_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_knowledge_graph_inconsistency_%d.db", testname.Nano()))
 	t.Cleanup(func() {
 		for _, suffix := range []string{"", "-wal", "-shm"} {
 			_ = os.Remove(dbPath + suffix)
@@ -544,7 +545,7 @@ func TestTheInferenceToolReportsContradictions(t *testing.T) {
 // A model sets the sameAs cap through the tool and reads the report back from
 // the same call; both have to survive the JSON round trip.
 func TestTheInferenceToolTakesTheSameAsCapAndReportsWhatItSkipped(t *testing.T) {
-	dbPath := fmt.Sprintf("test_knowledge_graph_sameas_cap_%d.db", testname.Nano())
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_knowledge_graph_sameas_cap_%d.db", testname.Nano()))
 	t.Cleanup(func() {
 		for _, suffix := range []string{"", "-wal", "-shm"} {
 			_ = os.Remove(dbPath + suffix)

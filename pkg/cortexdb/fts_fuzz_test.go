@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,7 +16,7 @@ import (
 // (the "no such column" class), no SQL error, no panic. Seeded with the
 // operator characters that historically broke MATCH.
 func FuzzLexicalSearchNeverErrors(f *testing.F) {
-	dbPath := fmt.Sprintf("fuzz_fts_%d.db", testname.Nano())
+	dbPath := filepath.Join(f.TempDir(), fmt.Sprintf("fuzz_fts_%d.db", testname.Nano()))
 	db, err := Open(DefaultConfig(dbPath))
 	if err != nil {
 		f.Fatalf("open: %v", err)
