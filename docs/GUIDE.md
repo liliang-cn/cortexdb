@@ -302,6 +302,12 @@ SELECT ?who WHERE { ?x cxr:depends_on ?y . ?y rdfs:label "CortexDB" . ?x rdfs:la
 
 Inference is semi-naive (each round joins only what is new) and covers `rdfs:subClassOf`, `rdfs:subPropertyOf`, `rdfs:domain`, `rdfs:range`, `owl:inverseOf`, `owl:SymmetricProperty`, `owl:TransitiveProperty`, `owl:equivalentClass`, `owl:equivalentProperty` and `owl:sameAs`. Declared over the projection, these fix what LLM extraction gets wrong: `cxt:host owl:equivalentClass cxt:Host` unifies type spellings, `cxr:depends_on owl:inverseOf cxr:depended_on_by` answers the reverse question, and `owl:sameAs` merges an entity stored under two names. A `sameAs` class above a cap (default 32) is reported, not materialized.
 
+Keys (`owl:FunctionalProperty` / `owl:InverseFunctionalProperty`) derive `sameAs`, and `owl:propertyChainAxiom` derives chains. Contradictions — `owl:disjointWith`, `owl:propertyDisjointWith`, two values of a functional property, `owl:differentFrom` against a derived `sameAs` — are reported with their triples, never resolved. Inference is maintained automatically from the change feed (delete-and-rederive, asynchronous; `db.WaitForInference` reads your own writes; `WithAutoInference(false)` turns it off), and SHACL-AF `sh:TripleRule` rules run through `knowledge_graph_shacl_rules`.
+
+RDF 1.2 triple terms (`<<( s p o )>>`, reifiers, `{| |}` annotations) and SPARQL 1.2 make statements about a fact queryable. `graph_cypher_query` answers read-only openCypher / GQL over the property graph.
+
+Retrieval: `retrieval_mode: "ppr"` is Personalized PageRank from the entities a question names, rank-fused with the first stage; without an embedder `auto` uses it when the question names an entity. Every committed write is also appended to a change feed (`changes_since`, `db.Changes`).
+
 ```go
 db.UpsertKnowledgeGraph(ctx, cortexdb.KnowledgeGraphUpsertRequest{Triples: triples})
 res, _ := db.QueryKnowledgeGraph(ctx, cortexdb.KnowledgeGraphQueryRequest{

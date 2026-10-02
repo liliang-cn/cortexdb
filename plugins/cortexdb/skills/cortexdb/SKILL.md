@@ -103,6 +103,8 @@ _, _ = db.SaveMemory(ctx, cortexdb.MemorySaveRequest{
 
 No-embedder mode is supported. Use lexical retrieval plus LLM-planned `Keywords`, `AlternateQueries`, `EntityNames`, and `RetrievalMode`.
 
+Retrieval mode `ppr` runs Personalized PageRank (HippoRAG 2 style) from the entities a question names, rank-fused with the first stage; tune it with `ppr: {fusion, damping, passage_seed_weight, edge_type_weights}`. Without an embedder, `auto` takes that walk whenever a knowledge search names an entity and stays lexical otherwise — held-out recall@5 on 2WikiMultiHopQA 0.649 → 0.830, MuSiQue 0.462 → 0.564, single-hop 0.860 → 0.866. With an embedder `auto` stays hybrid; pass `retrieval_mode: "ppr"` for multi-hop questions.
+
 Chinese (and other CJK) questions work in lexical mode as written: a sentence is cut at function words, broken into character bigrams and ranked with BM25 beside the word-index results. A row is returned only when it matches more than one word of the question, so a question the store knows nothing about still returns nothing.
 
 ## Knowledge Graph APIs
@@ -140,6 +142,20 @@ _ = result
 
 SPARQL is an embedded SPARQL 1.1 subset: SELECT (DISTINCT, REDUCED, `(expr AS ?v)`), ASK, CONSTRUCT (GRAPH blocks in templates produce quads), DESCRIBE; FROM / FROM NAMED; update forms (INSERT/DELETE DATA, DELETE WHERE, DELETE…INSERT…WHERE, WITH, USING, USING NAMED); GRAPH, OPTIONAL, UNION, MINUS, VALUES, BIND, FILTER, EXISTS, NOT EXISTS, subqueries; property paths `^pred`, `p|q`, `p+`, `p*`; the SPARQL 1.1 function library (term tests, strings with character positions, numerics, dates, hashes); aggregates with DISTINCT, GROUP BY, HAVING; ORDER BY by value on expressions and aliases. A per-row type error drops the row in FILTER and leaves the variable unbound in BIND. Without FROM the default graph is the unnamed graph plus the property-graph projection. Not supported: XSD casts, `/` `?` `!` paths, BASE, SERVICE, LOAD/CLEAR/CREATE/DROP.
 
+RDF 1.2 and SPARQL 1.2: triple terms `<<( s p o )>>` (object position only), reified triples `<< s p o ~ r >>`, `{| |}` annotations and base-directed literals (`"x"@ar--rtl`) in N-Triples / N-Quads / Turtle / TriG, and SPARQL triple-term patterns with `TRIPLE`, `isTRIPLE`, `SUBJECT`, `PREDICATE`, `OBJECT`, `LANGDIR`, `hasLANG`, `hasLANGDIR`, `STRLANGDIR`. Use them to say things about a fact — its source, its confidence — and query that back:
+
+```sparql
+INSERT DATA { _:r rdf:reifies <<( :alice :worksFor :acme )>> ; :source <doc1> ; :confidence 0.9 }
+```
+
+JSON-LD export refuses triple terms rather than flattening them.
+
+**Cypher.** `graph_cypher_query` / `db.QueryCypher` runs a read-only openCypher / GQL subset over the property graph: MATCH, OPTIONAL MATCH, WITH, UNWIND, RETURN, UNION; labels are node types, relationship types are edge types; variable-length paths `*m..n` capped at 6 hops; aggregates, about 45 functions, `$params`. `n.name` falls back to `title`. Write clauses are refused by design, as are CALL, shortestPath, pattern predicates and temporal functions. Call `graph_schema` first.
+
+```cypher
+MATCH (p:project)-[:depends_on]->(c {name: 'CortexDB'}) RETURN p.name
+```
+
 **The property graph is readable as RDF.** Everything extraction, `upsert_entities` and `upsert_relations` write also answers SPARQL, inference and SHACL, as read-only triples in graph `<urn:cortexdb:graph:property>` — nothing is copied, so nothing goes stale:
 
 | Property graph | Triple |
@@ -158,7 +174,11 @@ Call `graph_schema` first to learn which types and relations exist. Non-ASCII id
 
 Import and export speak N-Triples, N-Quads, Turtle, TriG and JSON-LD 1.1 (`jsonld`, also accepted as `json-ld`). JSON-LD import never fetches a remote `@context`: schema.org's is answered from memory, any other URL is refused with an error naming it, so inline the context instead.
 
-Inference is semi-naive materialization over RDFS (`rdfs:subClassOf`, `rdfs:subPropertyOf`, `rdfs:domain`, `rdfs:range`) and an OWL-RL subset (`owl:inverseOf`, `owl:SymmetricProperty`, `owl:TransitiveProperty`, `owl:equivalentClass`, `owl:equivalentProperty`, `owl:sameAs`). Every inferred triple records its rule and supports, so `knowledge_graph_infer_explain` traces it back to explicit triples. Declared over the projection, the OWL rules fix what extraction gets wrong: `cxt:host owl:equivalentClass cxt:Host` unifies spellings, `cxr:depends_on owl:inverseOf cxr:depended_on_by` answers the reverse question, `cxn:entity%3Anode_e owl:sameAs cxn:entity%3Asds_e` merges one machine stored under two names. A sameAs class larger than `MaxSameAsClassSize` (default 32) is reported in `OversizedSameAsClasses`, never half-materialized.
+Inference is semi-naive materialization over RDFS (`rdfs:subClassOf`, `rdfs:subPropertyOf`, `rdfs:domain`, `rdfs:range`) and an OWL-RL subset (`owl:inverseOf`, `owl:SymmetricProperty`, `owl:TransitiveProperty`, `owl:equivalentClass`, `owl:equivalentProperty`, `owl:sameAs`). Every inferred triple records its rule and supports, so `knowledge_graph_infer_explain` traces it back to explicit triples. Declared over the projection, the OWL rules fix what extraction gets wrong: `cxt:host owl:equivalentClass cxt:Host` unifies spellings, `cxr:depends_on owl:inverseOf cxr:depended_on_by` answers the reverse question, `cxn:entity%3Anode_e owl:sameAs cxn:entity%3Asds_e` merges one machine stored under two names. A sameAs class larger than `MaxSameAsClassSize` (default 32) is reported in `OversizedSameAsClasses`, never half-materialized. OWL 2 RL keys and chains too: `owl:FunctionalProperty` / `owl:InverseFunctionalProperty` derive `sameAs` (the same e-mail is the same person), and `owl:propertyChainAxiom` (an RDF list, length ≥ 2) derives the chain. Contradictions — `owl:disjointWith`, `owl:propertyDisjointWith`, two different values of a functional property, `owl:differentFrom` against a derived `sameAs` — are reported in `inconsistencies` / `inconsistency_count` with the conflicting triple ids, never resolved; a `sameAs` class contradicted by `differentFrom` is not materialized.
+
+Inference stays current by itself (on by default; `WithAutoInference(false)` turns it off). Every committed change is read from the change feed and applied with delete-and-rederive, asynchronously, so writers pay nothing; `db.WaitForInference(ctx)` waits until your own writes' consequences are in. With no RDFS/OWL axioms declared it is dormant and costs nothing. It never touches triples a SHACL rule produced; re-run the rules after a manual full refresh, which clears them.
+
+**Change feed.** Every committed write to nodes, edges, triples, memories, knowledge and ontology schemas is appended to `change_log` in the same transaction — in commit order, exactly once, nothing from a rolled-back transaction. Read it by cursor with `changes_since` / `db.Changes(ctx, after, limit)` (resume from the last `seq` you saw; `pruned` says the cursor fell behind retention, so rebuild from current state), or `db.SubscribeChanges` in-process. Retention defaults to 7 days or 500k events.
 
 ```go
 _, _ = db.QueryKnowledgeGraph(ctx, cortexdb.KnowledgeGraphQueryRequest{
@@ -183,7 +203,7 @@ refresh, _ := db.RefreshKnowledgeGraphInference(ctx, cortexdb.KnowledgeGraphInfe
 _ = refresh
 ```
 
-SHACL supports targets `sh:targetClass` (with subclasses), `sh:targetNode`, `sh:targetSubjectsOf`, `sh:targetObjectsOf`; `sh:property` with `sh:path` (a predicate or `sh:inversePath`); `sh:class`, `sh:datatype`, `sh:nodeKind`, `sh:minCount`, `sh:maxCount`, `sh:min/maxInclusive`, `sh:min/maxExclusive`, `sh:minLength`, `sh:maxLength`, `sh:pattern` + `sh:flags`, `sh:languageIn`, `sh:uniqueLang`, `sh:in`, `sh:hasValue`, `sh:node`, `sh:not`, `sh:and`, `sh:or`, `sh:xone`, `sh:closed` + `sh:ignoredProperties`, `sh:severity`, `sh:message`, on node and property shapes alike. Results carry the constraint component IRI. Recursive shapes and other path forms are refused with an error; any result makes `conforms` false, whatever its severity. Over the projection it is a quality gate for extracted graphs, e.g. every `cxr:runs_on` must point at an `sh:class cxt:host`.
+SHACL supports targets `sh:targetClass` (with subclasses), `sh:targetNode`, `sh:targetSubjectsOf`, `sh:targetObjectsOf`; `sh:property` with `sh:path` (a predicate or `sh:inversePath`); `sh:class`, `sh:datatype`, `sh:nodeKind`, `sh:minCount`, `sh:maxCount`, `sh:min/maxInclusive`, `sh:min/maxExclusive`, `sh:minLength`, `sh:maxLength`, `sh:pattern` + `sh:flags`, `sh:languageIn`, `sh:uniqueLang`, `sh:in`, `sh:hasValue`, `sh:equals`, `sh:disjoint`, `sh:node`, `sh:not`, `sh:and`, `sh:or`, `sh:xone`, `sh:closed` + `sh:ignoredProperties`, `sh:severity`, `sh:message`, on node and property shapes alike. Results carry the constraint component IRI. Recursive shapes and other path forms are refused with an error; any result makes `conforms` false, whatever its severity. Over the projection it is a quality gate for extracted graphs, e.g. every `cxr:runs_on` must point at an `sh:class cxt:host`. SHACL-AF rules: `knowledge_graph_shacl_rules` / `db.ApplyKnowledgeGraphSHACLRules` runs `sh:TripleRule` — with `sh:condition`, `sh:order`, `sh:deactivated` and node expressions `sh:this`, constants, `sh:path` (incl. `sh:inversePath`), `sh:filterShape`, `sh:intersection`, `sh:union` — to a fixpoint. Results are explainable inferred triples named `shacl_triple_rule:*`, and the shapes passed are the whole rule set: a rule left out is retracted on the next run.
 
 ```go
 report, _ := db.ValidateKnowledgeGraphSHACL(ctx, cortexdb.KnowledgeGraphSHACLValidateRequest{

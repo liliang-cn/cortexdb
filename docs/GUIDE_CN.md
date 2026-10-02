@@ -264,6 +264,12 @@ SELECT ?who WHERE { ?x cxr:depends_on ?y . ?y rdfs:label "CortexDB" . ?x rdfs:la
 
 推理用半朴素求值（每轮只 join 新增的部分），覆盖 `rdfs:subClassOf`、`rdfs:subPropertyOf`、`rdfs:domain`、`rdfs:range`、`owl:inverseOf`、`owl:SymmetricProperty`、`owl:TransitiveProperty`、`owl:equivalentClass`、`owl:equivalentProperty`、`owl:sameAs`。在投影上声明这些公理，能修正 LLM 抽取的常见问题：`cxt:host owl:equivalentClass cxt:Host` 统一类型的不同拼写，`cxr:depends_on owl:inverseOf cxr:depended_on_by` 回答反方向的问题，`owl:sameAs` 合并以两个名字存下的同一实体。超过上限（默认 32）的 `sameAs` 类只报告、不物化。
 
+键（`owl:FunctionalProperty` / `owl:InverseFunctionalProperty`）会推出 `sameAs`，`owl:propertyChainAxiom` 推出关系链。矛盾——`owl:disjointWith`、`owl:propertyDisjointWith`、函数型属性出现两个值、`owl:differentFrom` 与推出的 `sameAs` 冲突——连同三元组一起报告，绝不靠猜来消解。推理结果由变更事件流自动维护（删除再重推，异步执行；`db.WaitForInference` 可读到自己写入的后果；`WithAutoInference(false)` 关闭），SHACL-AF 的 `sh:TripleRule` 规则通过 `knowledge_graph_shacl_rules` 运行。
+
+RDF 1.2 的三元组项（`<<( s p o )>>`、具名化、`{| |}` 注解）和 SPARQL 1.2 让"关于事实的事实"可以查询。`graph_cypher_query` 在属性图上回答只读的 openCypher / GQL 查询。
+
+检索：`retrieval_mode: "ppr"` 从问题点名的实体出发做个性化 PageRank，再与第一阶段结果按排名融合；没有 embedder 时，问题点名了实体，`auto` 就会用它。每一次已提交的写入也会追加到变更事件流（`changes_since`、`db.Changes`）。
+
 ```go
 db.UpsertKnowledgeGraph(ctx, cortexdb.KnowledgeGraphUpsertRequest{Triples: triples})
 res, _ := db.QueryKnowledgeGraph(ctx, cortexdb.KnowledgeGraphQueryRequest{
