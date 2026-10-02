@@ -154,6 +154,8 @@ func (s *SQLiteStore) Upsert(ctx context.Context, emb *Embedding) error {
 		}
 	}
 
+	s.binaryAdd(ctx, emb)
+
 	return nil
 }
 
@@ -310,6 +312,8 @@ func (s *SQLiteStore) UpsertBatch(ctx context.Context, embs []*Embedding) error 
 		}
 	}
 
+	s.binaryAdd(ctx, embs...)
+
 	return nil
 }
 
@@ -403,6 +407,8 @@ func (s *SQLiteStore) Delete(ctx context.Context, id string) error {
 		}
 	}
 
+	s.binaryDelete(id)
+
 	return nil
 }
 
@@ -419,10 +425,26 @@ func (s *SQLiteStore) DeleteByDocID(ctx context.Context, docID string) error {
 		return wrapError("delete_by_doc_id", fmt.Errorf("doc ID cannot be empty"))
 	}
 
+	// The binary index answers with ids, so a deleted id left in it costs a
+	// result slot until the next rebuild; collect them before they are gone.
+	var binaryIDs []string
+	if s.currentBinaryIndex() != nil {
+		if rows, err := s.db.QueryContext(ctx, "SELECT id FROM embeddings WHERE doc_id = ?", docID); err == nil {
+			for rows.Next() {
+				var id string
+				if rows.Scan(&id) == nil {
+					binaryIDs = append(binaryIDs, id)
+				}
+			}
+			_ = rows.Close()
+		}
+	}
+
 	_, err := s.db.ExecContext(ctx, "DELETE FROM embeddings WHERE doc_id = ?", docID)
 	if err != nil {
 		return wrapError("delete_by_doc_id", fmt.Errorf("failed to delete embeddings: %w", err))
 	}
+	s.binaryDelete(binaryIDs...)
 
 	return nil
 }
@@ -504,6 +526,7 @@ func (s *SQLiteStore) DeleteBatch(ctx context.Context, ids []string) error {
 			}
 		}
 	}
+	s.binaryDelete(validIDs...)
 
 	s.logger.Debug("batch delete completed", "deleted", totalRowsAffected)
 
@@ -574,6 +597,7 @@ func (s *SQLiteStore) DeleteByFilter(ctx context.Context, filter *MetadataFilter
 			}
 		}
 	}
+	s.binaryDelete(idsToDelete...)
 
 	s.logger.Debug("delete by filter completed", "deleted", len(idsToDelete))
 

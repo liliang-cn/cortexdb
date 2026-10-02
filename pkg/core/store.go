@@ -22,8 +22,13 @@ type SQLiteStore struct {
 	mu             sync.RWMutex
 	closed         bool
 	similarityFn   SimilarityFunc
-	hnswIndex      *index.HNSW       // HNSW index for fast search
-	ivfIndex       *index.IVFIndex   // IVF index for partitioned search
+	hnswIndex      *index.HNSW     // HNSW index for fast search
+	ivfIndex       *index.IVFIndex // IVF index for partitioned search
+	// binaryIndex holds the sign codes for IndexTypeBinary (store_binary.go).
+	// binaryMu guards the pointer, which the first insert may set; the index
+	// locks its own content.
+	binaryIndex    *index.BinaryIndex
+	binaryMu       sync.Mutex
 	quantizer      index.Quantizer   // Vector quantizer
 	adapter        *DimensionAdapter // Dimension adaptation handler
 	textSimilarity TextSimilarity    // Text similarity calculator

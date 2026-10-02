@@ -51,6 +51,9 @@ type PostgresStore struct {
 	indexed bool
 	// why explains a false `indexed`, in words for whoever reads the log.
 	why string
+	// binary reports that the ANN index is the IndexTypeBinary bit index
+	// (store_postgres_binary.go), so unfiltered searches go through it.
+	binary bool
 }
 
 // NewPostgresStore wraps an open database. The caller owns the pool: a
@@ -179,6 +182,9 @@ func (s *PostgresStore) Init(ctx context.Context) error {
 // buildVectorIndex creates the ANN index when pgvector can carry one, and
 // records why when it cannot.
 func (s *PostgresStore) buildVectorIndex(ctx context.Context) error {
+	if s.config.IndexType == IndexTypeBinary {
+		return s.buildBinaryIndex(ctx)
+	}
 	dim := s.config.VectorDim
 	switch {
 	case dim <= 0:
@@ -312,6 +318,10 @@ func (s *PostgresStore) search(ctx context.Context, query []float32, opts Search
 	topK := opts.TopK
 	if topK <= 0 {
 		topK = 10
+	}
+
+	if s.binary && opts.Collection == "" && len(opts.Filter) == 0 {
+		return s.searchBinary(ctx, query, topK, opts.Threshold)
 	}
 
 	where := []string{}

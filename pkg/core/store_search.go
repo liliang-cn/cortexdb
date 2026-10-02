@@ -40,6 +40,10 @@ func (s *SQLiteStore) Search(ctx context.Context, query []float32, opts SearchOp
 		return nil, wrapError("search", err)
 	}
 
+	if idx := s.currentBinaryIndex(); s.binaryEnabled() && idx != nil && idx.Size() > 0 {
+		return s.searchWithBinary(ctx, idx, query, opts)
+	}
+
 	// Use HNSW index if available and enabled
 	if s.config.HNSW.Enabled && s.hnswIndex != nil {
 		return s.searchWithHNSW(ctx, query, opts)
@@ -94,7 +98,9 @@ func (s *SQLiteStore) SearchWithFilter(ctx context.Context, query []float32, opt
 	var err error
 
 	// Use HNSW index if available and enabled
-	if s.config.HNSW.Enabled && s.hnswIndex != nil {
+	if idx := s.currentBinaryIndex(); s.binaryEnabled() && idx != nil && idx.Size() > 0 {
+		candidates, err = s.searchWithBinary(ctx, idx, query, opts)
+	} else if s.config.HNSW.Enabled && s.hnswIndex != nil {
 		candidates, err = s.searchWithHNSW(ctx, query, opts)
 	} else if s.config.IndexType == IndexTypeIVF && s.ivfIndex != nil && s.ivfIndex.Trained {
 		// Use IVF index

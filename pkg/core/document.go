@@ -104,7 +104,7 @@ func (s *SQLiteStore) DeleteDocument(ctx context.Context, id string) error {
 
 	// 1. Find all embedding IDs for this document to remove from HNSW index
 	// Note: SQLite FK CASCADE will handle the table rows, but we must manually update memory index
-	if s.hnswIndex != nil || s.ivfIndex != nil {
+	if s.hnswIndex != nil || s.ivfIndex != nil || s.currentBinaryIndex() != nil {
 		rows, err := s.db.QueryContext(ctx, "SELECT id FROM embeddings WHERE doc_id = ?", id)
 		if err == nil {
 			defer rows.Close()
@@ -117,6 +117,7 @@ func (s *SQLiteStore) DeleteDocument(ctx context.Context, id string) error {
 					if s.ivfIndex != nil {
 						_ = s.ivfIndex.Delete(embID)
 					}
+					s.binaryDelete(embID)
 				}
 			}
 		}
