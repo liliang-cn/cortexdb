@@ -187,6 +187,9 @@ type GraphStore struct {
 	// value is on, which is the point of it; atomic because a caller may flip
 	// it while queries are running.
 	projectionOff atomic.Bool
+
+	// feed is the change log's per-store bookkeeping; see changefeed.go.
+	feed changeFeedState
 }
 
 // NewGraphStore creates a new graph store from a SQLite store.

@@ -50,6 +50,8 @@ type DB struct {
 	pageRankMu          sync.Mutex
 	pageRankSchemaReady bool
 	pageRankRefreshMu   sync.Mutex
+	// changes is the change feed and inference maintainer; see changes.go.
+	changes changeRuntime
 }
 
 // Config represents database configuration
@@ -196,6 +198,11 @@ func Open(config Config, opts ...Option) (*DB, error) {
 		opt(db)
 	}
 
+	if err := db.startChangeRuntime(ctx); err != nil {
+		_ = store.Close()
+		return nil, fmt.Errorf("failed to start change feed: %w", err)
+	}
+
 	return db, nil
 }
 
@@ -291,5 +298,6 @@ func (db *DB) Info() DBInfo {
 
 // Close closes the database
 func (db *DB) Close() error {
+	db.stopChangeRuntime()
 	return db.store.Close()
 }

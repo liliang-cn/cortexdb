@@ -505,6 +505,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 	// --- point-in-time reads (pkg/cortexdb/temporal_tooldefs.go) ---
 	definitions = append(definitions, temporalToolDefinitions()...)
 	// --- end point-in-time reads ---
+	definitions = append(definitions, changeToolDefinitions()...)
 	return append(definitions, KnowledgeMemoryFacadeToolDefinitions()...)
 }
 
@@ -523,6 +524,9 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 		return resp, err
 	}
 	// --- end point-in-time reads ---
+	if resp, handled, err := t.callChangeTool(ctx, name, input); handled {
+		return resp, err
+	}
 	// --- declared rules (pkg/cortexdb/rules_tooldefs.go) ---
 	if resp, handled, err := t.callRuleTool(ctx, name, input); handled {
 		return resp, err

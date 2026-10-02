@@ -55,6 +55,7 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 	// --- point-in-time reads (pkg/cortexdb/temporal_tooldefs.go) ---
 	addTemporalMCPTools(server, definitions, db)
 	// --- end point-in-time reads ---
+	addChangeMCPTools(server, definitions, db)
 
 	addGraphRAGMCPTool(server, definitions["ingest_document"], func(ctx context.Context, req ToolIngestDocumentRequest) (ToolIngestDocumentResponse, error) {
 		resp, err := toolbox.IngestDocument(ctx, req)

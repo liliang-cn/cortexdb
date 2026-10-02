@@ -236,9 +236,15 @@ func (db *DB) RefreshKnowledgeGraphInference(ctx context.Context, req KnowledgeG
 		if len(seeds) == 0 {
 			return nil, fmt.Errorf("incremental inference refresh requires triples, triple_ids, or a pattern")
 		}
-		result, err = db.graph.RefreshRDFSInferencesIncrementalWithOptions(ctx, seeds, opts)
+		err = db.withInferencePaused(opts, func() error {
+			result, err = db.graph.RefreshRDFSInferencesIncrementalWithOptions(ctx, seeds, opts)
+			return err
+		})
 	} else {
-		result, err = db.graph.RefreshRDFSInferencesWithOptions(ctx, opts)
+		err = db.withInferencePaused(opts, func() error {
+			result, err = db.graph.RefreshRDFSInferencesWithOptions(ctx, opts)
+			return err
+		})
 	}
 	if err != nil {
 		return nil, err

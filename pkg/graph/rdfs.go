@@ -399,6 +399,11 @@ type inferenceEngine struct {
 	fired  bool
 	sameAs *sameAsClasses
 	owlRL  owlRLState
+	// collect, when set, turns derive into a probe: it reports the key of
+	// every conclusion a firing reaches and records nothing. Incremental
+	// maintenance (inference_dred.go) uses it to find what a removed fact
+	// supported, through every rule, without knowing any rule.
+	collect func(key string)
 }
 
 // Index keys of the vocabulary the rules join on, computed once rather than
@@ -526,6 +531,10 @@ func (e *inferenceEngine) derive(subject, predicate, object RDFTerm, graph *RDFT
 	}
 	triple := RDFTriple{Subject: subject, Predicate: predicate, Object: object, Graph: graph}
 	key := inferenceContentKey(triple)
+	if e.collect != nil {
+		e.collect(key)
+		return
+	}
 	if _, ok := e.records[key]; ok {
 		return
 	}
@@ -760,7 +769,12 @@ func collectImpactedInferredTripleIDs(inferredTriples, seeds, affectedExplicit [
 		addInferenceNeighborhoodTerms(impactedTerms, triple)
 	}
 	for _, triple := range inferredTriples {
-		if !tripleTouchesInferenceNeighborhood(triple, impactedTerms) {
+		// By subject only. A conclusion's subject comes from one of the
+		// explicit facts it rests on, so an inference whose subject is outside
+		// the neighbourhood rests on nothing inside it; matching its object
+		// as well caught "A a rdfs:Class" from another component by the
+		// constant rdfs:Class, deleted it, and never recomputed it.
+		if _, ok := impactedTerms[inferenceTermKey(triple.Subject)]; !ok {
 			continue
 		}
 		seen[triple.ID] = struct{}{}
