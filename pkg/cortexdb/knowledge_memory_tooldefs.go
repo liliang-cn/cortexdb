@@ -188,11 +188,27 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "knowledge_graph_shacl_validate",
-			Description: "Validate the embedded knowledge graph (including the property graph as cxt:/cxr:/cxp: triples) against supplied SHACL shape triples. Supported: sh:targetClass (with subclasses), sh:targetNode, sh:targetSubjectsOf, sh:targetObjectsOf; sh:property with sh:path (predicate or sh:inversePath); sh:class, sh:datatype, sh:nodeKind; sh:minCount, sh:maxCount; sh:minInclusive, sh:maxInclusive, sh:minExclusive, sh:maxExclusive; sh:minLength, sh:maxLength, sh:pattern with sh:flags, sh:languageIn, sh:uniqueLang; sh:in, sh:hasValue; sh:node, sh:not, sh:and, sh:or, sh:xone; sh:closed with sh:ignoredProperties; sh:severity and sh:message. Recursive shapes and other path forms are refused with an error. Any result makes conforms false, whatever its severity.",
+			Description: "Validate the embedded knowledge graph (including the property graph as cxt:/cxr:/cxp: triples) against supplied SHACL shape triples. Supported: sh:targetClass (with subclasses), sh:targetNode, sh:targetSubjectsOf, sh:targetObjectsOf; sh:property with sh:path (predicate or sh:inversePath); sh:class, sh:datatype, sh:nodeKind; sh:minCount, sh:maxCount; sh:minInclusive, sh:maxInclusive, sh:minExclusive, sh:maxExclusive; sh:minLength, sh:maxLength, sh:pattern with sh:flags, sh:languageIn, sh:uniqueLang; sh:in, sh:hasValue; sh:equals, sh:disjoint; sh:node, sh:not, sh:and, sh:or, sh:xone; sh:closed with sh:ignoredProperties; sh:severity and sh:message. Recursive shapes and other path forms are refused with an error. Any result makes conforms false, whatever its severity.",
 			InputSchema: toolObjectSchema(
 				[]string{"shapes"},
 				map[string]any{
 					"shapes": toolKnowledgeGraphTripleArraySchema(),
+				},
+			),
+		},
+		{
+			Name: "knowledge_graph_shacl_rules",
+			// Writes inferred triples and retracts the ones an earlier run
+			// inferred that no longer hold, unless dry_run is set.
+			Mutates:     true,
+			Description: "Run SHACL-AF triple rules (sh:rule with a sh:TripleRule) over the embedded knowledge graph, including the property graph as cxn:/cxt:/cxr:/cxp: triples, until nothing new is inferred, and store the results as inferred triples explainable with knowledge_graph_infer_explain (rule name shacl_triple_rule:<rule IRI or shape>). Focus nodes come from the shape's targets (sh:targetClass, sh:targetNode, sh:targetSubjectsOf, sh:targetObjectsOf, or a shape that is also an rdfs:Class). sh:subject / sh:predicate / sh:object are node expressions: sh:this, a constant IRI or literal, [ sh:path p ] or [ sh:path [ sh:inversePath p ] ] with optional sh:nodes, [ sh:filterShape S ; sh:nodes E ], [ sh:intersection (E1 E2 …) ], [ sh:union (E1 E2 …) ]. sh:condition shapes (SHACL Core subset of knowledge_graph_shacl_validate) must hold for the focus node; sh:order orders rules and shapes; sh:deactivated true skips them. sh:SPARQLRule and function expressions are refused. The shapes passed are the whole rule set: triples a previous run inferred that this run does not are retracted. Use dry_run to preview. Example — every service that runs on a node-type host is in the openclaw cluster: ex:S sh:targetSubjectsOf cxr:runs_on ; sh:rule [ a sh:TripleRule ; sh:subject sh:this ; sh:predicate cxr:in_cluster ; sh:object cxn:openclaw ; sh:condition [ sh:property [ sh:path cxr:runs_on ; sh:class cxt:host ] ] ]. A full knowledge_graph_infer_refresh clears these triples; run the rules again after one.",
+			InputSchema: toolObjectSchema(
+				[]string{"shapes"},
+				map[string]any{
+					"shapes":         toolKnowledgeGraphTripleArraySchema(),
+					"dry_run":        toolBooleanSchema("Compute and return the inferred triples without storing or retracting anything."),
+					"max_iterations": toolIntegerSchema("Most passes over all rules before giving up without storing anything. Default 64."),
+					"limit":          toolIntegerSchema("Most inferred triples listed in the response (counts are always complete). Default 100; negative lists all."),
 				},
 			),
 		},

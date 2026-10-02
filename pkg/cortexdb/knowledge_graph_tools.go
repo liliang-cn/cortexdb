@@ -47,6 +47,11 @@ func (t *GraphRAGToolbox) ValidateKnowledgeGraphSHACL(ctx context.Context, req K
 	return t.db.ValidateKnowledgeGraphSHACL(ctx, req)
 }
 
+// ApplyKnowledgeGraphSHACLRules runs SHACL triple rules via the toolbox surface.
+func (t *GraphRAGToolbox) ApplyKnowledgeGraphSHACLRules(ctx context.Context, req KnowledgeGraphSHACLRulesRequest) (*KnowledgeGraphSHACLRulesResponse, error) {
+	return t.db.ApplyKnowledgeGraphSHACLRules(ctx, req)
+}
+
 // RefreshKnowledgeGraphInference recomputes inferred triples via the toolbox surface.
 func (t *GraphRAGToolbox) RefreshKnowledgeGraphInference(ctx context.Context, req KnowledgeGraphInferenceRefreshRequest) (*KnowledgeGraphInferenceRefreshResponse, error) {
 	return t.db.RefreshKnowledgeGraphInference(ctx, req)

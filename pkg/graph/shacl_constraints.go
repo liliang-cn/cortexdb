@@ -23,10 +23,22 @@ type shaclValidator struct {
 	// over thousands of extracted nodes asks the same "is a project?" question
 	// once per edge.
 	superclasses map[string][]RDFTerm
+	// source, when set, replaces FindTriples as the data graph. SHACL rules
+	// set it so that a condition sees the triples earlier rules inferred
+	// before they are persisted (or when they never will be, in a dry run),
+	// and so that every triple a check reads can be recorded as support.
+	source func(context.Context, TriplePattern) ([]RDFTriple, error)
 }
 
 func newSHACLValidator(g *GraphStore, shapes *shaclShapesGraph) *shaclValidator {
 	return &shaclValidator{g: g, shapes: shapes, superclasses: make(map[string][]RDFTerm)}
+}
+
+func (v *shaclValidator) findTriples(ctx context.Context, pattern TriplePattern) ([]RDFTriple, error) {
+	if v.source != nil {
+		return v.source(ctx, pattern)
+	}
+	return v.g.FindTriples(ctx, pattern)
 }
 
 // targets computes the focus nodes of a shape. sh:targetClass selects SHACL
@@ -44,7 +56,7 @@ func (v *shaclValidator) targets(ctx context.Context, shape *shaclShape) ([]RDFT
 	targets = append(targets, shape.TargetNode...)
 	for _, p := range shape.TargetSubjectsOf {
 		predicate := p
-		triples, err := v.g.FindTriples(ctx, TriplePattern{Predicate: &predicate})
+		triples, err := v.findTriples(ctx, TriplePattern{Predicate: &predicate})
 		if err != nil {
 			return nil, err
 		}
@@ -54,7 +66,7 @@ func (v *shaclValidator) targets(ctx context.Context, shape *shaclShape) ([]RDFT
 	}
 	for _, p := range shape.TargetObjectsOf {
 		predicate := p
-		triples, err := v.g.FindTriples(ctx, TriplePattern{Predicate: &predicate})
+		triples, err := v.findTriples(ctx, TriplePattern{Predicate: &predicate})
 		if err != nil {
 			return nil, err
 		}
@@ -222,6 +234,16 @@ func (v *shaclValidator) validate(ctx context.Context, shape *shaclShape, focus 
 		}
 	}
 
+	if len(shape.Equals) > 0 || len(shape.Disjoint) > 0 {
+		pairResults, err := v.propertyPairResults(ctx, shape, focus, values)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range pairResults {
+			report(r.component, &r.value, r.message)
+		}
+	}
+
 	for _, want := range shape.HasValue {
 		if !containsTerm(values, want) {
 			report(SHACLHasValueConstraintComponent, nil, fmt.Sprintf("Missing required value %s", want))
@@ -271,6 +293,64 @@ func (v *shaclValidator) validate(ctx context.Context, shape *shaclShape, focus 
 	return results, nil
 }
 
+type shaclPairResult struct {
+	component string
+	value     RDFTerm
+	message   string
+}
+
+// propertyPairResults checks sh:equals and sh:disjoint (SHACL §4.5), which
+// compare the value nodes with the values of another predicate on the focus
+// node. sh:equals is two-sided — a value missing on either side is a result —
+// because the spec defines it as set equality, and a one-sided check would
+// let "width equals height" pass for a rectangle with a width and no height.
+func (v *shaclValidator) propertyPairResults(ctx context.Context, shape *shaclShape, focus RDFTerm, values []RDFTerm) ([]shaclPairResult, error) {
+	var out []shaclPairResult
+	other := func(predicate RDFTerm) ([]RDFTerm, error) {
+		if focus.Kind == RDFTermLiteral {
+			return nil, nil
+		}
+		subject := focus
+		triples, err := v.findTriples(ctx, TriplePattern{Subject: &subject, Predicate: &predicate})
+		if err != nil {
+			return nil, err
+		}
+		terms := make([]RDFTerm, 0, len(triples))
+		for _, tr := range triples {
+			terms = append(terms, tr.Object)
+		}
+		return uniqueSHACLTargets(terms), nil
+	}
+	for _, predicate := range shape.Equals {
+		others, err := other(predicate)
+		if err != nil {
+			return nil, err
+		}
+		for _, val := range values {
+			if !containsTerm(others, val) {
+				out = append(out, shaclPairResult{SHACLEqualsConstraintComponent, val, fmt.Sprintf("Value %s is not a value of %s", val, predicate)})
+			}
+		}
+		for _, val := range others {
+			if !containsTerm(values, val) {
+				out = append(out, shaclPairResult{SHACLEqualsConstraintComponent, val, fmt.Sprintf("Value %s of %s is not a value node", val, predicate)})
+			}
+		}
+	}
+	for _, predicate := range shape.Disjoint {
+		others, err := other(predicate)
+		if err != nil {
+			return nil, err
+		}
+		for _, val := range values {
+			if containsTerm(others, val) {
+				out = append(out, shaclPairResult{SHACLDisjointConstraintComponent, val, fmt.Sprintf("Value %s is also a value of %s", val, predicate)})
+			}
+		}
+	}
+	return out, nil
+}
+
 // closedResults reports every triple of a value node whose predicate is
 // neither the sh:path of one of this shape's sh:property shapes nor listed in
 // sh:ignoredProperties. rdf:type gets no special treatment: the spec does not
@@ -292,7 +372,7 @@ func (v *shaclValidator) closedResults(ctx context.Context, shape *shaclShape, f
 			continue // literals are never subjects
 		}
 		subject := val
-		triples, err := v.g.FindTriples(ctx, TriplePattern{Subject: &subject})
+		triples, err := v.findTriples(ctx, TriplePattern{Subject: &subject})
 		if err != nil {
 			return nil, err
 		}
@@ -364,7 +444,7 @@ func (v *shaclValidator) valueNodes(ctx context.Context, shape *shaclShape, focu
 		}
 		pattern = TriplePattern{Subject: &focus, Predicate: &predicate}
 	}
-	triples, err := v.g.FindTriples(ctx, pattern)
+	triples, err := v.findTriples(ctx, pattern)
 	if err != nil {
 		return nil, err
 	}
@@ -394,7 +474,7 @@ func (v *shaclValidator) isInstanceOf(ctx context.Context, node RDFTerm, cls RDF
 		return false, nil
 	}
 	typePredicate := NewIRI(RDFType)
-	types, err := v.g.FindTriples(ctx, TriplePattern{Subject: &node, Predicate: &typePredicate})
+	types, err := v.findTriples(ctx, TriplePattern{Subject: &node, Predicate: &typePredicate})
 	if err != nil {
 		return false, err
 	}
@@ -435,7 +515,7 @@ func (v *shaclValidator) instancesOf(ctx context.Context, cls RDFTerm) ([]RDFTer
 	typePredicate := NewIRI(RDFType)
 	var out []RDFTerm
 	for i := range classes {
-		triples, err := v.g.FindTriples(ctx, TriplePattern{Predicate: &typePredicate, Object: &classes[i]})
+		triples, err := v.findTriples(ctx, TriplePattern{Predicate: &typePredicate, Object: &classes[i]})
 		if err != nil {
 			return nil, err
 		}
@@ -463,7 +543,7 @@ func (v *shaclValidator) walkSubClassOf(ctx context.Context, start RDFTerm, down
 		if down {
 			pattern = TriplePattern{Predicate: &subClassOf, Object: &current}
 		}
-		triples, err := v.g.FindTriples(ctx, pattern)
+		triples, err := v.findTriples(ctx, pattern)
 		if err != nil {
 			return nil, err
 		}

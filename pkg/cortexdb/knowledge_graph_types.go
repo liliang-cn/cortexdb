@@ -148,6 +148,42 @@ type KnowledgeGraphSHACLValidateResponse struct {
 	Report KnowledgeGraphSHACLReport `json:"report"`
 }
 
+// KnowledgeGraphSHACLRulesResult aliases the low-level SHACL rules result.
+type KnowledgeGraphSHACLRulesResult = graph.SHACLRuleResult
+
+// KnowledgeGraphSHACLFunction aliases the Go implementation of a SHACL
+// function, which function node expressions call.
+type KnowledgeGraphSHACLFunction = graph.SHACLFunction
+
+// KnowledgeGraphSHACLRulesRequest runs the sh:TripleRule rules in Shapes.
+//
+// Shapes is the complete SHACL rule set: what an earlier run inferred and
+// this one no longer does is retracted, so an empty Shapes retracts every
+// SHACL-rule triple.
+type KnowledgeGraphSHACLRulesRequest struct {
+	Shapes []KnowledgeGraphTriple `json:"shapes"`
+	// DryRun returns what the rules infer without writing or retracting.
+	DryRun bool `json:"dry_run,omitempty"`
+	// MaxIterations bounds the passes to a fixpoint; zero means 64.
+	MaxIterations int `json:"max_iterations,omitempty"`
+	// Limit caps the inferred triples listed in the response; the counts are
+	// always complete. Zero means 100, negative lists all. A rule over a real
+	// brain can infer thousands of triples, and an agent asking whether its
+	// rule worked needs the counts and a sample, not the whole set.
+	Limit int `json:"limit,omitempty"`
+	// Functions implements function expressions, keyed by function IRI.
+	// Only Go callers can supply code, which is why the field is not JSON.
+	Functions map[string]KnowledgeGraphSHACLFunction `json:"-"`
+}
+
+// KnowledgeGraphSHACLRulesResponse reports a SHACL rules run.
+type KnowledgeGraphSHACLRulesResponse struct {
+	Result KnowledgeGraphSHACLRulesResult `json:"result"`
+	// Truncated is true when Result.Derived lists fewer triples than
+	// Result.DerivedCount because of Limit.
+	Truncated bool `json:"truncated,omitempty"`
+}
+
 // KnowledgeGraphInferenceRefreshRequest recomputes inferred triples.
 type KnowledgeGraphInferenceRefreshRequest struct {
 	Mode      string                       `json:"mode,omitempty"`
