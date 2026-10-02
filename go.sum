@@ -1,11 +1,5 @@
 filippo.io/edwards25519 v1.2.0 h1:crnVqOiS4jqYleHd9vaKZ+HKtHfllngJIiOpNpoJsjo=
 filippo.io/edwards25519 v1.2.0/go.mod h1:xzAOLCNug/yB62zG1bQ8uziwrIqIuxhctzJT18Q77mc=
-github.com/0x51-dev/rdf v0.1.0 h1:FVfgKlpDyDbcXCw2Bl67WwSiyXmN4eN86FPdyUlF5WA=
-github.com/0x51-dev/rdf v0.1.0/go.mod h1:2Ie8KGb6ATQ8sxbW4244htReuQROnY7X2MKqPXWmICg=
-github.com/0x51-dev/rids v0.1.0 h1:uCb0lrYeE374b43rhy4keFUrVCSbMYSaSqLfoGveQH8=
-github.com/0x51-dev/rids v0.1.0/go.mod h1:l/rEmCVwqu6nRMdLIwF6HriyB0M4KevDdSKAlaNVw7U=
-github.com/0x51-dev/upeg v0.1.0 h1:ze3Uu4H9q0Fq8FuJmV1RsrTl85LholOZExCBwpujiPc=
-github.com/0x51-dev/upeg v0.1.0/go.mod h1:ts9/Zafxb9W9drZFTmQNMR7kLOyHyBw37NuowyiDork=
 github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk=
 github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/cayleygraph/quad v1.3.0 h1:xg7HOLWWPgvZ4CcvzEpfCwq42L8mzYUR+8V0jtYoBzc=

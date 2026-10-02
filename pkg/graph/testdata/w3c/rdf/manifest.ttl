@@ -1,0 +1,483 @@
+## A representative subset of the W3C RDF test suites (w3c/rdf-tests),
+## distributed under the W3C Test Suite License and the W3C 3-clause BSD
+## License (see ../LICENSE.md). Generated; entries keep their upstream names.
+
+PREFIX rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX mf:    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#>
+PREFIX rdft:  <http://www.w3.org/ns/rdftest#>
+PREFIX qt:    <http://www.w3.org/2001/sw/DataAccess/tests/test-query#>
+PREFIX ut:    <http://www.w3.org/2009/sparql/tests/test-update#>
+
+<> rdf:type mf:Manifest ;
+    rdfs:label "CortexDB rdf subset" ;
+    mf:entries (
+        <rdf-rdf12-rdf-n-triples-syntax#ntriples12-01>
+        <rdf-rdf12-rdf-n-triples-syntax#ntriples12-02>
+        <rdf-rdf12-rdf-n-triples-syntax#ntriples12-03>
+        <rdf-rdf12-rdf-n-triples-syntax#ntriples12-bnode-1>
+        <rdf-rdf12-rdf-n-triples-syntax#ntriples12-nested-1>
+        <rdf-rdf12-rdf-n-triples-syntax#ntriples-langdir-1>
+        <rdf-rdf12-rdf-n-triples-syntax#ntriples-langdir-2>
+        <rdf-rdf12-rdf-n-triples-syntax#ntriples12-bad-01>
+        <rdf-rdf12-rdf-n-triples-syntax#ntriples12-bad-02>
+        <rdf-rdf12-rdf-n-triples-syntax#ntriples12-bad-05>
+        <rdf-rdf12-rdf-n-triples-syntax#ntriples12-bad-10>
+        <rdf-rdf12-rdf-n-triples-syntax#ntriples12-bad-reified-1>
+        <rdf-rdf12-rdf-n-triples-syntax#ntriples-langdir-bad-1>
+        <rdf-rdf12-rdf-n-triples-syntax#ntriples-langdir-bad-2>
+        <rdf-rdf12-rdf-n-triples-syntax#ntriples-langdir-bad-3>
+        <rdf-rdf12-rdf-n-triples-syntax#ntriples-langdir-bad-4>
+        <rdf-rdf12-rdf-n-triples-syntax#ntriples12-bnode-bad-annotated-syntax-1>
+        <rdf-rdf12-rdf-n-triples-c14n#triple-term-01>
+        <rdf-rdf12-rdf-n-triples-c14n#triple-term-02>
+        <rdf-rdf12-rdf-n-triples-c14n#triple-term-03>
+        <rdf-rdf12-rdf-n-triples-c14n#triple-term-04>
+        <rdf-rdf12-rdf-n-triples-c14n#dirlangtagged_string>
+        <rdf-rdf12-rdf-n-triples-c14n#literal_all_controls>
+        <rdf-rdf12-rdf-n-triples-c14n#extra_whitespace-03>
+        <rdf-rdf12-rdf-n-quads-syntax#nquads12-01>
+        <rdf-rdf12-rdf-n-quads-syntax#nquads12-02>
+        <rdf-rdf12-rdf-n-quads-syntax#nquads12-bnode-1>
+        <rdf-rdf12-rdf-n-quads-syntax#nquads12-bad-01>
+        <rdf-rdf12-rdf-n-quads-syntax#nquads-langdir-bad-1>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-1>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-2>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-inside-1>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-nested-1>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-compound-1>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-bnode-1>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-ann-1>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-ann-2>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-ann-3>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-ann-6>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-bad-1>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-bad-2>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-bad-3>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-bad-4>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-bad-6>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-bad-7>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-bad-ann-1>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-bad-ann-2>
+        <rdf-rdf12-rdf-turtle-syntax#nt-ttl12-bad-01>
+        <rdf-rdf12-rdf-turtle-syntax#nt-ttl12-bad-07>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-version-bad-02>
+        <rdf-rdf12-rdf-turtle-syntax#turtle12-surrogates-bad-04>
+        <rdf-rdf12-rdf-turtle-syntax#nt-ttl12-langdir-bad-2>
+        <rdf-rdf12-rdf-turtle-eval#turtle12-rt-01>
+        <rdf-rdf12-rdf-turtle-eval#turtle12-rt-05>
+        <rdf-rdf12-rdf-turtle-eval#turtle12-bnode-01>
+        <rdf-rdf12-rdf-turtle-eval#turtle12-tt-03>
+        <rdf-rdf12-rdf-turtle-eval#turtle12-annotation-01>
+        <rdf-rdf12-rdf-turtle-eval#turtle12-annotation-05>
+        <rdf-rdf12-rdf-turtle-eval#turtle12-annotation-10>
+        <rdf-rdf12-rdf-turtle-eval#turtle12-reified-triples-annotation-02>
+        <rdf-rdf12-rdf-trig-syntax#trig12-1>
+        <rdf-rdf12-rdf-trig-syntax#trig12-ann-1>
+        <rdf-rdf12-rdf-trig-syntax#trig12-bad-1>
+        <rdf-rdf12-rdf-trig-eval#trig12-rt-01>
+        <rdf-rdf12-rdf-trig-eval#trig12-annotation-04>
+        <rdf-rdf12-rdf-trig-eval#trig12-bnode-2>
+        <rdf-rdf11-rdf-turtle#nested_blankNodePropertyLists>
+        <rdf-rdf11-rdf-turtle#blankNodePropertyList_containing_collection>
+        <rdf-rdf11-rdf-turtle#collection_object>
+        <rdf-rdf11-rdf-turtle#nested_collection>
+        <rdf-rdf11-rdf-turtle#turtle-syntax-bad-struct-02>
+        <rdf-rdf11-rdf-turtle#IRI-resolution-01>
+        <rdf-rdf11-rdf-trig#trig-syntax-bad-uri-escape-01>
+        <rdf-rdf11-rdf-trig#nested_blankNodePropertyLists>
+    ) .
+
+<rdf-rdf12-rdf-n-triples-syntax#ntriples12-01> rdf:type rdft:TestNTriplesPositiveSyntax ;
+    mf:name "ntriples12-01" ;
+    mf:action <rdf12/rdf-n-triples/syntax/ntriples12-syntax-01.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-syntax#ntriples12-02> rdf:type rdft:TestNTriplesPositiveSyntax ;
+    mf:name "ntriples12-02" ;
+    mf:action <rdf12/rdf-n-triples/syntax/ntriples12-syntax-02.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-syntax#ntriples12-03> rdf:type rdft:TestNTriplesPositiveSyntax ;
+    mf:name "ntriples12-03" ;
+    mf:action <rdf12/rdf-n-triples/syntax/ntriples12-syntax-03.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-syntax#ntriples12-bnode-1> rdf:type rdft:TestNTriplesPositiveSyntax ;
+    mf:name "ntriples12-bnode-1" ;
+    mf:action <rdf12/rdf-n-triples/syntax/ntriples12-bnode-1.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-syntax#ntriples12-nested-1> rdf:type rdft:TestNTriplesPositiveSyntax ;
+    mf:name "ntriples12-nested-1" ;
+    mf:action <rdf12/rdf-n-triples/syntax/ntriples12-nested-1.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-syntax#ntriples-langdir-1> rdf:type rdft:TestNTriplesPositiveSyntax ;
+    mf:name "ntriples-langdir-1" ;
+    mf:action <rdf12/rdf-n-triples/syntax/ntriples-langdir-1.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-syntax#ntriples-langdir-2> rdf:type rdft:TestNTriplesPositiveSyntax ;
+    mf:name "ntriples-langdir-2" ;
+    mf:action <rdf12/rdf-n-triples/syntax/ntriples-langdir-2.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-syntax#ntriples12-bad-01> rdf:type rdft:TestNTriplesNegativeSyntax ;
+    mf:name "ntriples12-bad-01" ;
+    mf:action <rdf12/rdf-n-triples/syntax/ntriples12-bad-syntax-01.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-syntax#ntriples12-bad-02> rdf:type rdft:TestNTriplesNegativeSyntax ;
+    mf:name "ntriples12-bad-02" ;
+    mf:action <rdf12/rdf-n-triples/syntax/ntriples12-bad-syntax-02.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-syntax#ntriples12-bad-05> rdf:type rdft:TestNTriplesNegativeSyntax ;
+    mf:name "ntriples12-bad-05" ;
+    mf:action <rdf12/rdf-n-triples/syntax/ntriples12-bad-syntax-05.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-syntax#ntriples12-bad-10> rdf:type rdft:TestNTriplesNegativeSyntax ;
+    mf:name "ntriples12-bad-10" ;
+    mf:action <rdf12/rdf-n-triples/syntax/ntriples12-bad-syntax-10.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-syntax#ntriples12-bad-reified-1> rdf:type rdft:TestNTriplesNegativeSyntax ;
+    mf:name "ntriples12-bad-reified-1" ;
+    mf:action <rdf12/rdf-n-triples/syntax/ntriples12-bad-reified-syntax-1.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-syntax#ntriples-langdir-bad-1> rdf:type rdft:TestNTriplesNegativeSyntax ;
+    mf:name "ntriples-langdir-bad-1" ;
+    mf:action <rdf12/rdf-n-triples/syntax/ntriples-langdir-bad-1.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-syntax#ntriples-langdir-bad-2> rdf:type rdft:TestNTriplesNegativeSyntax ;
+    mf:name "ntriples-langdir-bad-2" ;
+    mf:action <rdf12/rdf-n-triples/syntax/ntriples-langdir-bad-2.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-syntax#ntriples-langdir-bad-3> rdf:type rdft:TestNTriplesNegativeSyntax ;
+    mf:name "ntriples-langdir-bad-3" ;
+    mf:action <rdf12/rdf-n-triples/syntax/ntriples-langdir-bad-3.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-syntax#ntriples-langdir-bad-4> rdf:type rdft:TestNTriplesNegativeSyntax ;
+    mf:name "ntriples-langdir-bad-4" ;
+    mf:action <rdf12/rdf-n-triples/syntax/ntriples-langdir-bad-4.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-syntax#ntriples12-bnode-bad-annotated-syntax-1> rdf:type rdft:TestNTriplesNegativeSyntax ;
+    mf:name "ntriples12-bnode-bad-annotated-syntax-1" ;
+    mf:action <rdf12/rdf-n-triples/syntax/ntriples12-bnode-bad-annotated-syntax-1.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-c14n#triple-term-01> rdf:type rdft:TestNTriplesPositiveC14N ;
+    mf:name "triple-term-01" ;
+    mf:action <rdf12/rdf-n-triples/c14n/triple-term-01.nt> ;
+    mf:result <rdf12/rdf-n-triples/c14n/triple-term-01-c14n.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-c14n#triple-term-02> rdf:type rdft:TestNTriplesPositiveC14N ;
+    mf:name "triple-term-02" ;
+    mf:action <rdf12/rdf-n-triples/c14n/triple-term-02.nt> ;
+    mf:result <rdf12/rdf-n-triples/c14n/triple-term-02-c14n.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-c14n#triple-term-03> rdf:type rdft:TestNTriplesPositiveC14N ;
+    mf:name "triple-term-03" ;
+    mf:action <rdf12/rdf-n-triples/c14n/triple-term-03.nt> ;
+    mf:result <rdf12/rdf-n-triples/c14n/triple-term-03-c14n.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-c14n#triple-term-04> rdf:type rdft:TestNTriplesPositiveC14N ;
+    mf:name "triple-term-04" ;
+    mf:action <rdf12/rdf-n-triples/c14n/triple-term-04.nt> ;
+    mf:result <rdf12/rdf-n-triples/c14n/triple-term-04-c14n.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-c14n#dirlangtagged_string> rdf:type rdft:TestNTriplesPositiveC14N ;
+    mf:name "dirlangtagged_string" ;
+    mf:action <rdf12/rdf-n-triples/c14n/dirlangtagged_string.nt> ;
+    mf:result <rdf12/rdf-n-triples/c14n/dirlangtagged_string-c14n.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-c14n#literal_all_controls> rdf:type rdft:TestNTriplesPositiveC14N ;
+    mf:name "literal_all_controls" ;
+    mf:action <rdf12/rdf-n-triples/c14n/literal_all_controls.nt> ;
+    mf:result <rdf12/rdf-n-triples/c14n/literal_all_controls-c14n.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-triples-c14n#extra_whitespace-03> rdf:type rdft:TestNTriplesPositiveC14N ;
+    mf:name "extra_whitespace-03" ;
+    mf:action <rdf12/rdf-n-triples/c14n/extra_whitespace-03.nt> ;
+    mf:result <rdf12/rdf-n-triples/c14n/extra_whitespace-03-c14n.nt> ;
+    .
+
+<rdf-rdf12-rdf-n-quads-syntax#nquads12-01> rdf:type rdft:TestNQuadsPositiveSyntax ;
+    mf:name "nquads12-01" ;
+    mf:action <rdf12/rdf-n-quads/syntax/nquads12-syntax-01.nq> ;
+    .
+
+<rdf-rdf12-rdf-n-quads-syntax#nquads12-02> rdf:type rdft:TestNQuadsPositiveSyntax ;
+    mf:name "nquads12-02" ;
+    mf:action <rdf12/rdf-n-quads/syntax/nquads12-syntax-02.nq> ;
+    .
+
+<rdf-rdf12-rdf-n-quads-syntax#nquads12-bnode-1> rdf:type rdft:TestNQuadsPositiveSyntax ;
+    mf:name "nquads12-bnode-1" ;
+    mf:action <rdf12/rdf-n-quads/syntax/nquads12-bnode-1.nq> ;
+    .
+
+<rdf-rdf12-rdf-n-quads-syntax#nquads12-bad-01> rdf:type rdft:TestNQuadsNegativeSyntax ;
+    mf:name "nquads12-bad-01" ;
+    mf:action <rdf12/rdf-n-quads/syntax/nquads12-bad-syntax-01.nq> ;
+    .
+
+<rdf-rdf12-rdf-n-quads-syntax#nquads-langdir-bad-1> rdf:type rdft:TestNQuadsNegativeSyntax ;
+    mf:name "nquads-langdir-bad-1" ;
+    mf:action <rdf12/rdf-n-quads/syntax/nquads-langdir-bad-1.nq> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-1> rdf:type rdft:TestTurtlePositiveSyntax ;
+    mf:name "turtle12-1" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-syntax-basic-01.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-2> rdf:type rdft:TestTurtlePositiveSyntax ;
+    mf:name "turtle12-2" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-syntax-basic-02.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-inside-1> rdf:type rdft:TestTurtlePositiveSyntax ;
+    mf:name "turtle12-inside-1" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-syntax-inside-01.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-nested-1> rdf:type rdft:TestTurtlePositiveSyntax ;
+    mf:name "turtle12-nested-1" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-syntax-nested-01.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-compound-1> rdf:type rdft:TestTurtlePositiveSyntax ;
+    mf:name "turtle12-compound-1" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-syntax-compound.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-bnode-1> rdf:type rdft:TestTurtlePositiveSyntax ;
+    mf:name "turtle12-bnode-1" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-syntax-bnode-01.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-ann-1> rdf:type rdft:TestTurtlePositiveSyntax ;
+    mf:name "turtle12-ann-1" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-annotation-1.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-ann-2> rdf:type rdft:TestTurtlePositiveSyntax ;
+    mf:name "turtle12-ann-2" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-annotation-2.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-ann-3> rdf:type rdft:TestTurtlePositiveSyntax ;
+    mf:name "turtle12-ann-3" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-annotation-3.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-ann-6> rdf:type rdft:TestTurtlePositiveSyntax ;
+    mf:name "turtle12-ann-6" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-annotation-6.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-bad-1> rdf:type rdft:TestTurtleNegativeSyntax ;
+    mf:name "turtle12-bad-1" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-syntax-bad-01.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-bad-2> rdf:type rdft:TestTurtleNegativeSyntax ;
+    mf:name "turtle12-bad-2" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-syntax-bad-02.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-bad-3> rdf:type rdft:TestTurtleNegativeSyntax ;
+    mf:name "turtle12-bad-3" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-syntax-bad-03.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-bad-4> rdf:type rdft:TestTurtleNegativeSyntax ;
+    mf:name "turtle12-bad-4" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-syntax-bad-04.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-bad-6> rdf:type rdft:TestTurtleNegativeSyntax ;
+    mf:name "turtle12-bad-6" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-syntax-bad-06.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-bad-7> rdf:type rdft:TestTurtleNegativeSyntax ;
+    mf:name "turtle12-bad-7" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-syntax-bad-07.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-bad-ann-1> rdf:type rdft:TestTurtleNegativeSyntax ;
+    mf:name "turtle12-bad-ann-1" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-syntax-bad-ann-1.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-bad-ann-2> rdf:type rdft:TestTurtleNegativeSyntax ;
+    mf:name "turtle12-bad-ann-2" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-syntax-bad-ann-2.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#nt-ttl12-bad-01> rdf:type rdft:TestTurtleNegativeSyntax ;
+    mf:name "nt-ttl12-bad-01" ;
+    mf:action <rdf12/rdf-turtle/syntax/nt-ttl12-bad-syntax-01.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#nt-ttl12-bad-07> rdf:type rdft:TestTurtleNegativeSyntax ;
+    mf:name "nt-ttl12-bad-07" ;
+    mf:action <rdf12/rdf-turtle/syntax/nt-ttl12-bad-syntax-07.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-version-bad-02> rdf:type rdft:TestTurtleNegativeSyntax ;
+    mf:name "turtle12-version-bad-02" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-version-bad-02.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#turtle12-surrogates-bad-04> rdf:type rdft:TestTurtleNegativeSyntax ;
+    mf:name "turtle12-surrogates-bad-04" ;
+    mf:action <rdf12/rdf-turtle/syntax/turtle12-surrogates-bad-04.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-syntax#nt-ttl12-langdir-bad-2> rdf:type rdft:TestTurtleNegativeSyntax ;
+    mf:name "nt-ttl12-langdir-bad-2" ;
+    mf:action <rdf12/rdf-turtle/syntax/nt-ttl12-langdir-bad-2.ttl> ;
+    .
+
+<rdf-rdf12-rdf-turtle-eval#turtle12-rt-01> rdf:type rdft:TestTurtleEval ;
+    mf:name "turtle12-rt-01" ;
+    mf:action <rdf12/rdf-turtle/eval/turtle12-eval-rt-01.ttl> ;
+    mf:result <rdf12/rdf-turtle/eval/turtle12-eval-rt-01.nt> ;
+    .
+
+<rdf-rdf12-rdf-turtle-eval#turtle12-rt-05> rdf:type rdft:TestTurtleEval ;
+    mf:name "turtle12-rt-05" ;
+    mf:action <rdf12/rdf-turtle/eval/turtle12-eval-rt-05.ttl> ;
+    mf:result <rdf12/rdf-turtle/eval/turtle12-eval-rt-05.nt> ;
+    .
+
+<rdf-rdf12-rdf-turtle-eval#turtle12-bnode-01> rdf:type rdft:TestTurtleEval ;
+    mf:name "turtle12-bnode-01" ;
+    mf:action <rdf12/rdf-turtle/eval/turtle12-eval-bnode-01.ttl> ;
+    mf:result <rdf12/rdf-turtle/eval/turtle12-eval-bnode-01.nt> ;
+    .
+
+<rdf-rdf12-rdf-turtle-eval#turtle12-tt-03> rdf:type rdft:TestTurtleEval ;
+    mf:name "turtle12-tt-03" ;
+    mf:action <rdf12/rdf-turtle/eval/turtle12-eval-tt-03.ttl> ;
+    mf:result <rdf12/rdf-turtle/eval/turtle12-eval-tt-03.nt> ;
+    .
+
+<rdf-rdf12-rdf-turtle-eval#turtle12-annotation-01> rdf:type rdft:TestTurtleEval ;
+    mf:name "turtle12-annotation-01" ;
+    mf:action <rdf12/rdf-turtle/eval/turtle12-eval-annotation-01.ttl> ;
+    mf:result <rdf12/rdf-turtle/eval/turtle12-eval-annotation-01.nt> ;
+    .
+
+<rdf-rdf12-rdf-turtle-eval#turtle12-annotation-05> rdf:type rdft:TestTurtleEval ;
+    mf:name "turtle12-annotation-05" ;
+    mf:action <rdf12/rdf-turtle/eval/turtle12-eval-annotation-05.ttl> ;
+    mf:result <rdf12/rdf-turtle/eval/turtle12-eval-annotation-05.nt> ;
+    .
+
+<rdf-rdf12-rdf-turtle-eval#turtle12-annotation-10> rdf:type rdft:TestTurtleEval ;
+    mf:name "turtle12-annotation-10" ;
+    mf:action <rdf12/rdf-turtle/eval/turtle12-eval-annotation-10.ttl> ;
+    mf:result <rdf12/rdf-turtle/eval/turtle12-eval-annotation-10.nt> ;
+    .
+
+<rdf-rdf12-rdf-turtle-eval#turtle12-reified-triples-annotation-02> rdf:type rdft:TestTurtleEval ;
+    mf:name "turtle12-reified-triples-annotation-02" ;
+    mf:action <rdf12/rdf-turtle/eval/turtle12-eval-reified-triples-annotation-02.ttl> ;
+    mf:result <rdf12/rdf-turtle/eval/turtle12-eval-reified-triples-annotation-02.nt> ;
+    .
+
+<rdf-rdf12-rdf-trig-syntax#trig12-1> rdf:type rdft:TestTrigPositiveSyntax ;
+    mf:name "trig12-1" ;
+    mf:action <rdf12/rdf-trig/syntax/trig12-syntax-basic-01.trig> ;
+    .
+
+<rdf-rdf12-rdf-trig-syntax#trig12-ann-1> rdf:type rdft:TestTrigPositiveSyntax ;
+    mf:name "trig12-ann-1" ;
+    mf:action <rdf12/rdf-trig/syntax/trig12-annotation-1.trig> ;
+    .
+
+<rdf-rdf12-rdf-trig-syntax#trig12-bad-1> rdf:type rdft:TestTrigNegativeSyntax ;
+    mf:name "trig12-bad-1" ;
+    mf:action <rdf12/rdf-trig/syntax/trig12-syntax-bad-01.trig> ;
+    .
+
+<rdf-rdf12-rdf-trig-eval#trig12-rt-01> rdf:type rdft:TestTrigEval ;
+    mf:name "trig12-rt-01" ;
+    mf:action <rdf12/rdf-trig/eval/trig12-eval-rt-01.trig> ;
+    mf:result <rdf12/rdf-trig/eval/trig12-eval-rt-01.nq> ;
+    .
+
+<rdf-rdf12-rdf-trig-eval#trig12-annotation-04> rdf:type rdft:TestTrigEval ;
+    mf:name "trig12-annotation-04" ;
+    mf:action <rdf12/rdf-trig/eval/trig12-eval-annotation-04.trig> ;
+    mf:result <rdf12/rdf-trig/eval/trig12-eval-annotation-04.nq> ;
+    .
+
+<rdf-rdf12-rdf-trig-eval#trig12-bnode-2> rdf:type rdft:TestTrigEval ;
+    mf:name "trig12-bnode-2" ;
+    mf:action <rdf12/rdf-trig/eval/trig12-eval-bnode-2.trig> ;
+    mf:result <rdf12/rdf-trig/eval/trig12-eval-bnode-2.nq> ;
+    .
+
+<rdf-rdf11-rdf-turtle#nested_blankNodePropertyLists> rdf:type rdft:TestTurtleEval ;
+    mf:name "nested_blankNodePropertyLists" ;
+    mf:action <rdf11/rdf-turtle/nested_blankNodePropertyLists.ttl> ;
+    mf:result <rdf11/rdf-turtle/nested_blankNodePropertyLists.nt> ;
+    .
+
+<rdf-rdf11-rdf-turtle#blankNodePropertyList_containing_collection> rdf:type rdft:TestTurtleEval ;
+    mf:name "blankNodePropertyList_containing_collection" ;
+    mf:action <rdf11/rdf-turtle/blankNodePropertyList_containing_collection.ttl> ;
+    mf:result <rdf11/rdf-turtle/blankNodePropertyList_containing_collection.nt> ;
+    .
+
+<rdf-rdf11-rdf-turtle#collection_object> rdf:type rdft:TestTurtleEval ;
+    mf:name "collection_object" ;
+    mf:action <rdf11/rdf-turtle/collection_object.ttl> ;
+    mf:result <rdf11/rdf-turtle/collection_object.nt> ;
+    .
+
+<rdf-rdf11-rdf-turtle#nested_collection> rdf:type rdft:TestTurtleEval ;
+    mf:name "nested_collection" ;
+    mf:action <rdf11/rdf-turtle/nested_collection.ttl> ;
+    mf:result <rdf11/rdf-turtle/nested_collection.nt> ;
+    .
+
+<rdf-rdf11-rdf-turtle#turtle-syntax-bad-struct-02> rdf:type rdft:TestTurtleNegativeSyntax ;
+    mf:name "turtle-syntax-bad-struct-02" ;
+    mf:action <rdf11/rdf-turtle/turtle-syntax-bad-struct-02.ttl> ;
+    .
+
+<rdf-rdf11-rdf-turtle#IRI-resolution-01> rdf:type rdft:TestTurtleEval ;
+    mf:name "IRI-resolution-01" ;
+    mf:action <rdf11/rdf-turtle/IRI-resolution-01.ttl> ;
+    mf:result <rdf11/rdf-turtle/IRI-resolution-01.nt> ;
+    .
+
+<rdf-rdf11-rdf-trig#trig-syntax-bad-uri-escape-01> rdf:type rdft:TestTrigNegativeSyntax ;
+    mf:name "trig-syntax-bad-uri-escape-01" ;
+    mf:action <rdf11/rdf-trig/trig-syntax-bad-uri-escape-01.trig> ;
+    .
+
+<rdf-rdf11-rdf-trig#nested_blankNodePropertyLists> rdf:type rdft:TestTrigEval ;
+    mf:name "nested_blankNodePropertyLists" ;
+    mf:action <rdf11/rdf-trig/nested_blankNodePropertyLists.trig> ;
+    mf:result <rdf11/rdf-trig/nested_blankNodePropertyLists.nq> ;
+    .

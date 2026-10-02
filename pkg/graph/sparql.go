@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -34,6 +35,7 @@ const (
 	sparqlPathAlternative = "alternative"
 	sparqlPathZeroOrMore  = "zero_or_more"
 	sparqlPathOneOrMore   = "one_or_more"
+	sparqlPathZeroOrOne   = "zero_or_one"
 )
 
 // SPARQLResult contains the result of executing a SPARQL query.
@@ -73,6 +75,9 @@ type sparqlQuery struct {
 	// sparqlExecOptions).
 	DatasetDeclared bool
 	runtime         *sparqlRuntime
+	// Next is the update operation after this one, for a request that
+	// chains several with ';'.
+	Next *sparqlQuery
 }
 
 type sparqlGroup struct {
@@ -167,9 +172,18 @@ type sparqlOrderClause struct {
 	Expr sparqlValueExpr
 }
 
+// sparqlTermPattern is one position of a triple pattern: a variable, a
+// constant term, a blank node, or a triple term pattern with something free
+// in it. See sparql12.go for the last two.
 type sparqlTermPattern struct {
 	Variable string
 	Term     *RDFTerm
+	// Blank is a blank node written in the query, or one the RDF 1.2 sugar
+	// introduced. In a pattern it matches like a variable no solution
+	// projects; in a template it is a fresh blank node for each solution.
+	Blank string
+	// Triple is a triple term pattern <<( s p o )>> that is not constant.
+	Triple *sparqlTriplePattern
 }
 
 type sparqlFilter interface {
@@ -245,6 +259,23 @@ func (g *GraphStore) ExecuteSPARQL(ctx context.Context, query string) (*SPARQLRe
 	if err != nil {
 		return nil, err
 	}
+	if parsed.Next == nil {
+		return g.executeParsedSPARQL(ctx, parsed)
+	}
+	// A request of several update operations runs them in order and
+	// reports the total count; the first failure stops it.
+	total := &SPARQLResult{QueryType: parsed.QueryType}
+	for op := parsed; op != nil; op = op.Next {
+		result, err := g.executeParsedSPARQL(ctx, op)
+		if err != nil {
+			return nil, err
+		}
+		total.Count += result.Count
+	}
+	return total, nil
+}
+
+func (g *GraphStore) executeParsedSPARQL(ctx context.Context, parsed *sparqlQuery) (*SPARQLResult, error) {
 	execOptions := buildSPARQLExecOptions(parsed)
 	if parsed.runtime != nil {
 		parsed.runtime.ctx = ctx
@@ -916,6 +947,12 @@ type sparqlPathMatch struct {
 }
 
 func (g *GraphStore) findSPARQLPatternTriples(ctx context.Context, pattern sparqlPattern, binding map[string]RDFTerm, opts sparqlExecOptions) ([]RDFTriple, error) {
+	// RDF 1.2 has no triple with a triple term as subject or predicate, so
+	// such a pattern — legal SPARQL syntax — matches nothing.
+	if pattern.Subject.Triple != nil || pattern.Predicate.Triple != nil ||
+		(pattern.Subject.Term != nil && pattern.Subject.Term.Kind == RDFTermTriple) {
+		return nil, nil
+	}
 	basePattern, err := resolveTriplePattern(pattern, binding)
 	if err != nil {
 		return nil, err
@@ -971,6 +1008,9 @@ func sparqlPatternCanMatch(pattern TriplePattern) bool {
 	if pattern.Subject != nil && pattern.Subject.Kind != RDFTermIRI && pattern.Subject.Kind != RDFTermBlankNode {
 		return false
 	}
+	if pattern.Object != nil && pattern.Object.Kind == sparqlNoMatchKind {
+		return false
+	}
 	if pattern.Predicate != nil && pattern.Predicate.Kind != "" && pattern.Predicate.Kind != RDFTermIRI {
 		return false
 	}
@@ -1012,6 +1052,37 @@ func (g *GraphStore) findSPARQLPathMatches(ctx context.Context, pattern sparqlPa
 		return all, nil
 	case sparqlPathZeroOrMore, sparqlPathOneOrMore:
 		return g.findSPARQLRepeatedPathMatches(ctx, pattern, binding, opts, pattern.Path.Terms[0], pattern.Path.Kind == sparqlPathZeroOrMore)
+	case sparqlPathZeroOrOne:
+		// p? is the zero-length path or one step. The zero-length matches
+		// are exactly the s = o matches of p*, which already knows which
+		// nodes the zero-length path ranges over.
+		repeated, err := g.findSPARQLRepeatedPathMatches(ctx, pattern, binding, opts, pattern.Path.Terms[0], true)
+		if err != nil {
+			return nil, err
+		}
+		direct, err := g.findSPARQLPathTriples(ctx, pattern, binding, opts, pattern.Path.Terms[0], false)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]sparqlPathMatch, 0, len(repeated)+len(direct))
+		seen := make(map[string]struct{})
+		add := func(match sparqlPathMatch) {
+			key := sparqlPathMatchKey(match)
+			if _, dup := seen[key]; dup {
+				return
+			}
+			seen[key] = struct{}{}
+			out = append(out, match)
+		}
+		for _, match := range repeated {
+			if termsEqual(match.Subject, match.Object) {
+				add(match)
+			}
+		}
+		for _, match := range buildSPARQLPathMatchesFromTriples(filterSPARQLPathTriples(pattern, direct, opts), false) {
+			add(match)
+		}
+		return out, nil
 	default:
 		return nil, fmt.Errorf("unsupported property path kind: %s", pattern.Path.Kind)
 	}
@@ -1278,6 +1349,15 @@ func resolveTriplePattern(pattern sparqlPattern, binding map[string]RDFTerm) (Tr
 		return TriplePattern{}, err
 	}
 	out.Object = object
+	if object == nil && pattern.Object.Triple != nil {
+		// A partly bound <<( ?s :p ?o )>>: the store narrows to triple
+		// terms with these parts, and unification binds the rest.
+		out.objectTriple = tripleTermFilterFor(pattern.Object.Triple, binding)
+		if noMatch(out.objectTriple.Subject) || noMatch(out.objectTriple.Predicate) || noMatch(out.objectTriple.Object) {
+			out.Object = &RDFTerm{Kind: sparqlNoMatchKind}
+			out.objectTriple = nil
+		}
+	}
 
 	if pattern.Graph != nil {
 		graphTerm, err := resolvePatternTerm(*pattern.Graph, binding)
@@ -1295,10 +1375,14 @@ func resolvePatternTerm(pattern sparqlTermPattern, binding map[string]RDFTerm) (
 		term := *pattern.Term
 		return &term, nil
 	}
-	if pattern.Variable == "" {
+	if pattern.Triple != nil {
+		return resolveTripleTermPattern(pattern.Triple, binding), nil
+	}
+	name := pattern.varName()
+	if name == "" {
 		return nil, nil
 	}
-	if value, ok := binding[pattern.Variable]; ok {
+	if value, ok := binding[name]; ok {
 		valueCopy := value
 		return &valueCopy, nil
 	}
@@ -1352,21 +1436,32 @@ func bindPatternTerm(binding map[string]RDFTerm, pattern sparqlTermPattern, valu
 	if pattern.Term != nil {
 		return termsEqual(*pattern.Term, value)
 	}
-	if pattern.Variable == "" {
+	if pattern.Triple != nil {
+		return bindTripleTermPattern(binding, pattern.Triple, value)
+	}
+	name := pattern.varName()
+	if name == "" {
 		return true
 	}
-	if existing, ok := binding[pattern.Variable]; ok {
+	if existing, ok := binding[name]; ok {
 		return termsEqual(existing, value)
 	}
-	binding[pattern.Variable] = value
+	binding[name] = value
 	return true
 }
 
+// termsEqual is RDF term equality. A simple literal and the same literal
+// typed xsd:string are one term since RDF 1.1, which the store does not
+// normalize on write, so the comparison does.
 func termsEqual(a, b RDFTerm) bool {
 	return a.Kind == b.Kind &&
 		a.Value == b.Value &&
-		a.Datatype == b.Datatype &&
+		(a.Datatype == b.Datatype || (a.Kind == RDFTermLiteral && plainStringDatatype(a.Datatype) && plainStringDatatype(b.Datatype))) &&
 		a.Language == b.Language
+}
+
+func plainStringDatatype(datatype string) bool {
+	return datatype == "" || datatype == rdf12XSDStringIRI
 }
 
 func containsTerm(terms []RDFTerm, value RDFTerm) bool {
@@ -1424,6 +1519,11 @@ func collectBindingVars(bindings []map[string]RDFTerm) []string {
 	set := make(map[string]struct{})
 	for _, binding := range bindings {
 		for variable := range binding {
+			// Blank nodes in a pattern bind hidden variables; SELECT *
+			// projects the variables the query named and no others.
+			if isHiddenVariable(variable) {
+				continue
+			}
 			set[variable] = struct{}{}
 		}
 	}
@@ -1467,17 +1567,6 @@ func materializeConstructTriples(templates []sparqlPattern, bindings []map[strin
 	return materializeTemplateTriples(templates, bindings)
 }
 
-func constructBoundTerm(pattern sparqlTermPattern, binding map[string]RDFTerm) (RDFTerm, bool) {
-	if pattern.Term != nil {
-		return *pattern.Term, true
-	}
-	if pattern.Variable == "" {
-		return RDFTerm{}, false
-	}
-	value, ok := binding[pattern.Variable]
-	return value, ok
-}
-
 func materializeTemplateTriples(templates []sparqlPattern, bindings []map[string]RDFTerm) []RDFTriple {
 	return materializeTemplateTriplesWithDefaultGraph(templates, bindings, nil)
 }
@@ -1485,17 +1574,19 @@ func materializeTemplateTriples(templates []sparqlPattern, bindings []map[string
 func materializeTemplateTriplesWithDefaultGraph(templates []sparqlPattern, bindings []map[string]RDFTerm, defaultGraph *RDFTerm) []RDFTriple {
 	out := make([]RDFTriple, 0)
 	seen := make(map[string]struct{})
+	blanks := newSPARQLTemplateBlanks()
 	for _, binding := range bindings {
+		blanks.nextSolution()
 		for _, template := range templates {
-			subject, ok := constructBoundTerm(template.Subject, binding)
+			subject, ok := instantiateTemplateTerm(template.Subject, binding, blanks)
 			if !ok || (subject.Kind != RDFTermIRI && subject.Kind != RDFTermBlankNode) {
 				continue
 			}
-			predicate, ok := constructBoundTerm(template.Predicate, binding)
+			predicate, ok := instantiateTemplateTerm(template.Predicate, binding, blanks)
 			if !ok || predicate.Kind != RDFTermIRI {
 				continue
 			}
-			object, ok := constructBoundTerm(template.Object, binding)
+			object, ok := instantiateTemplateTerm(template.Object, binding, blanks)
 			if !ok {
 				continue
 			}
@@ -1505,7 +1596,7 @@ func materializeTemplateTriplesWithDefaultGraph(templates []sparqlPattern, bindi
 				Object:    object,
 			}
 			if template.Graph != nil {
-				graphTerm, ok := constructBoundTerm(*template.Graph, binding)
+				graphTerm, ok := instantiateTemplateTerm(*template.Graph, binding, blanks)
 				if !ok || (graphTerm.Kind != RDFTermIRI && graphTerm.Kind != RDFTermBlankNode) {
 					continue
 				}
@@ -1968,6 +2059,16 @@ type sparqlParser struct {
 	// exprGraph is the GRAPH block enclosing the FILTER/BIND being parsed,
 	// so an EXISTS inside it inherits the active graph.
 	exprGraph *sparqlTermPattern
+
+	// blankSeq numbers the blank nodes the parser invents for [], reified
+	// triples and annotations; depth bounds recursion; inTemplate is set
+	// while a CONSTRUCT, INSERT or DELETE template is parsed, where paths
+	// are not allowed.
+	blankSeq   int
+	depth      int
+	inTemplate bool
+	// base resolves relative IRIs once a BASE has been declared.
+	base string
 }
 
 type sparqlTokenType string
@@ -1982,6 +2083,7 @@ const (
 	sparqlTokenPunct    sparqlTokenType = "punct"
 	sparqlTokenOperator sparqlTokenType = "operator"
 	sparqlTokenQName    sparqlTokenType = "qname"
+	sparqlTokenBlank    sparqlTokenType = "blank"
 	sparqlTokenIdent    sparqlTokenType = "ident"
 	sparqlTokenEOF      sparqlTokenType = "eof"
 )
@@ -1989,6 +2091,9 @@ const (
 type sparqlToken struct {
 	Type  sparqlTokenType
 	Value string
+	// Long marks a string written with tripled quotes, which VERSION does
+	// not accept.
+	Long bool
 }
 
 func newSPARQLParser(query string, prefixes map[string]string) *sparqlParser {
@@ -2009,18 +2114,55 @@ func (p *sparqlParser) parse() (query *sparqlQuery, err error) {
 			err = fmt.Errorf("invalid SPARQL query")
 		}
 	}()
+	return p.parseOperation(clonePrefixes(p.prefixes))
+}
 
+// parsePrologue reads PREFIX, BASE and VERSION declarations. VERSION is
+// recorded nowhere: SPARQL 1.2 makes it an announcement a processor may warn
+// about, and this one reads 1.1 and 1.2 alike.
+func (p *sparqlParser) parsePrologue(prefixes map[string]string) {
+	for {
+		switch {
+		case p.matchKeyword("PREFIX"):
+			prefixToken := p.peek()
+			if prefixToken.Type != sparqlTokenQName || !strings.HasSuffix(prefixToken.Value, ":") || strings.Count(prefixToken.Value, ":") != 1 {
+				panicSPARQLParse(fmt.Errorf("expected prefix label, got %q", prefixToken.Value))
+			}
+			p.next()
+			iriToken := p.expectType(sparqlTokenIRI, "prefix iri")
+			value := iriToken.Value
+			if p.base != "" && !hasIRIScheme(value) {
+				value = resolveIRIReference(p.base, value)
+			}
+			prefixes[strings.TrimSuffix(prefixToken.Value, ":")] = value
+		case p.matchKeyword("BASE"):
+			iriToken := p.expectType(sparqlTokenIRI, "base iri")
+			value := iriToken.Value
+			if p.base != "" && !hasIRIScheme(value) {
+				value = resolveIRIReference(p.base, value)
+			}
+			p.base = value
+		case p.matchKeyword("VERSION"):
+			// VersionSpecifier is STRING_LITERAL1 | STRING_LITERAL2 only.
+			if version := p.expectType(sparqlTokenString, "version string"); version.Long {
+				panicSPARQLParse(fmt.Errorf("VERSION takes a short string, not %q", version.Value))
+			}
+		default:
+			return
+		}
+	}
+}
+
+// parseOperation parses one query, or one update operation and any that
+// follow it after ';' — SPARQL Update runs a request's operations in order,
+// each seeing what the one before it did.
+func (p *sparqlParser) parseOperation(prefixes map[string]string) (query *sparqlQuery, err error) {
 	query = &sparqlQuery{
-		Prefixes: clonePrefixes(p.prefixes),
+		Prefixes: prefixes,
 		runtime:  p.rt,
 	}
 
-	for p.matchKeyword("PREFIX") {
-		prefixToken := p.expectType(sparqlTokenQName, "prefix label")
-		iriToken := p.expectType(sparqlTokenIRI, "prefix iri")
-		prefix := strings.TrimSuffix(prefixToken.Value, ":")
-		query.Prefixes[prefix] = iriToken.Value
-	}
+	p.parsePrologue(query.Prefixes)
 	if p.matchKeyword("WITH") {
 		withTerm, err := p.parseGraphResourceTerm(query.Prefixes)
 		if err != nil {
@@ -2042,7 +2184,9 @@ func (p *sparqlParser) parse() (query *sparqlQuery, err error) {
 	case p.matchKeyword("CONSTRUCT"):
 		query.QueryType = SPARQLQueryConstruct
 		if p.peek().Type == sparqlTokenPunct && p.peek().Value == "{" {
+			p.inTemplate = true
 			template, err := p.parseConstructTemplate(query.Prefixes)
+			p.inTemplate = false
 			if err != nil {
 				return nil, err
 			}
@@ -2057,7 +2201,9 @@ func (p *sparqlParser) parse() (query *sparqlQuery, err error) {
 		if !p.matchKeyword("WHERE") {
 			return nil, fmt.Errorf("expected a CONSTRUCT template or WHERE")
 		}
+		p.inTemplate = true
 		group, err := p.parseEnclosedGroup(nil, query.Prefixes)
+		p.inTemplate = false
 		if err != nil {
 			return nil, err
 		}
@@ -2084,7 +2230,9 @@ func (p *sparqlParser) parse() (query *sparqlQuery, err error) {
 	case p.matchKeyword("INSERT"):
 		if p.matchKeyword("DATA") {
 			query.QueryType = SPARQLQueryInsertData
+			p.inTemplate = true
 			templateGroup, err := p.parseEnclosedGroup(nil, query.Prefixes)
+			p.inTemplate = false
 			if err != nil {
 				return nil, err
 			}
@@ -2096,7 +2244,9 @@ func (p *sparqlParser) parse() (query *sparqlQuery, err error) {
 			break
 		}
 		query.QueryType = SPARQLQueryModify
+		p.inTemplate = true
 		insertGroup, err := p.parseEnclosedGroup(nil, query.Prefixes)
+		p.inTemplate = false
 		if err != nil {
 			return nil, err
 		}
@@ -2109,7 +2259,9 @@ func (p *sparqlParser) parse() (query *sparqlQuery, err error) {
 		switch {
 		case p.matchKeyword("DATA"):
 			query.QueryType = SPARQLQueryDeleteData
+			p.inTemplate = true
 			templateGroup, err := p.parseEnclosedGroup(nil, query.Prefixes)
+			p.inTemplate = false
 			if err != nil {
 				return nil, err
 			}
@@ -2117,10 +2269,15 @@ func (p *sparqlParser) parse() (query *sparqlQuery, err error) {
 			if err != nil {
 				return nil, err
 			}
+			if templateHasBlankNode(template) {
+				return nil, fmt.Errorf("DELETE DATA cannot contain blank nodes")
+			}
 			query.Template = template
 		case p.matchKeyword("WHERE"):
 			query.QueryType = SPARQLQueryDeleteWhere
+			p.inTemplate = true
 			group, err := p.parseEnclosedGroup(nil, query.Prefixes)
+			p.inTemplate = false
 			if err != nil {
 				return nil, err
 			}
@@ -2129,10 +2286,15 @@ func (p *sparqlParser) parse() (query *sparqlQuery, err error) {
 			if err != nil {
 				return nil, err
 			}
+			if templateHasBlankNode(template) {
+				return nil, fmt.Errorf("DELETE WHERE cannot contain blank nodes")
+			}
 			query.Template = template
 		default:
 			query.QueryType = SPARQLQueryModify
+			p.inTemplate = true
 			deleteGroup, err := p.parseEnclosedGroup(nil, query.Prefixes)
+			p.inTemplate = false
 			if err != nil {
 				return nil, err
 			}
@@ -2140,9 +2302,14 @@ func (p *sparqlParser) parse() (query *sparqlQuery, err error) {
 			if err != nil {
 				return nil, err
 			}
+			if templateHasBlankNode(deletePatterns) {
+				return nil, fmt.Errorf("a DELETE template cannot contain blank nodes")
+			}
 			query.Delete = deletePatterns
 			if p.matchKeyword("INSERT") {
+				p.inTemplate = true
 				insertGroup, err := p.parseEnclosedGroup(nil, query.Prefixes)
+				p.inTemplate = false
 				if err != nil {
 					return nil, err
 				}
@@ -2208,10 +2375,29 @@ func (p *sparqlParser) parse() (query *sparqlQuery, err error) {
 
 	p.parseSolutionModifiers(query)
 
+	if isSPARQLUpdate(query.QueryType) && p.matchPunct(";") {
+		p.parsePrologue(query.Prefixes)
+		if p.peek().Type != sparqlTokenEOF {
+			next, err := p.parseOperation(clonePrefixes(query.Prefixes))
+			if err != nil {
+				return nil, err
+			}
+			query.Next = next
+		}
+	}
+
 	if p.peek().Type != sparqlTokenEOF {
 		return nil, fmt.Errorf("unexpected trailing token %q", p.peek().Value)
 	}
 	return query, nil
+}
+
+func isSPARQLUpdate(queryType string) bool {
+	switch queryType {
+	case SPARQLQueryInsertData, SPARQLQueryDeleteData, SPARQLQueryDeleteWhere, SPARQLQueryModify:
+		return true
+	}
+	return false
 }
 
 func (p *sparqlParser) parseSelectQueryBody(query *sparqlQuery, allowDataset bool) error {
@@ -2587,28 +2773,42 @@ func (p *sparqlParser) parseValues(prefixes map[string]string) (sparqlStep, erro
 
 	p.expectPunct("{")
 	rows := make([]map[string]RDFTerm, 0)
+	// value reads one DataBlockValue into the row: a constant term, a
+	// TripleTermData, or UNDEF, which leaves the variable unbound.
+	value := func(row map[string]RDFTerm, variable string) error {
+		if p.matchKeyword("UNDEF") {
+			return nil
+		}
+		if p.peekPunct("<<(") {
+			term, err := p.parseTripleTermData(prefixes)
+			if err != nil {
+				return err
+			}
+			row[variable] = term
+			return nil
+		}
+		term, err := p.parseTermPattern(prefixes, true)
+		if err != nil {
+			return err
+		}
+		if term.Term == nil || term.Term.Kind == RDFTermBlankNode {
+			return fmt.Errorf("VALUES rows must contain concrete terms")
+		}
+		row[variable] = *term.Term
+		return nil
+	}
 	for !p.matchPunct("}") {
 		row := make(map[string]RDFTerm, len(variables))
 		if len(variables) == 1 {
-			term, err := p.parseTermPattern(prefixes, true)
-			if err != nil {
+			if err := value(row, variables[0]); err != nil {
 				return nil, err
 			}
-			if term.Term == nil {
-				return nil, fmt.Errorf("VALUES rows must contain concrete terms")
-			}
-			row[variables[0]] = *term.Term
 		} else {
 			p.expectPunct("(")
 			for _, variable := range variables {
-				term, err := p.parseTermPattern(prefixes, true)
-				if err != nil {
+				if err := value(row, variable); err != nil {
 					return nil, err
 				}
-				if term.Term == nil {
-					return nil, fmt.Errorf("VALUES rows must contain concrete terms")
-				}
-				row[variable] = *term.Term
 			}
 			p.expectPunct(")")
 		}
@@ -2656,7 +2856,19 @@ func (p *sparqlParser) parsePredicatePattern(prefixes map[string]string) (sparql
 	if err != nil {
 		return sparqlTermPattern{}, nil, err
 	}
+	if predicate.Blank != "" {
+		return sparqlTermPattern{}, nil, fmt.Errorf("a predicate cannot be a blank node")
+	}
+	if predicate.Term != nil && predicate.Term.Kind != RDFTermIRI {
+		return sparqlTermPattern{}, nil, fmt.Errorf("a predicate must be an IRI or variable")
+	}
 
+	if p.matchOperator("?") {
+		if predicate.Term == nil {
+			return sparqlTermPattern{}, nil, fmt.Errorf("property path repetition requires a concrete predicate")
+		}
+		return sparqlTermPattern{}, &sparqlPropertyPath{Kind: sparqlPathZeroOrOne, Terms: []RDFTerm{*predicate.Term}}, nil
+	}
 	if p.matchOperator("|") {
 		if predicate.Term == nil {
 			return sparqlTermPattern{}, nil, fmt.Errorf("property path alternatives require concrete predicates")
@@ -2698,47 +2910,6 @@ func (p *sparqlParser) parsePropertyPathTerm(prefixes map[string]string) (RDFTer
 		return RDFTerm{}, fmt.Errorf("property paths require IRI predicates")
 	}
 	return *termPattern.Term, nil
-}
-
-func (p *sparqlParser) parseTriplePatternStatement(activeGraph *sparqlTermPattern, prefixes map[string]string) ([]sparqlPattern, error) {
-	subject, err := p.parseTermPattern(prefixes, false)
-	if err != nil {
-		return nil, err
-	}
-	patterns := make([]sparqlPattern, 0)
-	for {
-		predicate, path, err := p.parsePredicatePattern(prefixes)
-		if err != nil {
-			return nil, err
-		}
-		for {
-			object, err := p.parseTermPattern(prefixes, true)
-			if err != nil {
-				return nil, err
-			}
-			pattern := sparqlPattern{
-				Subject:   subject,
-				Predicate: predicate,
-				Path:      path,
-				Object:    object,
-			}
-			if activeGraph != nil {
-				graphCopy := *activeGraph
-				pattern.Graph = &graphCopy
-			}
-			patterns = append(patterns, pattern)
-			if !p.matchPunct(",") {
-				break
-			}
-		}
-		if !p.matchPunct(";") {
-			break
-		}
-		if p.peek().Value == "." || p.peek().Value == "}" {
-			break
-		}
-	}
-	return patterns, nil
 }
 
 // parseFilter reads a FILTER or HAVING constraint: a bracketed expression, or
@@ -3053,6 +3224,12 @@ func (p *sparqlParser) parsePrimaryValueExpr(prefixes map[string]string) (sparql
 		return expr, nil
 	}
 
+	if p.peekPunct("<<(") {
+		return p.parseExprTripleTerm(prefixes)
+	}
+	if p.peekPunct("<<") {
+		return nil, fmt.Errorf("a reified triple << >> is a pattern, not an expression; use <<( )>> or TRIPLE()")
+	}
 	termPattern, err := p.parseTermPattern(prefixes, true)
 	if err != nil {
 		return nil, err
@@ -3060,7 +3237,7 @@ func (p *sparqlParser) parsePrimaryValueExpr(prefixes map[string]string) (sparql
 	if termPattern.Variable != "" {
 		return sparqlVarExpr{Variable: termPattern.Variable}, nil
 	}
-	if termPattern.Term == nil {
+	if termPattern.Term == nil || termPattern.Term.Kind == RDFTermBlankNode {
 		return nil, fmt.Errorf("expected value expression")
 	}
 	return sparqlLiteralExpr{Term: *termPattern.Term}, nil
@@ -3072,8 +3249,18 @@ func (p *sparqlParser) parseTermPattern(prefixes map[string]string, allowLiteral
 	case sparqlTokenVar:
 		return sparqlTermPattern{Variable: strings.TrimPrefix(p.next().Value, "?")}, nil
 	case sparqlTokenIRI:
-		term := NewIRI(p.next().Value)
+		value := p.next().Value
+		if p.base != "" && !hasIRIScheme(value) {
+			value = resolveIRIReference(p.base, value)
+		}
+		term := NewIRI(value)
 		return sparqlTermPattern{Term: &term}, nil
+	case sparqlTokenBlank:
+		label := p.next().Value
+		if label == "" {
+			return sparqlTermPattern{}, fmt.Errorf("empty blank node label")
+		}
+		return sparqlTermPattern{Blank: label}, nil
 	case sparqlTokenQName:
 		value := p.next().Value
 		expanded, err := expandWithPrefixes(value, prefixes)
@@ -3099,8 +3286,18 @@ func (p *sparqlParser) parseTermPattern(prefixes map[string]string, allowLiteral
 		}
 		literal := NewLiteral(p.next().Value)
 		if p.matchOperator("@") {
-			lang := p.expectType(sparqlTokenIdent, "language tag")
+			lang := p.peek()
+			if lang.Type != sparqlTokenIdent && lang.Type != sparqlTokenKeyword && lang.Type != sparqlTokenBoolean {
+				return sparqlTermPattern{}, fmt.Errorf("expected a language tag, got %q", lang.Value)
+			}
+			p.next()
 			literal.Language = strings.ToLower(lang.Value)
+			// LANG_DIR: a base direction after "--" must be ltr or rtl.
+			if strings.Contains(literal.Language, "--") {
+				if err := validateLangDir(literal.Language); err != nil {
+					return sparqlTermPattern{}, err
+				}
+			}
 			return sparqlTermPattern{Term: &literal}, nil
 		}
 		if p.matchOperator("^^") {
@@ -3120,7 +3317,10 @@ func (p *sparqlParser) parseTermPattern(prefixes map[string]string, allowLiteral
 		}
 		number := p.next().Value
 		datatype := builtinNamespaces["xsd"] + "integer"
-		if strings.Contains(number, ".") {
+		switch {
+		case strings.ContainsAny(number, "eE"):
+			datatype = builtinNamespaces["xsd"] + "double"
+		case strings.Contains(number, "."):
 			datatype = builtinNamespaces["xsd"] + "decimal"
 		}
 		literal := NewTypedLiteral(number, datatype)
@@ -3166,8 +3366,13 @@ func expandWithPrefixes(value string, prefixes map[string]string) (string, error
 	return uri + local, nil
 }
 
+// sparqlTokenInvalid marks text the tokenizer could not read, such as an
+// unterminated string, so the parser fails on it instead of guessing.
+const sparqlTokenInvalid sparqlTokenType = "invalid"
+
 func tokenizeSPARQL(query string) []sparqlToken {
 	tokens := make([]sparqlToken, 0)
+	emit := func(t sparqlTokenType, v string) { tokens = append(tokens, sparqlToken{Type: t, Value: v}) }
 	for i := 0; i < len(query); {
 		switch ch := query[i]; {
 		case unicode.IsSpace(rune(ch)):
@@ -3176,88 +3381,150 @@ func tokenizeSPARQL(query string) []sparqlToken {
 			for i < len(query) && query[i] != '\n' {
 				i++
 			}
-		case ch == '?':
+		case ch == '?' || ch == '$':
 			j := i + 1
 			for j < len(query) && isSPARQLIdentPart(query[j]) {
 				j++
 			}
-			tokens = append(tokens, sparqlToken{Type: sparqlTokenVar, Value: query[i:j]})
+			if j == i+1 && ch == '?' {
+				// '?' alone is the zero-or-one path modifier.
+				emit(sparqlTokenOperator, "?")
+				i++
+				continue
+			}
+			emit(sparqlTokenVar, "?"+query[i+1:j])
 			i = j
+		// SPARQL 1.2 delimiters. Longest match first: <<( before <<, and
+		// both before the IRI and comparison readings of '<'.
+		case strings.HasPrefix(query[i:], "<<("):
+			emit(sparqlTokenPunct, "<<(")
+			i += 3
+		case strings.HasPrefix(query[i:], "<<"):
+			emit(sparqlTokenPunct, "<<")
+			i += 2
+		case strings.HasPrefix(query[i:], ")>>"):
+			emit(sparqlTokenPunct, ")>>")
+			i += 3
+		case strings.HasPrefix(query[i:], ">>"):
+			emit(sparqlTokenPunct, ">>")
+			i += 2
+		case strings.HasPrefix(query[i:], "{|"):
+			emit(sparqlTokenPunct, "{|")
+			i += 2
+		case ch == '~':
+			emit(sparqlTokenPunct, "~")
+			i++
 		case strings.HasPrefix(query[i:], ">="):
-			tokens = append(tokens, sparqlToken{Type: sparqlTokenOperator, Value: ">="})
+			emit(sparqlTokenOperator, ">=")
 			i += 2
 		case strings.HasPrefix(query[i:], "<="):
-			tokens = append(tokens, sparqlToken{Type: sparqlTokenOperator, Value: "<="})
+			emit(sparqlTokenOperator, "<=")
 			i += 2
 		case strings.HasPrefix(query[i:], "&&"):
-			tokens = append(tokens, sparqlToken{Type: sparqlTokenOperator, Value: "&&"})
+			emit(sparqlTokenOperator, "&&")
 			i += 2
 		case strings.HasPrefix(query[i:], "||"):
-			tokens = append(tokens, sparqlToken{Type: sparqlTokenOperator, Value: "||"})
+			emit(sparqlTokenOperator, "||")
+			i += 2
+		case strings.HasPrefix(query[i:], "|}"):
+			emit(sparqlTokenPunct, "|}")
 			i += 2
 		case ch == '|':
-			tokens = append(tokens, sparqlToken{Type: sparqlTokenOperator, Value: "|"})
+			emit(sparqlTokenOperator, "|")
 			i++
 		case ch == '<' && looksLikeSPARQLIRI(query, i):
 			j := i + 1
 			for j < len(query) && query[j] != '>' {
 				j++
 			}
+			raw, next := query[i+1:], len(query)
 			if j < len(query) {
-				tokens = append(tokens, sparqlToken{Type: sparqlTokenIRI, Value: query[i+1 : j]})
-				i = j + 1
-			} else {
-				tokens = append(tokens, sparqlToken{Type: sparqlTokenIRI, Value: query[i+1:]})
-				i = len(query)
+				raw, next = query[i+1:j], j+1
 			}
-		case ch == '"':
-			value, next := readQuotedString(query, i)
-			tokens = append(tokens, sparqlToken{Type: sparqlTokenString, Value: value})
+			// SPARQL 1.2 processes \u escapes inside IRIs (and strings) only,
+			// and never into a surrogate.
+			if iri, ok := decodeSPARQLIRIEscapes(raw); ok {
+				emit(sparqlTokenIRI, iri)
+			} else {
+				emit(sparqlTokenInvalid, raw)
+			}
+			i = next
+		case ch == '"' || ch == '\'':
+			value, next, ok := readSPARQLString(query, i)
+			if !ok {
+				emit(sparqlTokenInvalid, query[i:next])
+			} else {
+				tokens = append(tokens, sparqlToken{Type: sparqlTokenString, Value: value,
+					Long: strings.HasPrefix(query[i:], `"""`) || strings.HasPrefix(query[i:], `'''`)})
+			}
 			i = next
 		case ch == '<' || ch == '>':
-			tokens = append(tokens, sparqlToken{Type: sparqlTokenOperator, Value: string(ch)})
+			emit(sparqlTokenOperator, string(ch))
 			i++
 		case strings.HasPrefix(query[i:], "!="):
-			tokens = append(tokens, sparqlToken{Type: sparqlTokenOperator, Value: "!="})
+			emit(sparqlTokenOperator, "!=")
 			i += 2
 		case strings.HasPrefix(query[i:], "^^"):
-			tokens = append(tokens, sparqlToken{Type: sparqlTokenOperator, Value: "^^"})
+			emit(sparqlTokenOperator, "^^")
 			i += 2
-		case strings.ContainsRune("{}().,;=*", rune(ch)):
+		case strings.ContainsRune("{}().,;=*[]", rune(ch)):
 			tokenType := sparqlTokenPunct
 			if ch == '=' || ch == '*' {
 				tokenType = sparqlTokenOperator
 			}
-			tokens = append(tokens, sparqlToken{Type: tokenType, Value: string(ch)})
+			emit(tokenType, string(ch))
 			i++
 		case ch == '+' || ch == '-' || ch == '/' || ch == '!' || ch == '^':
-			tokens = append(tokens, sparqlToken{Type: sparqlTokenOperator, Value: string(ch)})
+			emit(sparqlTokenOperator, string(ch))
 			i++
 		case ch == '@':
-			tokens = append(tokens, sparqlToken{Type: sparqlTokenOperator, Value: "@"})
+			emit(sparqlTokenOperator, "@")
 			i++
 		case isSPARQLNumberStart(query, i):
 			j := i + 1
-			for j < len(query) && (unicode.IsDigit(rune(query[j])) || query[j] == '.') {
+			for j < len(query) && (unicode.IsDigit(rune(query[j])) || (query[j] == '.' && j+1 < len(query) && unicode.IsDigit(rune(query[j+1])))) {
 				j++
 			}
-			tokens = append(tokens, sparqlToken{Type: sparqlTokenNumber, Value: query[i:j]})
+			// An exponent makes the number a double: 1e3, 2.5E-2.
+			if j < len(query) && (query[j] == 'e' || query[j] == 'E') {
+				k := j + 1
+				if k < len(query) && (query[k] == '+' || query[k] == '-') {
+					k++
+				}
+				if k < len(query) && unicode.IsDigit(rune(query[k])) {
+					for k < len(query) && unicode.IsDigit(rune(query[k])) {
+						k++
+					}
+					j = k
+				}
+			}
+			emit(sparqlTokenNumber, query[i:j])
 			i = j
 		default:
 			j := i + 1
 			for j < len(query) && isSPARQLWordPart(query[j]) {
 				j++
 			}
+			// A name never ends in '.': the dot ends the triple instead
+			// (PN_LOCAL and BLANK_NODE_LABEL both forbid a trailing dot).
+			for j > i+1 && query[j-1] == '.' {
+				j--
+			}
+			if cut := sequencePathCut(query[i:j]); cut > 0 {
+				j = i + cut
+			}
 			value := query[i:j]
 			switch {
+			case strings.HasPrefix(value, "_:"):
+				emit(sparqlTokenBlank, value[2:])
 			case strings.Contains(value, ":") && !strings.HasPrefix(value, "http://") && !strings.HasPrefix(value, "https://"):
-				tokens = append(tokens, sparqlToken{Type: sparqlTokenQName, Value: value})
+				emit(sparqlTokenQName, value)
 			case strings.EqualFold(value, "true") || strings.EqualFold(value, "false"):
-				tokens = append(tokens, sparqlToken{Type: sparqlTokenBoolean, Value: strings.ToLower(value)})
+				emit(sparqlTokenBoolean, strings.ToLower(value))
 			case isSPARQLKeyword(value):
-				tokens = append(tokens, sparqlToken{Type: sparqlTokenKeyword, Value: value})
+				emit(sparqlTokenKeyword, value)
 			default:
-				tokens = append(tokens, sparqlToken{Type: sparqlTokenIdent, Value: value})
+				emit(sparqlTokenIdent, value)
 			}
 			i = j
 		}
@@ -3266,30 +3533,120 @@ func tokenizeSPARQL(query string) []sparqlToken {
 	return tokens
 }
 
-func readQuotedString(input string, start int) (string, int) {
-	var builder strings.Builder
-	i := start + 1
+// decodeSPARQLIRIEscapes decodes \uXXXX and \UXXXXXXXX in an IRIREF.
+func decodeSPARQLIRIEscapes(raw string) (string, bool) {
+	if !strings.Contains(raw, `\`) {
+		return raw, true
+	}
+	var b strings.Builder
+	for i := 0; i < len(raw); {
+		if raw[i] != '\\' {
+			b.WriteByte(raw[i])
+			i++
+			continue
+		}
+		if i+1 >= len(raw) || (raw[i+1] != 'u' && raw[i+1] != 'U') {
+			return "", false
+		}
+		width := 4
+		if raw[i+1] == 'U' {
+			width = 8
+		}
+		if i+2+width > len(raw) {
+			return "", false
+		}
+		code, err := strconv.ParseUint(raw[i+2:i+2+width], 16, 32)
+		if err != nil || (code >= 0xD800 && code <= 0xDFFF) || code > 0x10FFFF {
+			return "", false
+		}
+		b.WriteRune(rune(code))
+		i += 2 + width
+	}
+	return b.String(), true
+}
+
+var sequencePathNext = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_.\-]*)?:`)
+
+// sequencePathCut finds where a prefixed name ends and a sequence path
+// continues: in ex:p/ex:q the '/' is the path operator. The tokenizer lets
+// '/' into names, which users of this store rely on for IRIs like ex:a/b, so
+// only a '/' followed by another prefixed name is taken as the operator — the
+// reading SPARQL gives it, since a local name cannot hold a raw '/' at all.
+func sequencePathCut(word string) int {
+	if !strings.Contains(word, ":") || strings.HasPrefix(word, "http://") || strings.HasPrefix(word, "https://") || strings.HasPrefix(word, "_:") {
+		return 0
+	}
+	for k := strings.IndexByte(word, ':'); k < len(word); k++ {
+		if word[k] == '/' && sequencePathNext.MatchString(word[k+1:]) {
+			return k
+		}
+	}
+	return 0
+}
+
+// readSPARQLString reads a string literal in any of SPARQL's four quotings
+// (double or single quotes, each also tripled for a long string), decoding
+// ECHAR and UCHAR escapes.
+// ok is false for an unterminated string or an invalid escape.
+func readSPARQLString(input string, start int) (string, int, bool) {
+	quote := input[start]
+	delim := string(quote)
+	if strings.HasPrefix(input[start:], strings.Repeat(delim, 3)) {
+		delim = strings.Repeat(delim, 3)
+	}
+	long := len(delim) == 3
+	var b strings.Builder
+	i := start + len(delim)
 	for i < len(input) {
-		switch input[i] {
-		case '\\':
+		if strings.HasPrefix(input[i:], delim) {
+			return b.String(), i + len(delim), true
+		}
+		c := input[i]
+		switch {
+		case c == '\\':
 			if i+1 >= len(input) {
-				return builder.String(), len(input)
+				return "", len(input), false
 			}
-			builder.WriteByte(input[i])
-			builder.WriteByte(input[i+1])
+			switch e := input[i+1]; e {
+			case 't':
+				b.WriteByte('\t')
+			case 'b':
+				b.WriteByte('\b')
+			case 'n':
+				b.WriteByte('\n')
+			case 'r':
+				b.WriteByte('\r')
+			case 'f':
+				b.WriteByte('\f')
+			case '"', '\'', '\\':
+				b.WriteByte(e)
+			case 'u', 'U':
+				width := 4
+				if e == 'U' {
+					width = 8
+				}
+				if i+2+width > len(input) {
+					return "", len(input), false
+				}
+				code, err := strconv.ParseUint(input[i+2:i+2+width], 16, 32)
+				if err != nil || (code >= 0xD800 && code <= 0xDFFF) || code > 0x10FFFF {
+					return "", i + 2 + width, false
+				}
+				b.WriteRune(rune(code))
+				i += 2 + width
+				continue
+			default:
+				return "", i + 2, false
+			}
 			i += 2
-		case '"':
-			decoded, err := strconv.Unquote(`"` + builder.String() + `"`)
-			if err != nil {
-				return builder.String(), i + 1
-			}
-			return decoded, i + 1
+		case !long && (c == '\n' || c == '\r'):
+			return "", i, false
 		default:
-			builder.WriteByte(input[i])
+			b.WriteByte(c)
 			i++
 		}
 	}
-	return builder.String(), len(input)
+	return "", len(input), false
 }
 
 func isSPARQLIdentPart(ch byte) bool {
@@ -3324,6 +3681,9 @@ func looksLikeSPARQLIRI(query string, start int) bool {
 func isSPARQLKeyword(value string) bool {
 	switch {
 	case strings.EqualFold(value, "PREFIX"),
+		strings.EqualFold(value, "BASE"),
+		strings.EqualFold(value, "VERSION"),
+		strings.EqualFold(value, "UNDEF"),
 		strings.EqualFold(value, "SELECT"),
 		strings.EqualFold(value, "CONSTRUCT"),
 		strings.EqualFold(value, "DESCRIBE"),

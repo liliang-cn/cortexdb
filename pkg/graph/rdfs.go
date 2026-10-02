@@ -500,6 +500,12 @@ func (e *inferenceEngine) usingPredicate(predicate RDFTerm) []*rdfsInferenceReco
 // another inferred triple listed only its explicit premises, and a trace could
 // not walk from a two-step inference back to the facts it rested on.
 func (e *inferenceEngine) derive(subject, predicate, object RDFTerm, graph *RDFTerm, rule string, supports ...*rdfsInferenceRecord) {
+	// RDF 1.2 allows a triple term only as an object; a rule that would move
+	// one into subject or predicate position (range, symmetry, inverse) has
+	// nothing to conclude.
+	if subject.Kind == RDFTermTriple || predicate.Kind == RDFTermTriple {
+		return
+	}
 	triple := RDFTriple{Subject: subject, Predicate: predicate, Object: object, Graph: graph}
 	key := inferenceContentKey(triple)
 	if _, ok := e.records[key]; ok {

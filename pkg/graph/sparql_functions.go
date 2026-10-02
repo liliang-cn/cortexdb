@@ -711,13 +711,22 @@ func effectiveBooleanValue(term RDFTerm) (bool, error) {
 	if term.Kind != RDFTermLiteral {
 		return false, sparqlTypeErrorf("no effective boolean value for a %s", term.Kind)
 	}
+	// An ill-typed boolean or number has no EBV: SPARQL 1.2 §17.2.2 makes it
+	// an error where 1.1 made it false, so !!"z"^^xsd:boolean is unbound
+	// rather than false. A FILTER drops the row either way.
 	if term.Language == "" && term.Datatype == xsdBooleanIRI {
-		return term.Value == "true" || term.Value == "1", nil
+		switch term.Value {
+		case "true", "1":
+			return true, nil
+		case "false", "0":
+			return false, nil
+		}
+		return false, sparqlTypeErrorf("%q is not a valid xsd:boolean", term.Value)
 	}
 	if _, numeric := sparqlNumericKind(term.Datatype); numeric && term.Language == "" {
 		number, ok := strictNumber(term)
 		if !ok {
-			return false, nil
+			return false, sparqlTypeErrorf("%q is not a valid %s", term.Value, term.Datatype)
 		}
 		return number.value != 0 && !math.IsNaN(number.value), nil
 	}
@@ -763,6 +772,25 @@ func requireDateTime(name string, term RDFTerm) (sparqlDateTime, error) {
 // dateTimes by value, other terms by RDF term equality — and a type error for
 // orderings the spec does not define.
 func sparqlCompareOp(op string, left, right RDFTerm) (bool, error) {
+	// RDF 1.2: = on two triple terms compares their parts by value, and a
+	// triple term is never equal to anything that is not one (SPARQL 1.2
+	// §17.4.1.7). Neither is ordered by < or >.
+	if left.Kind == RDFTermTriple || right.Kind == RDFTermTriple {
+		if op != "=" && op != "!=" {
+			return false, sparqlTypeErrorf("operator %s is not defined for triple terms", op)
+		}
+		equal := false
+		if left.Kind == RDFTermTriple && right.Kind == RDFTermTriple {
+			var err error
+			if equal, err = sparqlTripleTermsEqual(left, right); err != nil {
+				return false, err
+			}
+		}
+		if op == "=" {
+			return equal, nil
+		}
+		return !equal, nil
+	}
 	cmp, comparable, err := sparqlValueCompare(left, right)
 	if err != nil {
 		return false, err
@@ -868,6 +896,9 @@ func sparqlOrderCompare(left RDFTerm, leftOK bool, right RDFTerm, rightOK bool) 
 	if cmp := compareInt(sparqlOrderClass(left), sparqlOrderClass(right)); cmp != 0 {
 		return cmp
 	}
+	if left.Kind == RDFTermTriple {
+		return sparqlCompareTripleTermsForOrder(left, right)
+	}
 	if left.Kind == RDFTermLiteral {
 		if cmp, comparable, _ := sparqlValueCompare(left, right); comparable && cmp != 0 {
 			return cmp
@@ -888,6 +919,9 @@ func sparqlOrderClass(term RDFTerm) int {
 	case RDFTermIRI:
 		return 1
 	case RDFTermLiteral:
+	case RDFTermTriple:
+		// SPARQL 1.2 §15.1: triple terms sort after every literal.
+		return 8
 	default:
 		return 9
 	}
@@ -1006,6 +1040,7 @@ func init() {
 		"SHA384": {1, 1, sparqlFnHash("SHA384", sha512.New384)},
 		"SHA512": {1, 1, sparqlFnHash("SHA512", sha512.New)},
 	}
+	registerSPARQL12Functions()
 }
 
 func sparqlFnKindTest(kind string) func(*sparqlRuntime, []RDFTerm) (RDFTerm, error) {
@@ -1023,17 +1058,21 @@ func sparqlFnStr(_ *sparqlRuntime, a []RDFTerm) (RDFTerm, error) {
 	}
 }
 
+// sparqlFnLang returns the language tag alone: in SPARQL 1.2 a base
+// direction is LANGDIR's answer, not part of LANG's.
 func sparqlFnLang(_ *sparqlRuntime, a []RDFTerm) (RDFTerm, error) {
 	if a[0].Kind != RDFTermLiteral {
 		return RDFTerm{}, sparqlTypeErrorf("LANG requires a literal")
 	}
-	return NewLiteral(a[0].Language), nil
+	return NewLiteral(a[0].LanguageTag()), nil
 }
 
 func sparqlFnDatatype(_ *sparqlRuntime, a []RDFTerm) (RDFTerm, error) {
 	switch {
 	case a[0].Kind != RDFTermLiteral:
 		return RDFTerm{}, sparqlTypeErrorf("DATATYPE requires a literal")
+	case a[0].BaseDirection() != "":
+		return NewIRI(rdf12DirLangStringIRI), nil
 	case a[0].Language != "":
 		return NewIRI(rdfLangStringIRI), nil
 	case a[0].Datatype == "":
