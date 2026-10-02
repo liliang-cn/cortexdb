@@ -263,10 +263,7 @@ func (o *storeOps) step(ctx context.Context) string {
 }
 
 func TestMaintainedInferencesMatchAFullRecomputeAfterEveryRandomSequence(t *testing.T) {
-	sequences := 1000
-	if testing.Short() {
-		sequences = 120
-	}
+	sequences := exhaustiveRuns(1000, 120)
 	for _, b := range feedBackends(t) {
 		t.Run(b.name, func(t *testing.T) {
 			ctx := context.Background()

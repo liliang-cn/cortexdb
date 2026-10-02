@@ -193,10 +193,7 @@ func TestARolledBackTransactionLeavesNoEvent(t *testing.T) {
 // same order a reader arriving afterwards sees, with nothing appearing behind
 // its cursor after it moved past.
 func TestConcurrentWritersAreSeenExactlyOnceInCommitOrderByATailingReader(t *testing.T) {
-	writes := 10_000
-	if testing.Short() {
-		writes = 1500
-	}
+	writes := exhaustiveRuns(10_000, 1500)
 	for _, b := range feedBackends(t) {
 		t.Run(b.name, func(t *testing.T) {
 			ctx := context.Background()

@@ -268,28 +268,19 @@ func computeInferenceRecordsWith(explicit []RDFTriple, opts InferenceOptions) ma
 }
 
 func TestDRedAgreesWithAFullRecomputeOverRandomSequences(t *testing.T) {
-	n := 1500
-	if testing.Short() {
-		n = 300
-	}
+	n := exhaustiveRuns(1500, 300)
 	runDRedSequences(t, n, false, false)
 }
 
 func TestDRedAgreesWithAFullRecomputeWhenSameAsComesAndGoes(t *testing.T) {
-	n := 1000
-	if testing.Short() {
-		n = 200
-	}
+	n := exhaustiveRuns(1000, 200)
 	runDRedSequences(t, n, true, false)
 }
 
 // Keys, chains and contradictions (owl_rl.go): the maintained materialization
 // and its inconsistency report must both equal a full recompute's.
 func TestDRedAgreesWithAFullRecomputeUnderOWLRLKeysChainsAndContradictions(t *testing.T) {
-	n := 1000
-	if testing.Short() {
-		n = 200
-	}
+	n := exhaustiveRuns(1000, 200)
 	runDRedSequences(t, n, true, true)
 }
 
