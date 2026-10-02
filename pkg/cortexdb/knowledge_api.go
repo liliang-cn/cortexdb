@@ -233,6 +233,7 @@ func (db *DB) SearchKnowledge(ctx context.Context, req KnowledgeSearchRequest) (
 	if strings.TrimSpace(resolution.Plan.Query) == "" {
 		return nil, ErrEmptyText
 	}
+	autoUsesWalk(&resolution.Decision, db.HasEmbedder())
 
 	opts := GraphRAGQueryOptions{
 		Collection:          applyRetrievalPlanCollection(req.Collection, resolution.Plan.Filters),

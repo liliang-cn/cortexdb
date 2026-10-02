@@ -89,6 +89,15 @@ type PPROptions struct {
 	// are always expanded: a question about a popular entity must still reach
 	// what mentions it. Zero means the default; negative means no limit.
 	MaxExpandDegree int
+	// MaxFrontier caps how many of the nodes a hop admits are expanded at the
+	// next one: those the walk is estimated to reach with the most mass, by
+	// pushing each frontier node's estimate along its edges as the walk
+	// would. The rest stay in the walk as nodes, not as roads out of it.
+	// MaxNodes bounds what is kept but not what is read: a frontier of a few
+	// thousand passages reads every one of their edges before the cap can
+	// cut, and on a cold page cache that read is the whole cost of a walk.
+	// Zero or negative means no cap.
+	MaxFrontier int
 	// EdgeTypeWeights multiplies each edge's own weight by a per-type factor,
 	// so a caller can say "a mention is worth more than a next-chunk link"
 	// without rewriting the graph. A type absent from the map keeps factor 1;
@@ -224,7 +233,7 @@ func (g *GraphStore) PersonalizedPageRank(ctx context.Context, seeds map[string]
 		return &PPRResult{Scores: []PageRankResult{}}, nil
 	}
 
-	nodeSet, edges, truncated, err := g.growPPRSubgraph(ctx, seedIDs, opts)
+	nodeSet, edges, truncated, err := g.growPPRSubgraph(ctx, seedIDs, seeds, opts)
 	if err != nil {
 		return nil, fmt.Errorf("personalized pagerank: %w", err)
 	}
@@ -348,7 +357,19 @@ func (g *GraphStore) PersonalizedPageRank(ctx context.Context, seeds map[string]
 // most edge weight are admitted first and the rest are left out, so a cap
 // cuts the weakest links rather than whichever ids sort last. Edges whose
 // far end was left out are dropped with it.
-func (g *GraphStore) growPPRSubgraph(ctx context.Context, seeds []string, opts PPROptions) (map[string]struct{}, []pprEdge, bool, error) {
+func (g *GraphStore) growPPRSubgraph(ctx context.Context, seeds []string, seedWeights map[string]float64, opts PPROptions) (map[string]struct{}, []pprEdge, bool, error) {
+	// estimate is the mass a forward push credits each node with so far; it
+	// only picks the frontier when MaxFrontier is set.
+	estimate := make(map[string]float64, len(seeds))
+	if opts.MaxFrontier > 0 {
+		var total float64
+		for _, id := range seeds {
+			total += seedWeights[id]
+		}
+		for _, id := range seeds {
+			estimate[id] = seedWeights[id] / total
+		}
+	}
 	nodes := make(map[string]struct{}, len(seeds))
 	for _, id := range seeds {
 		nodes[id] = struct{}{}
@@ -372,6 +393,9 @@ func (g *GraphStore) growPPRSubgraph(ctx context.Context, seeds []string, opts P
 		incident, err := g.pprIncidentEdges(ctx, frontier, opts)
 		if err != nil {
 			return nil, nil, false, err
+		}
+		if opts.MaxFrontier > 0 {
+			pushPPREstimate(estimate, frontier, incident, opts)
 		}
 		// Candidate new nodes, with the weight that connects them.
 		pull := make(map[string]float64)
@@ -420,10 +444,55 @@ func (g *GraphStore) growPPRSubgraph(ctx context.Context, seeds []string, opts P
 			edgeSeen[e.id] = struct{}{}
 			edges = append(edges, e)
 		}
+		if opts.MaxFrontier > 0 && len(next) > opts.MaxFrontier {
+			sort.Slice(next, func(i, j int) bool {
+				if estimate[next[i]] != estimate[next[j]] {
+					return estimate[next[i]] > estimate[next[j]]
+				}
+				return next[i] < next[j]
+			})
+			next = next[:opts.MaxFrontier]
+			truncated = true
+		}
 		sort.Strings(next)
 		frontier = next
 	}
 	return nodes, edges, truncated, nil
+}
+
+// pushPPREstimate moves each frontier node's estimated mass one step along
+// the edges just loaded for it, split by edge weight and damped, as one
+// iteration of the walk would. Mass that lands on a node already in the
+// subgraph is kept too: a node reached twice is reached more.
+func pushPPREstimate(estimate map[string]float64, frontier []string, incident []pprEdge, opts PPROptions) {
+	inFrontier := make(map[string]struct{}, len(frontier))
+	for _, id := range frontier {
+		inFrontier[id] = struct{}{}
+	}
+	out := make(map[string]float64, len(frontier))
+	walk := func(fn func(u, v string, w float64)) {
+		for _, e := range incident {
+			if _, ok := inFrontier[e.from]; ok {
+				fn(e.from, e.to, e.weight)
+			}
+			if opts.Directed {
+				continue
+			}
+			if _, ok := inFrontier[e.to]; ok {
+				fn(e.to, e.from, e.weight)
+			}
+		}
+	}
+	walk(func(u, _ string, w float64) { out[u] += w })
+	push := make(map[string]float64)
+	walk(func(u, v string, w float64) {
+		if u != v && out[u] > 0 {
+			push[v] += opts.Damping * estimate[u] * w / out[u]
+		}
+	})
+	for id, m := range push {
+		estimate[id] += m
+	}
 }
 
 // pprBelowDegree splits a frontier into the nodes small enough to expand and

@@ -152,6 +152,30 @@ func resolveRetrievalDecision(mode string, disableGraph bool, query string, enti
 	return decision
 }
 
+// autoUsesWalk turns auto's graph choice into the personalized PageRank walk
+// on a knowledge search without an embedder.
+//
+// Auto picks graph whenever the query names an entity, which is nearly every
+// natural-language question. Without an embedder the walk is the better graph
+// retrieval on every set measured, and since pprFusionRRFK it no longer costs
+// a single-hop question its lexical answer (supporting-passage recall@5 on
+// held-out questions, ppr_bench_test.go). Graph mode itself stays what it
+// says, fixed-hop expansion, for callers who ask for it by name.
+//
+// With an embedder, auto keeps vector+lexical hybrid. The walk measured
+// better there too on multi-hop questions (2Wiki recall@5 0.832 against
+// auto's 0.652 with embeddinggemma), but its hybrid first stage costs about
+// three times hybrid's latency and single-hop with an embedder is not yet
+// measured, so with an embedder it stays something to ask for.
+func autoUsesWalk(decision *RetrievalDecision, hasEmbedder bool) {
+	if hasEmbedder || decision.RequestedMode != RetrievalModeAuto || decision.EffectiveMode != RetrievalModeGraph {
+		return
+	}
+	decision.EffectiveMode = RetrievalModePPR
+	decision.UseGraph = true
+	decision.Reason = "auto mode walked the entity graph (personalized PageRank) because the query names entities and no embedder is configured"
+}
+
 func shouldUseGraphRetrieval(mode string, disableGraph bool, query string, entityNames []string) bool {
 	return resolveRetrievalDecision(mode, disableGraph, query, entityNames, true, false, RetrievalModeLexical, "", false, false).UseGraph
 }
