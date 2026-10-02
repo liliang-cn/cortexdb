@@ -42,6 +42,12 @@ type RDFSInferenceRefreshResult struct {
 	// closure, and not the copied statements. An incremental refresh reports
 	// only the classes inside the neighbourhood it recomputed.
 	OversizedSameAsClasses []OversizedSameAsClass `json:"oversized_same_as_classes,omitempty"`
+	// Inconsistencies are the contradictions the OWL rules in owl_rl.go
+	// found, at most a hundred of them; InconsistencyCount is how many there
+	// were in all. They are reported, never resolved. See
+	// InferenceInconsistency.
+	Inconsistencies    []InferenceInconsistency `json:"inconsistencies,omitempty"`
+	InconsistencyCount int                      `json:"inconsistency_count,omitempty"`
 }
 
 // InferenceOptions tunes a refresh. The zero value is the default behaviour.
@@ -119,17 +125,20 @@ func (g *GraphStore) RefreshRDFSInferencesWithOptions(ctx context.Context, opts 
 	if err != nil {
 		return nil, err
 	}
-	records, oversized := computeInferenceRecords(explicitTriples, opts)
-	inferredCount, err := g.persistInferredRecords(ctx, records)
+	outcome := computeInferenceOutcome(explicitTriples, opts)
+	inferredCount, err := g.persistInferredRecords(ctx, outcome.records)
 	if err != nil {
 		return nil, err
 	}
+	inconsistencies, inconsistencyCount := reportInconsistencies(outcome.inconsistencies)
 
 	return &RDFSInferenceRefreshResult{
 		ExplicitCount:          len(explicitTriples),
 		InferredCount:          inferredCount,
 		AffectedExplicitCount:  len(explicitTriples),
-		OversizedSameAsClasses: oversized,
+		OversizedSameAsClasses: outcome.oversized,
+		Inconsistencies:        inconsistencies,
+		InconsistencyCount:     inconsistencyCount,
 	}, nil
 }
 
@@ -172,11 +181,12 @@ func (g *GraphStore) RefreshRDFSInferencesIncrementalWithOptions(ctx context.Con
 		return nil, err
 	}
 
-	records, oversized := computeInferenceRecords(affectedExplicit, opts)
-	inferredCount, err := g.persistInferredRecords(ctx, records)
+	outcome := computeInferenceOutcome(affectedExplicit, opts)
+	inferredCount, err := g.persistInferredRecords(ctx, outcome.records)
 	if err != nil {
 		return nil, err
 	}
+	inconsistencies, inconsistencyCount := reportInconsistencies(outcome.inconsistencies)
 
 	return &RDFSInferenceRefreshResult{
 		ExplicitCount:          len(explicitTriples),
@@ -184,7 +194,9 @@ func (g *GraphStore) RefreshRDFSInferencesIncrementalWithOptions(ctx context.Con
 		Incremental:            true,
 		AffectedExplicitCount:  len(affectedExplicit),
 		RemovedInferredCount:   removed,
-		OversizedSameAsClasses: oversized,
+		OversizedSameAsClasses: outcome.oversized,
+		Inconsistencies:        inconsistencies,
+		InconsistencyCount:     inconsistencyCount,
 	}, nil
 }
 
@@ -313,8 +325,16 @@ func computeRDFSInferenceRecords(explicitTriples []RDFTriple) map[string]rdfsInf
 // computeInferenceRecords materializes everything the RDFS and OWL rules
 // derive from the explicit triples, and reports the sameAs classes it refused
 // to materialize.
+func computeInferenceRecords(explicitTriples []RDFTriple, opts InferenceOptions) (map[string]rdfsInferenceRecord, []OversizedSameAsClass) {
+	outcome := computeInferenceOutcome(explicitTriples, opts)
+	return outcome.records, outcome.oversized
+}
+
+// runInferenceEngine runs the engine to its fixpoint with the given terms'
+// sameAs reasoning suspended (see computeInferenceOutcome) and returns the
+// engine that got there.
 //
-// The outer loop exists only for sameAs. Whether a class is too large to
+// The loop exists only for sameAs. Whether a class is too large to
 // materialize is not always known before inference starts: a sameAs edge can
 // itself be derived — through subPropertyOf, inverseOf, or equivalentProperty —
 // and can join two classes that were each under the cap and have each already
@@ -324,17 +344,14 @@ func computeRDFSInferenceRecords(explicitTriples []RDFTriple) map[string]rdfsInf
 // oversized and never touches it. Every restart marks at least one term that
 // was not marked before, so the loop is bounded by the number of terms; in a
 // graph with no sameAs edges it runs exactly once.
-func computeInferenceRecords(explicitTriples []RDFTriple, opts InferenceOptions) (map[string]rdfsInferenceRecord, []OversizedSameAsClass) {
+func runInferenceEngine(explicitTriples []RDFTriple, opts InferenceOptions, suspended map[string]bool) *inferenceEngine {
 	oversized := make(map[string]bool)
 	for {
 		engine := newInferenceEngine(opts.sameAsClassCap(), oversized)
+		engine.sameAs.suspended = suspended
 		restart := engine.run(explicitTriples)
 		if restart == nil {
-			out := make(map[string]rdfsInferenceRecord, len(engine.records))
-			for key, record := range engine.records {
-				out[key] = *record
-			}
-			return out, engine.sameAs.report()
+			return engine
 		}
 		for _, key := range restart {
 			oversized[key] = true
@@ -381,6 +398,7 @@ type inferenceEngine struct {
 	// have been partly materialized and the run must restart.
 	fired  bool
 	sameAs *sameAsClasses
+	owlRL  owlRLState
 }
 
 // Index keys of the vocabulary the rules join on, computed once rather than

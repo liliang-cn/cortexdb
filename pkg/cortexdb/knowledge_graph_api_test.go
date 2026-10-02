@@ -485,6 +485,62 @@ func TestJSONLDImportsThroughTheToolAndAnswersSPARQL(t *testing.T) {
 	}
 }
 
+// A contradiction found by inference reaches the model through the tool, as
+// JSON, with the ids of the statements that conflict.
+func TestTheInferenceToolReportsContradictions(t *testing.T) {
+	dbPath := fmt.Sprintf("test_knowledge_graph_inconsistency_%d.db", testname.Nano())
+	t.Cleanup(func() {
+		for _, suffix := range []string{"", "-wal", "-shm"} {
+			_ = os.Remove(dbPath + suffix)
+		}
+	})
+	db, err := Open(DefaultConfig(dbPath))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := context.Background()
+
+	if _, err := db.QueryKnowledgeGraph(ctx, KnowledgeGraphQueryRequest{Query: `INSERT DATA {
+		<https://example.com/Host> owl:disjointWith <https://example.com/Project> .
+		<https://example.com/x> a <https://example.com/Host> .
+		<https://example.com/x> a <https://example.com/Project> }`}); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	raw, err := db.GraphRAGTools().Call(ctx, "knowledge_graph_infer_refresh", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("refresh through the tool: %v", err)
+	}
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	var decoded struct {
+		Result struct {
+			Inconsistencies []struct {
+				Rule    string `json:"rule"`
+				Triples []struct {
+					ID string `json:"id"`
+				} `json:"triples"`
+			} `json:"inconsistencies"`
+			InconsistencyCount int `json:"inconsistency_count"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("decode %s: %v", encoded, err)
+	}
+	got := decoded.Result
+	if got.InconsistencyCount != 1 || len(got.Inconsistencies) != 1 || got.Inconsistencies[0].Rule != "cax-dw" || len(got.Inconsistencies[0].Triples) != 3 {
+		t.Fatalf("tool output %s, want one cax-dw with three triples", encoded)
+	}
+	for _, triple := range got.Inconsistencies[0].Triples {
+		if triple.ID == "" {
+			t.Errorf("a conflicting triple has no id: %s", encoded)
+		}
+	}
+}
+
 // A model sets the sameAs cap through the tool and reads the report back from
 // the same call; both have to survive the JSON round trip.
 func TestTheInferenceToolTakesTheSameAsCapAndReportsWhatItSkipped(t *testing.T) {

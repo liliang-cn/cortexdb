@@ -209,6 +209,9 @@ func checkDerivations(t *testing.T, records map[string]rdfsInferenceRecord) {
 // every support must be used) and reports whether any assignment concludes the
 // target.
 func ruleConcludes(rule string, supports []RDFTriple, target RDFTriple) bool {
+	if rule == owlRulePropertyChain {
+		return chainConcludes(supports, target)
+	}
 	arity, ok := ruleArity[rule]
 	if !ok || len(supports) == 0 || len(supports) > arity {
 		return false
@@ -262,6 +265,8 @@ var ruleArity = map[string]int{
 	owlRuleSameAsTransitive:   2,
 	owlRuleSameAsSubject:      2,
 	owlRuleSameAsObject:       2,
+	owlRuleFunctional:         3,
+	owlRuleInverseFunctional:  3,
 }
 
 func ruleConclusions(rule string, p []RDFTriple) []RDFTriple {
@@ -372,6 +377,18 @@ func ruleConclusions(rule string, p []RDFTriple) []RDFTriple {
 	case owlRuleSameAsObject:
 		if !is(a.Predicate, owlSameAsIRI) && individualsSameAs(b) && termsEqual(a.Object, b.Subject) {
 			return []RDFTriple{mk(a.Subject, a.Predicate, b.Object, preferInferenceGraph(a.Graph, b.Graph))}
+		}
+	case owlRuleFunctional:
+		if is(c.Predicate, rdfTypeIRI) && is(c.Object, owlFunctionalPropertyIRI) &&
+			termsEqual(a.Predicate, c.Subject) && termsEqual(b.Predicate, c.Subject) && termsEqual(a.Subject, b.Subject) &&
+			isResourceTerm(a.Object) && isResourceTerm(b.Object) && !termsEqual(a.Object, b.Object) {
+			return []RDFTriple{mk(a.Object, same, b.Object, mergeInferenceGraph(a.Graph, b.Graph))}
+		}
+	case owlRuleInverseFunctional:
+		if is(c.Predicate, rdfTypeIRI) && is(c.Object, owlInverseFunctionalPropertyIRI) &&
+			termsEqual(a.Predicate, c.Subject) && termsEqual(b.Predicate, c.Subject) && termsEqual(a.Object, b.Object) &&
+			isResourceTerm(a.Subject) && isResourceTerm(b.Subject) && !termsEqual(a.Subject, b.Subject) {
+			return []RDFTriple{mk(a.Subject, same, b.Subject, mergeInferenceGraph(a.Graph, b.Graph))}
 		}
 	}
 	return nil
