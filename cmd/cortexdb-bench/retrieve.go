@@ -25,9 +25,13 @@ const (
 	// embedder, lexical) seeds plus expansion over the entity graph that
 	// SaveKnowledge builds with the library's own extractor.
 	modeGraph = "graph"
+	// modePPR is SearchKnowledge in ppr mode: Personalized PageRank over the
+	// same entity graph, seeded by the query's entities, fused with a hybrid
+	// (or, without an embedder, lexical) first stage — HippoRAG 2's method.
+	modePPR = "ppr"
 )
 
-var allModes = []string{modeLexical, modeVector, modeHybrid, modeGraph}
+var allModes = []string{modeLexical, modeVector, modeHybrid, modeGraph, modePPR}
 
 // Searches rank chunks; the benchmarks score documents. A document of many
 // chunks — a LongMemEval session runs to fifteen — can fill the top of a chunk
@@ -87,11 +91,12 @@ func search(ctx context.Context, db *cortexdb.DB, mode, query string, chunks int
 		for _, c := range res.Chunks {
 			ids = append(ids, c.DocumentID)
 		}
-	case modeLexical, modeHybrid, modeGraph:
+	case modeLexical, modeHybrid, modeGraph, modePPR:
 		retrievalMode := map[string]string{
 			modeLexical: cortexdb.RetrievalModeLexical,
 			modeHybrid:  cortexdb.RetrievalModeHybrid,
 			modeGraph:   cortexdb.RetrievalModeGraph,
+			modePPR:     cortexdb.RetrievalModePPR,
 		}[mode]
 		res, err := db.SearchKnowledge(ctx, cortexdb.KnowledgeSearchRequest{
 			Query:            query,

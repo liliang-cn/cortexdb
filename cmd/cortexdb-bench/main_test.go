@@ -191,19 +191,21 @@ func TestRetrieveReturnsDistinctDocumentsUpToTheDepth(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	ids, err := retrieve(ctx, db, modeLexical, "lighthouse keeper storm", 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(ids) != 10 {
-		t.Fatalf("got %d ids, want 10: the context budget or chunk duplicates shortened the ranking", len(ids))
-	}
-	seen := map[string]bool{}
-	for _, id := range ids {
-		if seen[id] {
-			t.Errorf("document %s ranked twice", id)
+	for _, mode := range []string{modeLexical, modeGraph, modePPR} {
+		ids, err := retrieve(ctx, db, mode, "lighthouse keeper storm", 10)
+		if err != nil {
+			t.Fatalf("%s: %v", mode, err)
 		}
-		seen[id] = true
+		if len(ids) != 10 {
+			t.Errorf("%s: got %d ids, want 10: the context budget or chunk duplicates shortened the ranking", mode, len(ids))
+		}
+		seen := map[string]bool{}
+		for _, id := range ids {
+			if seen[id] {
+				t.Errorf("%s: document %s ranked twice", mode, id)
+			}
+			seen[id] = true
+		}
 	}
 }
 
@@ -221,8 +223,10 @@ func TestFlagsRefuseAModeWithoutTheEmbedderItNeeds(t *testing.T) {
 			t.Errorf("%s: accepted", name)
 		}
 	}
-	if _, _, err := parseFlags([]string{"--dataset", "locomo", "--mode", "graph"}); err != nil {
-		t.Errorf("graph without an embedder is the lexical graph path and must be accepted: %v", err)
+	for _, mode := range []string{"graph", "ppr"} {
+		if _, _, err := parseFlags([]string{"--dataset", "locomo", "--mode", mode}); err != nil {
+			t.Errorf("%s without an embedder runs on a lexical first stage and must be accepted: %v", mode, err)
+		}
 	}
 }
 
