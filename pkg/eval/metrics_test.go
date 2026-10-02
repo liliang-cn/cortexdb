@@ -72,6 +72,14 @@ func TestRecallCountsARepeatedIDOnce(t *testing.T) {
 	}
 }
 
+func TestNDCGIsPerfectWhenEveryRankWithinKIsRelevant(t *testing.T) {
+	// Three relevant documents and room for one: a relevant document first is
+	// the best ranking possible at k=1, so the ideal must be capped at k.
+	if got := NDCGAtK([]string{"a"}, []string{"a", "b", "c"}, 1); !approx(got, 1) {
+		t.Errorf("NDCG@1 = %v, want 1", got)
+	}
+}
+
 func TestNDCGNeverExceedsOneWhenAnIDRepeats(t *testing.T) {
 	if got := NDCGAtK([]string{"a", "a", "a"}, []string{"a"}, 3); !approx(got, 1) {
 		t.Errorf("NDCG = %v, want 1", got)
