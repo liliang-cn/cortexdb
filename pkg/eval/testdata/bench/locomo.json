@@ -1,0 +1,32 @@
+[
+  {
+    "sample_id": "conv-1",
+    "conversation": {
+      "speaker_a": "Caroline",
+      "speaker_b": "Melanie",
+      "session_1_date_time": "1:56 pm on 8 May, 2023",
+      "session_1": [
+        {"speaker": "Caroline", "dia_id": "D1:1", "text": "I went to a support group yesterday."},
+        {"speaker": "Melanie", "dia_id": "D1:2", "text": "That sounds meaningful. I painted a sunrise last year.", "img_url": ["https://example.invalid/sunrise.jpg"], "blip_caption": "a painting of a sunrise over a lake"}
+      ],
+      "session_2_date_time": "1:14 pm on 25 May, 2023",
+      "session_2": [
+        {"speaker": "Caroline", "dia_id": "D2:1", "text": "I am thinking about studying counseling."},
+        {"speaker": "Melanie", "dia_id": "D2:01", "text": "This turn repeats an id with zero padding and must be dropped."},
+        {"speaker": "Melanie", "dia_id": "D2:2", "text": "You would be great at psychology."}
+      ],
+      "session_10_date_time": "9:00 am on 1 July, 2023",
+      "session_10": [
+        {"speaker": "Caroline", "dia_id": "D10:1", "text": "We adopted a puppy named Oscar."}
+      ]
+    },
+    "qa": [
+      {"question": "When did Caroline go to the support group?", "answer": "7 May 2023", "evidence": ["D1:1"], "category": 2},
+      {"question": "What did Melanie paint?", "answer": 2022, "evidence": ["D1:2"], "category": 4},
+      {"question": "What might Caroline study?", "answer": "Psychology, counseling", "evidence": ["D2:1; D2:02", "D2:1"], "category": 3},
+      {"question": "What is the puppy called?", "answer": "Oscar", "evidence": ["D10:1"], "category": 1},
+      {"question": "What did Melanie say about her guitar?", "adversarial_answer": "nothing", "evidence": ["D1:2"], "category": 5},
+      {"question": "Which turn is this?", "answer": "none", "evidence": ["D", "D7:3"], "category": 4}
+    ]
+  }
+]

@@ -1,0 +1,46 @@
+[
+  {
+    "question_id": "q-degree",
+    "question_type": "single-session-user",
+    "question": "What degree did I graduate with?",
+    "question_date": "2023/05/30 (Tue) 23:40",
+    "answer": "Business Administration",
+    "answer_session_ids": ["answer_s1"],
+    "haystack_dates": ["2023/05/20 (Sat) 02:21", "2023/05/21 (Sun) 10:00", "2023/05/22 (Mon) 09:15"],
+    "haystack_session_ids": ["noise_a", "answer_s1", "noise_b"],
+    "haystack_sessions": [
+      [{"role": "user", "content": "Can you suggest a sourdough starter schedule?"}, {"role": "assistant", "content": "Feed it twice a day at room temperature."}],
+      [{"role": "user", "content": "I graduated with a degree in Business Administration and want a job in marketing.", "has_answer": true}, {"role": "assistant", "content": "Marketing analyst roles are a good fit."}],
+      [{"role": "user", "content": "What is a good stretch for a stiff neck?"}, {"role": "assistant", "content": "Try slow chin tucks."}]
+    ]
+  },
+  {
+    "question_id": "q-dog_abs",
+    "question_type": "single-session-user",
+    "question": "What is the name of my dog?",
+    "question_date": "2023/05/30 (Tue) 23:40",
+    "answer": "You never mentioned a dog.",
+    "answer_session_ids": ["answer_s9"],
+    "haystack_dates": ["2023/05/20 (Sat) 02:21"],
+    "haystack_session_ids": ["answer_s9"],
+    "haystack_sessions": [
+      [{"role": "user", "content": "My cat is called Miso."}]
+    ]
+  },
+  {
+    "question_id": "q-trips",
+    "question_type": "multi-session",
+    "question": "How many trips did I take this spring?",
+    "question_date": "2023/06/01 (Thu) 08:00",
+    "answer": 2,
+    "answer_session_ids": ["answer_t1", "answer_t2"],
+    "haystack_dates": ["2023/03/02 (Thu) 12:00", "2023/04/10 (Mon) 18:30", "2023/04/11 (Tue) 07:00", "2023/05/05 (Fri) 21:00"],
+    "haystack_session_ids": ["answer_t1", "noise_c", "noise_c", "answer_t2"],
+    "haystack_sessions": [
+      [{"role": "user", "content": "Back from a weekend trip to Lisbon.", "has_answer": true}],
+      [{"role": "user", "content": "How do I fix a leaking tap?"}],
+      [{"role": "user", "content": "How do I fix a leaking tap?"}],
+      [{"role": "user", "content": "Just returned from hiking in the Dolomites.", "has_answer": true}, {"role": "assistant", "content": ""}]
+    ]
+  }
+]

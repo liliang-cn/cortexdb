@@ -2,6 +2,7 @@ package eval
 
 import (
 	"math"
+	"reflect"
 	"testing"
 )
 
@@ -57,5 +58,62 @@ func TestNDCGAtK(t *testing.T) {
 	}
 	if got := NDCGAtK([]string{"x"}, nil, 5); got != 0 {
 		t.Errorf("NDCG no relevant=%v want 0", got)
+	}
+}
+
+func TestRecallCountsARepeatedIDOnce(t *testing.T) {
+	// Two chunks of one document collapse to the same id; counted twice this
+	// was recall 2/2 for a query that found one of two.
+	if got := RecallAtK([]string{"a", "a"}, []string{"a", "b"}, 2); !approx(got, 0.5) {
+		t.Errorf("RecallAtK = %v, want 0.5", got)
+	}
+	if got := PrecisionAtK([]string{"a", "a"}, []string{"a", "b"}, 2); !approx(got, 0.5) {
+		t.Errorf("PrecisionAtK = %v, want 0.5", got)
+	}
+}
+
+func TestNDCGNeverExceedsOneWhenAnIDRepeats(t *testing.T) {
+	if got := NDCGAtK([]string{"a", "a", "a"}, []string{"a"}, 3); !approx(got, 1) {
+		t.Errorf("NDCG = %v, want 1", got)
+	}
+}
+
+func TestHitAndAllAtKSeparateAnyEvidenceFromAllEvidence(t *testing.T) {
+	retrieved := []string{"x", "a", "y", "b"}
+	relevant := []string{"a", "b"}
+	cases := []struct {
+		k        int
+		hit, all float64
+	}{{1, 0, 0}, {2, 1, 0}, {3, 1, 0}, {4, 1, 1}}
+	for _, c := range cases {
+		if got := HitAtK(retrieved, relevant, c.k); got != c.hit {
+			t.Errorf("HitAtK(k=%d) = %v, want %v", c.k, got, c.hit)
+		}
+		if got := AllAtK(retrieved, relevant, c.k); got != c.all {
+			t.Errorf("AllAtK(k=%d) = %v, want %v", c.k, got, c.all)
+		}
+	}
+	if HitAtK(retrieved, nil, 4) != 0 || AllAtK(retrieved, nil, 4) != 0 {
+		t.Error("a query with nothing relevant scored a hit")
+	}
+}
+
+func TestPercentileIsNearestRank(t *testing.T) {
+	xs := []float64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	for p, want := range map[float64]float64{50: 5, 95: 10, 90: 9, 1: 1, 100: 10} {
+		if got := Percentile(xs, p); got != want {
+			t.Errorf("p%v = %v, want %v", p, got, want)
+		}
+	}
+	if Percentile(nil, 50) != 0 {
+		t.Error("percentile of nothing is not 0")
+	}
+}
+
+func TestCollapseIDsKeepsEachGroupAtItsBestRank(t *testing.T) {
+	group := map[string]string{"t1": "s1", "t2": "s2", "t3": "s1", "t4": "s3"}
+	got := CollapseIDs([]string{"t2", "t1", "t3", "unknown", "t4"}, func(id string) string { return group[id] })
+	if want := []string{"s2", "s1", "s3"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("CollapseIDs = %v, want %v", got, want)
 	}
 }
