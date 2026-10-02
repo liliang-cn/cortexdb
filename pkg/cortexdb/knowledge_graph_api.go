@@ -171,6 +171,32 @@ func (db *DB) ValidateKnowledgeGraphSHACL(ctx context.Context, req KnowledgeGrap
 	return &KnowledgeGraphSHACLValidateResponse{Report: *report}, nil
 }
 
+// ApplyKnowledgeGraphSHACLRules runs the SHACL-AF sh:TripleRule rules in
+// req.Shapes to a fixpoint and persists what they infer as explainable
+// inferred triples (see graph.ApplySHACLRules for the supported subset and
+// the retraction contract). Run it again after a full inference refresh,
+// which clears every inferred triple, these included.
+func (db *DB) ApplyKnowledgeGraphSHACLRules(ctx context.Context, req KnowledgeGraphSHACLRulesRequest) (*KnowledgeGraphSHACLRulesResponse, error) {
+	result, err := db.graph.ApplySHACLRules(ctx, req.Shapes, graph.SHACLRuleOptions{
+		DryRun:        req.DryRun,
+		MaxIterations: req.MaxIterations,
+		Functions:     req.Functions,
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp := &KnowledgeGraphSHACLRulesResponse{Result: *result}
+	limit := req.Limit
+	if limit == 0 {
+		limit = 100
+	}
+	if limit > 0 && len(resp.Result.Derived) > limit {
+		resp.Result.Derived = resp.Result.Derived[:limit]
+		resp.Truncated = true
+	}
+	return resp, nil
+}
+
 // RefreshKnowledgeGraphInference recomputes persisted RDFS-lite inferred triples.
 func (db *DB) RefreshKnowledgeGraphInference(ctx context.Context, req KnowledgeGraphInferenceRefreshRequest) (*KnowledgeGraphInferenceRefreshResponse, error) {
 	mode := strings.ToLower(strings.TrimSpace(req.Mode))

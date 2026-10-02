@@ -49,6 +49,8 @@ const (
 	SHACLIgnoredProperties = SHACLNamespace + "ignoredProperties"
 	SHACLSeverity          = SHACLNamespace + "severity"
 	SHACLMessage           = SHACLNamespace + "message"
+	SHACLEquals            = SHACLNamespace + "equals"
+	SHACLDisjoint          = SHACLNamespace + "disjoint"
 
 	SHACLSeverityInfo      = SHACLNamespace + "Info"
 	SHACLSeverityWarning   = SHACLNamespace + "Warning"
@@ -96,6 +98,8 @@ const (
 	SHACLOrConstraintComponent           = SHACLNamespace + "OrConstraintComponent"
 	SHACLXoneConstraintComponent         = SHACLNamespace + "XoneConstraintComponent"
 	SHACLClosedConstraintComponent       = SHACLNamespace + "ClosedConstraintComponent"
+	SHACLEqualsConstraintComponent       = SHACLNamespace + "EqualsConstraintComponent"
+	SHACLDisjointConstraintComponent     = SHACLNamespace + "DisjointConstraintComponent"
 )
 
 // SHACLValidationResult represents a single constraint violation.
@@ -158,6 +162,8 @@ type shaclShape struct {
 	LanguageIn    []string
 	HasLanguageIn bool
 	UniqueLang    bool
+	Equals        []RDFTerm
+	Disjoint      []RDFTerm
 
 	Properties        []RDFTerm
 	Node              []RDFTerm
@@ -483,6 +489,16 @@ func (sg *shaclShapesGraph) applyShapeTriple(shape *shaclShape, tr RDFTriple) er
 			}
 		}
 		shape.IgnoredProperties = append(shape.IgnoredProperties, items...)
+	case SHACLEquals:
+		if obj.Kind != RDFTermIRI {
+			return fmt.Errorf("sh:equals must be an IRI, got %s", obj)
+		}
+		shape.Equals = append(shape.Equals, obj)
+	case SHACLDisjoint:
+		if obj.Kind != RDFTermIRI {
+			return fmt.Errorf("sh:disjoint must be an IRI, got %s", obj)
+		}
+		shape.Disjoint = append(shape.Disjoint, obj)
 	case SHACLSeverity:
 		if obj.Kind != RDFTermIRI {
 			return fmt.Errorf("sh:severity must be an IRI, got %s", obj)

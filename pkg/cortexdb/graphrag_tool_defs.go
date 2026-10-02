@@ -761,6 +761,12 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.ValidateKnowledgeGraphSHACL(ctx, req)
+	case "knowledge_graph_shacl_rules":
+		var req KnowledgeGraphSHACLRulesRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.ApplyKnowledgeGraphSHACLRules(ctx, req)
 	case "knowledge_graph_infer_refresh":
 		var req KnowledgeGraphInferenceRefreshRequest
 		if err := json.Unmarshal(input, &req); err != nil {

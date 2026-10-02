@@ -436,6 +436,16 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *resp, nil
 	})
+	addGraphRAGMCPTool(server, definitions["knowledge_graph_shacl_rules"], func(ctx context.Context, req KnowledgeGraphSHACLRulesRequest) (KnowledgeGraphSHACLRulesResponse, error) {
+		resp, err := toolbox.ApplyKnowledgeGraphSHACLRules(ctx, req)
+		if err != nil {
+			return KnowledgeGraphSHACLRulesResponse{}, err
+		}
+		if resp == nil {
+			return KnowledgeGraphSHACLRulesResponse{}, nil
+		}
+		return *resp, nil
+	})
 	addGraphRAGMCPTool(server, definitions["knowledge_graph_infer_refresh"], func(ctx context.Context, req KnowledgeGraphInferenceRefreshRequest) (KnowledgeGraphInferenceRefreshResponse, error) {
 		resp, err := toolbox.RefreshKnowledgeGraphInference(ctx, req)
 		if err != nil {
