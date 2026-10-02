@@ -155,6 +155,13 @@ func (db *DB) GetMemory(ctx context.Context, req MemoryGetRequest) (*MemoryGetRe
 
 // SearchMemory searches a resolved memory bucket, using semantic session search when an embedder is available.
 func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*MemorySearchResponse, error) {
+	return db.searchMemory(ctx, req, true)
+}
+
+// searchMemory is SearchMemory with the recall counters optional: the PPR
+// path runs it as a first stage over a wide pool, and a memory that was only
+// a candidate there was not recalled.
+func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordRecalls bool) (*MemorySearchResponse, error) {
 	resolution := resolveRetrievalPlan(retrievalPlanInput{
 		Query:            req.Query,
 		Plan:             req.Plan,
@@ -198,6 +205,24 @@ func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*Memor
 	}
 	if req.TopK <= 0 {
 		req.TopK = 5
+	}
+
+	if resolution.Decision.EffectiveMode == RetrievalModePPR {
+		hits, reason, err := db.searchMemoryPPR(ctx, req, resolution, bucketID)
+		if err != nil {
+			return nil, err
+		}
+		if recordRecalls {
+			db.recordMemoryRecalls(ctx, hits)
+		}
+		decision := resolution.Decision
+		decision.Reason = reason
+		return &MemorySearchResponse{
+			Query:    resolution.Plan.Query,
+			Plan:     resolution.Plan,
+			Decision: decision,
+			Results:  hits,
+		}, nil
 	}
 
 	// Was "!= lexical", which meant "== auto" while graph was unsupported here.
@@ -256,7 +281,9 @@ func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*Memor
 		}
 		if len(graphHits) >= req.TopK {
 			graphHits = graphHits[:req.TopK]
-			db.recordMemoryRecalls(ctx, graphHits)
+			if recordRecalls {
+				db.recordMemoryRecalls(ctx, graphHits)
+			}
 			return &MemorySearchResponse{
 				Query:    resolution.Plan.Query,
 				Plan:     resolution.Plan,
@@ -279,7 +306,9 @@ func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*Memor
 	if len(graphHits) > 0 {
 		hits = mergeMemoryHits(graphHits, hits, req.TopK)
 	}
-	db.recordMemoryRecalls(ctx, hits)
+	if recordRecalls {
+		db.recordMemoryRecalls(ctx, hits)
+	}
 	return &MemorySearchResponse{
 		Query:    resolution.Plan.Query,
 		Plan:     resolution.Plan,

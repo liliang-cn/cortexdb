@@ -42,6 +42,9 @@ type KnowledgeMemoryRecallRequest struct {
 	MaxTraversalNodes   int            `json:"max_traversal_nodes,omitempty"`
 	MaxEntitiesPerChunk int            `json:"max_entities_per_chunk,omitempty"`
 	Plan                *RetrievalPlan `json:"plan,omitempty"`
+	// PPR tunes retrieval_mode "ppr" for both the memory and the knowledge
+	// half of the recall; ignored by every other mode.
+	PPR *PPRRetrievalOptions `json:"ppr,omitempty"`
 }
 
 // KnowledgeMemoryContextSection is one debug-friendly part of a built context pack.

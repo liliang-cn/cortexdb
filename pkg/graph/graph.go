@@ -307,6 +307,14 @@ func (g *GraphStore) createGraphSchema(ctx context.Context) error {
 	CREATE INDEX IF NOT EXISTS idx_edges_type ON graph_edges(edge_type);
 	CREATE INDEX IF NOT EXISTS idx_nodes_type ON graph_nodes(node_type);
 	CREATE INDEX IF NOT EXISTS idx_edges_composite ON graph_edges(from_node_id, edge_type);
+	-- Topology-covering indexes for walks (PersonalizedPageRank). A walk reads
+	-- every edge around a few thousand nodes and needs only these five
+	-- columns; through idx_edges_from/to each of those rows cost a lookup of
+	-- the full edge row, properties and vector included, and the walk spent
+	-- ~90%% of its time in those page reads. Answered from the index alone it
+	-- is ten times faster on a 6k-passage corpus.
+	CREATE INDEX IF NOT EXISTS idx_edges_walk_from ON graph_edges(from_node_id, to_node_id, edge_type, weight, id);
+	CREATE INDEX IF NOT EXISTS idx_edges_walk_to ON graph_edges(to_node_id, from_node_id, edge_type, weight, id);
 
 	-- RDF / Knowledge Graph namespace mappings
 	CREATE TABLE IF NOT EXISTS kg_namespaces (

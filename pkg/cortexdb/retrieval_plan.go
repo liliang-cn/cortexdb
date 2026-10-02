@@ -58,6 +58,8 @@ func normalizeRetrievalMode(mode string) string {
 		return RetrievalModeLexical
 	case RetrievalModeGraph:
 		return RetrievalModeGraph
+	case RetrievalModePPR:
+		return RetrievalModePPR
 	default:
 		return RetrievalModeAuto
 	}
@@ -104,6 +106,13 @@ func resolveRetrievalDecision(mode string, disableGraph bool, query string, enti
 		decision.EffectiveMode = RetrievalModeGraph
 		decision.UseGraph = true
 		decision.Reason = "graph mode requested explicitly"
+	case RetrievalModePPR:
+		// UseGraph stays true so a path that has no walk of its own still
+		// treats ppr as a graph mode and expands, rather than quietly
+		// answering lexically; the knowledge and memory searches intercept it.
+		decision.EffectiveMode = RetrievalModePPR
+		decision.UseGraph = true
+		decision.Reason = "personalized PageRank requested explicitly"
 	default:
 		if len(entityNames) > 0 {
 			decision.EffectiveMode = RetrievalModeGraph

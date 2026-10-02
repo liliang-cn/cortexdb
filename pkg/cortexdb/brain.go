@@ -57,6 +57,7 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 			AlternateQueries: req.AlternateQueries,
 			RetrievalMode:    req.RetrievalMode,
 			Plan:             req.Plan,
+			PPR:              req.PPR,
 		})
 		if err != nil {
 			return nil, err
@@ -89,6 +90,7 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 			MaxTraversalNodes:   req.MaxTraversalNodes,
 			MaxEntitiesPerChunk: req.MaxEntitiesPerChunk,
 			Plan:                req.Plan,
+			PPR:                 req.PPR,
 		})
 		if err != nil {
 			return nil, err

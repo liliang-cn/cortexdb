@@ -279,7 +279,9 @@ func (db *DB) SearchKnowledge(ctx context.Context, req KnowledgeSearchRequest) (
 
 	var result *GraphRAGQueryResult
 	var err error
-	if db.HasEmbedder() && resolution.Decision.EffectiveMode != RetrievalModeLexical {
+	if resolution.Decision.EffectiveMode == RetrievalModePPR {
+		result, err = db.searchKnowledgePPR(ctx, req, resolution, opts, lexReq, hydeDoc)
+	} else if db.HasEmbedder() && resolution.Decision.EffectiveMode != RetrievalModeLexical {
 		// Fuse vector + lexical: semantic-only silently dropped exact-keyword
 		// matches, so hybrid keeps both. When a HyDE document was produced, the
 		// vector path embeds it instead of the raw query; the lexical path keeps

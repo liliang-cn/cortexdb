@@ -41,8 +41,14 @@ func runRecallEval(args []string) {
 	goldenPath := ""
 	topK := 5
 	outPath := ""
+	mode := ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "--retrieval-mode":
+			if i+1 < len(args) {
+				i++
+				mode = args[i]
+			}
 		case "--top-k":
 			if i+1 < len(args) {
 				i++
@@ -60,7 +66,7 @@ func runRecallEval(args []string) {
 		}
 	}
 	if goldenPath == "" {
-		fmt.Fprintln(os.Stderr, "usage: cortexdb-mcp-stdio --recall-eval <golden.jsonl> [--top-k N] [--out results.json]")
+		fmt.Fprintln(os.Stderr, "usage: cortexdb-mcp-stdio --recall-eval <golden.jsonl> [--top-k N] [--retrieval-mode auto|lexical|graph|ppr] [--out results.json]")
 		os.Exit(2)
 	}
 
@@ -75,7 +81,7 @@ func runRecallEval(args []string) {
 	}
 
 	ctx := context.Background()
-	search, source, closeFn := recallEvalSearcher(ctx)
+	search, source, closeFn := recallEvalSearcher(ctx, mode)
 	defer closeFn()
 	fmt.Printf("evaluating %d cases against %s (top-%d)\n\n", len(cases), source, topK)
 
@@ -264,7 +270,7 @@ type recallSearchFn func(ctx context.Context, c recallEvalCase, topK int) ([]cor
 // process is pointed at. The eval goes through memory_search rather than the
 // fused recall because that is the path the ranking and retrieval stages
 // change; the fused pack wraps it.
-func recallEvalSearcher(ctx context.Context) (recallSearchFn, string, func()) {
+func recallEvalSearcher(ctx context.Context, mode string) (recallSearchFn, string, func()) {
 	if addr, token, ok := remoteConfigured(); ok {
 		conn, err := dialCortexDB(addr, token)
 		if err != nil {
@@ -274,11 +280,12 @@ func recallEvalSearcher(ctx context.Context) (recallSearchFn, string, func()) {
 		client := rpcv1.NewToolsServiceClient(conn)
 		search := func(ctx context.Context, c recallEvalCase, topK int) ([]cortexdb.MemorySearchHit, error) {
 			args, err := json.Marshal(cortexdb.MemorySearchRequest{
-				Query:       c.Query,
-				Scope:       "global",
-				TopK:        topK,
-				Keywords:    c.Keywords,
-				EntityNames: c.EntityNames,
+				Query:         c.Query,
+				Scope:         "global",
+				TopK:          topK,
+				Keywords:      c.Keywords,
+				EntityNames:   c.EntityNames,
+				RetrievalMode: mode,
 			})
 			if err != nil {
 				return nil, err
@@ -309,11 +316,12 @@ func recallEvalSearcher(ctx context.Context) (recallSearchFn, string, func()) {
 	}
 	search := func(ctx context.Context, c recallEvalCase, topK int) ([]cortexdb.MemorySearchHit, error) {
 		resp, err := db.SearchMemory(ctx, cortexdb.MemorySearchRequest{
-			Query:       c.Query,
-			Scope:       "global",
-			TopK:        topK,
-			Keywords:    c.Keywords,
-			EntityNames: c.EntityNames,
+			Query:         c.Query,
+			Scope:         "global",
+			TopK:          topK,
+			Keywords:      c.Keywords,
+			EntityNames:   c.EntityNames,
+			RetrievalMode: mode,
 		})
 		if err != nil {
 			return nil, err
