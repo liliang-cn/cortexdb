@@ -292,7 +292,15 @@ func TestInsertGraphDocumentDoesNotEraseAnObjectsProperties(t *testing.T) {
 // The prior-state load binds one placeholder per id, and SQLite stops at
 // 32766 of them. A single large ingest worked before the merge existed and has
 // to keep working, so the load is chunked.
+//
+// Not under -race. It is one goroutine checking a chunking boundary, so the
+// race detector has nothing to find, and 33,000 rows through its instrumented
+// SQLite took 266s of CI's ten-minute package budget against 4s without it.
+// CI runs it in a separate step without -race, so it still runs on every push.
 func TestALargeUpsertDoesNotExhaustTheSQLPlaceholders(t *testing.T) {
+	if raceEnabled {
+		t.Skip("single-goroutine chunking test; run without -race (CI's race-exempt step does)")
+	}
 	db := openOntologyTestDB(t)
 	ctx := context.Background()
 

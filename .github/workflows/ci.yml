@@ -31,8 +31,16 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      # 25 minutes rather than go test's default 10: under -race and coverage on a
+      # shared runner the biggest packages take most of ten minutes, and runner
+      # speed varies by a third between runs.
       - name: Run library tests
-        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+        run: go test -v -race -timeout 25m -coverprofile=coverage.txt -covermode=atomic ./...
+
+      # Tests that skip themselves under -race because they are single-goroutine
+      # and heavy enough that the race detector only makes them slow.
+      - name: Run race-exempt tests
+        run: go test -count=1 -run 'TestALargeUpsertDoesNotExhaustTheSQLPlaceholders' ./pkg/cortexdb
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5

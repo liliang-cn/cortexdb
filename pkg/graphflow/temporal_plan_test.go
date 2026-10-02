@@ -21,7 +21,11 @@ func TestAsOfUsesTheExpressionIndex(t *testing.T) {
 	ctx := context.Background()
 
 	base := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
-	for i := 0; i < 2000; i++ {
+	// Sixty rows, not thousands: the store never runs ANALYZE, so the planner
+	// has no row counts and its choice does not depend on how many there are —
+	// 2,000 seeded one transaction each cost three minutes under -race and
+	// asserted nothing more.
+	for i := 0; i < 60; i++ {
 		at := base.AddDate(0, 0, i)
 		if err := SaveTemporalFact(ctx, db, TemporalFact{
 			From: fmt.Sprintf("subject-%d", i), To: "somewhere",
