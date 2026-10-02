@@ -2,6 +2,85 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.115.0] - 2026-10-02
+
+### Added
+
+- **Retrieval that walks the graph.** `retrieval_mode: "ppr"` runs
+  Personalized PageRank (HippoRAG 2) from the entities a question names and
+  fuses the walk with the lexical or hybrid first stage by rank. Without an
+  embedder `auto` takes the walk when the question names an entity specific
+  enough to start from, and stays lexical otherwise. Recall@5 through
+  `SaveKnowledge`/`SearchKnowledge`, lexical → `auto`, no embedder
+  (`cortexdb-bench`, full sets): 2WikiMultiHopQA 0.657 → 0.807, MuSiQue
+  0.457 → 0.542, LoCoMo 0.493 → 0.495, LongMemEval 0.861 → 0.862; p95 under
+  30 ms.
+- **A change feed.** Every committed write to nodes, edges, triples, memories,
+  knowledge and ontology schemas lands in `change_log` in the same
+  transaction: commit order, exactly once, nothing from a rolled-back
+  transaction, on both backends. Read by cursor (`changes_since`,
+  `db.Changes`) or subscribe in-process; seven days or 500,000 events kept by
+  default.
+- **Inferences maintained automatically.** Delete-and-rederive over the change
+  feed keeps materialized RDFS / OWL inferences current as facts change,
+  asynchronously; `WaitForInference` reads your own writes. Agreement with a
+  full recomputation was checked over thousands of random edit sequences.
+- **OWL 2 RL keys, property chains and contradictions.** `FunctionalProperty`
+  and `InverseFunctionalProperty` derive `sameAs`; `propertyChainAxiom` derives
+  compositions. `disjointWith`, `propertyDisjointWith`, two values of a
+  functional property and `differentFrom` against a derived `sameAs` are
+  reported with the conflicting triples — on the tool, the Go API and the
+  typed RPC — never resolved by guessing.
+- **SHACL-AF triple rules** (`sh:TripleRule` with conditions, order and node
+  expressions), run to a fixpoint, every result explainable
+  (`knowledge_graph_shacl_rules`).
+- **RDF 1.2 and SPARQL 1.2**: triple terms `<<( s p o )>>`, reified triples,
+  `{| |}` annotations, base-directed literals, triple-term patterns and
+  functions. The in-scope W3C RDF 1.2 and SPARQL 1.2 suites pass on both
+  backends. N-Triples, N-Quads, Turtle and TriG are parsed in-house.
+- **Read-only Cypher / GQL** over the property graph (`graph_cypher_query`):
+  MATCH, OPTIONAL MATCH, WITH, variable-length paths up to six hops,
+  aggregation. Zero wrong answers across 3,897 openCypher TCK scenarios; what
+  it cannot do, it refuses. Every user value is bound, never spliced.
+- **Leiden communities.** `build_community_hierarchy` refines Louvain's moves
+  so no community is ever disconnected.
+- **Binary quantization** (`IndexTypeBinary`): 1-bit codes, a Hamming
+  shortlist rescored exactly. Recall@10 0.979–0.996 on real 768-d embeddings
+  at 8× oversample, 1/32 of the memory; `binary_quantize` on PostgreSQL.
+- **`cortexdb-bench`**: LongMemEval, LoCoMo, MuSiQue and 2WikiMultiHopQA
+  through the public facade with one command, datasets pinned by sha256, every
+  retrieval mode including `auto`. Baselines for v2.114.1 are in
+  `pkg/eval/testdata`.
+
+### Changed
+
+- **`SaveKnowledge` builds the entity graph without an embedder.** It used to
+  skip extraction when no embedder was set — the plugin's default — so a
+  knowledge base had chunks and no entities, and every graph mode silently
+  scored what lexical did. A document title that reads as a name is now an
+  entity every chunk of the document mentions; a fragment of a name the caller
+  declared ("Bridge" of "Bridge 01") is not extracted as an entity of its own.
+- **The walk does not start from hubs.** An entity more than 10% of passages
+  mention — a conversation's speaker — is not a seed; walking from one cost
+  LoCoMo ten points of recall@1.
+- **`graph` mode fuses by rank**, so an exact lexical match is never buried
+  under graph neighbours.
+- **Writes are cheaper on SQLite.** Write statements stay prepared across
+  transactions, statement journals and temp b-trees live in memory, and the
+  allocator keeps a reserve of slabs instead of mapping and unmapping one per
+  statement. What the change feed adds to a write through the facade, p50:
+  memory 22–25% → 11–18%, knowledge 32–34% → 26–30%, entities 44–45% →
+  35–38%.
+- MMR reranking tokenizes each candidate once and updates redundancy
+  incrementally: 200 candidates 25.1 s → 5.4 ms, identical output.
+
+### Fixed
+
+- The change feed's `graph_nodes` triggers built an ephemeral index on every
+  write: an `IN` list in their `WHEN` clause. Equalities now; trigger version 4.
+- Tests no longer leave databases in the source tree (10,819 files had built
+  up); every test database lives under `t.TempDir()`.
+
 ## [2.114.1] - 2026-09-29
 
 ### Fixed
