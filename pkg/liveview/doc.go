@@ -94,6 +94,19 @@
 // no word with the saved four, so a draft can never be handed a saved
 // schema's sentence.
 //
+// The page can also be asked, not only looked at — the subject of explore.go.
+// The scene is the store's most-connected core, a few percent of a real brain,
+// and the Explore bar reaches past it: find a node by name anywhere in the
+// store, ask the brain a question and light up what the answer names, run
+// read-only Cypher, and expand any node to its neighbours whether or not the
+// core drew them. Each runs one of the brain's own tools through
+// [Source.Call] — the toolbox for a local file, the ToolsService for a shared
+// brain — so a shared brain also gets the inspector it lacked. Only tools on
+// [ExploreTools] can be run that way, every one a read. Every starting point is
+// a URL parameter too (?focus, ?ask, ?cypher, ...), so a view is a link that
+// can be shared, and on a phone the inspector is a bottom sheet and the corner
+// panels start folded.
+//
 // A caller supplies a [Source], which is anything that can read nodes and
 // edges. [OpenSource] builds one from the ambient CortexDB configuration
 // (CORTEXDB_REMOTE for a shared brain, CORTEXDB_PATH otherwise), and

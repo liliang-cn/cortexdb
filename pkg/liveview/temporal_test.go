@@ -221,9 +221,11 @@ func TestAPinnedPayloadIsMarkedAsThePast(t *testing.T) {
 			t.Errorf("the page never says it is showing the past: missing %q", want)
 		}
 	}
-	// The banner is not one of the five foldable panels; a reader must not be
+	// The banner is not one of the foldable panels; a reader must not be
 	// able to put it away while it is still true.
-	if strings.Count(pageHTML, `class="fold"`) != 5 {
+	start := strings.Index(pageHTML, `<div id="past">`)
+	end := strings.Index(pageHTML[start:], "</div>")
+	if banner := pageHTML[start : start+end]; strings.Contains(banner, `class="fold"`) || strings.Contains(banner, "data-label") {
 		t.Error("the past banner became a foldable panel, so it can be hidden while it is still true")
 	}
 }

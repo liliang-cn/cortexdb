@@ -1062,6 +1062,19 @@ file on its own filesystem to open or attach it — a server-side render would
 land it on the brain's host, out of reach of whatever asked. Set
 `CORTEXDB_VIEW_DIR` to choose where renders go.
 
+`serve_graph_3d` serves the live 3D view, and the view can be asked, not only
+looked at. Its Explore bar finds a node by name anywhere in the store (not only
+in the drawn core), asks the brain a question and lights up what the answer
+names, and runs read-only Cypher; any node can be expanded to its neighbours,
+including ones outside the core, and the inspector works on a shared brain too.
+Everything it runs is on a fixed list of read-only tools (`liveview.ExploreTools`,
+held against the catalogue's `Mutates` by a test); SPARQL is not on it, because
+`knowledge_graph_query` also runs updates. A view opens wherever its link says —
+`?focus=ID|name&hops=N`, `?find=`, `?ask=`, `?cypher=`, `?q=`, `?type=`,
+`?edge=`, `?explore=0` — and embedders can drive it with `postMessage`
+(`cortexdb:focus`, `cortexdb:find`, `cortexdb:ask`, `cortexdb:cypher`). On a
+phone the inspector is a bottom sheet and the other panels start folded.
+
 Both bulk listings behind these views are paged: `memory_list_all` (default
 limit 500) and `graph_list_all` (default limit 2000) each take `limit` and
 `cursor`. `memory_list_all` always pairs `truncated` with `next_cursor` —

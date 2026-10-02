@@ -116,6 +116,10 @@ type Source struct {
 	// leave a source that can read a schema but not derive one with no way to
 	// say so — which is the state the cluster is actually in.
 	Draft func(ctx context.Context, q OntologyDraftQuery) (OntologyDraftView, error)
+	// Call runs one of the brain's read-only tools for the page — find,
+	// expand, ask, Cypher; see explore.go. Nil hides those controls. The
+	// callers this package builds refuse every tool not on [ExploreTools].
+	Call  Caller
 	Close func() error
 }
 
@@ -124,11 +128,14 @@ type Source struct {
 // seconds, and reopening the file on that cadence would be pointless churn.
 func OpenSource(ctx context.Context) (*Source, error) {
 	if addr, token, ok := RemoteConfigured(); ok {
+		call := remoteCaller(addr, token)
 		return &Source{
 			Describe: "shared brain " + addr,
 			Read: func(ctx context.Context) ([]Node, []Edge, error) {
 				return LoadRemote(ctx, addr, token, 0, true)
 			},
+			Record:   callerRecord(call),
+			Call:     call,
 			Contract: remoteContract(addr, token),
 			Ontology: remoteOntology(addr, token),
 			Draft:    remoteDraft(addr, token),
@@ -158,6 +165,7 @@ func OpenSource(ctx context.Context) (*Source, error) {
 		Contract: localContract(db),
 		Ontology: localOntology(db),
 		Draft:    localDraft(db),
+		Call:     localCaller(db),
 		Close:    db.Close,
 	}, nil
 }
@@ -229,6 +237,10 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 	mux.HandleFunc("/api/contract", s.handleContract)
 	mux.HandleFunc("/api/ontology", s.handleOntology)
 	mux.HandleFunc("/api/stream", s.handleStream)
+	mux.HandleFunc("/api/find", s.handleFind)
+	mux.HandleFunc("/api/expand", s.handleExpand)
+	mux.HandleFunc("/api/ask", s.handleAsk)
+	mux.HandleFunc("/api/cypher", s.handleCypher)
 	s.mux = mux
 
 	go s.poll(ctx)
@@ -385,6 +397,9 @@ type Payload struct {
 	Records bool `json:"records,omitempty"`
 	// Temporal says this source can be asked about the past.
 	Temporal bool `json:"temporal,omitempty"`
+	// Explore says the page may find, expand, ask and run Cypher through
+	// this source (see explore.go).
+	Explore bool `json:"explore,omitempty"`
 
 	// AsOf is the instant this payload describes, unix milliseconds, and zero
 	// for the live graph. Pinned is not derivable from it — a page can ask for
@@ -411,6 +426,7 @@ func (s *Server) payload() Payload {
 		Grades:   s.src.Grades,
 		Records:  s.src.Record != nil,
 		Temporal: s.src.ReadAsOf != nil,
+		Explore:  s.src.Call != nil,
 	}
 }
 
@@ -703,6 +719,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		Grades:   s.src.Grades,
 		Records:  s.src.Record != nil,
 		Temporal: s.src.ReadAsOf != nil,
+		Explore:  s.src.Call != nil,
 	}
 	if !writeSSE(w, flusher, "snapshot", open) {
 		return

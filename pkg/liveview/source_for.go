@@ -28,6 +28,7 @@ func SourceFor(db *cortexdb.DB, describe string) *Source {
 		Contract: localContract(db),
 		Ontology: localOntology(db),
 		Draft:    localDraft(db),
+		Call:     localCaller(db),
 		Close:    func() error { return nil },
 	}
 }

@@ -418,7 +418,7 @@ func TestTheStreamIsClosedWithAMethodThatExists(t *testing.T) {
 // survive a reload. A panel that folded differently from its neighbours would
 // be a second design in one page.
 func TestEveryCornerPanelFolds(t *testing.T) {
-	for _, id := range []string{"head", "tools", "legend", "feed", "contract"} {
+	for _, id := range []string{"head", "tools", "explore", "legend", "feed", "contract"} {
 		if !strings.Contains(pageHTML, `id="`+id+`" data-label=`) {
 			t.Errorf("panel %q has no data-label, so folded it would name nothing", id)
 		}
@@ -429,8 +429,8 @@ func TestEveryCornerPanelFolds(t *testing.T) {
 			t.Errorf("panel %q has no id-level rule hiding its body when folded", id)
 		}
 	}
-	if strings.Count(pageHTML, `class="fold"`) != 5 {
-		t.Error("expected exactly five fold buttons, one per panel that covers the scene")
+	if strings.Count(pageHTML, `class="fold"`) != 6 {
+		t.Error("expected exactly six fold buttons, one per panel that covers the scene")
 	}
 	if !strings.Contains(pageHTML, "localStorage.setItem(FOLD_KEY") {
 		t.Error("folding is not remembered, so it has to be redone on every load")
