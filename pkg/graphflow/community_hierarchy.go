@@ -14,7 +14,7 @@ import (
 // Hierarchical community summaries: the GraphRAG shape with its levels kept.
 //
 // BuildCommunitySummaries writes one report per community of one flat
-// partition. This builds the whole Louvain dendrogram (graph.LouvainHierarchy)
+// partition. This builds the whole community dendrogram (graph.LeidenHierarchy)
 // and writes a report for every community at every level, bottom-up: a level-0
 // report is written from the community's entities and the relations among
 // them, and a report one level up is written from the reports of the
@@ -47,10 +47,14 @@ type HierarchyOptions struct {
 	// MinSize skips communities with fewer entities (default 3). A skipped
 	// community is still counted in its level and still feeds its parent.
 	MinSize int
-	// MaxLevels caps the levels kept (0 = all Louvain produces).
+	// MaxLevels caps the levels kept (0 = all the algorithm produces).
 	MaxLevels int
-	// Resolution is Louvain's resolution (0 = 1.0, standard modularity).
+	// Resolution is the modularity resolution (0 = 1.0, standard modularity).
 	Resolution float64
+	// Algorithm is graph.CommunityAlgorithmLeiden when empty, the default
+	// because every community it returns is connected;
+	// graph.CommunityAlgorithmLouvain reproduces builds made before it.
+	Algorithm graph.CommunityAlgorithm
 }
 
 // HierarchicalCommunitySummary is one report at one level.
@@ -104,6 +108,7 @@ func BuildCommunityHierarchy(ctx context.Context, db *cortexdb.DB, opts Hierarch
 		ExcludeEdgeTypes: hierarchyExcludedEdges,
 		MaxLevels:        opts.MaxLevels,
 		Resolution:       opts.Resolution,
+		Algorithm:        opts.Algorithm,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("graphflow: hierarchical communities: %w", err)

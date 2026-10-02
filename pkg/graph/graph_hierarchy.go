@@ -29,6 +29,11 @@ import (
 // index order, and ties are broken toward the community the node already sits
 // in and then toward the lower id. Identical graphs give identical hierarchies,
 // which is what lets summaries built from them be cached and diffed.
+//
+// Louvain is no longer the default behind HierarchicalCommunities: Leiden
+// (graph_leiden.go) produces the same shape of dendrogram with every community
+// connected, which Louvain does not guarantee. LouvainHierarchy stays, and
+// HierarchyOptions.Algorithm selects it, so the two can be compared.
 
 // HierarchicalCommunity is one community at one level of the hierarchy.
 type HierarchicalCommunity struct {
@@ -76,6 +81,35 @@ type HierarchyOptions struct {
 	// Resolution scales the null-model term. 1.0 (the default when zero) is
 	// standard modularity; above 1 favours smaller communities.
 	Resolution float64
+	// Algorithm picks the partitioner. Empty means Leiden, which guarantees
+	// every community at every level is connected; CommunityAlgorithmLouvain
+	// keeps the older algorithm selectable so the two can be compared.
+	Algorithm CommunityAlgorithm
+	// Seed seeds Leiden's randomized visiting order and refinement. The same
+	// graph and seed always give the same hierarchy; a different seed can give
+	// a different (equally valid) one. Louvain is deterministic and ignores it.
+	Seed int64
+}
+
+// CommunityAlgorithm names a community detection algorithm.
+type CommunityAlgorithm string
+
+const (
+	// CommunityAlgorithmLeiden is the default: Louvain's moving phase plus a
+	// refinement phase that keeps every community connected.
+	CommunityAlgorithmLeiden CommunityAlgorithm = "leiden"
+	// CommunityAlgorithmLouvain is classic hierarchical Louvain. It can leave a
+	// community internally disconnected; kept for comparison.
+	CommunityAlgorithmLouvain CommunityAlgorithm = "louvain"
+)
+
+// CommunityHierarchyOf runs the algorithm opts selects (Leiden by default)
+// over an in-memory graph.
+func CommunityHierarchyOf(nodes []string, edges []WeightedEdge, opts HierarchyOptions) *CommunityHierarchy {
+	if opts.Algorithm == CommunityAlgorithmLouvain {
+		return LouvainHierarchy(nodes, edges, opts)
+	}
+	return LeidenHierarchy(nodes, edges, opts)
 }
 
 // WeightedEdge is an undirected edge between two node indexes.
@@ -85,7 +119,8 @@ type WeightedEdge struct {
 }
 
 // HierarchicalCommunities loads the (filtered) graph topology and runs
-// hierarchical Louvain over it. Edges are treated as undirected; parallel
+// hierarchical community detection over it — Leiden unless opts.Algorithm
+// asks for Louvain. Edges are treated as undirected; parallel
 // edges add their weights. An empty graph is an empty hierarchy, not an error.
 func (g *GraphStore) HierarchicalCommunities(ctx context.Context, opts HierarchyOptions) (*CommunityHierarchy, error) {
 	nodeQuery := "SELECT id FROM graph_nodes"
@@ -155,8 +190,7 @@ func (g *GraphStore) HierarchicalCommunities(ctx context.Context, opts Hierarchy
 		return nil, err
 	}
 
-	h := LouvainHierarchy(nodes, edges, opts)
-	return h, nil
+	return CommunityHierarchyOf(nodes, edges, opts), nil
 }
 
 // LouvainHierarchy runs hierarchical Louvain over an in-memory graph. nodes
@@ -208,27 +242,7 @@ func LouvainHierarchy(nodes []string, edges []WeightedEdge, opts HierarchyOption
 		for i := range leafComm {
 			leafComm[i] = assignment[leafComm[i]]
 		}
-		level := CommunityLevel{Level: len(levels), Modularity: cur.modularity(assignment, resolution)}
-		members := make([][]string, count)
-		for leaf, c := range leafComm {
-			members[c] = append(members[c], nodes[leaf])
-		}
-		level.Communities = make([]HierarchicalCommunity, count)
-		for c := 0; c < count; c++ {
-			sort.Strings(members[c])
-			level.Communities[c] = HierarchicalCommunity{Level: level.Level, ID: c, Nodes: members[c], Parent: -1}
-		}
-		// The previous level's communities are exactly this pass's input
-		// nodes, so the assignment is the parent map.
-		if len(levels) > 0 {
-			prev := &levels[len(levels)-1]
-			for child := range prev.Communities {
-				parent := assignment[child]
-				prev.Communities[child].Parent = parent
-				level.Communities[parent].Children = append(level.Communities[parent].Children, child)
-			}
-		}
-		levels = append(levels, level)
+		levels = appendLevel(levels, nodes, leafComm, assignment, count, cur.modularity(assignment, resolution))
 		if count == 1 {
 			break
 		}
@@ -349,8 +363,13 @@ func (g *louvainGraph) modularity(assignment []int, resolution float64) float64 
 	if g.twoM == 0 {
 		return 0
 	}
-	in := map[int]float64{}
-	tot := map[int]float64{}
+	// Slices indexed by label, summed in label order: summing over a map
+	// visits communities in a random order, and floating-point addition is not
+	// associative, so the same partition came back with a modularity differing
+	// in the last bits from run to run — enough to make two identical
+	// hierarchies compare unequal.
+	in := make([]float64, len(assignment))
+	tot := make([]float64, len(assignment))
 	for i := range g.nbr {
 		ci := assignment[i]
 		tot[ci] += g.degree[i]
@@ -362,37 +381,74 @@ func (g *louvainGraph) modularity(assignment []int, resolution float64) float64 
 	}
 	q := 0.0
 	for c, t := range tot {
-		q += in[c]/g.twoM - resolution*(t/g.twoM)*(t/g.twoM)
+		if t != 0 || in[c] != 0 {
+			q += in[c]/g.twoM - resolution*(t/g.twoM)*(t/g.twoM)
+		}
 	}
 	return q
 }
 
 // aggregate collapses each community into one node (Louvain phase two).
+//
+// Built with a dense accumulator and a touched list rather than a map per
+// community: aggregation runs once per level for Louvain and once per
+// iteration for Leiden, and the maps were most of its cost. Pairs are summed
+// in the same order (members ascending) either way, so the weights are
+// bit-for-bit the ones the map version produced.
 func (g *louvainGraph) aggregate(assignment []int, count int) *louvainGraph {
-	adj := make([]map[int]float64, count)
-	for i := range adj {
-		adj[i] = make(map[int]float64)
+	members := make([][]int, count)
+	for i, c := range assignment {
+		members[c] = append(members[c], i)
 	}
-	for i := range g.nbr {
-		ci := assignment[i]
-		for k, j := range g.nbr[i] {
-			adj[ci][assignment[j]] += g.wt[i][k]
+	out := &louvainGraph{
+		nbr:    make([][]int, count),
+		wt:     make([][]float64, count),
+		degree: make([]float64, count),
+	}
+	acc := make([]float64, count)
+	mark := make([]bool, count)
+	touched := make([]int, 0, 16)
+	for c := 0; c < count; c++ {
+		touched = touched[:0]
+		for _, i := range members[c] {
+			for k, j := range g.nbr[i] {
+				cj := assignment[j]
+				if !mark[cj] {
+					mark[cj] = true
+					touched = append(touched, cj)
+				}
+				acc[cj] += g.wt[i][k]
+			}
 		}
+		sort.Ints(touched)
+		out.nbr[c] = append([]int(nil), touched...)
+		out.wt[c] = make([]float64, len(touched))
+		for k, cj := range touched {
+			out.wt[c][k] = acc[cj]
+			out.degree[c] += acc[cj]
+			acc[cj], mark[cj] = 0, false
+		}
+		out.twoM += out.degree[c]
 	}
-	return newLouvainGraph(adj)
+	return out
 }
 
 // renumber maps community labels to 0..k-1 in order of first appearance.
+// Labels are always node indexes of the graph being partitioned, so they are
+// below len(assignment) and a slice can stand in for a map.
 func renumber(assignment []int) ([]int, int) {
-	mapping := make(map[int]int)
-	out := make([]int, len(assignment))
-	for i, c := range assignment {
-		id, ok := mapping[c]
-		if !ok {
-			id = len(mapping)
-			mapping[c] = id
-		}
-		out[i] = id
+	mapping := make([]int, len(assignment))
+	for i := range mapping {
+		mapping[i] = -1
 	}
-	return out, len(mapping)
+	out := make([]int, len(assignment))
+	count := 0
+	for i, c := range assignment {
+		if mapping[c] < 0 {
+			mapping[c] = count
+			count++
+		}
+		out[i] = mapping[c]
+	}
+	return out, count
 }

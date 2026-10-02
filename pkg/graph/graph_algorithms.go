@@ -131,126 +131,56 @@ type Community struct {
 	Score float64  `json:"score"` // Modularity score
 }
 
-// CommunityDetection performs community detection using the Louvain method
-// Optimized to reduce DB queries.
+// CommunityDetection partitions the whole graph into communities: the top
+// (converged) level of the Leiden hierarchy over every node and edge, edges
+// taken as undirected. Nodes with no edges come back as singleton communities,
+// so every node is in exactly one community. Communities are sorted largest
+// first; Score is the community's share of the nodes.
+//
+// It used to run its own simplified loop that moved each node toward the
+// neighbouring community with the most raw edge weight. That is not
+// modularity — with no null-model term it drifts toward merging everything
+// connected — and, like Louvain, it could leave a community disconnected.
+// Leiden optimises modularity and keeps every community connected.
 func (g *GraphStore) CommunityDetection(ctx context.Context) ([]Community, error) {
-	// 1. Load Nodes
-	rows, err := g.query(ctx, "SELECT id FROM graph_nodes")
+	h, err := g.HierarchicalCommunities(ctx, HierarchyOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("query nodes: %w", err)
+		return nil, err
 	}
-
-	var nodes []string
-	nodeToIndex := make(map[string]int)
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		nodeToIndex[id] = len(nodes)
-		nodes = append(nodes, id)
-	}
-	rows.Close()
-
-	if len(nodes) == 0 {
+	if h.NodeCount == 0 {
 		return []Community{}, nil
 	}
-
-	// 2. Load Edges (Weighted)
-	// We need an adjacency map for weights: u -> v -> weight
-	adj := make([]map[int]float64, len(nodes))
-	for i := range adj {
-		adj[i] = make(map[int]float64)
-	}
-
-	edgeRows, err := g.query(ctx, "SELECT from_node_id, to_node_id, weight FROM graph_edges")
-	if err != nil {
-		return nil, fmt.Errorf("query edges: %w", err)
-	}
-
-	for edgeRows.Next() {
-		var from, to string
-		var weight float64
-		if err := edgeRows.Scan(&from, &to, &weight); err != nil {
-			edgeRows.Close()
+	var groups [][]string
+	if len(h.Levels) > 0 {
+		top := h.Levels[len(h.Levels)-1]
+		for _, c := range top.Communities {
+			groups = append(groups, c.Nodes)
+		}
+	} else {
+		// No level means no move improved modularity (for instance, no
+		// edges): every node is its own community.
+		rows, err := g.query(ctx, "SELECT id FROM graph_nodes ORDER BY id")
+		if err != nil {
+			return nil, fmt.Errorf("query nodes: %w", err)
+		}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				_ = rows.Close()
+				return nil, err
+			}
+			groups = append(groups, []string{id})
+		}
+		_ = rows.Close()
+		if err := rows.Err(); err != nil {
 			return nil, err
 		}
-
-		u, ok1 := nodeToIndex[from]
-		v, ok2 := nodeToIndex[to]
-		if ok1 && ok2 {
-			// Directed to Undirected (or sum weights)
-			adj[u][v] += weight
-			adj[v][u] += weight // Treat as undirected for community detection often works better
-		}
 	}
-	edgeRows.Close()
-
-	// 3. Louvain Algorithm (Simplified)
-	communities := make([]int, len(nodes))
-	for i := range communities {
-		communities[i] = i
+	sort.SliceStable(groups, func(i, j int) bool { return len(groups[i]) > len(groups[j]) })
+	results := make([]Community, len(groups))
+	for i, nodes := range groups {
+		results[i] = Community{ID: i, Nodes: nodes, Score: float64(len(nodes)) / float64(h.NodeCount)}
 	}
-
-	changed := true
-	iterations := 0
-	maxIterations := 100
-
-	for changed && iterations < maxIterations {
-		changed = false
-		iterations++
-
-		for i := 0; i < len(nodes); i++ {
-			currentComm := communities[i]
-			bestComm := currentComm
-			bestGain := 0.0
-
-			// Calculate connection strength to each neighboring community
-			commWeights := make(map[int]float64)
-			for neighbor, weight := range adj[i] {
-				commWeights[communities[neighbor]] += weight
-			}
-
-			// Find best community
-			for comm, weight := range commWeights {
-				if comm != currentComm {
-					// Simplified gain: just raw weight connection
-					if weight > bestGain {
-						bestGain = weight
-						bestComm = comm
-					}
-				}
-			}
-
-			if bestComm != currentComm {
-				communities[i] = bestComm
-				changed = true
-			}
-		}
-	}
-
-	// 4. Group results
-	commGroups := make(map[int][]string)
-	for i, commID := range communities {
-		commGroups[commID] = append(commGroups[commID], nodes[i])
-	}
-
-	results := make([]Community, 0, len(commGroups))
-	idCounter := 0
-	for _, groupNodes := range commGroups {
-		results = append(results, Community{
-			ID:    idCounter,
-			Nodes: groupNodes,
-			Score: float64(len(groupNodes)) / float64(len(nodes)),
-		})
-		idCounter++
-	}
-
-	sort.Slice(results, func(i, j int) bool {
-		return len(results[i].Nodes) > len(results[j].Nodes)
-	})
-
 	return results, nil
 }
 

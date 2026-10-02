@@ -12,7 +12,7 @@ import (
 )
 
 // Community detection + summarization + global search — the Microsoft-GraphRAG
-// shape. Louvain (in pkg/graph) partitions the entity graph into communities;
+// shape. Leiden (in pkg/graph) partitions the entity graph into communities;
 // an LLM writes a report per community; global search then answers
 // whole-corpus questions ("what are the main themes?") by map-reducing over
 // those community reports instead of retrieving individual chunks.
@@ -46,7 +46,7 @@ type CommunityOptions struct {
 	Max     int           // cap communities summarized (0 = all)
 }
 
-// BuildCommunitySummaries detects entity communities (Louvain) and writes an
+// BuildCommunitySummaries detects entity communities (Leiden) and writes an
 // LLM report for each, persisting them as knowledge documents in the
 // "communities" collection (so they are retrievable and survive across runs)
 // and returning them. It is the prerequisite for GlobalSearch. Per-community
