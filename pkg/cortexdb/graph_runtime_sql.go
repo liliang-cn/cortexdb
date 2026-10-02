@@ -150,18 +150,23 @@ func (db *DB) chunkEntityNamesBatch(ctx context.Context, chunkIDs []string, limi
 		placeholders, args := sqlPlaceholders(chunk)
 		unionArgs := append([]any{}, args...)
 		unionArgs = append(unionArgs, args...)
+		// COALESCE keeps the edge_type index out of the plan. With a bare
+		// edge_type = 'mentions' and bound parameters, SQLite chose that index
+		// and read every mention edge in the store to name the mentions of a
+		// handful of chunks — 55ms on a 6k-passage corpus, against 1ms through
+		// the endpoint indexes it was meant to use.
 		rows, err := db.query(ctx, fmt.Sprintf(`
 			SELECT chunk_id, entity_name
 			FROM (
 				SELECT e.from_node_id AS chunk_id, n.content AS entity_name
 				FROM graph_edges e
 				JOIN graph_nodes n ON n.id = e.to_node_id
-				WHERE e.from_node_id IN (%s) AND e.edge_type = 'mentions'
+				WHERE e.from_node_id IN (%s) AND COALESCE(e.edge_type, '') = 'mentions'
 				UNION
 				SELECT e.to_node_id AS chunk_id, n.content AS entity_name
 				FROM graph_edges e
 				JOIN graph_nodes n ON n.id = e.from_node_id
-				WHERE e.to_node_id IN (%s) AND e.edge_type = 'mentions'
+				WHERE e.to_node_id IN (%s) AND COALESCE(e.edge_type, '') = 'mentions'
 			)
 			ORDER BY chunk_id ASC, entity_name ASC
 		`, placeholders, placeholders), unionArgs...)

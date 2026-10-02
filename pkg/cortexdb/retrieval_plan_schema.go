@@ -9,7 +9,7 @@ func toolRetrievalPlanSchema(description string) map[string]any {
 			"keywords":          toolStringArraySchema("Expanded keywords, aliases, synonyms, abbreviations, and multilingual terms."),
 			"alternate_queries": toolStringArraySchema("Alternate phrasings generated from the same goal."),
 			"entity_names":      toolStringArraySchema("Structured entity hints to enable graph-aware retrieval."),
-			"retrieval_mode":    toolEnumSchema("Preferred retrieval strategy.", RetrievalModeAuto, RetrievalModeLexical, RetrievalModeGraph),
+			"retrieval_mode":    toolEnumSchema("Preferred retrieval strategy.", RetrievalModeAuto, RetrievalModeLexical, RetrievalModeGraph, RetrievalModePPR),
 			"filters":           toolRetrievalFiltersSchema(),
 		},
 	}

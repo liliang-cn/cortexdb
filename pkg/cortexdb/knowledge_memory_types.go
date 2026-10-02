@@ -111,6 +111,8 @@ type KnowledgeSearchRequest struct {
 	MaxTraversalNodes   int            `json:"max_traversal_nodes,omitempty"`
 	MaxEntitiesPerChunk int            `json:"max_entities_per_chunk,omitempty"`
 	Plan                *RetrievalPlan `json:"plan,omitempty"`
+	// PPR tunes retrieval_mode "ppr"; ignored by every other mode.
+	PPR *PPRRetrievalOptions `json:"ppr,omitempty"`
 }
 
 // KnowledgeSearchHit is a document-shaped search result aggregated from chunk retrieval.
@@ -241,6 +243,8 @@ type MemorySearchRequest struct {
 	EntityNames   []string       `json:"entity_names,omitempty"`
 	RetrievalMode string         `json:"retrieval_mode,omitempty"`
 	Plan          *RetrievalPlan `json:"plan,omitempty"`
+	// PPR tunes retrieval_mode "ppr"; ignored by every other mode.
+	PPR *PPRRetrievalOptions `json:"ppr,omitempty"`
 }
 
 // MemorySearchHit is one scored memory result.
