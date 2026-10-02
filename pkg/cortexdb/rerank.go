@@ -1,6 +1,9 @@
 package cortexdb
 
-import "math"
+import (
+	"math"
+	"strings"
+)
 
 // Reranking — a generic, dependency-free cross-encoder reorder over any
 // retrieval results. CortexDB has always reranked GraphRAG chunks internally;
@@ -52,13 +55,20 @@ func Rerank(query string, items []RerankItem, opts RerankOptions) []RerankItem {
 	opts.withDefaults()
 
 	queryTerms := tokenSet(query)
-	queryEntities := tokenSet(joinStrings(extractEntityNames(extractTitleEntities(query))))
+	queryEntities := tokenSet(strings.Join(extractEntityNames(extractTitleEntities(query)), " "))
 
 	normalized := normalizeScores(items)
 	scored := make([]RerankItem, len(items))
+	// Each text is tokenized once, here. The MMR loop below compares texts
+	// pairwise, and it used to tokenize both sides of every comparison inside
+	// its nested loops — limit rounds × remaining candidates × selected items —
+	// so a search asking for 50 results spent about 800 ms reranking where one
+	// asking for 10 spent 10.
+	terms := make([]map[string]struct{}, len(items))
 	for i, it := range items {
-		termOverlap := overlapScore(queryTerms, tokenSet(it.Text))
-		entityOverlap := overlapScore(queryEntities, tokenSet(joinStrings(it.Entities)))
+		terms[i] = tokenSet(it.Text)
+		termOverlap := overlapScore(queryTerms, terms[i])
+		entityOverlap := overlapScore(queryEntities, tokenSet(strings.Join(it.Entities, " ")))
 		it.RerankScore = normalized[i]*opts.BaseWeight + termOverlap*opts.TermWeight + entityOverlap*opts.EntityWeight
 		scored[i] = it
 	}
@@ -68,22 +78,37 @@ func Rerank(query string, items []RerankItem, opts RerankOptions) []RerankItem {
 		limit = len(scored)
 	}
 
-	// MMR: greedily pick the item maximizing λ·relevance − (1−λ)·redundancy.
+	// MMR: greedily pick the item maximizing λ·relevance − (1−λ)·redundancy,
+	// where redundancy is the item's strongest overlap with anything already
+	// picked. That maximum only grows, and only by the item picked last, so it
+	// is kept per candidate and updated against that one item each round
+	// instead of being recomputed against all of them. Candidates are scanned
+	// in their original order and the first strictly better score wins, which
+	// is the tie-break the full recomputation had.
 	selected := make([]RerankItem, 0, limit)
-	remaining := append([]RerankItem(nil), scored...)
+	remaining := make([]int, len(scored))
+	for i := range remaining {
+		remaining[i] = i
+	}
+	redundancy := make([]float64, len(scored))
 	for len(remaining) > 0 && len(selected) < limit {
-		bestIdx := 0
+		bestPos := 0
 		bestScore := -math.MaxFloat64
-		for i := range remaining {
-			redundancy := maxItemRedundancy(remaining[i], selected)
-			score := opts.DiversityLambda*remaining[i].RerankScore - (1-opts.DiversityLambda)*redundancy
+		for pos, i := range remaining {
+			score := opts.DiversityLambda*scored[i].RerankScore - (1-opts.DiversityLambda)*redundancy[i]
 			if score > bestScore {
 				bestScore = score
-				bestIdx = i
+				bestPos = pos
 			}
 		}
-		selected = append(selected, remaining[bestIdx])
-		remaining = append(remaining[:bestIdx], remaining[bestIdx+1:]...)
+		picked := remaining[bestPos]
+		selected = append(selected, scored[picked])
+		remaining = append(remaining[:bestPos], remaining[bestPos+1:]...)
+		for _, i := range remaining {
+			if r := pairRedundancy(scored[i], terms[i], scored[picked], terms[picked]); r > redundancy[i] {
+				redundancy[i] = r
+			}
+		}
 	}
 	return selected
 }
@@ -112,33 +137,13 @@ func normalizeScores(items []RerankItem) []float64 {
 	return out
 }
 
-// maxItemRedundancy is the strongest text overlap between a candidate and any
-// already-selected item; a shared GroupKey floors it at 0.85 (near-duplicate).
-func maxItemRedundancy(candidate RerankItem, selected []RerankItem) float64 {
-	if len(selected) == 0 {
-		return 0
+// pairRedundancy is how much a candidate repeats one already-selected item:
+// their text overlap, floored at 0.85 when they share a GroupKey (a
+// near-duplicate from the same document).
+func pairRedundancy(candidate RerankItem, candidateTerms map[string]struct{}, selected RerankItem, selectedTerms map[string]struct{}) float64 {
+	score := overlapScore(candidateTerms, selectedTerms)
+	if candidate.GroupKey != "" && candidate.GroupKey == selected.GroupKey {
+		score = math.Max(score, 0.85)
 	}
-	candTerms := tokenSet(candidate.Text)
-	worst := 0.0
-	for _, s := range selected {
-		score := overlapScore(candTerms, tokenSet(s.Text))
-		if candidate.GroupKey != "" && candidate.GroupKey == s.GroupKey {
-			score = math.Max(score, 0.85)
-		}
-		if score > worst {
-			worst = score
-		}
-	}
-	return worst
-}
-
-func joinStrings(ss []string) string {
-	out := ""
-	for i, s := range ss {
-		if i > 0 {
-			out += " "
-		}
-		out += s
-	}
-	return out
+	return score
 }
