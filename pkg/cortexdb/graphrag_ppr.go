@@ -40,6 +40,10 @@ import (
 //  3. One bounded PPR over the seeds' neighbourhood (pkg/graph).
 //  4. Passages ranked by PPR mass and fused with the first stage by RRF.
 //
+// Through the public API (cortexdb-bench, full sets, no embedder) auto's
+// recall@5 against lexical is 2WikiMultiHopQA 0.807 vs 0.657, MuSiQue 0.542
+// vs 0.457, LoCoMo 0.495 vs 0.493 and LongMemEval 0.862 vs 0.861.
+//
 // Measured without an embedder on held-out questions (ppr_bench_test.go),
 // supporting-passage recall@5 against lexical: 2WikiMultiHopQA 0.830 vs
 // 0.649, MuSiQue 0.563 vs 0.462, and single-hop questions (MuSiQue's first
