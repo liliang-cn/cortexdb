@@ -398,6 +398,42 @@ func TestEveryOWLRuleExplainsBackToExplicitTriples(t *testing.T) {
 			leaves: []string{"ex:h1 owl:sameAs ex:h2", "ex:api ex:runsOn ex:h1"},
 		},
 		{
+			rule: owlRuleFunctional,
+			explicit: []RDFTriple{
+				infTri(infEx("deployedOn"), rdfTypeIRI, NewIRI(owlFunctionalPropertyIRI)),
+				infTri(infEx("argus"), exNS+"deployedOn", infEx("apps")),
+				infTri(infEx("argus"), exNS+"deployedOn", infEx("vm105")),
+			},
+			target: infTri(infEx("apps"), owlSameAsIRI, infEx("vm105")),
+			leaves: []string{"ex:deployedOn rdf:type owl:FunctionalProperty", "ex:argus ex:deployedOn ex:apps", "ex:argus ex:deployedOn ex:vm105"},
+		},
+		{
+			rule: owlRuleInverseFunctional,
+			explicit: []RDFTriple{
+				infTri(infEx("email"), rdfTypeIRI, NewIRI(owlInverseFunctionalPropertyIRI)),
+				infTri(infEx("p1"), exNS+"email", NewLiteral("ann@example.com")),
+				infTri(infEx("p2"), exNS+"email", NewLiteral("ann@example.com")),
+			},
+			target: infTri(infEx("p2"), owlSameAsIRI, infEx("p1")),
+			leaves: []string{"ex:email rdf:type owl:InverseFunctionalProperty", "ex:p1 ex:email \"ann@example.com\"", "ex:p2 ex:email \"ann@example.com\""},
+		},
+		{
+			// The trace reaches the axiom, both list cells' first and rest,
+			// and both links.
+			rule: owlRulePropertyChain,
+			explicit: append(chainAxiomTriples("l", "ultimatelyHostedOn", "runsOn", "hostedOn"),
+				infTri(infEx("openclaw"), exNS+"runsOn", infEx("nodeA")),
+				infTri(infEx("nodeA"), exNS+"hostedOn", infEx("mac")),
+			),
+			target: infTri(infEx("openclaw"), exNS+"ultimatelyHostedOn", infEx("mac")),
+			leaves: []string{
+				"ex:ultimatelyHostedOn owl:propertyChainAxiom _:l0",
+				"_:l0 rdf:first ex:runsOn", "_:l0 rdf:rest _:l1",
+				"_:l1 rdf:first ex:hostedOn", "_:l1 rdf:rest rdf:nil",
+				"ex:openclaw ex:runsOn ex:nodeA", "ex:nodeA ex:hostedOn ex:mac",
+			},
+		},
+		{
 			// Not an OWL rule, but the case the old engine got wrong: a type
 			// two subclass steps away rests on an inferred premise, which
 			// used to be left out of its supports, so the trace stopped short
@@ -497,7 +533,20 @@ func TestTheInferenceSummaryCountsOWLRules(t *testing.T) {
 				ptrTriple(infTri(infEx("manages"), owlInverseOfIRI, infEx("reportsTo"))),
 				ptrTriple(infTri(infEx("alice"), exNS+"manages", infEx("bob"))),
 				ptrTriple(infTri(infEx("h1"), owlSameAsIRI, infEx("h2"))),
+				ptrTriple(infTri(infEx("deployedOn"), rdfTypeIRI, NewIRI(owlFunctionalPropertyIRI))),
+				ptrTriple(infTri(infEx("argus"), exNS+"deployedOn", infEx("vm1"))),
+				ptrTriple(infTri(infEx("argus"), exNS+"deployedOn", infEx("vm2"))),
+				ptrTriple(infTri(infEx("email"), rdfTypeIRI, NewIRI(owlInverseFunctionalPropertyIRI))),
+				ptrTriple(infTri(infEx("p1"), exNS+"email", NewLiteral("x@example.com"))),
+				ptrTriple(infTri(infEx("p2"), exNS+"email", NewLiteral("x@example.com"))),
 			}
+			for _, triple := range chainAxiomTriples("l", "grandparentOf", "parentOf", "parentOf") {
+				explicit = append(explicit, ptrTriple(triple))
+			}
+			explicit = append(explicit,
+				ptrTriple(infTri(infEx("ann"), exNS+"parentOf", infEx("bea"))),
+				ptrTriple(infTri(infEx("bea"), exNS+"parentOf", infEx("cid"))),
+			)
 			if _, err := b.store.UpsertTriplesBatch(ctx, explicit); err != nil {
 				t.Fatalf("upsert: %v", err)
 			}
@@ -508,8 +557,10 @@ func TestTheInferenceSummaryCountsOWLRules(t *testing.T) {
 			if err != nil {
 				t.Fatalf("summary: %v", err)
 			}
-			want := map[string]int{owlRuleInverseOf: 1, owlRuleSameAsSymmetric: 1}
-			if summary.InferredCount != 2 || len(summary.Rules) != len(want) {
+			// Each key states its sameAs both ways itself, so the symmetric
+			// rule is credited only for the stated h1 sameAs h2.
+			want := map[string]int{owlRuleInverseOf: 1, owlRuleSameAsSymmetric: 1, owlRuleFunctional: 2, owlRuleInverseFunctional: 2, owlRulePropertyChain: 1}
+			if summary.InferredCount != 7 || len(summary.Rules) != len(want) {
 				t.Fatalf("summary = %+v, want %v", summary, want)
 			}
 			for rule, n := range want {

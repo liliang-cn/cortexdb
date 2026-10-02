@@ -19,10 +19,10 @@ import "sort"
 // trail — a rule name and the ids of the triples each inference rests on — so
 // ExplainTriple can walk any of them back to what was actually stated.
 //
-// Restrictions, cardinality, property chains, disjointness and the rest of OWL
-// are deliberately absent. Each would need either a reasoner that can report
-// inconsistency, which this engine cannot, or a volume of materialization no
-// one has asked for.
+// Keys, property chains and the contradictions — disjointness, differentFrom —
+// are in owl_rl.go, which also gives the engine its inconsistency report.
+// Restrictions, cardinality and the rest of OWL are deliberately absent: each
+// would need a volume of materialization no one has asked for.
 
 const (
 	owlNamespace              = "http://www.w3.org/2002/07/owl#"
@@ -169,6 +169,7 @@ func (e *inferenceEngine) fireOWL(record *rdfsInferenceRecord) {
 	if t.Predicate.Value != owlSameAsIRI {
 		e.replaceBySameAs(record)
 	}
+	e.fireOWLRL(record)
 }
 
 // deriveInverse turns x p y into y q x. A literal cannot be a subject, so a
@@ -293,6 +294,10 @@ type sameAsClasses struct {
 	// oversized from the moment they are seen, so this run never starts
 	// materializing the class it would otherwise only discover later.
 	marked map[string]bool
+	// suspended are terms a previous run found in a class that an
+	// owl:differentFrom statement contradicts. No sameAs edge touching one
+	// is materialized; see computeInferenceOutcome.
+	suspended map[string]bool
 }
 
 func newSameAsClasses(limit int, marked map[string]bool) *sameAsClasses {
@@ -367,13 +372,16 @@ func (c *sameAsClasses) observe(subject, object RDFTerm, fired bool) []string {
 }
 
 // materializes reports whether sameAs rules may use the edge subject sameAs
-// object: both ends individuals, not the same term, and not in an oversized
-// class.
+// object: both ends individuals, not the same term, neither end suspended by
+// a differentFrom conflict, and not in an oversized class.
 func (c *sameAsClasses) materializes(subject, object RDFTerm) bool {
 	if !isResourceTerm(subject) || !isResourceTerm(object) || termsEqual(subject, object) {
 		return false
 	}
 	key := engineTermKey(subject)
+	if c.suspended[key] || c.suspended[engineTermKey(object)] {
+		return false
+	}
 	if _, ok := c.parent[key]; !ok {
 		return true
 	}
