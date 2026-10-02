@@ -1,6 +1,6 @@
 # CortexDB
 
-> CortexDB is an open-source, pure-Go library that keeps an AI agent's memory and knowledge in one SQLite file: vectors, FTS5 full-text search, RAG knowledge, scoped agent memory, and an RDF 1.2 knowledge graph with SPARQL, RDFS and OWL 2 RL inference, SHACL validation and read-only Cypher. It works without an embedding model, exposes 80+ tools over MCP, ships as a Claude Code and Codex plugin, and serves the same brain over gRPC with Rust, Python and Node.js clients. MIT licensed. Latest version: v2.115.0 (2026-10-02).
+> CortexDB is an open-source, pure-Go library that keeps an AI agent's memory and knowledge in one SQLite file: vectors, FTS5 full-text search, RAG knowledge, scoped agent memory, and an RDF 1.2 knowledge graph with SPARQL, RDFS and OWL 2 RL inference, SHACL validation and read-only Cypher. It works without an embedding model, exposes 80+ tools over MCP, ships as a Claude Code and Codex plugin, and serves the same brain over gRPC with Rust, Python and Node.js clients. MIT licensed. Latest version: v2.116.0 (2026-10-02).
 
 Key facts:
 - Module: github.com/liliang-cn/cortexdb/v2 (Go 1.25+, no CGO — modernc.org/sqlite)
@@ -12,6 +12,7 @@ Key facts:
 - Change feed: every committed write in commit order, exactly once, nothing from a rolled-back transaction (changes_since, db.Changes)
 - Vectors: HNSW, IVF, flat, scalar/product quantization, binary 1-bit codes with exact rescoring (recall@10 0.979–0.996 at 1/32 memory)
 - Ontology: Palantir-style typed objects, links, interfaces, object sets, governed action types with audit trail
+- Live 3D view (serve_graph_3d): find, ask, read-only Cypher and node-by-node expansion across the whole store; read-only, phone-friendly, every view a link (?focus=, ?ask=, ?cypher=)
 - Not a distributed vector database and not an enterprise RDF server: embedded, inspectable, local-first
 
 ## Docs

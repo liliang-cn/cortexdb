@@ -2,6 +2,53 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.116.0] - 2026-10-02
+
+### Added
+
+- **The live view can be asked, not only looked at.** `serve_graph_3d` drew
+  the store's most-connected core — 2,000 nodes of a shared brain — and
+  nothing past it was reachable from the page. Its new Explore bar finds a node
+  by name anywhere in the store, asks the brain a question (recall's facts,
+  memories and passages, with every thing the answer names lit up and one
+  click to bring the rest into view), and runs read-only Cypher as a table
+  whose nodes are drawn. Any node can be expanded to its neighbours, including
+  ones the core left out; hovering a node lights its neighbourhood; relations
+  can be filtered by type.
+- **A shared brain gets the inspector.** Clicking a node on a shared brain used
+  to say the source could not look a record up. The inspector now reads it
+  through the brain's own tools (`get_nodes`, `get_chunks`, `fact_provenance`):
+  source document, chunk, producer, grade, when it became true, and the text it
+  was drawn from.
+- **Every view is a link.** `?focus=ID|name&hops=N`, `?find=`, `?ask=`,
+  `?cypher=`, `?q=`, `?type=`, `?edge=`, `?explore=0`, and a Share button that
+  copies the current one (the system share sheet on a phone). Embedders can do
+  the same with `postMessage` (`cortexdb:focus`, `cortexdb:find`,
+  `cortexdb:ask`, `cortexdb:cypher`).
+- **Phones.** One-line title, the Explore bar across the top, the inspector as a
+  bottom sheet, corner panels folded to chips, thumb-sized controls, 16px
+  inputs so iOS does not zoom, glow and particles off by default on a small
+  touch screen.
+
+### Fixed
+
+- Expanding a hub drew dots with no relations: `expand_graph` spent its limit
+  on the memories that mention the hub, joined by bookkeeping edges the scene
+  does not draw. The view now asks for the hub's relations with parameterised
+  Cypher and falls back to `expand_graph` on a store without Cypher.
+- Merging nodes into the scene mutated the arrays the running simulation held,
+  so a tick between the merge and the library applying it met links still
+  holding bare ids (`Cannot create property 'vx' on string`). Structural deltas
+  had the same latent fault.
+
+### Security
+
+- The view stays read-only by construction: it can run only the tools on
+  `liveview.ExploreTools`, a test holds every one against the catalogue's
+  `Mutates`, and the callers refuse any other name before a request leaves the
+  process. SPARQL is not on the list, because `knowledge_graph_query` also runs
+  updates.
+
 ## [2.115.0] - 2026-10-02
 
 ### Added
