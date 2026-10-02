@@ -78,7 +78,7 @@ func parseFlags(argv []string) (options, []string, error) {
 	fs := flag.NewFlagSet("cortexdb-bench", flag.ContinueOnError)
 	fs.StringVar(&o.dataset, "dataset", "", "benchmark: "+strings.Join(eval.BenchNames(), " | "))
 	fs.StringVar(&o.mode, "mode", modeLexical, "retrieval mode: "+strings.Join(allModes, " | "))
-	fs.StringVar(&o.embedder, "embedder", "", "Ollama embedding model (required for vector and hybrid; optional for graph and ppr)")
+	fs.StringVar(&o.embedder, "embedder", "", "Ollama embedding model (required for vector and hybrid; optional for graph, ppr and auto)")
 	fs.StringVar(&o.ollamaURL, "ollama-url", "http://localhost:11434", "Ollama base URL")
 	fs.IntVar(&o.limit, "limit", 0, "score at most this many questions, chosen by --seed (0 = all)")
 	fs.Uint64Var(&o.seed, "seed", 1, "seed for choosing questions when --limit is set")
@@ -111,7 +111,7 @@ func parseFlags(argv []string) (options, []string, error) {
 		if o.embedder == "" {
 			return o, nil, fmt.Errorf("%s mode needs --embedder", o.mode)
 		}
-	case modeGraph, modePPR:
+	case modeGraph, modePPR, modeAuto:
 	default:
 		return o, nil, fmt.Errorf("unknown --mode %q (%s)", o.mode, strings.Join(allModes, ", "))
 	}

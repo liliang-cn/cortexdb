@@ -29,9 +29,13 @@ const (
 	// same entity graph, seeded by the query's entities, fused with a hybrid
 	// (or, without an embedder, lexical) first stage — HippoRAG 2's method.
 	modePPR = "ppr"
+	// modeAuto is SearchKnowledge with no mode named — what a caller who does
+	// not choose gets, and so the number that matters most. The library picks
+	// the strategy from the query and from whether an embedder is set.
+	modeAuto = "auto"
 )
 
-var allModes = []string{modeLexical, modeVector, modeHybrid, modeGraph, modePPR}
+var allModes = []string{modeLexical, modeVector, modeHybrid, modeGraph, modePPR, modeAuto}
 
 // Searches rank chunks; the benchmarks score documents. A document of many
 // chunks — a LongMemEval session runs to fifteen — can fill the top of a chunk
@@ -91,12 +95,13 @@ func search(ctx context.Context, db *cortexdb.DB, mode, query string, chunks int
 		for _, c := range res.Chunks {
 			ids = append(ids, c.DocumentID)
 		}
-	case modeLexical, modeHybrid, modeGraph, modePPR:
+	case modeLexical, modeHybrid, modeGraph, modePPR, modeAuto:
 		retrievalMode := map[string]string{
 			modeLexical: cortexdb.RetrievalModeLexical,
 			modeHybrid:  cortexdb.RetrievalModeHybrid,
 			modeGraph:   cortexdb.RetrievalModeGraph,
 			modePPR:     cortexdb.RetrievalModePPR,
+			modeAuto:    cortexdb.RetrievalModeAuto,
 		}[mode]
 		res, err := db.SearchKnowledge(ctx, cortexdb.KnowledgeSearchRequest{
 			Query:            query,
