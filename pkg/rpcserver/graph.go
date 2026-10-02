@@ -151,6 +151,17 @@ func (s *graphService) RefreshInference(ctx context.Context, req *rpcv1.RefreshI
 	for _, c := range resp.Result.OversizedSameAsClasses {
 		oversized = append(oversized, &rpcv1.OversizedSameAsClass{Size: int32(c.Size), Cap: int32(c.Cap), Members: c.Members})
 	}
+	inconsistencies := make([]*rpcv1.InferenceInconsistency, 0, len(resp.Result.Inconsistencies))
+	for _, c := range resp.Result.Inconsistencies {
+		inconsistencies = append(inconsistencies, &rpcv1.InferenceInconsistency{
+			Rule:            c.Rule,
+			Explanation:     c.Explanation,
+			Triples:         triplesToProto(c.Triples),
+			SuspendedSameAs: triplesToProto(c.SuspendedSameAs),
+			Members:         c.Members,
+			ClassSize:       int32(c.ClassSize),
+		})
+	}
 	return &rpcv1.RefreshInferenceResponse{Result: &rpcv1.InferenceRefreshResult{
 		ExplicitCount:          int32(resp.Result.ExplicitCount),
 		InferredCount:          int32(resp.Result.InferredCount),
@@ -158,6 +169,8 @@ func (s *graphService) RefreshInference(ctx context.Context, req *rpcv1.RefreshI
 		AffectedExplicitCount:  int32(resp.Result.AffectedExplicitCount),
 		RemovedInferredCount:   int32(resp.Result.RemovedInferredCount),
 		OversizedSameAsClasses: oversized,
+		Inconsistencies:        inconsistencies,
+		InconsistencyCount:     int32(resp.Result.InconsistencyCount),
 	}}, nil
 }
 

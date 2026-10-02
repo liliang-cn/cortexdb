@@ -128,6 +128,23 @@ message InferenceRefreshResult {
   int32 affected_explicit_count = 4;
   int32 removed_inferred_count = 5;
   repeated OversizedSameAsClass oversized_same_as_classes = 6;
+  // Contradictions the OWL 2 RL rules found — at most a hundred; the count is
+  // all of them. Reported, never resolved.
+  repeated InferenceInconsistency inconsistencies = 7;
+  int32 inconsistency_count = 8;
+}
+// A contradiction between stated or inferred facts, with the triples that
+// conflict. rule is the OWL 2 RL rule that found it: cax-dw, prp-pdw, prp-fp
+// or eq-diff1.
+message InferenceInconsistency {
+  string rule = 1;
+  string explanation = 2;
+  repeated RdfTriple triples = 3;
+  // eq-diff1 only: the sameAs conclusions withheld because of the conflict,
+  // and a sorted sample of the class whose reasoning was suspended.
+  repeated RdfTriple suspended_same_as = 4;
+  repeated string members = 5;
+  int32 class_size = 6;
 }
 message RefreshInferenceResponse { InferenceRefreshResult result = 1; }
 

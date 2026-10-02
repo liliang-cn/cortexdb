@@ -235,3 +235,49 @@ func TestInferenceRefreshCarriesTheSameAsCapAndItsReport(t *testing.T) {
 		t.Fatalf("a class of 3 is under the default cap, yet %d were reported", n)
 	}
 }
+
+// A contradiction found by inference must reach a typed client, with the
+// triples that conflict. The live brain is remote: a report that stops at
+// the server is a report nobody reads.
+func TestInferenceRefreshCarriesTheInconsistencyReport(t *testing.T) {
+	conn := newTestConn(t, false, "")
+	client := rpcv1.NewKnowledgeGraphServiceClient(conn)
+	ctx := context.Background()
+
+	const (
+		rdfType  = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+		disjoint = "http://www.w3.org/2002/07/owl#disjointWith"
+	)
+	if _, err := client.UpsertKnowledgeGraph(ctx, &rpcv1.UpsertKnowledgeGraphRequest{
+		Triples: []*rpcv1.RdfTriple{
+			{Subject: iri("https://example.com/Person"), Predicate: iri(disjoint), Object: iri("https://example.com/Company")},
+			{Subject: iri("https://example.com/acme"), Predicate: iri(rdfType), Object: iri("https://example.com/Person")},
+			{Subject: iri("https://example.com/acme"), Predicate: iri(rdfType), Object: iri("https://example.com/Company")},
+		},
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	ref, err := client.RefreshInference(ctx, &rpcv1.RefreshInferenceRequest{})
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	got := ref.GetResult()
+	if got.GetInconsistencyCount() != 1 || len(got.GetInconsistencies()) != 1 {
+		t.Fatalf("count = %d, reports = %d; want the one disjointness clash", got.GetInconsistencyCount(), len(got.GetInconsistencies()))
+	}
+	clash := got.GetInconsistencies()[0]
+	if clash.GetRule() != "cax-dw" || clash.GetExplanation() == "" {
+		t.Fatalf("report = %+v, want rule cax-dw with an explanation", clash)
+	}
+	subjects := map[string]bool{}
+	for _, tr := range clash.GetTriples() {
+		if tr.GetId() == "" {
+			t.Fatalf("a conflicting triple came back without its id: %+v", tr)
+		}
+		subjects[tr.GetSubject().GetValue()] = true
+	}
+	if !subjects["https://example.com/acme"] {
+		t.Fatalf("conflicting triples %+v do not name acme", clash.GetTriples())
+	}
+}
