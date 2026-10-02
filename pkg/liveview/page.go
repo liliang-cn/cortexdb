@@ -460,6 +460,7 @@ const pageTemplate = `<!DOCTYPE html>
   [data-mode="light"] #explore textarea{background:#fff}
   [data-mode="light"] .nl{color:#0f172a;background:rgba(255,255,255,.88);border-color:rgba(15,23,42,.12);text-shadow:none}
   [data-mode="light"] .nl.hub{color:#475569;background:rgba(255,255,255,.6)}
+  [data-mode="light"] .nl.sel{color:var(--onacc);background:var(--acc);border-color:var(--acc)}
   [data-mode="light"] .dot{box-shadow:none}
   [data-mode="light"] .badge .led{box-shadow:none}
   [data-mode="light"] #detail .quote{background:#f1f5f9;color:#334155;border-left-color:rgba(15,118,110,.4)}
@@ -485,6 +486,12 @@ const pageTemplate = `<!DOCTYPE html>
   #themebtn{position:absolute;top:8px;right:30px;width:22px;height:22px;padding:0;border:none;background:none;
     color:var(--mute);font-size:13px;line-height:22px;cursor:pointer}
   #themebtn:hover{color:var(--acc);background:none}
+  /* On a phone the title card is one line wide; the switch gets its own room
+     and a thumb-sized target. */
+  @media (max-width:760px){
+    #head{padding-right:70px}
+    #themebtn{top:4px;right:34px;width:32px;height:32px;line-height:32px;font-size:16px}
+  }
 </style>
 </head>
 <body>
@@ -1335,13 +1342,35 @@ function flyTo(n, ms){
 }
 
 // A node focused while the layout is still moving drifts away from where the
-// camera flew. followId is re-aimed once when the simulation comes to rest,
-// unless the reader has taken the camera in the meantime.
-var followId = null;
+// camera flew — on a fresh page the 2,000-node layout takes many seconds to
+// settle, and a link that opens on a node would show it drifting off screen.
+// So the camera follows it, keeping the same offset, until the simulation
+// rests, the reader takes the camera, or thirty seconds pass.
+var followId = null, followUntil = 0;
+function startFollow(id){ followId = id; followUntil = Date.now() + 30000; }
+setInterval(function(){
+  if(!followId) return;
+  var n = byId[followId];
+  if(!n || Date.now() > followUntil){ followId = null; return; }
+  var cam = G.cameraPosition(), look = followLook(n);
+  var prev = G.controls().target;
+  // Move the camera by however far the node's view point moved, so the
+  // reader's angle and distance stay exactly as they were.
+  var dx = look.x - prev.x, dy = look.y - prev.y, dz = look.z - prev.z;
+  if(Math.hypot(dx, dy, dz) < 0.5) return;
+  G.cameraPosition({x:cam.x + dx, y:cam.y + dy, z:cam.z + dz}, look, 350);
+}, 380);
 G.onEngineStop(function(){
-  if(followId && byId[followId]){ var n = byId[followId]; followId = null; flyTo(n, 700); }
+  if(followId && byId[followId]){ var n = byId[followId]; followId = null; flyTo(n, 600); }
 });
 document.getElementById("scene").addEventListener("pointerdown", function(){ followId = null; });
+// The point the camera looks at for a node: the node itself, or a little
+// below it on a narrow screen, where the inspector sheet covers the bottom.
+function followLook(n){
+  if(window.innerWidth > 760) return {x:n.x, y:n.y, z:n.z};
+  var up = G.camera().up, off = 0.11 * (window.innerWidth <= 760 ? 300 : 260);
+  return {x:n.x - up.x*off, y:n.y - up.y*off, z:n.z - up.z*off};
+}
 
 /* ---------- the inspector ----------
 
@@ -2142,7 +2171,7 @@ function focusNode(id, hops){
       if(!n){ toast("No node " + id); return; }
       setHighlight([id].concat((adj[id]||[]).map(function(a){ return a.to; })), false);
       onNodeClick(n);
-      followId = id;
+      startFollow(id);
     }, byId[id] && typeof byId[id].x === "number" ? 0 : 700);
   });
 }
