@@ -372,71 +372,31 @@ func (t *GraphRAGToolbox) searchGraphRAGLexical(ctx context.Context, req ToolSea
 		Decision: resolution.Decision,
 	}
 	useGraph := resolution.Decision.UseGraph
-	entityNames := resolution.Plan.EntityNames
-	if useGraph && len(entityNames) == 0 {
-		entityNames = extractEntityNames(extractTitleEntities(resolution.Plan.Query))
-	}
 
 	chunkResults := make(map[string]*GraphRAGChunkResult)
-	seedIDs := make(map[string]struct{})
 	entitySet := make(map[string]struct{})
 	seedOrder := make([]string, 0, len(seedResp.Chunks))
-
-	addChunk := func(chunk ToolChunk, seed bool) {
-		if !allowDocumentID(resolution.Plan.Filters, chunk.DocumentID) {
-			return
-		}
-		existing, ok := chunkResults[chunk.ID]
-		if !ok {
-			existing = &GraphRAGChunkResult{
-				ID:         chunk.ID,
-				DocumentID: chunk.DocumentID,
-				Content:    chunk.Content,
-				Score:      chunk.Score,
-				BaseScore:  chunk.Score,
-			}
-			chunkResults[chunk.ID] = existing
-		} else if chunk.Score > existing.Score {
-			existing.Score = chunk.Score
-			existing.BaseScore = chunk.Score
-		}
-		if seed {
-			if _, exists := seedIDs[chunk.ID]; !exists {
-				seedIDs[chunk.ID] = struct{}{}
-				seedOrder = append(seedOrder, chunk.ID)
-			}
-		}
-	}
-
 	for _, chunk := range seedResp.Chunks {
-		addChunk(chunk, true)
-	}
-
-	if useGraph && len(entityNames) > 0 {
-		entityResp, err := t.SearchChunksByEntities(ctx, ToolSearchChunksByEntitiesRequest{
-			EntityNames: entityNames,
-			TopK:        opts.TopK,
-			MaxHops:     opts.MaxHops,
-		})
-		if err != nil {
-			return nil, err
+		if !allowDocumentID(resolution.Plan.Filters, chunk.DocumentID) {
+			continue
 		}
-		for _, chunk := range entityResp.Chunks {
-			if chunk.Score < 0.75 {
-				chunk.Score = 0.75
-			}
-			addChunk(chunk, true)
+		if _, dup := chunkResults[chunk.ID]; dup {
+			continue
 		}
-	}
-
-	if len(seedOrder) == 0 {
-		if useGraph {
-			result.Entities = sortedKeys(entitySet)
+		chunkResults[chunk.ID] = &GraphRAGChunkResult{
+			ID:         chunk.ID,
+			DocumentID: chunk.DocumentID,
+			Content:    chunk.Content,
+			Score:      chunk.Score,
+			BaseScore:  chunk.Score,
 		}
-		return result, nil
+		seedOrder = append(seedOrder, chunk.ID)
 	}
 
 	if !useGraph {
+		if len(seedOrder) == 0 {
+			return result, nil
+		}
 		// Naming what a chunk mentions is not graph expansion and does not
 		// wait for the expansion decision — see the same branch in
 		// graphrag.go. One batched lookup of the mention edges.
@@ -472,7 +432,70 @@ func (t *GraphRAGToolbox) searchGraphRAGLexical(ctx context.Context, req ToolSea
 		return result, nil
 	}
 
-	expandedEntities, err := t.db.expandGraphChunkNeighborhoods(ctx, chunkResults, seedOrder, opts, resolution.Plan.Filters)
+	// Graph mode: three rankings of chunks, fused by rank.
+	//
+	//  L: the lexical seeds, as the lexical mode ranks them;
+	//  E: chunks that mention an entity the query names, by specificity;
+	//  X: chunks graph expansion reaches from the head of L and E.
+	//
+	// They used to be merged by score, and the scores are not on one scale:
+	// a lexical seed carries an RRF value near 1/61, an entity-linked chunk
+	// the count of query entities it is linked to (floored at 0.75), an
+	// expanded chunk half its parent's. The reranker min-max normalises them
+	// together, so every graph-derived chunk, however loosely linked,
+	// outranked every lexical hit, and the passage the question names fell
+	// out of the top five: graph, and auto, which picks graph for any
+	// capitalised word, scored 9-11 points of recall@5 below lexical on 2Wiki
+	// and MuSiQue. Ranks are on one scale by construction, and RRF lets a
+	// chunk two rankings agree on rise above one that either ranks first
+	// alone.
+	lexicalRank := make(map[string]int, len(seedOrder))
+	for i, id := range seedOrder {
+		lexicalRank[id] = i + 1
+	}
+	entityIDs, err := t.db.queryEntityNodeIDs(ctx, resolution.Plan.Query, resolution.Plan.EntityNames)
+	if err != nil {
+		return nil, err
+	}
+	linked, err := t.db.entityLinkedChunks(ctx, entityIDs, opts.Collection, resolution.Plan.Filters, lexicalRank, max(opts.TopK*graphEntityPoolFactor, graphEntityPoolMin))
+	if err != nil {
+		return nil, err
+	}
+	entityRank := make(map[string]int, len(linked))
+	for i, chunk := range linked {
+		entityRank[chunk.ID] = i + 1
+		if _, ok := chunkResults[chunk.ID]; !ok {
+			c := chunk
+			chunkResults[chunk.ID] = &c
+		}
+	}
+	if len(chunkResults) == 0 {
+		return result, nil
+	}
+
+	fused := make(map[string]float64, len(chunkResults))
+	firstOrder := make([]string, 0, len(chunkResults))
+	for id := range chunkResults {
+		if r, ok := lexicalRank[id]; ok {
+			fused[id] += 1 / (hybridRRFK + float64(r))
+		}
+		if r, ok := entityRank[id]; ok {
+			fused[id] += 1 / (hybridRRFK + float64(r))
+		}
+		firstOrder = append(firstOrder, id)
+	}
+	sort.Slice(firstOrder, func(i, j int) bool {
+		if fused[firstOrder[i]] != fused[firstOrder[j]] {
+			return fused[firstOrder[i]] > fused[firstOrder[j]]
+		}
+		return firstOrder[i] < firstOrder[j]
+	})
+	// Expansion starts from the fused head, and orders what it reaches by
+	// the fused score of where it came from.
+	for _, id := range firstOrder {
+		chunkResults[id].Score = fused[id]
+	}
+	expandedEntities, err := t.db.expandGraphChunkNeighborhoods(ctx, chunkResults, firstOrder, opts, resolution.Plan.Filters)
 	if err != nil {
 		return nil, err
 	}
@@ -480,41 +503,52 @@ func (t *GraphRAGToolbox) searchGraphRAGLexical(ctx context.Context, req ToolSea
 		entitySet[entityName] = struct{}{}
 	}
 
-	chunkIDs := make([]string, 0, len(chunkResults))
+	relatedIDs := make([]string, 0, len(chunkResults))
 	for chunkID := range chunkResults {
-		chunkIDs = append(chunkIDs, chunkID)
+		if _, first := fused[chunkID]; !first {
+			relatedIDs = append(relatedIDs, chunkID)
+		}
+	}
+	sort.Slice(relatedIDs, func(i, j int) bool {
+		si, sj := chunkResults[relatedIDs[i]].Score, chunkResults[relatedIDs[j]].Score
+		if si != sj {
+			return si > sj
+		}
+		return relatedIDs[i] < relatedIDs[j]
+	})
+	if len(relatedIDs) > opts.MaxRelatedChunks {
+		relatedIDs = relatedIDs[:opts.MaxRelatedChunks]
+	}
+	for i, id := range relatedIDs {
+		fused[id] = graphExpansionRRFWeight / (hybridRRFK + float64(i+1))
+	}
+
+	allChunks := make([]GraphRAGChunkResult, 0, len(fused))
+	chunkIDs := make([]string, 0, len(fused))
+	for id, score := range fused {
+		chunk := chunkResults[id]
+		// Expansion may have raised a first-stage chunk's score on its own
+		// scale; the fused value is the one to rank by.
+		chunk.Score = score
+		allChunks = append(allChunks, *chunk)
+		chunkIDs = append(chunkIDs, id)
 	}
 	entityNamesByChunk, err := t.db.chunkEntityNamesBatch(ctx, chunkIDs, opts.MaxEntitiesPerChunk)
 	if err != nil {
 		return nil, err
 	}
-	for chunkID, chunk := range chunkResults {
-		chunk.Entities = entityNamesByChunk[chunkID]
-		for _, entityName := range chunk.Entities {
+	for i := range allChunks {
+		allChunks[i].Entities = entityNamesByChunk[allChunks[i].ID]
+		for _, entityName := range allChunks[i].Entities {
 			entitySet[entityName] = struct{}{}
 		}
 	}
-
-	seedChunks := make([]GraphRAGChunkResult, 0, len(seedOrder))
-	for _, seedID := range seedOrder {
-		if chunk := chunkResults[seedID]; chunk != nil {
-			seedChunks = append(seedChunks, *chunk)
+	sort.Slice(allChunks, func(i, j int) bool {
+		if allChunks[i].Score != allChunks[j].Score {
+			return allChunks[i].Score > allChunks[j].Score
 		}
-	}
-
-	relatedChunks := make([]GraphRAGChunkResult, 0, len(chunkResults))
-	for chunkID, chunk := range chunkResults {
-		if _, ok := seedIDs[chunkID]; ok {
-			continue
-		}
-		relatedChunks = append(relatedChunks, *chunk)
-	}
-	sort.Slice(relatedChunks, func(i, j int) bool { return relatedChunks[i].Score > relatedChunks[j].Score })
-	if len(relatedChunks) > opts.MaxRelatedChunks {
-		relatedChunks = relatedChunks[:opts.MaxRelatedChunks]
-	}
-
-	allChunks := append(seedChunks, relatedChunks...)
+		return allChunks[i].ID < allChunks[j].ID
+	})
 	allChunks = t.db.rerankGraphRAGChunks(ctx, resolution.Plan.Query, allChunks, opts)
 	allChunks = packGraphRAGContext(allChunks, opts)
 
@@ -526,3 +560,18 @@ func (t *GraphRAGToolbox) searchGraphRAGLexical(ctx context.Context, req ToolSea
 	}
 	return result, nil
 }
+
+// graphExpansionRRFWeight is how much a rank in the expansion list counts
+// against a rank in the lexical or entity list. Expansion reaches a chunk by
+// adjacency alone — the next passage, a co-occurring entity — so at full
+// weight its head displaced lexical hits on single-hop questions (-2 points
+// of recall@5 on MuSiQue sub-questions); at half it fills the context behind
+// them, which is what it is for.
+const graphExpansionRRFWeight = 0.5
+
+// The entity list is read as wide as the pool PPR fuses, for the same reason:
+// it is a list to fuse, not a context to read.
+const (
+	graphEntityPoolFactor = 5
+	graphEntityPoolMin    = 20
+)

@@ -75,7 +75,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 					"entity_names":           toolStringArraySchema("Optional entities from structured planning."),
 					"keywords":               toolStringArraySchema("LLM-generated keyword bank derived from the goal."),
 					"alternate_queries":      toolStringArraySchema("Alternate phrasings generated from the same goal."),
-					"retrieval_mode":         toolEnumSchema("Preferred retrieval strategy."+pprModeDescription, RetrievalModeAuto, RetrievalModeLexical, RetrievalModeGraph, RetrievalModePPR),
+					"retrieval_mode":         toolEnumSchema("Preferred retrieval strategy. Without an embedder, auto walks the graph as ppr does when the query names an entity, and stays lexical when it names none."+pprModeDescription, RetrievalModeAuto, RetrievalModeLexical, RetrievalModeGraph, RetrievalModePPR),
 					"disable_graph":          toolBooleanSchema("Legacy alias. Set true to force lexical-only retrieval."),
 					"graph_light":            toolBooleanSchema("Enable lighter graph traversal defaults for lower latency."),
 					"max_expansion_seeds":    toolIntegerSchema("Optional cap on how many seed chunks will be expanded through the graph."),

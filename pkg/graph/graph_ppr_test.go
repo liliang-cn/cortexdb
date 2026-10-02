@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"testing"
 )
@@ -212,6 +213,55 @@ func TestPersonalizedPageRankDoesNotExpandHubsItOnlyPassesThrough(t *testing.T) 
 				if named.Score(leaf) == 0 {
 					t.Fatalf("seeded at hub H, the walk did not reach %s", leaf)
 				}
+			}
+		})
+	}
+}
+
+// S reaches Z by a heavy edge and B1..B4 by light ones; each leads one hop on,
+// to X and to Y1..Y4. With room to expand one node per hop, the walk must
+// expand the one it sends the most mass to — Z, not B1, which sorts first —
+// so X is reached and no Y is.
+func TestPersonalizedPageRankExpandsTheFrontierNodesItSendsTheMostMassTo(t *testing.T) {
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			ctx := context.Background()
+			nodes := []string{"S", "Z", "X"}
+			edges := []GraphEdge{
+				{ID: "s-z", FromNodeID: "S", ToNodeID: "Z", Weight: 5},
+				{ID: "z-x", FromNodeID: "Z", ToNodeID: "X", Weight: 1},
+			}
+			for i := 1; i <= 4; i++ {
+				bi, yi := fmt.Sprintf("B%d", i), fmt.Sprintf("Y%d", i)
+				nodes = append(nodes, bi, yi)
+				edges = append(edges,
+					GraphEdge{ID: "s-" + bi, FromNodeID: "S", ToNodeID: bi, Weight: 1},
+					GraphEdge{ID: bi + "-" + yi, FromNodeID: bi, ToNodeID: yi, Weight: 1})
+			}
+			pprSeedGraph(t, ctx, b.store, nodes, edges)
+
+			capped, err := b.store.PersonalizedPageRank(ctx, map[string]float64{"S": 1}, PPROptions{MaxFrontier: 1})
+			if err != nil {
+				t.Fatalf("PersonalizedPageRank: %v", err)
+			}
+			if capped.Score("X") == 0 {
+				t.Fatalf("X, behind the heaviest edge, was not reached: %+v", capped.Scores)
+			}
+			for i := 1; i <= 4; i++ {
+				if y := fmt.Sprintf("Y%d", i); capped.Score(y) != 0 {
+					t.Fatalf("%s was reached through a light edge the frontier cap should have left unexpanded", y)
+				}
+			}
+			if capped.Score("B1") == 0 || !capped.Truncated {
+				t.Fatalf("B1 should stay in the walk as a node, and the cap be reported: B1=%v truncated=%v", capped.Score("B1"), capped.Truncated)
+			}
+
+			full, err := b.store.PersonalizedPageRank(ctx, map[string]float64{"S": 1}, PPROptions{})
+			if err != nil {
+				t.Fatalf("PersonalizedPageRank: %v", err)
+			}
+			if full.Score("Y1") == 0 {
+				t.Fatal("uncapped, the walk should reach Y1")
 			}
 		})
 	}

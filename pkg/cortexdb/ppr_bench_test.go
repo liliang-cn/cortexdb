@@ -1,15 +1,18 @@
 package cortexdb
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -31,6 +34,15 @@ import (
 //	CORTEXDB_PPR_BENCH_MODES=lexical,graph,ppr,ppr-hipporag
 //	CORTEXDB_PPR_BENCH_OPTS='{"damping":0.5}' # PPRRetrievalOptions as JSON
 //	go test ./pkg/cortexdb -run TestPPRMultiHopBench -v -timeout 2h
+//
+// With an OpenAI-compatible embeddings endpoint the corpus is embedded too
+// (use a separate CORTEXDB_PPR_BENCH_DB), and two more modes exist: vector,
+// the vector path alone, and hybrid, vector+lexical RRF without the graph —
+// what auto does with an embedder when the query names no entity:
+//
+//	CORTEXDB_PPR_BENCH_EMBED_URL=http://localhost:11434/v1 \
+//	CORTEXDB_PPR_BENCH_EMBED_MODEL=embeddinggemma \
+//	CORTEXDB_PPR_BENCH_MODES=auto,lexical,vector,hybrid,graph,ppr
 //
 // Recall is HippoRAG's: the fraction of a question's gold supporting
 // passages among the top k, averaged over questions.
@@ -216,13 +228,34 @@ func TestPPRMultiHopBench(t *testing.T) {
 	}
 	_, statErr := os.Stat(dbPath)
 	fresh := os.IsNotExist(statErr)
-	db, err := Open(DefaultConfig(dbPath))
+	var openOpts []Option
+	var embedder *pprBenchEmbedder
+	if url := os.Getenv("CORTEXDB_PPR_BENCH_EMBED_URL"); url != "" {
+		embedder = newPPRBenchEmbedder(t, ctx, url, firstNonEmpty(os.Getenv("CORTEXDB_PPR_BENCH_EMBED_MODEL"), "embeddinggemma"))
+		openOpts = append(openOpts, WithEmbedder(embedder))
+	}
+	cfg := DefaultConfig(dbPath)
+	if embedder != nil {
+		cfg.Dimensions = embedder.Dim()
+	}
+	db, err := Open(cfg, openOpts...)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
 	defer db.Close()
 	if fresh {
 		ingestPPRBench(t, ctx, db, corpus)
+	}
+	if embedder != nil {
+		// Every question is embedded once, before the clock starts, so the
+		// first mode to ask does not pay the endpoint for the others.
+		texts := make([]string, len(questions))
+		for i, q := range questions {
+			texts[i] = q.Question
+		}
+		if _, err := embedder.EmbedBatch(ctx, texts); err != nil {
+			t.Fatalf("embed questions: %v", err)
+		}
 	}
 
 	type stat struct {
@@ -253,14 +286,36 @@ func TestPPRMultiHopBench(t *testing.T) {
 				req.RetrievalMode = mode
 			}
 			start := time.Now()
-			resp, err := db.SearchKnowledge(ctx, req)
+			var chunks []GraphRAGChunkResult
+			switch mode {
+			case "vector", "hybrid":
+				opts := GraphRAGQueryOptions{TopK: 5, MaxContextChars: 1 << 30, RetrievalMode: RetrievalModeLexical}
+				applyGraphRAGQueryDefaults(&opts)
+				var res *GraphRAGQueryResult
+				if mode == "vector" {
+					res, err = db.SearchGraphRAG(ctx, q.Question, opts)
+				} else {
+					res, err = db.searchKnowledgeHybrid(ctx, q.Question, opts, ToolSearchGraphRAGLexicalRequest{
+						Query: q.Question, TopK: 5, MaxContextChars: 1 << 30, RetrievalMode: RetrievalModeLexical,
+					})
+				}
+				if err == nil {
+					chunks = res.Chunks
+				}
+			default:
+				var resp *KnowledgeSearchResponse
+				resp, err = db.SearchKnowledge(ctx, req)
+				if err == nil {
+					chunks = resp.Chunks
+				}
+			}
 			st.latencies = append(st.latencies, time.Since(start))
 			if err != nil {
 				t.Fatalf("%s %s: %v", mode, q.ID, err)
 			}
 			var ranked []string
 			seen := map[string]bool{}
-			for _, c := range resp.Chunks {
+			for _, c := range chunks {
 				if !seen[c.DocumentID] {
 					seen[c.DocumentID] = true
 					ranked = append(ranked, c.DocumentID)
@@ -315,4 +370,86 @@ func TestPPRMultiHopBench(t *testing.T) {
 		t.Logf("%-8s %9.3f %9.3f %9s %9s  %s", mode, st.r2/qn, st.r5/qn,
 			pct(st.latencies, 0.5).Round(100*time.Microsecond), pct(st.latencies, 0.95).Round(100*time.Microsecond), strings.Join(parts, " "))
 	}
+}
+
+// pprBenchEmbedder is an OpenAI-compatible embeddings client that remembers
+// every text it has embedded, so a question asked by six modes costs one call.
+type pprBenchEmbedder struct {
+	url, model string
+	dim        int
+	client     *http.Client
+	mu         sync.Mutex
+	cache      map[string][]float32
+}
+
+func newPPRBenchEmbedder(t *testing.T, ctx context.Context, url, model string) *pprBenchEmbedder {
+	t.Helper()
+	e := &pprBenchEmbedder{url: strings.TrimRight(url, "/"), model: model, client: &http.Client{Timeout: 5 * time.Minute}, cache: map[string][]float32{}}
+	v, err := e.Embed(ctx, "dimension probe")
+	if err != nil {
+		t.Fatalf("embedder %s: %v", url, err)
+	}
+	e.dim = len(v)
+	return e
+}
+
+func (e *pprBenchEmbedder) Dim() int { return e.dim }
+
+func (e *pprBenchEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
+	vs, err := e.EmbedBatch(ctx, []string{text})
+	if err != nil {
+		return nil, err
+	}
+	return vs[0], nil
+}
+
+func (e *pprBenchEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	out := make([][]float32, len(texts))
+	var missing []string
+	e.mu.Lock()
+	for i, text := range texts {
+		if v, ok := e.cache[text]; ok {
+			out[i] = v
+		} else {
+			missing = append(missing, text)
+		}
+	}
+	e.mu.Unlock()
+	for start := 0; start < len(missing); start += 64 {
+		batch := missing[start:min(start+64, len(missing))]
+		body, _ := json.Marshal(map[string]any{"model": e.model, "input": batch})
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.url+"/embeddings", bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := e.client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		var decoded struct {
+			Data []struct {
+				Embedding []float32 `json:"embedding"`
+			} `json:"data"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&decoded)
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode != http.StatusOK || len(decoded.Data) != len(batch) {
+			return nil, fmt.Errorf("embeddings: %s, %d vectors for %d texts", resp.Status, len(decoded.Data), len(batch))
+		}
+		e.mu.Lock()
+		for i, d := range decoded.Data {
+			e.cache[batch[i]] = d.Embedding
+		}
+		e.mu.Unlock()
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for i, text := range texts {
+		out[i] = e.cache[text]
+	}
+	return out, nil
 }

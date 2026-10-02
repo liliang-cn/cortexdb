@@ -41,10 +41,14 @@ import (
 //  4. Passages ranked by PPR mass and fused with the first stage by RRF.
 //
 // Measured without an embedder on held-out questions (ppr_bench_test.go),
-// supporting-passage recall@5 against lexical, the best existing mode:
-// 2WikiMultiHopQA 0.806 vs 0.649, MuSiQue 0.546 vs 0.462 — but single-hop
-// questions (MuSiQue's first sub-questions) 0.830 vs 0.860, which is why the
-// mode is opt-in. HippoRAG 2's own pure-PPR ranking scored 0.699, 0.498 and
+// supporting-passage recall@5 against lexical: 2WikiMultiHopQA 0.830 vs
+// 0.649, MuSiQue 0.563 vs 0.462, and single-hop questions (MuSiQue's first
+// sub-questions) 0.866 vs 0.860, with p95 under twice lexical's. That is why
+// auto uses the walk on a no-embedder knowledge search whose query names an
+// entity (autoUsesWalk). It took two changes to get there: the fusion
+// constant (pprFusionRRFK) — at RRF's usual 60 single-hop was 0.830 — and the
+// frontier cap (pprMaxFrontier), without which MuSiQue's p95 was over 200 ms.
+// HippoRAG 2's own pure-PPR ranking, before both, scored 0.699, 0.498 and
 // 0.864: it barely moves single-hop, and barely helps multi-hop, because it
 // seeds its walk from a dense retriever over the whole corpus, and seeded
 // from a 20-passage lexical pool the passage teleport mostly re-ranks what
@@ -55,9 +59,9 @@ import (
 // mentions edges its ingest already writes.
 
 // RetrievalModePPR ranks passages by Personalized PageRank over the entity
-// graph, seeded by the query's entities and the first-stage passages. Opt-in:
-// it costs a bounded graph walk per query and pays off on multi-hop
-// questions, where the answer passage shares no words with the question.
+// graph, seeded by the query's entities and the first-stage passages. It
+// pays off on multi-hop questions, where the answer passage shares no words
+// with the question; auto chooses it without an embedder (autoUsesWalk).
 const RetrievalModePPR = "ppr"
 
 // PPR fusion schemes.
@@ -92,6 +96,26 @@ const (
 	// the query text — at most a few hundred primary-key lookups.
 	pprMaxQueryTokens = 64
 	pprMaxNGram       = 8
+	// pprFusionRRFK is the RRF constant of the walk/first-stage fusion. The
+	// customary 60 makes ranks nearly flat — rank 1 and rank 2 differ by
+	// 0.4% — so a passage both lists put around twentieth outscored the one
+	// either put first, and the walk, which spreads its mass over every
+	// passage that names the question's entity, reordered a correct lexical
+	// head: single-hop recall@5 fell from 0.857 to 0.833. At 2 the fusion is
+	// close to an interleave: rank 1 of either list stays ahead unless both
+	// lists put another passage in their top three. Measured on the dev
+	// splits, k from 1 to 5 is one plateau (2Wiki 0.83-0.84, single-hop
+	// 0.857-0.863), 10 begins to slide, 60 is 0.803 and 0.833.
+	pprFusionRRFK = 2.0
+	// pprMaxFrontier is how many nodes each hop of the walk's subgraph
+	// expands (graph.PPROptions.MaxFrontier). Uncapped, a question seeded
+	// from twenty-odd passages grew to the 20,000-node cap, reading every
+	// edge of a few thousand passages to get there, and that read was the
+	// whole of a 200-400 ms tail. The frontier is the nodes a forward push
+	// estimates the walk reaches with most mass, so what is cut carries
+	// least of it: on the dev splits recall@5 is unchanged from 200 down to
+	// 20 and drops a point at 10, while p95 falls to the lexical range.
+	pprMaxFrontier = 20
 )
 
 // PPRRetrievalOptions tunes RetrievalModePPR. The zero value is the measured
@@ -420,6 +444,7 @@ func (db *DB) runPPR(ctx context.Context, seeds map[string]float64, opts PPRRetr
 	res, err := db.graph.PersonalizedPageRank(ctx, seeds, graph.PPROptions{
 		Damping:         opts.Damping,
 		EdgeTypeWeights: opts.EdgeTypeWeights,
+		MaxFrontier:     pprMaxFrontier,
 	})
 	if err != nil {
 		return nil, err
@@ -448,10 +473,10 @@ func fusePPRRankings(passages map[string]*pprRankedPassage, fusion string) []*pp
 			score[id] = p.pprMass
 		default:
 			if p.firstRank > 0 {
-				score[id] += 1 / (hybridRRFK + float64(p.firstRank))
+				score[id] += 1 / (pprFusionRRFK + float64(p.firstRank))
 			}
 			if p.pprRank > 0 {
-				score[id] += 1 / (hybridRRFK + float64(p.pprRank))
+				score[id] += 1 / (pprFusionRRFK + float64(p.pprRank))
 			}
 		}
 	}
