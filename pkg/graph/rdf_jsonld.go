@@ -336,7 +336,19 @@ func jsonldNodeToTerm(node ld.Node, labelPrefix string) (RDFTerm, error) {
 // booleans, which would re-canonicalise "01"^^xsd:integer into 1 on the way
 // back in. Lists are written as the rdf:first/rdf:rest statements they are
 // stored as; importing them yields the same statements.
+//
+// A store holding an RDF 1.2 triple term cannot be exported as JSON-LD and
+// the export fails, naming the triple. JSON-LD 1.1 has no triple terms, and
+// the alternatives are both silent corruption: dropping the triple loses a
+// fact, and writing the term as a string turns a statement about a statement
+// into a string nobody will read back as one. N-Quads and TriG carry them.
+// A literal's base direction is written as JSON-LD 1.1's @direction.
 func (g *GraphStore) exportJSONLD(ctx context.Context, writer io.Writer, triples []RDFTriple) error {
+	for _, triple := range triples {
+		if triple.Object.Kind == RDFTermTriple {
+			return fmt.Errorf("json-ld cannot represent the RDF 1.2 triple term in %s; export as nquads or trig instead", triple.String())
+		}
+	}
 	namespaces, err := g.ListNamespaces(ctx)
 	if err != nil {
 		return err
@@ -564,9 +576,13 @@ func (c *jsonldCompactor) value(term RDFTerm) jsonldValue {
 	default:
 		switch {
 		case term.Language != "":
+			value := map[string]any{"@value": term.Value, "@language": term.LanguageTag()}
+			if direction := term.BaseDirection(); direction != "" {
+				value["@direction"] = direction
+			}
 			return jsonldValue{
 				sortKey: "2" + term.Value + "@" + term.Language,
-				json:    map[string]any{"@value": term.Value, "@language": term.Language},
+				json:    value,
 			}
 		case term.Datatype != "" && term.Datatype != xsdString:
 			datatype := c.iri(term.Datatype)

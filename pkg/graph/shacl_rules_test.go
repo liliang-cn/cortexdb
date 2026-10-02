@@ -23,16 +23,18 @@ const shaclRulePrefixes = `
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 `
 
-// turtleTriples parses Turtle (with the prefixes above) into triples, with
-// the test-local parser in shacl_rules_turtle_test.go. Blank node labels are
-// prefixed with tag so data and shapes parsed separately never share one.
+// turtleTriples parses Turtle (with the prefixes above) into triples with the
+// importer's own parser, so the SHACL-AF examples are written verbatim and
+// read the way a caller's import would read them. The parser labels each
+// document's blank nodes with a fresh prefix, so data and shapes parsed
+// separately never share one; tag only names the document in failures.
 func turtleTriples(t *testing.T, tag, src string) []RDFTriple {
 	t.Helper()
-	p := &miniTurtle{src: shaclRulePrefixes + src, tag: tag, prefixes: map[string]string{}}
-	if err := p.document(); err != nil {
-		t.Fatalf("parse turtle: %v (at %q)", err, p.rest(30))
+	triples, err := parseRDFDocument(shaclRulePrefixes+src, rdfSyntaxTurtle, "")
+	if err != nil {
+		t.Fatalf("parse turtle (%s): %v", tag, err)
 	}
-	return p.out
+	return triples
 }
 
 func loadTurtle(t *testing.T, g *GraphStore, src string) {

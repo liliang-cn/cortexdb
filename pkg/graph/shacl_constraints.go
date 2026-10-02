@@ -610,7 +610,7 @@ func matchesSHACLNodeKind(term RDFTerm, nodeKind string) bool {
 func shaclEffectiveDatatype(term RDFTerm) string {
 	switch {
 	case term.Language != "":
-		return rdfLangStringIRI
+		return rdfLiteralDatatype(term) // rdf:dirLangString when it has a base direction (RDF 1.2)
 	case term.Datatype == "":
 		return xsdStringIRI
 	default:

@@ -3,7 +3,6 @@ module github.com/liliang-cn/cortexdb/v2
 go 1.25.0
 
 require (
-	github.com/0x51-dev/rdf v0.1.0
 	github.com/go-mysql-org/go-mysql v1.15.0
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/google/uuid v1.6.0
@@ -20,8 +19,6 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
-	github.com/0x51-dev/rids v0.1.0 // indirect
-	github.com/0x51-dev/upeg v0.1.0 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/cayleygraph/quad v1.3.0 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect

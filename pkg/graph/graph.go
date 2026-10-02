@@ -360,6 +360,12 @@ func (g *GraphStore) createGraphSchema(ctx context.Context) error {
 		}
 	}
 
+	// RDF 1.2 triple terms: an index table beside kg_triples (see
+	// rdf_triple_terms_store.go). Creating it is the whole migration.
+	if err := g.createTripleTermSchema(ctx); err != nil {
+		return err
+	}
+
 	// Last, and guarded the same way: the bitemporal columns and the history
 	// tables. A brain written before this release gains them here, with every
 	// existing row reading as current.

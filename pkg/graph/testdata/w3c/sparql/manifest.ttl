@@ -1,0 +1,292 @@
+## A representative subset of the W3C SPARQL test suites (w3c/rdf-tests),
+## distributed under the W3C Test Suite License and the W3C 3-clause BSD
+## License (see ../LICENSE.md). Generated; entries keep their upstream names.
+
+PREFIX rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX mf:    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#>
+PREFIX rdft:  <http://www.w3.org/ns/rdftest#>
+PREFIX qt:    <http://www.w3.org/2001/sw/DataAccess/tests/test-query#>
+PREFIX ut:    <http://www.w3.org/2009/sparql/tests/test-update#>
+
+<> rdf:type mf:Manifest ;
+    rdfs:label "CortexDB sparql subset" ;
+    mf:entries (
+        <sparql-sparql12-eval-triple-terms#basic-2>
+        <sparql-sparql12-eval-triple-terms#basic-3>
+        <sparql-sparql12-eval-triple-terms#basic-5>
+        <sparql-sparql12-eval-triple-terms#basic-7>
+        <sparql-sparql12-eval-triple-terms#basic-8>
+        <sparql-sparql12-eval-triple-terms#basic-9>
+        <sparql-sparql12-eval-triple-terms#pattern-1>
+        <sparql-sparql12-eval-triple-terms#pattern-3>
+        <sparql-sparql12-eval-triple-terms#pattern-5>
+        <sparql-sparql12-eval-triple-terms#pattern-6>
+        <sparql-sparql12-eval-triple-terms#pattern-8>
+        <sparql-sparql12-eval-triple-terms#pattern-10>
+        <sparql-sparql12-eval-triple-terms#pattern-11>
+        <sparql-sparql12-eval-triple-terms#construct-3>
+        <sparql-sparql12-eval-triple-terms#construct-4>
+        <sparql-sparql12-eval-triple-terms#construct-5>
+        <sparql-sparql12-eval-triple-terms#graphs-1>
+        <sparql-sparql12-eval-triple-terms#expr-1>
+        <sparql-sparql12-eval-triple-terms#expr-2>
+        <sparql-sparql12-eval-triple-terms#op-1>
+        <sparql-sparql12-eval-triple-terms#op-2>
+        <sparql-sparql12-eval-triple-terms#order-2>
+        <sparql-sparql12-eval-triple-terms#update-1>
+        <sparql-sparql12-eval-triple-terms#update-2>
+        <sparql-sparql12-eval-triple-terms#update-3>
+        <sparql-sparql12-eval-triple-terms#results-tripleterms-1x>
+        <sparql-sparql12-syntax-triple-terms-positive#basic-reifier-07>
+        <sparql-sparql12-syntax-triple-terms-positive#annotation-reifier-multiple-05>
+        <sparql-sparql12-syntax-triple-terms-positive#compound-all>
+        <sparql-sparql12-syntax-triple-terms-positive#update-reifier-07>
+        <sparql-sparql12-syntax-triple-terms-negative#tripleterm-separate-01>
+        <sparql-sparql12-syntax-triple-terms-negative#tripleterm-subject-04>
+        <sparql-sparql12-syntax-triple-terms-negative#bind-reified>
+        <sparql-sparql12-syntax-triple-terms-negative#annotated-reifier-path>
+        <sparql-sparql12-syntax-triple-terms-negative#syntax-update-anonreifier-01>
+        <sparql-sparql12-lang-basedir#langdir>
+        <sparql-sparql12-lang-basedir#strlangdir>
+        <sparql-sparql12-lang-basedir#haslangdir>
+        <sparql-sparql12-lang-basedir#langdir-literal-invalid>
+        <sparql-sparql12-expression#triple-on-literals>
+        <sparql-sparql12-expression#triple-on-triple-terms>
+    ) .
+
+<sparql-sparql12-eval-triple-terms#basic-2> rdf:type mf:QueryEvaluationTest ;
+    mf:name "basic-2" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/basic-2.rq> ; qt:data <sparql12/eval-triple-terms/data-1.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/basic-2.srj> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#basic-3> rdf:type mf:QueryEvaluationTest ;
+    mf:name "basic-3" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/basic-3.rq> ; qt:data <sparql12/eval-triple-terms/data-1.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/basic-3.srj> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#basic-5> rdf:type mf:QueryEvaluationTest ;
+    mf:name "basic-5" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/basic-5.rq> ; qt:data <sparql12/eval-triple-terms/data-1.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/basic-5.srj> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#basic-7> rdf:type mf:QueryEvaluationTest ;
+    mf:name "basic-7" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/basic-7.rq> ; qt:data <sparql12/eval-triple-terms/data-8.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/basic-7.srj> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#basic-8> rdf:type mf:QueryEvaluationTest ;
+    mf:name "basic-8" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/basic-8.rq> ; qt:data <sparql12/eval-triple-terms/data-10.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/basic-8.srj> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#basic-9> rdf:type mf:QueryEvaluationTest ;
+    mf:name "basic-9" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/basic-9.rq> ; qt:data <sparql12/eval-triple-terms/data-10.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/basic-9.srj> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#pattern-1> rdf:type mf:QueryEvaluationTest ;
+    mf:name "pattern-1" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/pattern-01.rq> ; qt:data <sparql12/eval-triple-terms/data-2.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/pattern-01.srj> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#pattern-3> rdf:type mf:QueryEvaluationTest ;
+    mf:name "pattern-3" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/pattern-03.rq> ; qt:data <sparql12/eval-triple-terms/data-2.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/pattern-03.srj> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#pattern-5> rdf:type mf:QueryEvaluationTest ;
+    mf:name "pattern-5" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/pattern-05.rq> ; qt:data <sparql12/eval-triple-terms/data-2.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/pattern-05.srj> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#pattern-6> rdf:type mf:QueryEvaluationTest ;
+    mf:name "pattern-6" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/pattern-06.rq> ; qt:data <sparql12/eval-triple-terms/data-2.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/pattern-06.srj> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#pattern-8> rdf:type mf:QueryEvaluationTest ;
+    mf:name "pattern-8" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/pattern-08.rq> ; qt:data <sparql12/eval-triple-terms/data-2.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/pattern-08.srj> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#pattern-10> rdf:type mf:QueryEvaluationTest ;
+    mf:name "pattern-10" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/pattern-10.rq> ; qt:data <sparql12/eval-triple-terms/data-9.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/pattern-10.srj> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#pattern-11> rdf:type mf:QueryEvaluationTest ;
+    mf:name "pattern-11" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/pattern-11.rq> ; qt:data <sparql12/eval-triple-terms/data-10.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/pattern-11.srj> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#construct-3> rdf:type mf:QueryEvaluationTest ;
+    mf:name "construct-3" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/construct-3.rq> ; qt:data <sparql12/eval-triple-terms/data-3.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/construct-3.ttl> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#construct-4> rdf:type mf:QueryEvaluationTest ;
+    mf:name "construct-4" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/construct-4.rq> ; qt:data <sparql12/eval-triple-terms/data-3.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/construct-4.ttl> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#construct-5> rdf:type mf:QueryEvaluationTest ;
+    mf:name "construct-5" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/construct-5.rq> ; qt:data <sparql12/eval-triple-terms/data-3.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/construct-5.ttl> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#graphs-1> rdf:type mf:QueryEvaluationTest ;
+    mf:name "graphs-1" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/graphs-1.rq> ; qt:data <sparql12/eval-triple-terms/data-4.trig> ] ;
+    mf:result <sparql12/eval-triple-terms/graphs-1.srj> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#expr-1> rdf:type mf:QueryEvaluationTest ;
+    mf:name "expr-1" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/expr-01.rq> ; qt:data <sparql12/eval-triple-terms/data-4.trig> ] ;
+    mf:result <sparql12/eval-triple-terms/expr-01.ttl> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#expr-2> rdf:type mf:QueryEvaluationTest ;
+    mf:name "expr-2" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/expr-02.rq> ; qt:data <sparql12/eval-triple-terms/empty.nq> ] ;
+    mf:result <sparql12/eval-triple-terms/expr-02.srj> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#op-1> rdf:type mf:QueryEvaluationTest ;
+    mf:name "op-1" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/op-1.rq> ; qt:data <sparql12/eval-triple-terms/data-7.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/op-1.srj> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#op-2> rdf:type mf:QueryEvaluationTest ;
+    mf:name "op-2" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/op-2.rq> ; qt:data <sparql12/eval-triple-terms/data-7.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/op-2.srj> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#order-2> rdf:type mf:QueryEvaluationTest ;
+    mf:name "order-2" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/order-by.rq> ; qt:data <sparql12/eval-triple-terms/data-order.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/order-2.srj> ;
+    .
+
+<sparql-sparql12-eval-triple-terms#update-1> rdf:type mf:UpdateEvaluationTest ;
+    mf:name "update-1" ;
+    mf:action [ ut:request <sparql12/eval-triple-terms/update-1.ru> ; ut:data <sparql12/eval-triple-terms/data-6.trig> ] ;
+    mf:result [ ut:data <sparql12/eval-triple-terms/update-result-1.trig> ] ;
+    .
+
+<sparql-sparql12-eval-triple-terms#update-2> rdf:type mf:UpdateEvaluationTest ;
+    mf:name "update-2" ;
+    mf:action [ ut:request <sparql12/eval-triple-terms/update-2.ru> ; ut:data <sparql12/eval-triple-terms/data-6.trig> ] ;
+    mf:result [ ut:data <sparql12/eval-triple-terms/update-result-2.trig> ] ;
+    .
+
+<sparql-sparql12-eval-triple-terms#update-3> rdf:type mf:UpdateEvaluationTest ;
+    mf:name "update-3" ;
+    mf:action [ ut:request <sparql12/eval-triple-terms/update-3.ru> ; ut:data <sparql12/eval-triple-terms/empty.nq> ] ;
+    mf:result [ ut:data <sparql12/eval-triple-terms/update-result-3.trig> ] ;
+    .
+
+<sparql-sparql12-eval-triple-terms#results-tripleterms-1x> rdf:type mf:QueryEvaluationTest ;
+    mf:name "results-tripleterms-1x" ;
+    mf:action [ qt:query <sparql12/eval-triple-terms/results-1.rq> ; qt:data <sparql12/eval-triple-terms/data-0-tripleterms.ttl> ] ;
+    mf:result <sparql12/eval-triple-terms/results-tripleterms-1.srx> ;
+    .
+
+<sparql-sparql12-syntax-triple-terms-positive#basic-reifier-07> rdf:type mf:PositiveSyntaxTest ;
+    mf:name "basic-reifier-07" ;
+    mf:action <sparql12/syntax-triple-terms-positive/basic-reifier-07.rq> ;
+    .
+
+<sparql-sparql12-syntax-triple-terms-positive#annotation-reifier-multiple-05> rdf:type mf:PositiveSyntaxTest ;
+    mf:name "annotation-reifier-multiple-05" ;
+    mf:action <sparql12/syntax-triple-terms-positive/annotation-reifier-multiple-05.rq> ;
+    .
+
+<sparql-sparql12-syntax-triple-terms-positive#compound-all> rdf:type mf:PositiveSyntaxTest ;
+    mf:name "compound-all" ;
+    mf:action <sparql12/syntax-triple-terms-positive/compound-all.rq> ;
+    .
+
+<sparql-sparql12-syntax-triple-terms-positive#update-reifier-07> rdf:type mf:PositiveUpdateSyntaxTest ;
+    mf:name "update-reifier-07" ;
+    mf:action <sparql12/syntax-triple-terms-positive/update-reifier-07.ru> ;
+    .
+
+<sparql-sparql12-syntax-triple-terms-negative#tripleterm-separate-01> rdf:type mf:NegativeSyntaxTest ;
+    mf:name "tripleterm-separate-01" ;
+    mf:action <sparql12/syntax-triple-terms-negative/tripleterm-separate-01.rq> ;
+    .
+
+<sparql-sparql12-syntax-triple-terms-negative#tripleterm-subject-04> rdf:type mf:NegativeSyntaxTest ;
+    mf:name "tripleterm-subject-04" ;
+    mf:action <sparql12/syntax-triple-terms-negative/tripleterm-subject-04.rq> ;
+    .
+
+<sparql-sparql12-syntax-triple-terms-negative#bind-reified> rdf:type mf:NegativeSyntaxTest ;
+    mf:name "bind-reified" ;
+    mf:action <sparql12/syntax-triple-terms-negative/bind-reified.rq> ;
+    .
+
+<sparql-sparql12-syntax-triple-terms-negative#annotated-reifier-path> rdf:type mf:NegativeSyntaxTest ;
+    mf:name "annotated-reifier-path" ;
+    mf:action <sparql12/syntax-triple-terms-negative/annotated-reifier-path.rq> ;
+    .
+
+<sparql-sparql12-syntax-triple-terms-negative#syntax-update-anonreifier-01> rdf:type mf:NegativeUpdateSyntaxTest ;
+    mf:name "syntax-update-anonreifier-01" ;
+    mf:action <sparql12/syntax-triple-terms-negative/syntax-update-anonreifier-01.ru> ;
+    .
+
+<sparql-sparql12-lang-basedir#langdir> rdf:type mf:QueryEvaluationTest ;
+    mf:name "langdir" ;
+    mf:action [ qt:query <sparql12/lang-basedir/langdir.rq> ; qt:data <sparql12/lang-basedir/data-lang.ttl> ] ;
+    mf:result <sparql12/lang-basedir/langdir.srj> ;
+    .
+
+<sparql-sparql12-lang-basedir#strlangdir> rdf:type mf:QueryEvaluationTest ;
+    mf:name "strlangdir" ;
+    mf:action [ qt:query <sparql12/lang-basedir/strlangdir.rq> ] ;
+    mf:result <sparql12/lang-basedir/strlangdir.srj> ;
+    .
+
+<sparql-sparql12-lang-basedir#haslangdir> rdf:type mf:QueryEvaluationTest ;
+    mf:name "haslangdir" ;
+    mf:action [ qt:query <sparql12/lang-basedir/haslangdir.rq> ; qt:data <sparql12/lang-basedir/data-lang.ttl> ] ;
+    mf:result <sparql12/lang-basedir/haslangdir.srj> ;
+    .
+
+<sparql-sparql12-lang-basedir#langdir-literal-invalid> rdf:type mf:NegativeSyntaxTest ;
+    mf:name "langdir-literal-invalid" ;
+    mf:action <sparql12/lang-basedir/langdir-literal-invalid.rq> ;
+    .
+
+<sparql-sparql12-expression#triple-on-literals> rdf:type mf:QueryEvaluationTest ;
+    mf:name "triple-on-literals" ;
+    mf:action [ qt:query <sparql12/expression/triple-on-literals.rq> ] ;
+    mf:result <sparql12/expression/triple-on-literals.srj> ;
+    .
+
+<sparql-sparql12-expression#triple-on-triple-terms> rdf:type mf:QueryEvaluationTest ;
+    mf:name "triple-on-triple-terms" ;
+    mf:action [ qt:query <sparql12/expression/triple-on-triple-terms.rq> ] ;
+    mf:result <sparql12/expression/triple-on-triple-terms.srj> ;
+    .

@@ -49,7 +49,11 @@ type Namespace struct {
 	URI    string `json:"uri"`
 }
 
-// RDFTerm represents one RDF term.
+// RDFTerm represents one RDF term: an IRI, a blank node, a literal, or an RDF
+// 1.2 triple term (see rdf_term12.go for how the last two carry RDF 1.2).
+//
+// For a literal, Language holds the language tag and, when the literal has
+// one, its base direction after a double hyphen: "en--ltr".
 type RDFTerm struct {
 	Kind     string `json:"kind"`
 	Value    string `json:"value"`
@@ -89,6 +93,12 @@ type TriplePattern struct {
 	Graph     *RDFTerm `json:"graph,omitempty"`
 	Inferred  *bool    `json:"inferred,omitempty"`
 	Limit     int      `json:"limit,omitempty"`
+
+	// objectTriple restricts the object to triple terms whose parts match,
+	// for a SPARQL pattern like <<( ?s :p ?o )>> that is not a constant. It
+	// applies only when Object is nil; unexported because the public way to
+	// ask is a constant triple term in Object.
+	objectTriple *tripleTermFilter
 }
 
 var builtinNamespaces = map[string]string{
@@ -151,7 +161,13 @@ func NewTypedLiteral(value, datatype string) RDFTerm {
 	}
 }
 
-// String renders the term using RDF-compatible syntax.
+// String renders the term using RDF-compatible syntax. A triple term renders
+// as its canonical spelling.
+//
+// The rendering of IRIs, blank nodes and literals is frozen: tripleDigest
+// hashes it, so changing it would give every stored triple a new ID. The
+// exporters write documents through rdfTermWriter instead, which spells
+// literals the way N-Triples requires.
 func (t RDFTerm) String() string {
 	switch t.Kind {
 	case RDFTermIRI:
@@ -413,9 +429,21 @@ func (g *GraphStore) GetTriple(ctx context.Context, id string) (*RDFTriple, erro
 // implies (see graph_projection.go), unless the projection has been turned
 // off. Limit applies to the two together.
 func (g *GraphStore) FindTriples(ctx context.Context, pattern TriplePattern) ([]RDFTriple, error) {
+	if pattern.Subject != nil && pattern.Subject.Kind == RDFTermTriple {
+		// Never stored (RDF 1.2), so the answer is none. Asked by every
+		// consumer that walks from a value to its properties — SHACL from a
+		// focus node, DESCRIBE from a resource — which should find a triple
+		// term has no properties rather than fail on it.
+		return nil, nil
+	}
 	stored, err := g.findStoredTriples(ctx, pattern)
 	if err != nil {
 		return nil, err
+	}
+	// The projection has no triple terms; a pattern that asks for one has
+	// nothing to find there.
+	if pattern.objectTriple != nil || (pattern.Object != nil && pattern.Object.Kind == RDFTermTriple) {
+		return stored, nil
 	}
 	limit := 0
 	if pattern.Limit > 0 {
@@ -477,6 +505,13 @@ func (g *GraphStore) findStoredTriples(ctx context.Context, pattern TriplePatter
 				args = append(args, object.Language)
 			}
 		}
+	} else if pattern.objectTriple != nil {
+		condition, conditionArgs, err := pattern.objectTriple.sqlCondition()
+		if err != nil {
+			return nil, err
+		}
+		conditions = append(conditions, condition)
+		args = append(args, conditionArgs...)
 	}
 	if pattern.Graph != nil {
 		graphTerm, err := g.normalizeTerm(ctx, *pattern.Graph, rdfPositionGraph)
@@ -583,6 +618,9 @@ func (g *GraphStore) deleteTriple(ctx context.Context, triple RDFTriple) (int, e
 	if err := g.cleanupOrphanRDFNodeTx(ctx, tx, normalized.Object); err != nil {
 		return 0, err
 	}
+	if err := g.cleanupTripleTermRowsTx(ctx, tx, normalized.Object); err != nil {
+		return 0, err
+	}
 
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("commit delete triple transaction: %w", err)
@@ -631,22 +669,9 @@ func (g *GraphStore) ExportRDF(ctx context.Context, writer io.Writer, format RDF
 
 	switch format {
 	case RDFFormatNTriples:
-		for _, triple := range triples {
-			if triple.Graph != nil {
-				return fmt.Errorf("ntriples cannot represent named graphs; use nquads or turtle")
-			}
-			if _, err := fmt.Fprintln(writer, triple.String()); err != nil {
-				return err
-			}
-		}
-		return nil
+		return writeLineStatements(writer, triples, false)
 	case RDFFormatNQuads:
-		for _, triple := range triples {
-			if _, err := fmt.Fprintln(writer, triple.String()); err != nil {
-				return err
-			}
-		}
-		return nil
+		return writeLineStatements(writer, triples, true)
 	case RDFFormatTurtle:
 		return g.exportTurtle(ctx, writer, triples)
 	case RDFFormatTriG:
@@ -681,190 +706,26 @@ func (g *GraphStore) exportTurtle(ctx context.Context, writer io.Writer, triples
 	if err != nil {
 		return err
 	}
-	for _, ns := range namespaces {
-		if _, err := fmt.Fprintf(writer, "@prefix %s: <%s> .\n", ns.Prefix, ns.URI); err != nil {
-			return err
-		}
-	}
-	if len(namespaces) > 0 {
-		if _, err := fmt.Fprintln(writer); err != nil {
-			return err
-		}
-	}
 	for _, triple := range triples {
 		if triple.Graph != nil {
 			return fmt.Errorf("turtle export currently supports only default graph statements")
 		}
-		subject, err := g.compactTerm(ctx, triple.Subject)
+	}
+	buffered := bufio.NewWriter(writer)
+	if err := writeTurtleHeader(buffered, namespaces, triples); err != nil {
+		return err
+	}
+	w := newRDFTermWriter(namespaces, true)
+	for _, triple := range triples {
+		line, err := w.statement(triple, false)
 		if err != nil {
 			return err
 		}
-		predicate, err := g.compactTerm(ctx, triple.Predicate)
-		if err != nil {
-			return err
-		}
-		object, err := g.compactTerm(ctx, triple.Object)
-		if err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(writer, "%s %s %s .\n", subject, predicate, object); err != nil {
+		if _, err := buffered.WriteString(line + "\n"); err != nil {
 			return err
 		}
 	}
-	return nil
-}
-
-func (g *GraphStore) importLineStatements(ctx context.Context, reader io.Reader, allowGraph bool) (int, error) {
-	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 0, 1024), 1024*1024)
-	count := 0
-	lineNo := 0
-	for scanner.Scan() {
-		lineNo++
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		triple, err := parseLineStatement(line, allowGraph)
-		if err != nil {
-			return count, fmt.Errorf("parse rdf line %d: %w", lineNo, err)
-		}
-		if err := g.UpsertTriple(ctx, triple); err != nil {
-			return count, fmt.Errorf("upsert rdf line %d: %w", lineNo, err)
-		}
-		count++
-	}
-	if err := scanner.Err(); err != nil {
-		return count, err
-	}
-	return count, nil
-}
-
-func parseLineStatement(line string, allowGraph bool) (*RDFTriple, error) {
-	var (
-		index int
-		terms []RDFTerm
-	)
-	for {
-		index = skipWhitespace(line, index)
-		if index >= len(line) {
-			break
-		}
-		if line[index] == '.' {
-			index++
-			break
-		}
-		term, next, err := parseTerm(line, index)
-		if err != nil {
-			return nil, err
-		}
-		terms = append(terms, term)
-		index = next
-	}
-	index = skipWhitespace(line, index)
-	if index != len(line) {
-		return nil, fmt.Errorf("unexpected trailing content: %q", line[index:])
-	}
-	if len(terms) < 3 || len(terms) > 4 {
-		return nil, fmt.Errorf("expected 3 or 4 terms, got %d", len(terms))
-	}
-	if len(terms) == 4 && !allowGraph {
-		return nil, fmt.Errorf("named graphs require nquads import")
-	}
-	triple := &RDFTriple{
-		Subject:   terms[0],
-		Predicate: terms[1],
-		Object:    terms[2],
-	}
-	if len(terms) == 4 {
-		graphTerm := terms[3]
-		triple.Graph = &graphTerm
-	}
-	return triple, nil
-}
-
-func parseTerm(line string, start int) (RDFTerm, int, error) {
-	switch {
-	case start >= len(line):
-		return RDFTerm{}, start, io.EOF
-	case line[start] == '<':
-		end := strings.IndexByte(line[start:], '>')
-		if end < 0 {
-			return RDFTerm{}, start, fmt.Errorf("unterminated iri")
-		}
-		value := line[start+1 : start+end]
-		return NewIRI(value), start + end + 1, nil
-	case strings.HasPrefix(line[start:], "_:"):
-		end := start + 2
-		for end < len(line) && !unicode.IsSpace(rune(line[end])) && line[end] != '.' {
-			end++
-		}
-		return NewBlankNode(line[start+2 : end]), end, nil
-	case line[start] == '"':
-		value, next, err := parseQuotedLiteral(line, start)
-		if err != nil {
-			return RDFTerm{}, start, err
-		}
-		term := NewLiteral(value)
-		next = skipWhitespace(line, next)
-		if strings.HasPrefix(line[next:], "@") {
-			next++
-			langStart := next
-			for next < len(line) && (unicode.IsLetter(rune(line[next])) || unicode.IsDigit(rune(line[next])) || line[next] == '-') {
-				next++
-			}
-			term.Language = strings.ToLower(line[langStart:next])
-			return term, next, nil
-		}
-		if strings.HasPrefix(line[next:], "^^") {
-			next += 2
-			datatype, end, err := parseTerm(line, next)
-			if err != nil {
-				return RDFTerm{}, start, err
-			}
-			if datatype.Kind != RDFTermIRI {
-				return RDFTerm{}, start, fmt.Errorf("literal datatype must be iri")
-			}
-			term.Datatype = datatype.Value
-			return term, end, nil
-		}
-		return term, next, nil
-	default:
-		return RDFTerm{}, start, fmt.Errorf("unsupported rdf term near %q", line[start:])
-	}
-}
-
-func parseQuotedLiteral(line string, start int) (string, int, error) {
-	var builder strings.Builder
-	i := start + 1
-	for i < len(line) {
-		switch line[i] {
-		case '\\':
-			if i+1 >= len(line) {
-				return "", start, fmt.Errorf("unterminated escape")
-			}
-			builder.WriteByte(line[i])
-			builder.WriteByte(line[i+1])
-			i += 2
-		case '"':
-			decoded, err := strconv.Unquote(`"` + builder.String() + `"`)
-			if err != nil {
-				return "", start, err
-			}
-			return decoded, i + 1, nil
-		default:
-			builder.WriteByte(line[i])
-			i++
-		}
-	}
-	return "", start, fmt.Errorf("unterminated literal")
-}
-
-func skipWhitespace(value string, index int) int {
-	for index < len(value) && unicode.IsSpace(rune(value[index])) {
-		index++
-	}
-	return index
+	return buffered.Flush()
 }
 
 func scanTriple(scanner interface {
@@ -980,9 +841,21 @@ func (g *GraphStore) normalizeTerm(ctx context.Context, term RDFTerm, position r
 
 func normalizeTermWithNamespaces(term RDFTerm, position rdfPosition, namespaces []Namespace) (RDFTerm, error) {
 	term.Kind = strings.TrimSpace(term.Kind)
-	term.Value = strings.TrimSpace(term.Value)
+	// A literal's lexical form is kept exactly, white space and all, and may
+	// be empty: "" and " x " are RDF literals distinct from "x", and an
+	// importer that trimmed them stored a different fact than the document
+	// stated — and refused outright a document holding an empty string.
+	if term.Kind != RDFTermLiteral {
+		term.Value = strings.TrimSpace(term.Value)
+	}
 	term.Datatype = strings.TrimSpace(strings.Trim(term.Datatype, "<>"))
 	term.Language = strings.ToLower(strings.TrimSpace(term.Language))
+
+	// RDF 1.2 admits a triple term in one position only. Checked before the
+	// generic position rules so the error says why, not merely what.
+	if term.Kind == RDFTermTriple && position != rdfPositionObject {
+		return RDFTerm{}, fmt.Errorf("rdf %s cannot be a triple term: RDF 1.2 allows triple terms only as objects", position)
+	}
 
 	switch position {
 	case rdfPositionSubject:
@@ -1001,15 +874,15 @@ func normalizeTermWithNamespaces(term RDFTerm, position rdfPosition, namespaces 
 			return RDFTerm{}, fmt.Errorf("rdf graph must be iri or blank node")
 		}
 	case rdfPositionObject:
-		if term.Kind != RDFTermIRI && term.Kind != RDFTermBlankNode && term.Kind != RDFTermLiteral {
-			return RDFTerm{}, fmt.Errorf("rdf object must be iri, blank node, or literal")
+		if term.Kind != RDFTermIRI && term.Kind != RDFTermBlankNode && term.Kind != RDFTermLiteral && term.Kind != RDFTermTriple {
+			return RDFTerm{}, fmt.Errorf("rdf object must be iri, blank node, literal, or triple term")
 		}
 	}
 
 	if term.Kind == "" {
 		return RDFTerm{}, fmt.Errorf("rdf term kind is required")
 	}
-	if term.Value == "" {
+	if term.Value == "" && term.Kind != RDFTermLiteral {
 		return RDFTerm{}, fmt.Errorf("rdf term value is required")
 	}
 	if term.Kind == RDFTermIRI {
@@ -1021,41 +894,53 @@ func normalizeTermWithNamespaces(term RDFTerm, position rdfPosition, namespaces 
 	if term.Kind == RDFTermLiteral && term.Datatype != "" {
 		term.Datatype = expandIRIWithNamespaces(term.Datatype, namespaces)
 	}
+	if term.Kind == RDFTermLiteral && strings.Contains(term.Language, "--") {
+		if dir := term.BaseDirection(); dir != "ltr" && dir != "rtl" {
+			return RDFTerm{}, fmt.Errorf("literal base direction must be ltr or rtl, got %q", dir)
+		}
+	}
+	if term.Kind == RDFTermTriple {
+		return normalizeTripleTermWithNamespaces(term, namespaces, 0)
+	}
 	return term, nil
 }
 
-func (g *GraphStore) compactTerm(ctx context.Context, term RDFTerm) (string, error) {
-	switch term.Kind {
-	case RDFTermIRI:
-		compacted, err := g.CompactIRI(ctx, term.Value)
-		if err != nil {
-			return "", err
-		}
-		if compacted == term.Value {
-			return term.String(), nil
-		}
-		return compacted, nil
-	case RDFTermBlankNode:
-		return term.String(), nil
-	case RDFTermLiteral:
-		if term.Datatype == "" {
-			return term.String(), nil
-		}
-		compacted, err := g.CompactIRI(ctx, term.Datatype)
-		if err != nil {
-			return "", err
-		}
-		out := strconv.Quote(term.Value)
-		if term.Language != "" {
-			return out + "@" + term.Language, nil
-		}
-		if compacted == term.Datatype {
-			return out + "^^<" + escapeIRI(term.Datatype) + ">", nil
-		}
-		return out + "^^" + compacted, nil
-	default:
-		return term.Value, nil
+// normalizeTripleTermWithNamespaces checks a triple term and re-spells it
+// canonically, expanding any prefixed IRI inside it the way a top-level term
+// is expanded. Literals inside are kept exactly: the canonical spelling is the
+// term's identity, and two literals that differ only in white space are two
+// different terms.
+func normalizeTripleTermWithNamespaces(term RDFTerm, namespaces []Namespace, depth int) (RDFTerm, error) {
+	if depth > maxTripleTermDepth {
+		return RDFTerm{}, fmt.Errorf("triple term nested deeper than %d", maxTripleTermDepth)
 	}
+	triple, err := decodeTripleTermValue(term.Value)
+	if err != nil {
+		return RDFTerm{}, err
+	}
+	expand := func(part RDFTerm) (RDFTerm, error) {
+		switch part.Kind {
+		case RDFTermIRI:
+			part.Value = expandIRIWithNamespaces(part.Value, namespaces)
+		case RDFTermLiteral:
+			if part.Datatype != "" {
+				part.Datatype = expandIRIWithNamespaces(part.Datatype, namespaces)
+			}
+		case RDFTermTriple:
+			return normalizeTripleTermWithNamespaces(part, namespaces, depth+1)
+		}
+		return part, nil
+	}
+	if triple.Subject, err = expand(triple.Subject); err != nil {
+		return RDFTerm{}, err
+	}
+	if triple.Predicate, err = expand(triple.Predicate); err != nil {
+		return RDFTerm{}, err
+	}
+	if triple.Object, err = expand(triple.Object); err != nil {
+		return RDFTerm{}, err
+	}
+	return NewTripleTerm(triple.Subject, triple.Predicate, triple.Object)
 }
 
 func (g *GraphStore) upsertRDFTermNodeTx(ctx context.Context, tx *sql.Tx, term RDFTerm) error {
@@ -1240,6 +1125,8 @@ func rdfTermLabelWithNamespaces(term RDFTerm, namespaces []Namespace) string {
 		return "_:" + term.Value
 	case RDFTermLiteral:
 		return term.Value
+	case RDFTermTriple:
+		return compactTripleTermLabel(term, namespaces)
 	default:
 		return term.Value
 	}
@@ -1250,9 +1137,14 @@ func (g *GraphStore) upsertPreparedTripleTx(ctx context.Context, tx *sql.Tx, tri
 	if err := g.upsertRDFTermNodeWithLabelTx(ctx, tx, triple.Subject, subjectLabel); err != nil {
 		return err
 	}
-	if triple.Object.Kind == RDFTermIRI || triple.Object.Kind == RDFTermBlankNode || triple.Object.Kind == RDFTermLiteral {
+	if triple.Object.Kind == RDFTermIRI || triple.Object.Kind == RDFTermBlankNode || triple.Object.Kind == RDFTermLiteral || triple.Object.Kind == RDFTermTriple {
 		objectLabel := rdfTermLabelWithNamespaces(triple.Object, namespaces)
 		if err := g.upsertRDFTermNodeWithLabelTx(ctx, tx, triple.Object, objectLabel); err != nil {
+			return err
+		}
+	}
+	if triple.Object.Kind == RDFTermTriple {
+		if err := g.upsertTripleTermRowsTx(ctx, tx, triple.Object); err != nil {
 			return err
 		}
 	}
@@ -1328,6 +1220,9 @@ func rdfNodeType(term RDFTerm) string {
 	case RDFTermLiteral:
 		return "rdf_literal"
 	default:
+		// Triple terms included. "rdf_term" is on the projection's list of
+		// mirror node types, so the node a triple term gets in the property
+		// graph is never read back as a property-graph node of its own.
 		return "rdf_term"
 	}
 }

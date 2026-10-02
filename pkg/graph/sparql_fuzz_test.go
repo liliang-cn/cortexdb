@@ -53,6 +53,15 @@ func FuzzExecuteSPARQL(f *testing.F) {
 		`SELECT (COUNT(DISTINCT *) AS ?c) (GROUP_CONCAT(DISTINCT ?n; SEPARATOR="|") AS ?g) WHERE { ?s ?p ?n } GROUP BY ?s ORDER BY DESC(?c)`,
 		"SELECT REDUCED ?x WHERE { VALUES ?x { -1 +2 3.5 } BIND(ROUND(?x) / 0 AS ?y) FILTER regex(STR(?y), \"1\") }",
 		"SELECT (IF(BOUND(?x), STRLEN(?x), NOW()) AS ?v) (TIMEZONE(?x) AS ?t) WHERE { FILTER NOT EXISTS { ?x ?p ?o } }",
+		// SPARQL 1.2: triple terms, reified triples, annotations, functions.
+		"INSERT DATA { ex:a ex:b ex:c ~ ex:r {| ex:src ex:d ; ex:conf 0.9 |} }",
+		"SELECT * WHERE { ?r <http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> <<( ?s ?p <<( ?a ?b ?c )>> )>> }",
+		"SELECT * { << ?s ?p ?o ~ ?r >> ?q ?z . ?s ?p ?o {| ?x ?y |} {| ?u ?v |} }",
+		"CONSTRUCT { << ?s ?p ?o >> ex:seen true } WHERE { ?s ?p ?o }",
+		`SELECT (TRIPLE(?s, ?p, "x"@en--ltr) AS ?t) (SUBJECT(?t) AS ?u) (LANGDIR("a"@ar--rtl) AS ?d) WHERE { ?s ?p ?o } ORDER BY ?t`,
+		"SELECT * { VALUES ?t { <<( ex:a ex:b <<( ex:c ex:d 1 )>> )>> UNDEF } FILTER(isTRIPLE(?t) && ?t = <<( ex:a ex:b ?o )>>) }",
+		"SELECT * { [ ex:p ( 1 [ ex:q _:b ] ) ] ex:p/ex:q? ?o }",
+		"INSERT DATA { ex:s ex:p ex:o } ; DELETE DATA { ex:s ex:p ex:o } ; VERSION \"1.2\" BASE <http://x/> ASK {}",
 	} {
 		f.Add(seed)
 	}
