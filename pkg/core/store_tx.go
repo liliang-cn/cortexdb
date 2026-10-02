@@ -79,7 +79,7 @@ func (s *SQLiteStore) UpsertBatchTx(ctx context.Context, tx *sql.Tx, embs []*Emb
 }
 
 // SyncUpsertedEmbeddings updates in-memory indexes after embeddings were committed through UpsertBatchTx.
-func (s *SQLiteStore) SyncUpsertedEmbeddings(_ context.Context, embs []*Embedding) {
+func (s *SQLiteStore) SyncUpsertedEmbeddings(ctx context.Context, embs []*Embedding) {
 	if len(embs) == 0 {
 		return
 	}
@@ -108,6 +108,8 @@ func (s *SQLiteStore) SyncUpsertedEmbeddings(_ context.Context, embs []*Embeddin
 			}
 		}
 	}
+
+	s.binaryAdd(ctx, embs...)
 }
 
 func lookupCollectionIDTx(ctx context.Context, tx *sql.Tx, emb *Embedding) (int, error) {

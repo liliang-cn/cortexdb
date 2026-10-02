@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/bits"
 	"math/rand"
 )
 
@@ -282,14 +283,11 @@ func (bq *BinaryQuantizer) HammingDistance(a, b []byte) int {
 		return -1
 	}
 
+	// One popcount per byte (math/bits compiles it to the hardware
+	// instruction) rather than a loop per set bit.
 	distance := 0
 	for i := range a {
-		xor := a[i] ^ b[i]
-		// Count set bits (Brian Kernighan's algorithm)
-		for xor != 0 {
-			distance++
-			xor &= xor - 1
-		}
+		distance += bits.OnesCount8(a[i] ^ b[i])
 	}
 
 	return distance

@@ -27,4 +27,5 @@ func (s *SQLiteStore) SyncDeletedEmbeddingIDs(_ context.Context, ids []string) {
 			_ = s.ivfIndex.Delete(id)
 		}
 	}
+	s.binaryDelete(ids...)
 }

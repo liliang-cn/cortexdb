@@ -265,6 +265,8 @@ func (db *DB) Info() DBInfo {
 		info.IndexType = "IVF"
 	case core.IndexTypeFlat:
 		info.IndexType = "Flat"
+	case core.IndexTypeBinary:
+		info.IndexType = "Binary"
 	default:
 		info.IndexType = "Unknown"
 	}

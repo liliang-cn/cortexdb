@@ -77,6 +77,10 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 		return wrapError("init", err)
 	}
 
+	if err := s.initBinaryIndex(ctx); err != nil {
+		return wrapError("init", err)
+	}
+
 	s.logger.Info("database initialized", "path", s.config.Path)
 
 	// Start auto-save if enabled
