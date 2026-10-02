@@ -116,7 +116,21 @@ const (
 	// least of it: on the dev splits recall@5 is unchanged from 200 down to
 	// 20 and drops a point at 10, while p95 falls to the lexical range.
 	pprMaxFrontier = 20
+	// pprHubMinMentions is the fewest mentions at which an entity can be a
+	// hub (pprHubShare): below it every entity is specific enough to seed
+	// from, however small the store.
+	pprHubMinMentions = 20
 )
+
+// pprHubShare is the share of a store's passages above which an entity the
+// query names is not a seed. Specificity weighting alone does not handle it:
+// it lowers a hub's weight against other seeds, but when the hub is the only
+// entity a question names, the walk starts from it all the same, spreads
+// over most of the store, and its ranking is noise that RRF still gives a
+// vote. That is a conversation, where every turn names its speaker: on
+// LoCoMo "Caroline" is mentioned by 77% of her conversation's turns, and
+// walking from her cost 10 points of recall@1.
+var pprHubShare = 0.10
 
 // PPRRetrievalOptions tunes RetrievalModePPR. The zero value is the measured
 // default; every field is optional.
@@ -188,17 +202,13 @@ type pprRankedPassage struct {
 // pprSeeds builds the teleport vector: query entities weighted by
 // specificity, and — under PPR fusion, or when no entity matched — the
 // first-stage passages weighted by their normalised score.
-func (db *DB) pprSeeds(ctx context.Context, query string, entityNames []string, passageIDs []string, passageScores []float64, opts PPRRetrievalOptions) (map[string]float64, []string, error) {
-	entityIDs, err := db.queryEntityNodeIDs(ctx, query, entityNames)
+func (db *DB) pprSeeds(ctx context.Context, query string, entityNames []string, passageNodeType string, passageIDs []string, passageScores []float64, opts PPRRetrievalOptions) (map[string]float64, []string, error) {
+	entityIDs, counts, err := db.seedEntities(ctx, query, entityNames, passageNodeType)
 	if err != nil {
 		return nil, nil, err
 	}
 	seeds := make(map[string]float64, len(entityIDs)+len(passageIDs))
 	if len(entityIDs) > 0 {
-		counts, err := db.mentionCounts(ctx, entityIDs)
-		if err != nil {
-			return nil, nil, err
-		}
 		for _, id := range entityIDs {
 			n := counts[id]
 			if n < 1 {
@@ -434,6 +444,70 @@ func (db *DB) mentionCounts(ctx context.Context, entityIDs []string) (map[string
 	return counts, nil
 }
 
+// seedEntities returns the entities the query names that a walk can start
+// from — those in the graph and not hubs — with how many passages mention
+// each.
+func (db *DB) seedEntities(ctx context.Context, query string, entityNames []string, passageNodeType string) ([]string, map[string]int, error) {
+	entityIDs, err := db.queryEntityNodeIDs(ctx, query, entityNames)
+	if err != nil || len(entityIDs) == 0 {
+		return nil, nil, err
+	}
+	counts, err := db.mentionCounts(ctx, entityIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	entityIDs, err = db.dropHubEntities(ctx, entityIDs, counts, passageNodeType)
+	if err != nil {
+		return nil, nil, err
+	}
+	return entityIDs, counts, nil
+}
+
+// autoWalksFromAnEntity undoes autoUsesWalk when the query names no entity
+// a walk can start from: none it names is in the graph, or only hubs are.
+// The walk would then start from the first-stage passages and re-rank what
+// lexical search already ranked — on LoCoMo, worse. Asked for by name, ppr
+// still walks from the passages, as HippoRAG does.
+func (db *DB) autoWalksFromAnEntity(ctx context.Context, resolution *retrievalPlanResolution) error {
+	decision := &resolution.Decision
+	if decision.RequestedMode != RetrievalModeAuto || decision.EffectiveMode != RetrievalModePPR {
+		return nil
+	}
+	entities, _, err := db.seedEntities(ctx, resolution.Plan.Query, resolution.Plan.EntityNames, "chunk")
+	if err != nil || len(entities) > 0 {
+		return err
+	}
+	decision.EffectiveMode = RetrievalModeLexical
+	decision.UseGraph = false
+	decision.Reason = "auto mode stayed lexical: the query names no entity specific enough to walk the entity graph from"
+	resolution.Plan.RetrievalMode = RetrievalModeLexical
+	return nil
+}
+
+// dropHubEntities removes the entities mentioned by more than pprHubShare of
+// the store's passages (nodes of passageNodeType); see pprHubShare.
+func (db *DB) dropHubEntities(ctx context.Context, entityIDs []string, counts map[string]int, passageNodeType string) ([]string, error) {
+	most := 0
+	for _, id := range entityIDs {
+		most = max(most, counts[id])
+	}
+	if most <= pprHubMinMentions {
+		return entityIDs, nil
+	}
+	var passages int
+	if err := db.queryRow(ctx, `SELECT COUNT(*) FROM graph_nodes WHERE node_type = ?`, passageNodeType).Scan(&passages); err != nil {
+		return nil, fmt.Errorf("count passages: %w", err)
+	}
+	limit := max(pprHubMinMentions, int(pprHubShare*float64(passages)))
+	kept := entityIDs[:0:0]
+	for _, id := range entityIDs {
+		if counts[id] <= limit {
+			kept = append(kept, id)
+		}
+	}
+	return kept, nil
+}
+
 // runPPR walks from the seeds and returns the walk's nodes best first,
 // skipping the seed entities themselves and the node kinds that are never
 // passages (entities, documents), at most pprMaxCandidates of them.
@@ -571,7 +645,7 @@ func (db *DB) searchKnowledgePPR(ctx context.Context, req KnowledgeSearchRequest
 		scores = append(scores, c.Score)
 	}
 
-	seeds, seedEntities, err := db.pprSeeds(ctx, resolution.Plan.Query, resolution.Plan.EntityNames, ids, scores, pprOpts)
+	seeds, seedEntities, err := db.pprSeeds(ctx, resolution.Plan.Query, resolution.Plan.EntityNames, "chunk", ids, scores, pprOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -726,7 +800,7 @@ func (db *DB) searchMemoryPPR(ctx context.Context, req MemorySearchRequest, reso
 		scores = append(scores, h.Score)
 	}
 
-	seeds, seedEntities, err := db.pprSeeds(ctx, resolution.Plan.Query, resolution.Plan.EntityNames, ids, scores, pprOpts)
+	seeds, seedEntities, err := db.pprSeeds(ctx, resolution.Plan.Query, resolution.Plan.EntityNames, "memory", ids, scores, pprOpts)
 	if err != nil {
 		return nil, "", err
 	}

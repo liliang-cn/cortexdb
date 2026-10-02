@@ -234,6 +234,9 @@ func (db *DB) SearchKnowledge(ctx context.Context, req KnowledgeSearchRequest) (
 		return nil, ErrEmptyText
 	}
 	autoUsesWalk(&resolution.Decision, db.HasEmbedder())
+	if err := db.autoWalksFromAnEntity(ctx, &resolution); err != nil {
+		return nil, err
+	}
 
 	opts := GraphRAGQueryOptions{
 		Collection:          applyRetrievalPlanCollection(req.Collection, resolution.Plan.Filters),
