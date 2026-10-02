@@ -176,6 +176,10 @@ type GraphStore struct {
 	// at the same instant produce a version interval nothing can read.
 	clock temporalClock
 
+	// stmts keeps write statements prepared across transactions; see
+	// stmt_cache.go.
+	stmts stmtCache
+
 	// vecCap is what in-database vector search can do here, decided once when
 	// the schema is created. The zero value — everything false — is the
 	// SQLite backend and any PostgreSQL without pgvector, both of which fall
@@ -239,11 +243,6 @@ func (g *GraphStore) queryRow(ctx context.Context, q string, args ...any) *sql.R
 // worked, which reads as something much stranger than a missing rebind.
 func (g *GraphStore) txPrepare(ctx context.Context, tx *sql.Tx, q string) (*sql.Stmt, error) {
 	return tx.PrepareContext(ctx, g.dialect.Rebind(q))
-}
-
-// txExec is the same for a statement inside a transaction.
-func (g *GraphStore) txExec(ctx context.Context, tx *sql.Tx, q string, args ...any) (sql.Result, error) {
-	return tx.ExecContext(ctx, g.dialect.Rebind(q), args...)
 }
 
 func (g *GraphStore) txQueryRow(ctx context.Context, tx *sql.Tx, q string, args ...any) *sql.Row {
