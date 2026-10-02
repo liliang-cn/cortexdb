@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.117.0] - 2026-10-02
+
+### Changed
+
+- **The live view, redesigned.** Glass panels on a deep field with one accent;
+  the explore bar is the page's main control, its results fold away once you
+  open a node so the node is not under them; node types are chips with counts,
+  each one a filter; the inspector leads with the record's name and a coloured
+  type chip. Names are drawn on the scene — the hubs on a first look, then
+  whatever is selected, hovered or lit — placed every frame from the graph's
+  own projection and kept from overlapping. Focus no longer turns the rest of
+  the brain into grey beads: dimmed nodes keep their hue at a fifth of its
+  brightness and shrink. Bloom is calmer and the layout airier, so the core is
+  no longer one white-cyan blur. Flying to a node stops at a fixed distance
+  along the line of sight instead of inside the cluster, re-aims once the
+  layout settles, and on a phone lands above the inspector sheet. Controls,
+  activity and the contract start folded; the remembered fold layout is reset
+  once (new storage key) so everyone gets the new defaults.
+
+### Fixed
+
+- CI: `pkg/cortexdb` took 583s of `go test`'s 10-minute default under `-race`
+  and coverage, and the v2.116.0 tag build crossed it. The race step now has a
+  25-minute budget; the 33,000-entity placeholder test, single-goroutine and
+  266s under the race detector against 4s without, skips under `-race` and runs
+  in its own step without it; the as-of query-plan test seeds 60 rows instead
+  of 2,000, since the planner has no statistics and the plan does not depend on
+  the count. **2.116.0 has no release binaries** — its tag build timed out — but
+  it is on the module proxy, so 2.117.0 ships its changes.
+
 ## [2.116.0] - 2026-10-02
 
 ### Added
