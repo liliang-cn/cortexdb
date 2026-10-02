@@ -268,6 +268,8 @@ const pageTemplate = `<!DOCTYPE html>
   #xbar{display:flex;gap:6px;align-items:center;font-size:11px;color:#64748b}
   #xbar:empty{display:none}
   #xbar button{flex:none;padding:3px 9px}
+  #explore.min #xout{display:none}
+  #xbar .push{margin-left:auto}
   #explore.folded>.fold::before{content:"+"}
   #explore.folded>.bd{display:none}
   #explore.folded{display:block;width:auto;min-width:0;max-height:none;padding:5px 30px 5px 11px}
@@ -323,10 +325,121 @@ const pageTemplate = `<!DOCTYPE html>
     animation:sp .8s linear infinite}
   @keyframes sp{to{transform:rotate(360deg)}}
   #boot span{color:#475569;font-size:12px}
+
+  /* ================= the look =================
+     One set of tokens over everything above: glass panels on a deep field,
+     one accent, quiet type. Written after the layout rules so it restyles
+     without moving anything. */
+  :root{--bg:#05070d;--panel:rgba(10,14,24,.74);--panel2:rgba(255,255,255,.035);
+    --line:rgba(148,163,184,.11);--line2:rgba(148,163,184,.2);--ink:#e8eef8;--ink2:#a6b3c7;
+    --mute:#66758c;--acc:#5eead4;--acc2:#60a5fa;--r:14px}
+  html,body{background:var(--bg);color:var(--ink2);
+    font:13px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB",sans-serif;
+    -webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 1}
+  #vignette{position:fixed;inset:0;pointer-events:none;z-index:1;
+    background:radial-gradient(ellipse 70% 60% at 50% 48%,transparent 55%,rgba(2,3,8,.55) 100%)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+    box-shadow:0 18px 50px -20px rgba(0,0,0,.75),inset 0 1px 0 rgba(255,255,255,.04);
+    -webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35)}
+  #tools h3,#legend h3,#feed h3,#contract h3,#contract .sub,#detail .k,#detail .sub,#xout .sub{
+    font-size:10.5px;font-weight:600;letter-spacing:.07em;color:var(--mute)}
+  button{background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--ink2);
+    font-weight:500;transition:background .15s,border-color .15s,color .15s}
+  button:hover{background:rgba(255,255,255,.07);border-color:var(--line2);color:var(--ink)}
+  button.on{background:linear-gradient(135deg,rgba(94,234,212,.2),rgba(96,165,250,.2));
+    border-color:rgba(94,234,212,.42);color:#f0fdfa;box-shadow:none}
+  #tools input,#tools select,#explore input,#explore textarea{background:rgba(2,5,12,.55);
+    border:1px solid var(--line2);border-radius:10px;color:var(--ink)}
+  #tools input:focus,#tools select:focus,#explore input:focus,#explore textarea:focus{
+    border-color:rgba(94,234,212,.55);box-shadow:0 0 0 3px rgba(94,234,212,.12)}
+  .fold{color:#4d5b72}
+  .fold:hover{color:var(--ink)}
+  #head.folded::before,#tools.folded::before,#legend.folded::before,#feed.folded::before,
+  #contract.folded::before,#explore.folded::before{color:var(--ink2);letter-spacing:.05em;font-weight:500}
+  /* The title: one quiet line, the state as a dot rather than a shouting badge. */
+  #head{padding:11px 34px 11px 14px}
+  #head h1{font-size:13.5px;font-weight:650;color:var(--ink);letter-spacing:-.01em}
+  #head h1 a{color:var(--acc);font-weight:500;font-size:12px;opacity:.85}
+  #counts{color:var(--mute);font-size:11.5px;margin-top:3px}
+  #counts b{color:var(--ink);font-weight:600}
+  .badge{border:none;background:rgba(94,234,212,.08);color:var(--acc);font-size:10.5px;
+    letter-spacing:.03em;text-transform:none;padding:3px 9px;margin-top:8px}
+  .badge .led{background:var(--acc);box-shadow:0 0 10px var(--acc)}
+  /* Explore: the search field is the page's main control, so it looks like one. */
+  #explore{padding:8px;gap:8px;width:min(580px,calc(100vw - 560px))}
+  #explore .tabs{background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:10px;
+    padding:3px;gap:2px;align-self:flex-start;margin-right:26px}
+  #explore .tabs button{background:transparent;border:none;border-radius:7px;color:var(--mute);
+    padding:4px 12px;font-size:12px}
+  #explore .tabs button:hover{color:var(--ink)}
+  #explore .tabs button.on{background:rgba(94,234,212,.14);color:var(--acc)}
+  #explore input{padding:10px 13px;font-size:14px;border-radius:11px}
+  #explore .go{background:linear-gradient(135deg,#2dd4bf,#3b82f6);border:none;color:#04121a;
+    font-weight:650;border-radius:11px;padding:0 18px;font-size:13px}
+  #explore .go:hover{filter:brightness(1.1);color:#04121a}
+  #xbar{color:var(--mute)}
+  #xbar button{border-radius:999px;padding:3px 11px;font-size:11px}
+  #xout{font-size:12.5px}
+  #xout .say{color:var(--mute);font-size:11.5px}
+  .hit{border-radius:10px;padding:7px 9px}
+  .hit:hover,.hit:focus{background:rgba(255,255,255,.05);border-color:var(--line)}
+  .hit .hl{color:var(--ink)}
+  .hit .hm{color:var(--mute)}
+  .txt{border-left:2px solid rgba(94,234,212,.35);color:var(--ink2);padding:6px 10px;margin:5px 0}
+  .fact{border-radius:8px;padding:5px 9px}
+  .fact:hover{background:rgba(255,255,255,.05)}
+  .fact i{color:var(--acc)}
+  #xout th{background:rgba(10,14,24,.96);color:var(--mute)}
+  #xout td,#xout th{border-bottom-color:var(--line)}
+  /* The legend as chips: what the scene is made of, most first, each one a
+     filter. */
+  #legend{max-width:340px;padding:11px 12px}
+  #legenditems{display:flex;flex-wrap:wrap;gap:5px}
+  .li{display:inline-flex;align-items:center;gap:6px;margin:0;padding:3px 9px 3px 7px;border-radius:999px;
+    background:var(--panel2);border:1px solid var(--line);color:var(--ink2);cursor:pointer;font-size:11px}
+  .li:hover{border-color:var(--line2);color:var(--ink)}
+  .li.sel{border-color:rgba(94,234,212,.5);color:var(--ink);background:rgba(94,234,212,.1)}
+  .li .n{color:var(--mute);font-size:10.5px}
+  .li.wide{display:flex;width:100%;border-radius:10px;cursor:default;padding:6px 9px}
+  .dot{width:8px;height:8px;box-shadow:0 0 8px currentColor}
+  #feed{width:310px}
+  .ev{border-bottom-color:var(--line)}
+  .ev .t{color:var(--ink2)}
+  /* The inspector: the record's name large, its type as a coloured chip. */
+  #detail{width:360px;padding:16px}
+  #detail .t{font-size:17px;font-weight:650;letter-spacing:-.015em;color:var(--ink);line-height:1.3}
+  #detail .x{top:12px;right:14px;color:var(--mute);font-size:20px}
+  .tchip{display:inline-block;font-size:10.5px;font-weight:600;letter-spacing:.02em;padding:2px 8px;
+    border-radius:999px;margin-bottom:7px;color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent);
+    border:1px solid color-mix(in srgb,var(--c) 38%,transparent)}
+  #detail .r{margin-top:11px}
+  #detail .v{color:var(--ink);font-size:12.5px}
+  #detail .quote{background:rgba(2,5,12,.55);border-left-color:rgba(94,234,212,.35)}
+  #dacts button{border-radius:999px;padding:6px 12px}
+  #dacts button:first-child{background:linear-gradient(135deg,rgba(45,212,191,.22),rgba(59,130,246,.22));
+    border-color:rgba(94,234,212,.4);color:#f0fdfa}
+  /* Names on the scene: the hubs, and whatever is lit or hovered. */
+  #labels{position:fixed;inset:0;pointer-events:none;z-index:5;overflow:hidden}
+  .nl{position:absolute;left:0;top:0;white-space:nowrap;font-size:11px;font-weight:550;color:#eef4fc;
+    padding:2px 7px;border-radius:7px;background:rgba(5,8,15,.62);border:1px solid rgba(148,163,184,.14);
+    text-shadow:0 1px 2px rgba(0,0,0,.8);will-change:transform;transition:opacity .2s}
+  .nl.hub{color:var(--ink2);font-weight:500;background:rgba(5,8,15,.4);border-color:transparent}
+  .nl.sel{color:#04121a;background:var(--acc);border-color:var(--acc);font-weight:650}
+  #toast{background:rgba(10,14,24,.92);border-color:var(--line2);color:var(--ink)}
+  @media (max-width:1060px) and (min-width:761px){ #explore{width:min(520px,calc(100vw - 264px))} }
+  @media (max-width:760px){
+    #explore{width:auto}
+    #detail{width:auto;max-height:46vh;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
+    #detail .t{font-size:16px}
+    #legend{max-width:calc(100vw - 16px)}
+    .nl.hub{display:none}
+  }
 </style>
 </head>
 <body>
 <div id="scene"></div>
+<div id="vignette"></div>
+<div id="labels"></div>
 
 <!-- Said before anything else on the page, because everything else on the page
      is about to be a lie if this is on and unread. -->
@@ -554,11 +667,11 @@ G = ForceGraph3D()(document.getElementById("scene"))
   })
   .nodeColor(nodeColor)
   .nodeVal(nodeVal)
-  .nodeOpacity(0.95)
-  .nodeResolution(8)
+  .nodeOpacity(0.94)
+  .nodeResolution(14)
   .linkColor(linkColor)
   .linkWidth(linkWidth)
-  .linkOpacity(0.32)
+  .linkOpacity(0.34)
   .linkDirectionalParticles(linkParticles)
   .linkDirectionalParticleWidth(1.8)
   .linkDirectionalParticleSpeed(0.006)
@@ -590,19 +703,21 @@ G.d3VelocityDecay(0.32);
 // have nothing pulling back and drift until the interesting part is a speck in
 // the middle of empty space. Capping the range lets neighbourhoods spread
 // without the whole graph inflating, and it is cheaper besides.
-G.d3Force("charge").strength(-42).distanceMax(340);
+G.d3Force("charge").strength(-58).distanceMax(380);
+G.d3Force("link").distance(34);
 
 /* ---------- accessors ---------- */
 // Degree drives size, so hubs are physically bigger and therefore bloom wider.
 function degreeOf(id){ return (adj[id]||[]).length; }
 function nodeVal(n){
-  var base = 1.1 + Math.min(6, degreeOf(n.id)*0.42);
+  var base = 0.7 + Math.min(7, degreeOf(n.id)*0.35);
   var f = flash[n.id];
   if(f){
     var k = (f.until - Date.now())/f.span;      // 1 at the strike, 0 at the end
     if(k>0) base *= 1 + 2.2*k*k;
   }
   if(pathNodes[n.id]) base *= 1.5;
+  else if(isDimmed(n)) base *= 0.6;
   return base;
 }
 // baseColor is the one place the colour mode is read. Everything above it —
@@ -610,13 +725,32 @@ function nodeVal(n){
 // outranks both modes, and folding the mode in here rather than at each of
 // those keeps the precedence in one readable order.
 function baseColor(n){ return gradingOn() ? gradeTint(n.grade) : colorOf(n.type); }
+// dimColor keeps a node's hue when something else is in focus: the rest of
+// the brain recedes like distant stars instead of turning into grey beads.
+var dimCache = {}, dimCtx = null;
+function dimColor(c){
+  if(dimCache[c]) return dimCache[c];
+  if(!dimCtx){ dimCtx = document.createElement("canvas").getContext("2d"); }
+  dimCtx.fillStyle = "#000"; dimCtx.fillStyle = c;
+  var hex = dimCtx.fillStyle, r = 120, g = 130, b = 150;
+  if(/^#[0-9a-f]{6}$/i.test(hex)){ r = parseInt(hex.substr(1,2),16); g = parseInt(hex.substr(3,2),16); b = parseInt(hex.substr(5,2),16); }
+  var k = 0.2;
+  var out = "rgb(" + Math.round(5 + (r-5)*k) + "," + Math.round(7 + (g-7)*k) + "," + Math.round(13 + (b-13)*k) + ")";
+  dimCache[c] = out;
+  return out;
+}
+function isDimmed(n){
+  if(Object.keys(pathNodes).length) return !pathNodes[n.id];
+  if(hoverSet) return !hoverSet[n.id];
+  if(hlCount) return !hl[n.id];
+  if(query) return !matches(n);
+  return false;
+}
 function nodeColor(n){
   var f = flash[n.id];
   if(f && f.until > Date.now()) return f.color;
-  if(Object.keys(pathNodes).length) return pathNodes[n.id] ? "#fde68a" : "#131c2e";
-  if(hoverSet) return hoverSet[n.id] ? baseColor(n) : "#141d31";
-  if(hlCount) return hl[n.id] ? baseColor(n) : "#121a2b";
-  if(query) return matches(n) ? baseColor(n) : "#121a2b";
+  if(Object.keys(pathNodes).length) return pathNodes[n.id] ? "#fde68a" : dimColor(baseColor(n));
+  if(isDimmed(n)) return dimColor(baseColor(n));
   return baseColor(n);
 }
 function matches(n){
@@ -637,7 +771,7 @@ function linkColor(l){
   if(hoverSet){ var h = endsOf(l); return (hoverSet.__id===h[0] || hoverSet.__id===h[1]) ? "#7dd3fc" : "#0d1526"; }
   if(hlCount){ var e = endsOf(l); if(hl[e[0]] && hl[e[1]]) return "#60a5fa"; return "#0d1526"; }
   if(l.__hot && l.__hot > Date.now()) return "#93c5fd";
-  return gradingOn() ? gradeTint(l.grade) : "#2b5289";
+  return gradingOn() ? gradeTint(l.grade) : "#3b6296";
 }
 function linkWidth(l){
   if(pathLinks[keyOf(l)]) return 2.4;
@@ -808,10 +942,13 @@ function setCounts(n,e){
 // lastNodes is kept so flipping the mode can redraw the legend without waiting
 // for the next snapshot.
 var lastNodes = [];
+var typeCounts = {};
 function rebuildLegend(nodes){
   lastNodes = nodes;
   var seen = {}, types = [];
-  nodes.forEach(function(n){ var t=n.type||"(untyped)"; if(!seen[t]){seen[t]=true;types.push(t);} });
+  typeCounts = {};
+  nodes.forEach(function(n){ var t=n.type||"(untyped)"; typeCounts[t] = (typeCounts[t]||0) + 1;
+    if(!seen[t]){seen[t]=true;types.push(t);} });
   types.sort();
   var sel = document.getElementById("type"), keep = sel.value;
   sel.innerHTML = "<option value=''>All types</option>" + types.map(function(t){
@@ -832,10 +969,27 @@ function drawLegend(types){
   if(colorMode !== "grade"){
     title.textContent = "Node types";
     panel.setAttribute("data-label", "Node types");
-    box.innerHTML = types.map(function(t){
-      return "<div class='li'><span class='dot' style='background:" +
-        colorOf(t==="(untyped)"?"":t) + "'></span>" + esc(t) + "</div>";
-    }).join("");
+    // Most common first, each a filter: a chip is the quickest way to ask
+    // "show me only these".
+    var current = document.getElementById("type").value;
+    var ordered = types.slice().sort(function(a,b){ return (typeCounts[b]||0)-(typeCounts[a]||0) || (a<b?-1:1); });
+    var shown = ordered.slice(0, 12);
+    box.innerHTML = shown.map(function(t){
+      var c = colorOf(t==="(untyped)"?"":t);
+      return "<div class='li" + (current===t?" sel":"") + "' data-type='" + esc(t) + "'><span class='dot' style='background:" +
+        c + ";color:" + c + "'></span>" + esc(t) + " <span class='n'>" + (typeCounts[t]||0) + "</span></div>";
+    }).join("") + (ordered.length > shown.length ? "<div class='li' data-more='1'>+" + (ordered.length - shown.length) + " more</div>" : "");
+    Array.prototype.forEach.call(box.querySelectorAll(".li[data-type]"), function(el){
+      el.addEventListener("click", function(){
+        var sel = document.getElementById("type"), t = el.getAttribute("data-type");
+        sel.value = sel.value === t ? "" : t;
+        sel.dispatchEvent(new Event("change"));
+        drawLegend(types);
+      });
+    });
+    var more = box.querySelector(".li[data-more]");
+    if(more) more.addEventListener("click", function(){ document.getElementById("tools").classList.remove("folded");
+      document.getElementById("type").focus(); });
     return;
   }
   title.textContent = "Knowledge contract";
@@ -1038,11 +1192,42 @@ function onNodeClick(n){
     return;
   }
   // Fly to it rather than jump: keeping the motion continuous is what lets
-  // someone keep track of where they were.
-  var r = Math.hypot(n.x, n.y, n.z) || 1, k = 1 + 90/r;
-  G.cameraPosition({x:n.x*k, y:n.y*k, z:n.z*k}, n, 900);
+  // someone keep track of where they were. Along the current line of sight
+  // and to a fixed distance, so the node and its neighbourhood fill the view
+  // instead of the camera ending up inside the cluster around it.
+  // A chosen node is a chosen camera: the opening re-fits must not undo it.
+  userMovedCamera = true;
+  flyTo(n, 900);
+  minimizeResults();
   showDetail(n);
 }
+
+// flyTo aims the camera at a node from a fixed distance along the current line
+// of sight.
+function flyTo(n, ms){
+  var cam = G.cameraPosition();
+  var dx = cam.x - n.x, dy = cam.y - n.y, dz = cam.z - n.z, d = Math.hypot(dx, dy, dz) || 1;
+  var narrow = window.innerWidth <= 760;
+  var D = narrow ? 300 : 260;
+  // On a narrow screen the inspector is a sheet over the lower half, so the
+  // camera looks a little below the node: the node lands in the band between
+  // the explore bar and the sheet instead of under the sheet's edge.
+  var look = {x:n.x, y:n.y, z:n.z};
+  if(narrow){
+    var up = G.camera().up, off = 0.11 * D;
+    look = {x:n.x - up.x*off, y:n.y - up.y*off, z:n.z - up.z*off};
+  }
+  G.cameraPosition({x:look.x + dx/d*D, y:look.y + dy/d*D, z:look.z + dz/d*D}, look, ms);
+}
+
+// A node focused while the layout is still moving drifts away from where the
+// camera flew. followId is re-aimed once when the simulation comes to rest,
+// unless the reader has taken the camera in the meantime.
+var followId = null;
+G.onEngineStop(function(){
+  if(followId && byId[followId]){ var n = byId[followId]; followId = null; flyTo(n, 700); }
+});
+document.getElementById("scene").addEventListener("pointerdown", function(){ followId = null; });
 
 /* ---------- the inspector ----------
 
@@ -1106,7 +1291,10 @@ function inspectById(id){
 function openInspector(id, title, isEdge, node){
   var gen = ++inspectGen;
   renderActs(id, isEdge);
-  document.getElementById("dt").textContent = title || id;
+  selectedId = isEdge ? null : id;
+  var chipType = isEdge ? "relation" : (node && node.type);
+  document.getElementById("dt").innerHTML = (chipType ? "<span class='tchip' style='--c:" +
+    (isEdge ? "#93c5fd" : colorOf(node.type)) + "'>" + esc(chipType) + "</span><br>" : "") + esc(title || id);
   document.getElementById("db").innerHTML = localRows(id, isEdge, node) +
     "<div class='say'>Reading the record…</div>";
   document.getElementById("detail").classList.add("on");
@@ -1265,7 +1453,7 @@ function decisionRow(d){
       d.supersedes.map(dlink).join(", ") + "</div>" : "") + "</div>";
 }
 
-function closeDetail(){ inspectGen++; document.getElementById("detail").classList.remove("on"); }
+function closeDetail(){ inspectGen++; selectedId = null; document.getElementById("detail").classList.remove("on"); }
 
 document.getElementById("q").addEventListener("input", function(){
   query = this.value.trim().toLowerCase(); repaint();
@@ -1360,7 +1548,9 @@ document.getElementById("scene").addEventListener("wheel", function(){ userMoved
    on a desktop everything fits and everything opens, and below that the two
    panels that carry no controls fold themselves, since a window narrow enough
    for them to overlap the graph is one where they were covering it. */
-var FOLD_KEY = "cortexdb.liveview.folded";
+// v2 since the redesign: the old remembered layout was chosen against panels
+// that no longer look or sit the same, so everyone starts from the new defaults.
+var FOLD_KEY = "cortexdb.liveview.folded.v2";
 function foldable(){ return Array.prototype.slice.call(document.querySelectorAll(".panel[data-label]")); }
 function saveFolds(){
   var ids = foldable().filter(function(p){ return p.classList.contains("folded"); })
@@ -1377,9 +1567,10 @@ function restoreFolds(){
     // 1120px is the same sum for the bottom row: #contract is 392px on the
     // centre line, and below that it starts overlapping the feed, so it comes
     // up folded — a chip that names what it is hiding, not a missing panel.
+    // The controls are a chip until wanted: the explore bar is the main control
+    // now, and a column of switches beside the scene was most of the clutter.
     if(window.innerWidth < 760) ids = ["tools", "legend", "feed", "contract"];
-    else if(window.innerWidth < 1120) ids = ["contract"];
-    else ids = [];
+    else ids = ["tools", "feed", "contract"];
   } else {
     ids = stored ? stored.split(",") : [];
   }
@@ -1837,6 +2028,7 @@ function focusNode(id, hops){
       if(!n){ toast("No node " + id); return; }
       setHighlight([id].concat((adj[id]||[]).map(function(a){ return a.to; })), false);
       onNodeClick(n);
+      followId = id;
     }, byId[id] && typeof byId[id].x === "number" ? 0 : 700);
   });
 }
@@ -1866,6 +2058,7 @@ function setHighlight(ids, fly){
   renderBar();
   repaint();
   if(fly && hlCount){
+    userMovedCamera = true;
     G.zoomToFit(900, 80, function(n){ return !!hl[n.id]; });
   }
 }
@@ -1918,15 +2111,35 @@ document.getElementById("xc").addEventListener("keydown", function(e){
   if(e.key === "Enter" && (e.metaKey || e.ctrlKey)){ e.preventDefault(); runExplore("cypher", this.value); }
 });
 
-function out(html){ document.getElementById("xout").innerHTML = html; }
+function out(html){
+  document.getElementById("xout").innerHTML = html;
+  document.getElementById("explore").classList.remove("min");
+  renderBar();
+}
+// Once a reader goes to a node the list has done its job; folding it to a
+// button keeps the middle of the scene — where the camera puts that node —
+// clear.
+function minimizeResults(){
+  var ex = document.getElementById("explore");
+  if(document.getElementById("xout").innerHTML){ ex.classList.add("min"); renderBar(); }
+}
 function renderBar(){
   var bar = document.getElementById("xbar");
-  if(!hlCount){ bar.innerHTML = ""; return; }
-  bar.innerHTML = "<span>" + hlCount + " lit</span><button type='button' id='xfit'>Frame</button>" +
-    "<button type='button' id='xclear'>Clear</button><button type='button' id='xshare'>Share</button>";
-  document.getElementById("xfit").onclick = function(){ G.zoomToFit(800, 80, function(n){ return !!hl[n.id]; }); };
-  document.getElementById("xclear").onclick = clearHighlight;
-  document.getElementById("xshare").onclick = function(){ shareLink(currentQueryParams()); };
+  var ex = document.getElementById("explore");
+  var hasOut = !!document.getElementById("xout").innerHTML;
+  if(!hlCount && !hasOut){ bar.innerHTML = ""; return; }
+  var mini = ex.classList.contains("min");
+  bar.innerHTML = (hlCount ? "<span>" + hlCount + " lit</span><button type='button' id='xfit'>Frame</button>" +
+    "<button type='button' id='xclear'>Clear</button><button type='button' id='xshare'>Share</button>" : "") +
+    (hasOut ? "<button type='button' id='xtoggle' class='push'>" + (mini ? "Show results" : "Hide results") + "</button>" : "");
+  var f = document.getElementById("xfit");
+  if(f) f.onclick = function(){ G.zoomToFit(800, 80, function(n){ return !!hl[n.id]; }); };
+  var c = document.getElementById("xclear");
+  if(c) c.onclick = function(){ clearHighlight(); out(""); };
+  var sh = document.getElementById("xshare");
+  if(sh) sh.onclick = function(){ shareLink(currentQueryParams()); };
+  var tg = document.getElementById("xtoggle");
+  if(tg) tg.onclick = function(){ ex.classList.toggle("min"); renderBar(); };
 }
 var lastQuery = null;
 function currentQueryParams(){
@@ -2112,6 +2325,74 @@ function openingActions(){
   }
 }
 
+
+/* ---------- names on the scene ----------
+   A brain is read by its names, and a hover tooltip shows one at a time. These
+   are drawn over the canvas as plain HTML, placed each frame from the graph's
+   own projection: the selected node, whatever is hovered or lit, and — when
+   nothing is — the hubs, so a first look has landmarks. Capped, because a
+   label on everything is a label on nothing. */
+var selectedId = null;
+var labelEls = {};
+var LABEL_MAX = PHONE ? 14 : 36, HUB_LABELS = PHONE ? 0 : 10;
+function labelTargets(){
+  var want = {}, out = [];
+  function add(id, cls){ if(byId[id] && !want[id] && out.length < LABEL_MAX){ want[id] = cls; out.push(id); } }
+  if(selectedId) add(selectedId, "sel");
+  if(hoverSet) Object.keys(hoverSet).forEach(function(id){ if(id !== "__id") add(id, ""); });
+  else if(hlCount){
+    Object.keys(hl).sort(function(a,b){ return degreeOf(b)-degreeOf(a); }).forEach(function(id){ add(id, ""); });
+  } else if(Object.keys(pathNodes).length){
+    Object.keys(pathNodes).forEach(function(id){ add(id, ""); });
+  } else {
+    hubIds().slice(0, HUB_LABELS).forEach(function(id){ add(id, "hub"); });
+  }
+  return {ids: out, cls: want};
+}
+var hubCache = {at:0, ids:[]};
+function hubIds(){
+  var now = Date.now();
+  if(now - hubCache.at < 4000) return hubCache.ids;
+  hubCache.ids = Object.keys(byId).sort(function(a,b){ return degreeOf(b)-degreeOf(a); }).slice(0, 24);
+  hubCache.at = now;
+  return hubCache.ids;
+}
+function placeLabels(){
+  var box = document.getElementById("labels");
+  if(!G || !box) return;
+  var t = labelTargets(), keep = {};
+  var cam = G.camera(), dir = cam.getWorldDirection(cam.position.clone());
+  var w = window.innerWidth, h = window.innerHeight;
+  var placed = [];
+  t.ids.forEach(function(id){
+    var n = byId[id];
+    if(typeof n.x !== "number") return;
+    // Behind the camera projects to a mirrored point; leave those unlabelled.
+    var rel = cam.position.clone(); rel.set(n.x - cam.position.x, n.y - cam.position.y, n.z - cam.position.z);
+    if(rel.dot(dir) <= 0) return;
+    var p = G.graph2ScreenCoords(n.x, n.y, n.z);
+    if(p.x < -50 || p.y < -20 || p.x > w + 50 || p.y > h + 20) return;
+    var r = Math.sqrt(nodeVal(n)) * 4 + 6;
+    // Greedy, in priority order: a label that would sit on one already placed
+    // is skipped rather than drawn illegibly on top of it.
+    var text = n.label.length > 30 ? n.label.slice(0, 29) + "…" : n.label;
+    var lw = Math.min(240, text.length * 6.6 + 16), lh = 19;
+    var box2 = {x: p.x - lw/2, y: p.y - r - lh, w: lw, h: lh};
+    for(var i = 0; i < placed.length; i++){
+      var q = placed[i];
+      if(box2.x < q.x + q.w + 4 && q.x < box2.x + box2.w + 4 && box2.y < q.y + q.h + 2 && q.y < box2.y + box2.h + 2) return;
+    }
+    placed.push(box2);
+    var el = labelEls[id];
+    if(!el){ el = document.createElement("div"); el.textContent = text; el.title = n.label; labelEls[id] = el; box.appendChild(el); }
+    el.className = "nl" + (t.cls[id] ? " " + t.cls[id] : "");
+    el.style.transform = "translate(" + Math.round(p.x) + "px," + Math.round(p.y - r) + "px) translate(-50%,-100%)";
+    keep[id] = true;
+  });
+  Object.keys(labelEls).forEach(function(id){ if(!keep[id]){ labelEls[id].remove(); delete labelEls[id]; } });
+}
+(function labelLoop(){ try { placeLabels(); } catch(e){} requestAnimationFrame(labelLoop); })();
+
 /* ---------- following the container ----------
    The HUD is positioned in CSS and reflows on its own; the WebGL canvas is a
    fixed pixel buffer and does not. Left alone it keeps whatever size the window
@@ -2168,7 +2449,7 @@ try {
   const scene = document.getElementById("scene");
   const bloom = new UnrealBloomPass(
     new Vector2(scene.clientWidth || window.innerWidth, scene.clientHeight || window.innerHeight),
-    1.15, 0.5, 0.18);
+    0.85, 0.45, 0.32);
   const composer = G.postProcessingComposer();
   composer.addPass(bloom);
   // Handed to the resize path above, which runs in the classic script and
