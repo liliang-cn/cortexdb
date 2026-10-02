@@ -214,6 +214,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 				},
 			),
 		},
+		graphCypherQueryToolDefinition(),
 		{
 			Name:        "rank_graph_nodes",
 			Description: "Rank the knowledge graph's nodes by PageRank: structural importance, not keyword frequency. Answers \"what is this knowledge base actually about\" and \"which entities matter here\" by finding the nodes the graph's connections converge on. Each result carries the node's id, label and type beside its score, so the ranking is readable without a second lookup, and it is the honest way to choose what to show first when the graph is too large to show whole. Returns the top 20 by default (maximum 200), highest first, ties broken by id so repeated calls agree; total_nodes says how many were scored and truncated says whether the list was cut. An empty graph returns an empty ranking, not an error. Scores are cached with the time they were computed: a call on an unchanged graph reads the stored ranking instead of recomputing, and a change to the graph's nodes or edges (detected in the database, so writes from any process count) triggers a recompute. cached, computed_at, stale and stale_reason say which happened; pass refresh to force a recompute, allow_stale to accept an out-of-date ranking without paying for one, max_age_seconds to bound how old a cached ranking may be.",
@@ -585,6 +586,12 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 			return nil, fmt.Errorf("decode %s: %w", name, err)
 		}
 		return t.GraphPropertyValues(ctx, req)
+	case "graph_cypher_query":
+		var req CypherQueryRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, fmt.Errorf("decode %s: %w", name, err)
+		}
+		return t.GraphCypherQuery(ctx, req)
 	case "rank_graph_nodes":
 		var req ToolRankGraphNodesRequest
 		if err := json.Unmarshal(input, &req); err != nil {

@@ -135,6 +135,13 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		}
 		return *res, nil
 	})
+	addGraphRAGMCPTool(server, definitions["graph_cypher_query"], func(ctx context.Context, req CypherQueryRequest) (CypherQueryResponse, error) {
+		res, err := toolbox.GraphCypherQuery(ctx, req)
+		if err != nil {
+			return CypherQueryResponse{}, err
+		}
+		return *res, nil
+	})
 	addGraphRAGMCPTool(server, definitions["rank_graph_nodes"], func(ctx context.Context, req ToolRankGraphNodesRequest) (ToolRankGraphNodesResponse, error) {
 		res, err := toolbox.RankGraphNodes(ctx, req)
 		if err != nil {
