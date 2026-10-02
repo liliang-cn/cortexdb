@@ -28,6 +28,12 @@ All notable changes to this project will be documented in this file.
   parameters (`?theme=ember&mode=light`), and can be sent by an embedder
   (`{type:"cortexdb:theme", theme, mode}`). Light modes turn bloom off — glow on
   a light ground only greys it — and use darker inks of the same type hues.
+- **Phones.** The light/dark switch has its own thumb-sized place on the title
+  card; the selected node's label stays a solid accent chip in light mode; and a
+  link that opens on a node keeps that node in frame while a 2,000-node layout
+  settles — the camera follows it until the simulation rests or the reader
+  touches the screen — instead of showing it drift off and leaving an empty
+  view.
 
 ### Fixed
 
