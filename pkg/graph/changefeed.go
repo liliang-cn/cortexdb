@@ -98,7 +98,7 @@ const (
 // changeFeedVersion names the trigger definitions below. Bump it whenever a
 // trigger changes, so an existing database replaces its triggers instead of
 // keeping the ones an older binary created.
-const changeFeedVersion = "3"
+const changeFeedVersion = "4"
 
 // ChangeEvent is one committed change.
 type ChangeEvent struct {
@@ -227,9 +227,16 @@ var feedTables = []feedTable{
 		columns: [][2]string{{"node_type", "node_type"}, {"properties", "properties"}, {"valid_from", "valid_from"}},
 		preview: [][2]string{{"content", "content"}},
 		changed: []string{"id", "node_type", "properties", "content"},
+		// An OR of equalities, not node_type IN (...): SQLite evaluates an IN
+		// list of constants by building an ephemeral index of it, and in a
+		// trigger's WHEN that is a b-tree opened, filled and dropped by every
+		// write to graph_nodes — two of them per upsert, one per trigger.
 		mirror: func(_ sqldialect.Dialect, row string) string {
-			return fmt.Sprintf("(%[1]s.id LIKE 'rdf:%%' AND COALESCE(%[1]s.node_type, '') IN ('%[2]s'))",
-				row, strings.Join(projectionRDFMirrorKind, "', '"))
+			kinds := make([]string, len(projectionRDFMirrorKind))
+			for i, k := range projectionRDFMirrorKind {
+				kinds[i] = fmt.Sprintf("%s.node_type = '%s'", row, k)
+			}
+			return fmt.Sprintf("(%s.id LIKE 'rdf:%%' AND (%s))", row, strings.Join(kinds, " OR "))
 		},
 		history: "graph_node_history",
 	},
