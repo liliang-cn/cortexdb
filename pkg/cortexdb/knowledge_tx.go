@@ -103,7 +103,7 @@ func (db *DB) buildEmbedderKnowledgePlan(ctx context.Context, input knowledgeMut
 		return nil, fmt.Errorf("validate extracted graph data: %w", err)
 	}
 
-	entityNodes, entityTypes, mentionEdges, relationEdges, entityIDs, err := db.buildExtractedEntityArtifacts(ctx, entityTexts, entityMentions, relationshipMap)
+	entityNodes, entityTypes, mentionEdges, relationEdges, entityIDs, err := db.buildExtractedEntityArtifacts(ctx, entityTexts, entityMentions, relationshipMap, db.embedder.EmbedBatch)
 	if err != nil {
 		return nil, err
 	}
@@ -147,12 +147,44 @@ func (db *DB) buildLexicalKnowledgePlan(ctx context.Context, input knowledgeMuta
 	}
 	docVector := lexicalVectorForText(firstNonEmpty(input.Title, input.Content), vectorDim)
 
-	chunkEmbeddings, chunkNodes, edgeMap, _ := buildKnowledgeChunkArtifacts(input, ingestOpts.Collection, chunks, chunkVectors, docVector)
+	chunkEmbeddings, chunkNodes, edgeMap, chunkIDs := buildKnowledgeChunkArtifacts(input, ingestOpts.Collection, chunks, chunkVectors, docVector)
 	plan.embeddings = append(plan.embeddings, chunkEmbeddings...)
 	plan.graphOps.NodeUpserts = append(plan.graphOps.NodeUpserts, chunkNodes...)
 
-	entityNodes := make(map[string]*graph.GraphNode)
-	entityTypes := make(map[string]string)
+	// Extraction is deterministic and needs no model, so it runs here as it
+	// does with an embedder. It used not to: entity vectors came from the
+	// embedder, and without one this path skipped extraction altogether. A
+	// knowledge base built without an embedder — the plugin's default — had
+	// chunks and no entity graph, and every graph-walking retrieval mode fell
+	// back to lexical on it, silently; benchmarked through SaveKnowledge, graph
+	// and ppr scored exactly what lexical did. Entity vectors are lexical
+	// vectors here, like the chunks'.
+	entityTexts, entityMentions, relationshipMap, err := db.extractKnowledgeEntities(ctx, input, chunks, chunkIDs)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.validateExtractedGraphData(ctx, entityTexts, relationshipMap); err != nil {
+		return nil, fmt.Errorf("validate extracted graph data: %w", err)
+	}
+	lexicalVectors := func(_ context.Context, texts []string) ([][]float32, error) {
+		vectors := make([][]float32, len(texts))
+		for i, text := range texts {
+			vectors[i] = lexicalVectorForText(text, vectorDim)
+		}
+		return vectors, nil
+	}
+	entityNodes, entityTypes, mentionEdges, relationEdges, entityIDs, err := db.buildExtractedEntityArtifacts(ctx, entityTexts, entityMentions, relationshipMap, lexicalVectors)
+	if err != nil {
+		return nil, err
+	}
+	plan.ingest.entityNodeIDs = append(plan.ingest.entityNodeIDs, entityIDs...)
+	for _, edge := range mentionEdges {
+		edgeMap[edge.ID] = edge
+	}
+	for _, edge := range relationEdges {
+		edgeMap[edge.ID] = edge
+	}
+
 	if err := db.appendKnowledgeExplicitArtifacts(ctx, input, entityNodes, entityTypes, edgeMap, &plan.ingest); err != nil {
 		return nil, err
 	}
@@ -255,11 +287,15 @@ func (db *DB) extractKnowledgeEntities(ctx context.Context, input knowledgeMutat
 	// relation resolves its endpoints by name. That surfaced as a link being
 	// refused for connecting "Airport and entity" instead of Airport and Flight.
 	declared := make(map[string]struct{}, len(input.Entities)*2)
+	declaredNames := make([]string, 0, len(input.Entities))
 	for _, entity := range input.Entities {
 		for _, alias := range []string{entity.Name, entity.ID} {
 			if alias = strings.TrimSpace(alias); alias != "" {
 				declared[strings.ToLower(alias)] = struct{}{}
 			}
+		}
+		if name := strings.TrimSpace(entity.Name); name != "" {
+			declaredNames = append(declaredNames, strings.ToLower(name))
 		}
 	}
 
@@ -273,11 +309,16 @@ func (db *DB) extractKnowledgeEntities(ctx context.Context, input knowledgeMutat
 		}
 
 		chunkID := chunkIDs[i]
+		suppressed := make(map[string]struct{})
 		for _, entity := range extraction.Entities {
 			if strings.TrimSpace(entity.Name) == "" {
 				continue
 			}
 			if _, ok := declared[strings.ToLower(strings.TrimSpace(entity.Name))]; ok {
+				continue
+			}
+			if partOfADeclaredName(entity.Name, chunk, declaredNames) {
+				suppressed[graphEntityNodeID(entity.Name)] = struct{}{}
 				continue
 			}
 			entityID := graphEntityNodeID(entity.Name)
@@ -294,6 +335,12 @@ func (db *DB) extractKnowledgeEntities(ctx context.Context, input knowledgeMutat
 			}
 			fromID := graphEntityNodeID(rel.From)
 			toID := graphEntityNodeID(rel.To)
+			if _, ok := suppressed[fromID]; ok {
+				continue
+			}
+			if _, ok := suppressed[toID]; ok {
+				continue
+			}
 			relType := firstNonEmpty(rel.Type, "related_to")
 			weight := rel.Weight
 			if weight == 0 {
@@ -314,10 +361,55 @@ func (db *DB) extractKnowledgeEntities(ctx context.Context, input knowledgeMutat
 		}
 	}
 
+	// The title names what every chunk of the document is about; see
+	// title_entity.go. A name the caller declared stays theirs.
+	if entity, ok := documentTitleEntity(input.Title); ok {
+		if _, isDeclared := declared[strings.ToLower(entity.Name)]; !isDeclared {
+			entityID := graphEntityNodeID(entity.Name)
+			if _, seen := entityTexts[entityID]; !seen {
+				entityTexts[entityID] = entity
+			}
+			for _, chunkID := range chunkIDs {
+				if entityMentions[chunkID] == nil {
+					entityMentions[chunkID] = make(map[string]struct{})
+				}
+				entityMentions[chunkID][entityID] = struct{}{}
+			}
+		}
+	}
+
 	return entityTexts, entityMentions, relationshipMap, nil
 }
 
-func (db *DB) buildExtractedEntityArtifacts(ctx context.Context, entityTexts map[string]GraphEntity, entityMentions map[string]map[string]struct{}, relationshipMap map[string]graph.GraphEdge) (map[string]*graph.GraphNode, map[string]string, []*graph.GraphEdge, []*graph.GraphEdge, []string, error) {
+// partOfADeclaredName reports whether name is only some of the words of a
+// longer name the caller declared and the chunk spells out. The extractor
+// reads "Bridge 01" as "Bridge"; next to a declared "Bridge 01" that fragment
+// is not a second entity but a piece of the first, and as a node it joins
+// every chunk naming any bridge into one hub the graph walks then spread over.
+func partOfADeclaredName(name, chunk string, declaredNames []string) bool {
+	words := strings.Fields(strings.ToLower(name))
+	if len(words) == 0 {
+		return false
+	}
+	fragment := " " + strings.Join(words, " ") + " "
+	chunk = strings.ToLower(chunk)
+	for _, full := range declaredNames {
+		fullWords := strings.Fields(full)
+		if len(fullWords) <= len(words) || !strings.Contains(chunk, full) {
+			continue
+		}
+		if strings.Contains(" "+strings.Join(fullWords, " ")+" ", fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+// entityVectorizer turns entity names into node vectors: the embedder when
+// one is configured, lexical vectors when not.
+type entityVectorizer func(ctx context.Context, texts []string) ([][]float32, error)
+
+func (db *DB) buildExtractedEntityArtifacts(ctx context.Context, entityTexts map[string]GraphEntity, entityMentions map[string]map[string]struct{}, relationshipMap map[string]graph.GraphEdge, vectorize entityVectorizer) (map[string]*graph.GraphNode, map[string]string, []*graph.GraphEdge, []*graph.GraphEdge, []string, error) {
 	entityNodes := make(map[string]*graph.GraphNode, len(entityTexts))
 	entityTypes := make(map[string]string, len(entityTexts))
 	entityIDs := make([]string, 0, len(entityTexts))
@@ -333,7 +425,7 @@ func (db *DB) buildExtractedEntityArtifacts(ctx context.Context, entityTexts map
 			entityNames = append(entityNames, entityTexts[entityID].Name)
 		}
 
-		entityVectors, err := db.embedder.EmbedBatch(ctx, entityNames)
+		entityVectors, err := vectorize(ctx, entityNames)
 		if err != nil {
 			return nil, nil, nil, nil, nil, fmt.Errorf("embed entities: %w", err)
 		}

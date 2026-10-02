@@ -333,6 +333,21 @@ func (db *DB) InsertGraphDocument(ctx context.Context, doc GraphRAGDocument, opt
 		}
 	}
 
+	// The title names what every chunk of the document is about; see
+	// title_entity.go.
+	if entity, ok := documentTitleEntity(doc.Title); ok {
+		entityID := graphEntityNodeID(entity.Name)
+		if _, seen := entityTexts[entityID]; !seen {
+			entityTexts[entityID] = entity
+		}
+		for _, chunkID := range chunkNodeIDs {
+			if entityMentions[chunkID] == nil {
+				entityMentions[chunkID] = make(map[string]struct{})
+			}
+			entityMentions[chunkID][entityID] = struct{}{}
+		}
+	}
+
 	if err := db.validateExtractedGraphData(ctx, entityTexts, relationshipKeys); err != nil {
 		return nil, fmt.Errorf("validate extracted graph data: %w", err)
 	}
