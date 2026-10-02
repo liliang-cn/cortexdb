@@ -315,3 +315,25 @@ func TestExpandSpendsItsLimitOnRelationsNotMentions(t *testing.T) {
 		t.Fatalf("relations of the hub = %v, want 4 kept_at and 1 works_at (nodes %d)", types, len(nb.Nodes))
 	}
 }
+
+// Every family has a light and a dark set, the mode can follow the system,
+// and each choice is a URL parameter and a message an embedder can send.
+func TestThemesComeInLightAndDarkAndFollowTheSystem(t *testing.T) {
+	for _, want := range []string{
+		`[data-mode="light"]{`, `[data-theme="ember"][data-mode="dark"]{`, `[data-theme="ember"][data-mode="light"]{`,
+		`[data-theme="mono"][data-mode="dark"]{`, `[data-theme="mono"][data-mode="light"]{`,
+		`var THEME_ORDER = ["space", "ember", "mono"];`, `var MODE_ORDER = ["auto", "light", "dark"];`,
+		"prefers-color-scheme: dark", "OPTS.theme", "OPTS.mode", `"cortexdb:theme"`, "localStorage.setItem(MODE_KEY",
+	} {
+		if !strings.Contains(pageHTML, want) {
+			t.Errorf("page is missing %q", want)
+		}
+	}
+	for _, fam := range []string{"space", "ember", "mono"} {
+		block := pageHTML[strings.Index(pageHTML, "  "+fam+": {label:"):]
+		block = block[:strings.Index(block, "}}")]
+		if !strings.Contains(block, "dark: {bg:") || !strings.Contains(block, "light:{bg:") {
+			t.Errorf("theme %s does not carry both a light and a dark scene palette", fam)
+		}
+	}
+}

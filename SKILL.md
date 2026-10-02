@@ -1071,7 +1071,7 @@ Everything it runs is on a fixed list of read-only tools (`liveview.ExploreTools
 held against the catalogue's `Mutates` by a test); SPARQL is not on it, because
 `knowledge_graph_query` also runs updates. A view opens wherever its link says —
 `?focus=ID|name&hops=N`, `?find=`, `?ask=`, `?cypher=`, `?q=`, `?type=`,
-`?edge=`, `?explore=0` — and embedders can drive it with `postMessage`
+`?edge=`, `?explore=0`, `?theme=space|ember|mono`, `?mode=light|dark|auto` — and embedders can drive it with `postMessage`
 (`cortexdb:focus`, `cortexdb:find`, `cortexdb:ask`, `cortexdb:cypher`). On a
 phone the inspector is a bottom sheet and the other panels start folded.
 

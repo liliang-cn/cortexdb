@@ -276,6 +276,8 @@ const pageTemplate = `<!DOCTYPE html>
   #explore.folded::before{content:attr(data-label);font-size:10px;text-transform:uppercase;
     letter-spacing:.06em;color:#4b5b76;white-space:nowrap}
   /* The record's own actions: walk out from it, share where you are. */
+  #detail a.lk,#xout a{color:var(--acc);border-bottom-color:rgba(var(--acc-rgb),.35)}
+  #detail a.lk:hover,#xout a:hover{color:var(--ink)}
   #dacts{display:flex;gap:6px;margin-top:9px}
   #dacts:empty{display:none}
   #dacts button{padding:6px 8px}
@@ -332,7 +334,8 @@ const pageTemplate = `<!DOCTYPE html>
      without moving anything. */
   :root{--bg:#05070d;--panel:rgba(10,14,24,.74);--panel2:rgba(255,255,255,.035);
     --line:rgba(148,163,184,.11);--line2:rgba(148,163,184,.2);--ink:#e8eef8;--ink2:#a6b3c7;
-    --mute:#66758c;--acc:#5eead4;--acc2:#60a5fa;--r:14px}
+    --mute:#66758c;--acc:#5eead4;--acc2:#60a5fa;--acc-rgb:94,234,212;--grad1:#2dd4bf;--grad2:#3b82f6;
+    --onacc:#04121a;--solid:rgba(10,14,24,.96);--r:14px}
   html,body{background:var(--bg);color:var(--ink2);
     font:13px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB",sans-serif;
     -webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 1}
@@ -346,12 +349,12 @@ const pageTemplate = `<!DOCTYPE html>
   button{background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--ink2);
     font-weight:500;transition:background .15s,border-color .15s,color .15s}
   button:hover{background:rgba(255,255,255,.07);border-color:var(--line2);color:var(--ink)}
-  button.on{background:linear-gradient(135deg,rgba(94,234,212,.2),rgba(96,165,250,.2));
-    border-color:rgba(94,234,212,.42);color:#f0fdfa;box-shadow:none}
+  button.on{background:linear-gradient(135deg,rgba(var(--acc-rgb),.2),rgba(96,165,250,.2));
+    border-color:rgba(var(--acc-rgb),.42);color:#f0fdfa;box-shadow:none}
   #tools input,#tools select,#explore input,#explore textarea{background:rgba(2,5,12,.55);
     border:1px solid var(--line2);border-radius:10px;color:var(--ink)}
   #tools input:focus,#tools select:focus,#explore input:focus,#explore textarea:focus{
-    border-color:rgba(94,234,212,.55);box-shadow:0 0 0 3px rgba(94,234,212,.12)}
+    border-color:rgba(var(--acc-rgb),.55);box-shadow:0 0 0 3px rgba(var(--acc-rgb),.12)}
   .fold{color:#4d5b72}
   .fold:hover{color:var(--ink)}
   #head.folded::before,#tools.folded::before,#legend.folded::before,#feed.folded::before,
@@ -362,7 +365,7 @@ const pageTemplate = `<!DOCTYPE html>
   #head h1 a{color:var(--acc);font-weight:500;font-size:12px;opacity:.85}
   #counts{color:var(--mute);font-size:11.5px;margin-top:3px}
   #counts b{color:var(--ink);font-weight:600}
-  .badge{border:none;background:rgba(94,234,212,.08);color:var(--acc);font-size:10.5px;
+  .badge{border:none;background:rgba(var(--acc-rgb),.08);color:var(--acc);font-size:10.5px;
     letter-spacing:.03em;text-transform:none;padding:3px 9px;margin-top:8px}
   .badge .led{background:var(--acc);box-shadow:0 0 10px var(--acc)}
   /* Explore: the search field is the page's main control, so it looks like one. */
@@ -372,11 +375,11 @@ const pageTemplate = `<!DOCTYPE html>
   #explore .tabs button{background:transparent;border:none;border-radius:7px;color:var(--mute);
     padding:4px 12px;font-size:12px}
   #explore .tabs button:hover{color:var(--ink)}
-  #explore .tabs button.on{background:rgba(94,234,212,.14);color:var(--acc)}
+  #explore .tabs button.on{background:rgba(var(--acc-rgb),.14);color:var(--acc)}
   #explore input{padding:10px 13px;font-size:14px;border-radius:11px}
-  #explore .go{background:linear-gradient(135deg,#2dd4bf,#3b82f6);border:none;color:#04121a;
+  #explore .go{background:linear-gradient(135deg,var(--grad1),var(--grad2));border:none;color:var(--onacc);
     font-weight:650;border-radius:11px;padding:0 18px;font-size:13px}
-  #explore .go:hover{filter:brightness(1.1);color:#04121a}
+  #explore .go:hover{filter:brightness(1.1);color:var(--onacc)}
   #xbar{color:var(--mute)}
   #xbar button{border-radius:999px;padding:3px 11px;font-size:11px}
   #xout{font-size:12.5px}
@@ -385,11 +388,11 @@ const pageTemplate = `<!DOCTYPE html>
   .hit:hover,.hit:focus{background:rgba(255,255,255,.05);border-color:var(--line)}
   .hit .hl{color:var(--ink)}
   .hit .hm{color:var(--mute)}
-  .txt{border-left:2px solid rgba(94,234,212,.35);color:var(--ink2);padding:6px 10px;margin:5px 0}
+  .txt{border-left:2px solid rgba(var(--acc-rgb),.35);color:var(--ink2);padding:6px 10px;margin:5px 0}
   .fact{border-radius:8px;padding:5px 9px}
   .fact:hover{background:rgba(255,255,255,.05)}
   .fact i{color:var(--acc)}
-  #xout th{background:rgba(10,14,24,.96);color:var(--mute)}
+  #xout th{background:var(--solid);color:var(--mute)}
   #xout td,#xout th{border-bottom-color:var(--line)}
   /* The legend as chips: what the scene is made of, most first, each one a
      filter. */
@@ -398,7 +401,7 @@ const pageTemplate = `<!DOCTYPE html>
   .li{display:inline-flex;align-items:center;gap:6px;margin:0;padding:3px 9px 3px 7px;border-radius:999px;
     background:var(--panel2);border:1px solid var(--line);color:var(--ink2);cursor:pointer;font-size:11px}
   .li:hover{border-color:var(--line2);color:var(--ink)}
-  .li.sel{border-color:rgba(94,234,212,.5);color:var(--ink);background:rgba(94,234,212,.1)}
+  .li.sel{border-color:rgba(var(--acc-rgb),.5);color:var(--ink);background:rgba(var(--acc-rgb),.1)}
   .li .n{color:var(--mute);font-size:10.5px}
   .li.wide{display:flex;width:100%;border-radius:10px;cursor:default;padding:6px 9px}
   .dot{width:8px;height:8px;box-shadow:0 0 8px currentColor}
@@ -414,17 +417,17 @@ const pageTemplate = `<!DOCTYPE html>
     border:1px solid color-mix(in srgb,var(--c) 38%,transparent)}
   #detail .r{margin-top:11px}
   #detail .v{color:var(--ink);font-size:12.5px}
-  #detail .quote{background:rgba(2,5,12,.55);border-left-color:rgba(94,234,212,.35)}
+  #detail .quote{background:rgba(2,5,12,.55);border-left-color:rgba(var(--acc-rgb),.35)}
   #dacts button{border-radius:999px;padding:6px 12px}
-  #dacts button:first-child{background:linear-gradient(135deg,rgba(45,212,191,.22),rgba(59,130,246,.22));
-    border-color:rgba(94,234,212,.4);color:#f0fdfa}
+  #dacts button:first-child{background:linear-gradient(135deg,rgba(var(--acc-rgb),.22),rgba(var(--acc-rgb),.12));
+    border-color:rgba(var(--acc-rgb),.4);color:#f0fdfa}
   /* Names on the scene: the hubs, and whatever is lit or hovered. */
   #labels{position:fixed;inset:0;pointer-events:none;z-index:5;overflow:hidden}
   .nl{position:absolute;left:0;top:0;white-space:nowrap;font-size:11px;font-weight:550;color:#eef4fc;
     padding:2px 7px;border-radius:7px;background:rgba(5,8,15,.62);border:1px solid rgba(148,163,184,.14);
     text-shadow:0 1px 2px rgba(0,0,0,.8);will-change:transform;transition:opacity .2s}
   .nl.hub{color:var(--ink2);font-weight:500;background:rgba(5,8,15,.4);border-color:transparent}
-  .nl.sel{color:#04121a;background:var(--acc);border-color:var(--acc);font-weight:650}
+  .nl.sel{color:var(--onacc);background:var(--acc);border-color:var(--acc);font-weight:650}
   #toast{background:rgba(10,14,24,.92);border-color:var(--line2);color:var(--ink)}
   @media (max-width:1060px) and (min-width:761px){ #explore{width:min(520px,calc(100vw - 264px))} }
   @media (max-width:760px){
@@ -434,6 +437,54 @@ const pageTemplate = `<!DOCTYPE html>
     #legend{max-width:calc(100vw - 16px)}
     .nl.hub{display:none}
   }
+
+  /* ================= themes =================
+     Four built in. Space is the default; the others are the same page with a
+     different token set — and, for the scene, a different THEMES entry in the
+     script. Paper is the one light theme, so it also restyles the few older
+     rules above that were written against a dark ground. */
+  [data-theme="ember"][data-mode="dark"]{--bg:#0b0806;--panel:rgba(24,15,10,.78);--panel2:rgba(255,237,213,.04);
+    --line:rgba(251,191,36,.11);--line2:rgba(251,191,36,.2);--ink:#fbf1e6;--ink2:#d9c4ae;--mute:#8d7562;
+    --acc:#fb923c;--acc-rgb:251,146,60;--grad1:#f97316;--grad2:#f59e0b;--onacc:#1c0d03;--solid:rgba(24,15,10,.97)}
+  [data-theme="mono"][data-mode="dark"]{--bg:#020403;--panel:rgba(3,12,7,.82);--panel2:rgba(134,239,172,.04);
+    --line:rgba(74,222,128,.13);--line2:rgba(74,222,128,.24);--ink:#d1fae5;--ink2:#86efac;--mute:#4d7c5f;
+    --acc:#4ade80;--acc-rgb:74,222,128;--grad1:#22c55e;--grad2:#15803d;--onacc:#022c12;--solid:rgba(3,12,7,.97)}
+  [data-theme="mono"] body,[data-theme="mono"] button,[data-theme="mono"] input,[data-theme="mono"] select{
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+  [data-mode="light"]{--bg:#f4f2ec;--panel:rgba(255,255,255,.84);--panel2:rgba(15,23,42,.035);
+    --line:rgba(15,23,42,.1);--line2:rgba(15,23,42,.18);--ink:#0f172a;--ink2:#334155;--mute:#64748b;
+    --acc:#0f766e;--acc-rgb:15,118,110;--grad1:#0d9488;--grad2:#2563eb;--onacc:#ffffff;--solid:rgba(255,255,255,.98)}
+  [data-mode="light"] .panel{box-shadow:0 14px 40px -18px rgba(15,23,42,.25),inset 0 1px 0 rgba(255,255,255,.6)}
+  [data-mode="light"] #vignette{background:radial-gradient(ellipse 70% 60% at 50% 48%,transparent 60%,rgba(15,23,42,.06) 100%)}
+  [data-mode="light"] #tools input,[data-mode="light"] #tools select,[data-mode="light"] #explore input,
+  [data-mode="light"] #explore textarea{background:#fff}
+  [data-mode="light"] .nl{color:#0f172a;background:rgba(255,255,255,.88);border-color:rgba(15,23,42,.12);text-shadow:none}
+  [data-mode="light"] .nl.hub{color:#475569;background:rgba(255,255,255,.6)}
+  [data-mode="light"] .dot{box-shadow:none}
+  [data-mode="light"] .badge .led{box-shadow:none}
+  [data-mode="light"] #detail .quote{background:#f1f5f9;color:#334155;border-left-color:rgba(15,118,110,.4)}
+  [data-mode="light"] #detail .quote .qm,[data-mode="light"] #detail .foot,[data-mode="light"] #contract .foot{color:#94a3b8}
+  [data-mode="light"] #detail .say,[data-mode="light"] #contract .say,[data-mode="light"] #cnote,
+  [data-mode="light"] #asofnote,[data-mode="light"] #pathinfo{color:#475569}
+  [data-mode="light"] #detail a.lk,[data-mode="light"] #xout a{color:#0f766e;border-bottom-color:rgba(15,118,110,.35)}
+  [data-mode="light"] .ev .t,[data-mode="light"] .gr .gn,[data-mode="light"] .att .an{color:#334155}
+  [data-mode="light"] .gr .gb{background:#e2e8f0}
+  [data-mode="light"] .ev .m,[data-mode="light"] .gr .gc,[data-mode="light"] .att .am{color:#94a3b8}
+  [data-mode="light"] #boot{background:#f4f2ec}
+  [data-mode="light"] button.on,[data-mode="light"] #dacts button:first-child,
+  [data-mode="light"] #explore .tabs button.on{color:var(--acc);font-weight:600}
+  [data-mode="light"] #toast{background:#fff}
+  [data-theme="ember"][data-mode="light"]{--bg:#f7f1ea;--acc:#c2410c;--acc-rgb:194,65,12;
+    --grad1:#ea580c;--grad2:#d97706;--line:rgba(120,53,15,.12);--line2:rgba(120,53,15,.2);
+    --ink:#1c0d03;--ink2:#57351f;--mute:#8d6a52}
+  [data-theme="mono"][data-mode="light"]{--bg:#f2f6f3;--acc:#15803d;--acc-rgb:21,128,61;
+    --grad1:#16a34a;--grad2:#166534;--line:rgba(20,83,45,.12);--line2:rgba(20,83,45,.2);
+    --ink:#052e16;--ink2:#1f4d33;--mute:#5b7d68}
+  #themes,#modes{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+  #themes button,#modes button{padding:5px 0;font-size:11px}
+  #themebtn{position:absolute;top:8px;right:30px;width:22px;height:22px;padding:0;border:none;background:none;
+    color:var(--mute);font-size:13px;line-height:22px;cursor:pointer}
+  #themebtn:hover{color:var(--acc);background:none}
 </style>
 </head>
 <body>
@@ -447,6 +498,7 @@ const pageTemplate = `<!DOCTYPE html>
 
 <div class="panel" id="head" data-label="CortexDB">
   <button class="fold" type="button" title="Collapse"></button>
+  <button id="themebtn" type="button" title="Light / dark" aria-label="Switch light and dark">☾</button>
   <div class="bd">
     <h1>CortexDB — live brain &nbsp;<a href="ontology" title="The ontology: what this brain is allowed to talk about">ontology →</a></h1>
     <div id="counts"><b id="n">0</b> nodes · <b id="e">0</b> edges</div>
@@ -473,6 +525,9 @@ const pageTemplate = `<!DOCTYPE html>
     <h3>Path</h3>
     <div class="row"><button id="pathbtn">Trace path</button><button id="clearpath">Clear</button></div>
     <div id="pathinfo"></div>
+    <h3>Theme</h3>
+    <div id="themes"></div>
+    <div id="modes"></div>
     <h3>View</h3>
     <div class="row"><button id="spin">Orbit</button><button id="fit">Fit</button></div>
     <div class="row"><button id="glow" class="on">Glow</button><button id="flow" class="on">Flow</button></div>
@@ -576,6 +631,8 @@ var explored = {nodes:{}, edges:{}}; // what exploring added beyond the core
      ?type=T     show only nodes of type T   ?edge=E  only relations of type E
      ?hops=N     with focus: expand N hops out from it (1-3, default 0)
      ?explore=0  no Explore bar
+     ?theme=NAME space (default), ember or mono
+     ?mode=M     light, dark, or auto (default: follow the system)
 
    Nothing here overrides a person: a drag still stops the orbit, and a button
    still flips its switch. These are the starting positions, not locks. */
@@ -590,17 +647,73 @@ var OPTS = (function(){
 var PHONE = window.matchMedia && window.matchMedia("(max-width:760px) and (pointer:coarse)").matches;
 glowOn = OPTS.glow ? OPTS.glow !== "0" : !PHONE;
 flowOn = OPTS.flow ? OPTS.flow !== "0" : !PHONE;
-var BG = /^[0-9a-fA-F]{6}$/.test(OPTS.bg || "") ? "#" + OPTS.bg : "#04060d";
+/* ---------- themes ----------
+   The panels take their colours from CSS tokens (the [data-theme] blocks in
+   the stylesheet); the scene takes them from here, because WebGL cannot read a
+   stylesheet. Switching rewrites nothing but accessors, so every node keeps
+   its place. ?theme=NAME opens on one, the choice is remembered per browser,
+   and an embedder can send {type:"cortexdb:theme", theme}. */
+var THEMES = {
+  space: {label:"Space",
+    dark: {bg:"#05070d", glow:0.85, link:"#3b6296", linkDim:"#0d1526", linkHot:"#93c5fd", linkFocus:"#7dd3fc",
+      linkLit:"#60a5fa", path:"#fde68a", pathLink:"#fbbf24", particle:"#3b82f6", arrow:"#3b6ea5", flash:"#ffffff"},
+    light:{bg:"#f4f2ec", glow:0, link:"#a3b0c2", linkDim:"#e7e3da", linkHot:"#2563eb", linkFocus:"#0f766e",
+      linkLit:"#2563eb", path:"#b45309", pathLink:"#d97706", particle:"#2563eb", arrow:"#64748b", flash:"#0f172a"}},
+  ember: {label:"Ember",
+    dark: {bg:"#0b0806", glow:0.9, link:"#7a4a2a", linkDim:"#1c130d", linkHot:"#fdba74", linkFocus:"#fb923c",
+      linkLit:"#f59e0b", path:"#fde68a", pathLink:"#fbbf24", particle:"#f97316", arrow:"#9a5b34", flash:"#fff7ed"},
+    light:{bg:"#f7f1ea", glow:0, link:"#cdb29c", linkDim:"#ede3d8", linkHot:"#ea580c", linkFocus:"#c2410c",
+      linkLit:"#ea580c", path:"#92400e", pathLink:"#d97706", particle:"#ea580c", arrow:"#a16207", flash:"#1c0d03"}},
+  mono: {label:"Mono", mono:true,
+    dark: {bg:"#020403", glow:0.6, link:"#1f5f3a", linkDim:"#07120c", linkHot:"#86efac", linkFocus:"#4ade80",
+      linkLit:"#22c55e", path:"#fef08a", pathLink:"#facc15", particle:"#22c55e", arrow:"#2f7a4f", flash:"#ecfdf5"},
+    light:{bg:"#f2f6f3", glow:0, link:"#a3c2ae", linkDim:"#e1ebe4", linkHot:"#16a34a", linkFocus:"#15803d",
+      linkLit:"#16a34a", path:"#a16207", pathLink:"#ca8a04", particle:"#16a34a", arrow:"#4d7c5f", flash:"#052e16"}}
+};
+var THEME_ORDER = ["space", "ember", "mono"];
+var MODE_ORDER = ["auto", "light", "dark"];
+var THEME_KEY = "cortexdb.liveview.theme", MODE_KEY = "cortexdb.liveview.mode";
+function stored(key, ok){ try { var v = localStorage.getItem(key); if(v && ok(v)) return v; } catch(e){} return ""; }
+var themeName = (OPTS.theme && THEMES[OPTS.theme]) ? OPTS.theme : (stored(THEME_KEY, function(v){ return !!THEMES[v]; }) || "space");
+var modeSetting = MODE_ORDER.indexOf(OPTS.mode) >= 0 ? OPTS.mode : (stored(MODE_KEY, function(v){ return MODE_ORDER.indexOf(v) >= 0; }) || "auto");
+var SYSTEM_DARK = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+// The mode in force: auto follows the system, as an OS-level dark mode does.
+function effectiveMode(){
+  if(modeSetting !== "auto") return modeSetting;
+  return SYSTEM_DARK && !SYSTEM_DARK.matches ? "light" : "dark";
+}
+// T is the scene palette in force: the family's light or dark set, with the
+// two facts the colour code asks about carried alongside.
+function resolveTheme(){
+  var fam = THEMES[themeName], mode = effectiveMode(), t = {};
+  var src = fam[mode];
+  for(var k in src) t[k] = src[k];
+  t.light = mode === "light"; t.mono = !!fam.mono; t.label = fam.label; t.mode = mode;
+  return t;
+}
+var T = resolveTheme();
+document.documentElement.setAttribute("data-theme", themeName);
+document.documentElement.setAttribute("data-mode", T.mode);
+var BG = /^[0-9a-fA-F]{6}$/.test(OPTS.bg || "") ? "#" + OPTS.bg : T.bg;
 if(OPTS.panels === "0") document.documentElement.classList.add("bare");
-if(OPTS.bg && BG !== "#04060d") document.body.style.background = BG;
+if(OPTS.bg) document.body.style.background = BG;
 
 var NAMED = {entity:"#38bdf8", concept:"#a78bfa", memory:"#34d399", knowledge:"#fbbf24",
   document:"#fb923c", person:"#f472b6", project:"#60a5fa", organization:"#2dd4bf",
   location:"#f59e0b", event:"#f87171", chunk:"#475569"};
+// Darker inks of the same hues, for a light ground.
+var NAMED_LIGHT = {entity:"#0284c7", concept:"#7c3aed", memory:"#059669", knowledge:"#d97706",
+  document:"#ea580c", person:"#db2777", project:"#2563eb", organization:"#0d9488",
+  location:"#b45309", event:"#dc2626", chunk:"#94a3b8"};
 function colorOf(t){
+  var h=0; for(var i=0;t && i<t.length;i++) h=(h*31+t.charCodeAt(i))%360;
+  if(T.mono) return t ? "hsl(" + (115 + h%50) + ",62%," + (42 + h%28) + "%)" : "#3f6b52";
+  if(T.light){
+    if(!t) return "#94a3b8";
+    return NAMED_LIGHT[t] || "hsl("+h+",62%,42%)";
+  }
   if(!t) return "#7c8ba1";
   if(NAMED[t]) return NAMED[t];
-  var h=0; for(var i=0;i<t.length;i++) h=(h*31+t.charCodeAt(i))%360;
   return "hsl("+h+",70%,65%)";
 }
 
@@ -678,7 +791,7 @@ G = ForceGraph3D()(document.getElementById("scene"))
   .linkDirectionalParticleColor(linkParticleColor)
   .linkDirectionalArrowLength(linkArrow)
   .linkDirectionalArrowRelPos(1)
-  .linkDirectionalArrowColor(function(){ return "#3b6ea5"; })
+  .linkDirectionalArrowColor(function(){ return T.arrow; })
   .onNodeClick(onNodeClick)
   // A relation is a record too, and until the inspector there was nothing on
   // this page it could have opened.
@@ -734,8 +847,9 @@ function dimColor(c){
   dimCtx.fillStyle = "#000"; dimCtx.fillStyle = c;
   var hex = dimCtx.fillStyle, r = 120, g = 130, b = 150;
   if(/^#[0-9a-f]{6}$/i.test(hex)){ r = parseInt(hex.substr(1,2),16); g = parseInt(hex.substr(3,2),16); b = parseInt(hex.substr(5,2),16); }
-  var k = 0.2;
-  var out = "rgb(" + Math.round(5 + (r-5)*k) + "," + Math.round(7 + (g-7)*k) + "," + Math.round(13 + (b-13)*k) + ")";
+  var k = T.light ? 0.22 : 0.2;
+  var br = parseInt(T.bg.substr(1,2),16), bg2 = parseInt(T.bg.substr(3,2),16), bb = parseInt(T.bg.substr(5,2),16);
+  var out = "rgb(" + Math.round(br + (r-br)*k) + "," + Math.round(bg2 + (g-bg2)*k) + "," + Math.round(bb + (b-bb)*k) + ")";
   dimCache[c] = out;
   return out;
 }
@@ -749,7 +863,7 @@ function isDimmed(n){
 function nodeColor(n){
   var f = flash[n.id];
   if(f && f.until > Date.now()) return f.color;
-  if(Object.keys(pathNodes).length) return pathNodes[n.id] ? "#fde68a" : dimColor(baseColor(n));
+  if(Object.keys(pathNodes).length) return pathNodes[n.id] ? T.path : dimColor(baseColor(n));
   if(isDimmed(n)) return dimColor(baseColor(n));
   return baseColor(n);
 }
@@ -767,11 +881,11 @@ function endsOf(l){
   return [typeof l.source==="object"?l.source.id:l.source, typeof l.target==="object"?l.target.id:l.target];
 }
 function linkColor(l){
-  if(Object.keys(pathLinks).length) return pathLinks[keyOf(l)] ? "#fbbf24" : "#0d1526";
-  if(hoverSet){ var h = endsOf(l); return (hoverSet.__id===h[0] || hoverSet.__id===h[1]) ? "#7dd3fc" : "#0d1526"; }
-  if(hlCount){ var e = endsOf(l); if(hl[e[0]] && hl[e[1]]) return "#60a5fa"; return "#0d1526"; }
-  if(l.__hot && l.__hot > Date.now()) return "#93c5fd";
-  return gradingOn() ? gradeTint(l.grade) : "#3b6296";
+  if(Object.keys(pathLinks).length) return pathLinks[keyOf(l)] ? T.pathLink : T.linkDim;
+  if(hoverSet){ var h = endsOf(l); return (hoverSet.__id===h[0] || hoverSet.__id===h[1]) ? T.linkFocus : T.linkDim; }
+  if(hlCount){ var e = endsOf(l); if(hl[e[0]] && hl[e[1]]) return T.linkLit; return T.linkDim; }
+  if(l.__hot && l.__hot > Date.now()) return T.linkHot;
+  return gradingOn() ? gradeTint(l.grade) : T.link;
 }
 function linkWidth(l){
   if(pathLinks[keyOf(l)]) return 2.4;
@@ -802,9 +916,9 @@ function linkParticles(l){
   return linkTotal <= DETAIL_EVERYWHERE_UNDER ? 1 : 0;
 }
 function linkParticleColor(l){
-  if(pathLinks[keyOf(l)]) return "#fde68a";
-  if(l.__hot && l.__hot > Date.now()) return "#bfdbfe";
-  return "#3b82f6";
+  if(pathLinks[keyOf(l)]) return T.path;
+  if(l.__hot && l.__hot > Date.now()) return T.linkHot;
+  return T.particle;
 }
 
 /* ---------- repaint ----------
@@ -917,7 +1031,7 @@ function applyDelta(d){
   // Anything that just arrived announces itself in white and cools to its own
   // colour — the visual difference between "this is here" and "this just
   // happened", which a static graph cannot make.
-  fresh.forEach(function(n){ strike(n.id, "#ffffff", 4200); });
+  fresh.forEach(function(n){ strike(n.id, T.flash, 4200); });
   if(fresh.length) pushEvent({kind:"structure", text:fresh.length===1 ?
     fresh[0].label + " appeared" : fresh.length + " nodes appeared", tool:"graph", at:Date.now()});
 }
@@ -2393,6 +2507,67 @@ function placeLabels(){
 }
 (function labelLoop(){ try { placeLabels(); } catch(e){} requestAnimationFrame(labelLoop); })();
 
+
+function applyTheme(name, mode, remember){
+  if(name && THEMES[name]) themeName = name;
+  if(mode && MODE_ORDER.indexOf(mode) >= 0) modeSetting = mode;
+  T = resolveTheme();
+  document.documentElement.setAttribute("data-theme", themeName);
+  document.documentElement.setAttribute("data-mode", T.mode);
+  dimCache = {};
+  if(!OPTS.bg){ BG = T.bg; G.backgroundColor(T.bg); }
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.setAttribute("content", T.bg);
+  syncGlow();
+  if(remember){ try { localStorage.setItem(THEME_KEY, themeName); localStorage.setItem(MODE_KEY, modeSetting); } catch(e){} }
+  syncThemeButtons();
+  rebuildLegend(lastNodes || G.graphData().nodes);
+  G.linkDirectionalArrowColor(function(){ return T.arrow; });
+  repaint();
+}
+function syncThemeButtons(){
+  Array.prototype.forEach.call(document.querySelectorAll("#themes button"), function(b){
+    b.classList.toggle("on", b.getAttribute("data-theme") === themeName); });
+  Array.prototype.forEach.call(document.querySelectorAll("#modes button"), function(b){
+    b.classList.toggle("on", b.getAttribute("data-mode") === modeSetting); });
+  var tb = document.getElementById("themebtn");
+  tb.textContent = T.mode === "dark" ? "☾" : "☀";
+  tb.title = (T.mode === "dark" ? "Dark" : "Light") + " · " + T.label + " — click to switch";
+}
+// syncGlow is the one place bloom is switched: on only when the reader wants
+// it and the mode has any (light modes have none — glow on a light ground is grey).
+function syncGlow(){
+  var b = window.__bloom, btn = document.getElementById("glow");
+  if(b){ b.strength = T.glow; b.enabled = glowOn && T.glow > 0; }
+  if(btn){ btn.classList.toggle("on", glowOn && T.glow > 0); btn.disabled = T.glow === 0 || btn.textContent === "No glow"; }
+}
+(function(){
+  var box = document.getElementById("themes"), mbox = document.getElementById("modes");
+  box.innerHTML = THEME_ORDER.map(function(k){
+    return "<button type='button' data-theme='" + k + "'>" + THEMES[k].label + "</button>"; }).join("");
+  mbox.innerHTML = MODE_ORDER.map(function(k){
+    return "<button type='button' data-mode='" + k + "'>" + {auto:"Auto", light:"Light", dark:"Dark"}[k] + "</button>"; }).join("");
+  Array.prototype.forEach.call(box.querySelectorAll("button"), function(b){
+    b.addEventListener("click", function(){ applyTheme(b.getAttribute("data-theme"), null, true); }); });
+  Array.prototype.forEach.call(mbox.querySelectorAll("button"), function(b){
+    b.addEventListener("click", function(){ applyTheme(null, b.getAttribute("data-mode"), true); }); });
+  // The title-card button is the one switch most people want: light or dark,
+  // whichever the page is not showing now.
+  document.getElementById("themebtn").addEventListener("click", function(){
+    applyTheme(null, T.mode === "dark" ? "light" : "dark", true);
+    toast((T.mode === "dark" ? "Dark" : "Light") + " · " + T.label);
+  });
+  if(SYSTEM_DARK && SYSTEM_DARK.addEventListener){
+    SYSTEM_DARK.addEventListener("change", function(){ if(modeSetting === "auto") applyTheme(null, null, false); });
+  }
+  window.addEventListener("message", function(ev){
+    var m = ev.data;
+    if(m && m.type === "cortexdb:theme") applyTheme(typeof m.theme === "string" ? m.theme : null,
+      typeof m.mode === "string" ? m.mode : null, false);
+  });
+  syncThemeButtons();
+})();
+
 /* ---------- following the container ----------
    The HUD is positioned in CSS and reflows on its own; the WebGL canvas is a
    fixed pixel buffer and does not. Left alone it keeps whatever size the window
@@ -2449,7 +2624,7 @@ try {
   const scene = document.getElementById("scene");
   const bloom = new UnrealBloomPass(
     new Vector2(scene.clientWidth || window.innerWidth, scene.clientHeight || window.innerHeight),
-    0.85, 0.45, 0.32);
+    T.glow || 0.85, 0.45, 0.32);
   const composer = G.postProcessingComposer();
   composer.addPass(bloom);
   // Handed to the resize path above, which runs in the classic script and
@@ -2457,12 +2632,10 @@ try {
   window.__bloom = bloom;
   fitToContainer();
   const btn = document.getElementById("glow");
-  bloom.enabled = glowOn;
-  btn.classList.toggle("on", glowOn);
+  syncGlow();
   btn.addEventListener("click", () => {
     glowOn = !glowOn;
-    bloom.enabled = glowOn;
-    btn.classList.toggle("on", glowOn);
+    syncGlow();
   });
 } catch (err) {
   // Offline, or a CDN that will not serve modules. Say so on the button rather

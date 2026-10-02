@@ -20,6 +20,14 @@ All notable changes to this project will be documented in this file.
   layout settles, and on a phone lands above the inspector sheet. Controls,
   activity and the contract start folded; the remembered fold layout is reset
   once (new storage key) so everyone gets the new defaults.
+- **Themes, light and dark.** Three families — Space (the default), Ember and
+  Mono — each with a light and a dark set for the panels and the scene, and a
+  mode that is Light, Dark or Auto (follows the system, and follows it when it
+  changes). The title card's ☀/☾ switches light and dark in one click; the
+  controls choose family and mode; both are remembered per browser, are URL
+  parameters (`?theme=ember&mode=light`), and can be sent by an embedder
+  (`{type:"cortexdb:theme", theme, mode}`). Light modes turn bloom off — glow on
+  a light ground only greys it — and use darker inks of the same type hues.
 
 ### Fixed
 
