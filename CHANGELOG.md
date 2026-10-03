@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.119.0] - 2026-10-03
+
+### Added
+
+- MCP binary `--doctor`: JSON diagnostics for the active local or remote brain,
+  binary version and auto-recall setting. Checks SQLite read-only or discovers
+  remote tools with authentication; `--self-test` verifies memory persistence
+  and lexical recall in a temporary database.
+
+### Fixed
+
+- Auto-recall on a remote-only machine no longer requires a local database.
+- Session directives also run on resume and use host-independent tool names;
+  they distinguish semantic relations from mere name co-occurrence.
+- Codex documentation explains plugin hook discovery and required trust review.
+
 ## [2.118.0] - 2026-10-03
 
 ### Added

@@ -33,9 +33,14 @@ codex plugin marketplace add liliang-cn/cortexdb
 codex plugin add cortexdb@cortexdb
 ```
 
+In Codex, open `/hooks` and review and trust the CortexDB hooks to enable
+session directives and automatic recall. Installing the plugin enables its MCP
+tools, but does not automatically trust its hooks. Hooks that change after an
+update need review again. See the [Codex hook documentation](https://learn.chatgpt.com/docs/hooks).
+
 ## Requirements
 
-**No Go toolchain — ever.** Both the Claude Code and Codex configs invoke the same launcher (`bin/cortexdb-mcp`), which fetches a static, prebuilt binary from the GitHub release (no CGO, no external services; storage is a single SQLite file). It needs only `curl` or `wget` on macOS/Linux (both ship by default) and PowerShell on Windows (built in). If neither is present, it prints the exact manual-download command and exits — it never requires or invokes Go.
+**No Go toolchain — ever.** Both the Claude Code and Codex configs invoke the same launcher (`bin/cortexdb-mcp`), which fetches a static, prebuilt binary from the GitHub release (no CGO, no external services; storage is a single SQLite file). It needs only `curl` or `wget` on macOS/Linux and PowerShell on Windows (built in). If neither downloader is present, it prints the exact manual-download command and exits — it never requires or invokes Go.
 
 ### Windows
 
@@ -153,13 +158,13 @@ Notes:
 
 When auto-recall is enabled, a `SessionStart` hook injects a short standing directive each session so the assistant uses the brain **proactively** — recall relevant context before answering, and save durable preferences/decisions/facts without being asked. It respects the same on/off switch as auto-recall, so it stays silent on machines where you declined.
 
-## Auto-recall (Claude Code only)
+## Auto-recall (Claude Code and Codex)
 
-The plugin ships a `UserPromptSubmit` hook (`hooks/hooks.json` → `bin/cortexdb-recall`) that, on every prompt, searches the project's CortexDB for memories relevant to what you just typed and injects the top matches into context — so stored knowledge is used automatically, not only when a tool is called explicitly.
+The plugin ships a `UserPromptSubmit` hook (`hooks/hooks.json` → `bin/cortexdb-recall`) that searches the configured local or remote brain for memories relevant to what you just typed and injects the top matches into context. In Codex it runs after you trust the hook through `/hooks`.
 
 It is built to stay out of the way:
 
-- **Scoped to real databases.** It looks for `$CORTEXDB_PATH` (else the global `~/.cortexdb/cortexdb.db`). If no database exists yet, the hook does nothing — zero overhead, and it never creates a database.
+- **Local or remote.** It uses `CORTEXDB_REMOTE` when configured, without requiring a local database. In local mode it looks for `$CORTEXDB_PATH` (else the global `~/.cortexdb/cortexdb.db`) and stays silent if that file does not exist.
 - **Asked once.** The first time it runs on a machine with a database present, it asks (via Claude) whether you want auto-recall, and remembers your answer in `${XDG_CACHE_HOME:-~/.cache}/cortexdb/autorecall`.
 - **Never blocks.** Any error — missing binary, query failure, no matches — exits silently so your prompt is never delayed.
 - **Bounded.** Injects at most `CORTEXDB_RECALL_TOPK` (default 3) snippets.
@@ -170,6 +175,24 @@ Toggle it any time:
 ${CLAUDE_PLUGIN_ROOT}/bin/cortexdb-recall --enable    # turn on
 ${CLAUDE_PLUGIN_ROOT}/bin/cortexdb-recall --disable   # turn off
 ```
+
+## Diagnose startup and memory
+
+Run the installed plugin's launcher (replace the path with your plugin directory):
+
+```bash
+/path/to/cortexdb/bin/cortexdb-mcp --doctor
+/path/to/cortexdb/bin/cortexdb-mcp --doctor --self-test
+```
+
+The JSON report shows the running binary version, resolved local database or
+remote address, auto-recall setting, and database integrity or authenticated
+remote tool discovery. Tokens are never printed. A missing local brain is
+reported as `not_initialized` and is not created. Connection or database errors
+exit nonzero. `--self-test` additionally checks memory write, close, reopen and
+lexical recall in a temporary database, leaving the configured brain untouched.
+Hook trust must be checked in Codex `/hooks`; the server cannot inspect it.
+This command requires v2.119.0 or a newer release binary.
 
 ## Usage
 

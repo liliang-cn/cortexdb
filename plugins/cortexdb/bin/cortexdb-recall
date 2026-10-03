@@ -1,5 +1,5 @@
 #!/bin/sh
-# CortexDB auto-recall launcher for the Claude Code UserPromptSubmit hook.
+# CortexDB auto-recall launcher for Claude Code and Codex UserPromptSubmit hooks.
 #
 # On each prompt it: locates the project's cortexdb.db, honors a global on/off
 # choice, and — when enabled — runs `cortexdb-mcp --recall` to inject matched
@@ -30,7 +30,9 @@ esac
 # Resolve the DB the same way the server does: explicit CORTEXDB_PATH, else the
 # global ~/.cortexdb/cortexdb.db. Never create one here — recall is read-only.
 db="${CORTEXDB_PATH:-$HOME/.cortexdb/cortexdb.db}"
-[ -f "$db" ] || exit 0
+if [ -z "${CORTEXDB_REMOTE:-}" ]; then
+  [ -f "$db" ] || exit 0
+fi
 # Pin the recall binary to the exact file we validated above.
 export CORTEXDB_PATH="$db"
 

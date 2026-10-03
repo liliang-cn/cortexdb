@@ -29,6 +29,9 @@ fmt.Println(rec.ContextPack.Text)
 
 插件给 Claude Code 和 Codex 一个全局大脑 `~/.cortexdb/cortexdb.db`，带 `/remember`、`/recall` 和自动召回 hook。多个 agent、多台机器指向同一个 `cortexdb-grpc`，就共享同一份记忆和图谱。
 
+Codex 中需要在 `/hooks` 审阅并信任插件 hooks，自动召回才会运行。
+配置和 `cortexdb-mcp --doctor --self-test` 诊断用法见[插件指南](plugins/cortexdb/README.md)；诊断命令需要 v2.119.0 或更新版本的二进制。
+
 ## 里面有什么
 
 - 向量（HNSW、IVF、Flat、二值编码）、FTS5 全文检索、混合检索与图检索

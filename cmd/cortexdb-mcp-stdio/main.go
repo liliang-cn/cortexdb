@@ -15,6 +15,13 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--doctor" {
+		if err := runDoctor(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "cortexdb doctor:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	// `--version` prints what this binary is and exits, opening nothing. The
 	// MCP client that launches it cannot be asked, so this is the only way to
 	// tell an installed copy from the one you meant to install.

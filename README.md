@@ -29,6 +29,10 @@ fmt.Println(rec.ContextPack.Text)
 
 The plugin gives Claude Code and Codex one global brain at `~/.cortexdb/cortexdb.db`, `/remember`, `/recall` and an auto-recall hook. Point several agents or machines at one `cortexdb-grpc` and they share the same memory and graph.
 
+In Codex, review and trust the plugin hooks in `/hooks` to activate automatic
+recall. See the [plugin guide](plugins/cortexdb/README.md) for setup and
+`cortexdb-mcp --doctor --self-test` diagnostics (v2.119.0+).
+
 ## What's inside
 
 - Vectors (HNSW, IVF, flat, binary codes), FTS5 full-text search, hybrid and graph retrieval
