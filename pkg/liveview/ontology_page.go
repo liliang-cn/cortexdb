@@ -312,7 +312,7 @@ function plural(n, one, many){ return n === 1 ? one : many; }
 /* Lane accents. Deliberately not the scene page's node-type palette: these
    colour interfaces, which that page has no concept of, and reusing its hues
    would suggest a correspondence that does not exist. */
-var LANE = ["#38bdf8","#a78bfa","#34d399","#fbbf24","#f472b6","#2dd4bf","#fb923c","#60a5fa"];
+var LANE = ["#38bdf8","#e9b44c","#34d399","#fbbf24","#fb7185","#2dd4bf","#fb923c","#60a5fa"];   // no violet or magenta
 function laneColor(i){ return LANE[i % LANE.length]; }
 
 /* ---------- the sentence ----------

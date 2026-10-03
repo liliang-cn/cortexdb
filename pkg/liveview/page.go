@@ -738,15 +738,20 @@ var BG = /^[0-9a-fA-F]{6}$/.test(OPTS.bg || "") ? "#" + OPTS.bg : T.bg;
 if(OPTS.panels === "0") document.documentElement.classList.add("bare");
 if(OPTS.bg) document.body.style.background = BG;
 
-var NAMED = {entity:"#38bdf8", concept:"#a78bfa", memory:"#34d399", knowledge:"#fbbf24",
-  document:"#fb923c", person:"#f472b6", project:"#60a5fa", organization:"#2dd4bf",
+// No violet, magenta or lavender anywhere in the palette: concept was a
+// violet and person a magenta, and the hashed hues for every other type could
+// land in that band too. Products embedding this view were re-painting it
+// through page globals to get rid of them; the view should not need that.
+var NAMED = {entity:"#38bdf8", concept:"#e9b44c", memory:"#34d399", knowledge:"#fbbf24",
+  document:"#fb923c", person:"#fb7185", project:"#60a5fa", organization:"#2dd4bf",
   location:"#f59e0b", event:"#f87171", chunk:"#475569"};
 // Darker inks of the same hues, for a light ground.
-var NAMED_LIGHT = {entity:"#0284c7", concept:"#7c3aed", memory:"#059669", knowledge:"#d97706",
-  document:"#ea580c", person:"#db2777", project:"#2563eb", organization:"#0d9488",
+var NAMED_LIGHT = {entity:"#0284c7", concept:"#b7791f", memory:"#059669", knowledge:"#d97706",
+  document:"#ea580c", person:"#cf3655", project:"#2563eb", organization:"#0d9488",
   location:"#b45309", event:"#dc2626", chunk:"#94a3b8"};
 function colorOf(t){
   var h=0; for(var i=0;t && i<t.length;i++) h=(h*31+t.charCodeAt(i))%360;
+  if(h >= 250 && h < 330) h = (h + 110) % 360;   // the violet-to-magenta band, skipped
   if(T.mono) return t ? "hsl(" + (115 + h%50) + ",62%," + (42 + h%28) + "%)" : "#3f6b52";
   if(T.light){
     if(!t) return "#94a3b8";

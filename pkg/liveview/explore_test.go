@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -362,4 +365,69 @@ func TestTitleCardControlsAndChipsDoNotOverlap(t *testing.T) {
 			t.Errorf("page still types a fold glyph (%s); it sits off-centre in the chip", typed)
 		}
 	}
+}
+
+// A process holding the shared brain's address in its own settings used to
+// assemble a Source from LoadRemote alone, and got a view that drew the graph
+// and could do nothing else. RemoteSource must answer everything OpenSource's
+// remote branch does.
+func TestRemoteSourceCarriesEveryHook(t *testing.T) {
+	src := RemoteSource("127.0.0.1:1", "tok")
+	if src.Describe != "shared brain 127.0.0.1:1" {
+		t.Errorf("Describe = %q", src.Describe)
+	}
+	if src.Read == nil || src.Record == nil || src.Call == nil || src.Contract == nil ||
+		src.Ontology == nil || src.Draft == nil || src.Close == nil {
+		t.Fatalf("RemoteSource left a hook nil: %+v", src)
+	}
+	if _, err := src.Call(context.Background(), "upsert_entities", json.RawMessage(`{}`)); err == nil {
+		t.Error("RemoteSource's caller let a writing tool through")
+	}
+}
+
+// No violet, magenta or lavender in the scene or ontology palettes, named or
+// hashed.
+func TestPalettesCarryNoViolet(t *testing.T) {
+	hex := regexp.MustCompile(`#[0-9a-fA-F]{6}`)
+	for name, src := range map[string]string{"scene": pageHTML, "ontology": ontologyHTML} {
+		for _, block := range []string{"var NAMED = {", "var NAMED_LIGHT = {", "var LANE = ["} {
+			i := strings.Index(src, block)
+			if i < 0 {
+				continue
+			}
+			j := strings.IndexAny(src[i:], "};]")
+			for _, c := range hex.FindAllString(src[i:i+j+1], -1) {
+				if h, s := hueSat(c); s > 0.25 && h >= 250 && h < 335 {
+					t.Errorf("%s palette %s has %s, hue %.0f: violet/magenta", name, block, c, h)
+				}
+			}
+		}
+	}
+	if !strings.Contains(pageHTML, "if(h >= 250 && h < 330) h = (h + 110) % 360;") {
+		t.Error("hashed type colours no longer skip the violet-to-magenta band")
+	}
+}
+
+func hueSat(c string) (float64, float64) {
+	v, _ := strconv.ParseUint(c[1:], 16, 32)
+	r, g, b := float64(v>>16&0xff)/255, float64(v>>8&0xff)/255, float64(v&0xff)/255
+	mx, mn := math.Max(r, math.Max(g, b)), math.Min(r, math.Min(g, b))
+	d := mx - mn
+	if d == 0 {
+		return 0, 0
+	}
+	var h float64
+	switch mx {
+	case r:
+		h = math.Mod((g-b)/d, 6)
+	case g:
+		h = (b-r)/d + 2
+	default:
+		h = (r-g)/d + 4
+	}
+	h *= 60
+	if h < 0 {
+		h += 360
+	}
+	return h, d / mx
 }

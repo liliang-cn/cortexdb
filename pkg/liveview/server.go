@@ -128,19 +128,7 @@ type Source struct {
 // seconds, and reopening the file on that cadence would be pointless churn.
 func OpenSource(ctx context.Context) (*Source, error) {
 	if addr, token, ok := RemoteConfigured(); ok {
-		call := remoteCaller(addr, token)
-		return &Source{
-			Describe: "shared brain " + addr,
-			Read: func(ctx context.Context) ([]Node, []Edge, error) {
-				return LoadRemote(ctx, addr, token, 0, true)
-			},
-			Record:   callerRecord(call),
-			Call:     call,
-			Contract: remoteContract(addr, token),
-			Ontology: remoteOntology(addr, token),
-			Draft:    remoteDraft(addr, token),
-			Close:    func() error { return nil },
-		}, nil
+		return RemoteSource(addr, token), nil
 	}
 
 	dbPath := os.Getenv("CORTEXDB_PATH")
