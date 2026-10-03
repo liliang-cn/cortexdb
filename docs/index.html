@@ -96,8 +96,8 @@
       "isPartOf": { "@id": "https://liliang-cn.github.io/cortexdb/#website" },
       "about": { "@id": "https://liliang-cn.github.io/cortexdb/#code" },
       "inLanguage": "en",
-      "dateModified": "2026-10-02",
-      "primaryImageOfPage": "https://liliang-cn.github.io/cortexdb/assets/img/live-3d-openclaw-cluster-1600.webp"
+      "dateModified": "2026-10-03",
+      "primaryImageOfPage": "https://liliang-cn.github.io/cortexdb/assets/img/live-view-dark-1600.webp"
     },
     {
       "@type": "FAQPage",
@@ -175,13 +175,13 @@
     <figure style="margin:0">
       <div class="screen">
         <div class="screen-bar" aria-hidden="true"><i></i><i></i><i></i><span>serve_graph_3d — live brain</span></div>
-        <img src="assets/img/live-3d-openclaw-cluster-1600.webp"
-             srcset="assets/img/live-3d-openclaw-cluster-800.webp 800w, assets/img/live-3d-openclaw-cluster-1600.webp 1600w"
+        <img src="assets/img/live-view-dark-1600.webp"
+             srcset="assets/img/live-view-dark-800.webp 800w, assets/img/live-view-dark-1600.webp 1600w"
              sizes="(min-width: 980px) 540px, 100vw"
              width="1600" height="1000" fetchpriority="high"
-             alt="A 3D view of a CortexDB knowledge graph with 2,000 entities and 5,953 relations, colored by node type">
+             alt="The CortexDB live view, dark theme: the code graph of CortexDB itself, packages, files and types colored by node type, with package names drawn on the scene">
       </div>
-      <figcaption class="caption">A real shared brain, the one behind an OpenClaw cluster: 2,000 entities and 5,953 relations whose types the agents wrote themselves.</figcaption>
+      <figcaption class="caption"><code>serve_graph_3d</code> on the code graph of CortexDB itself: 600 of its 3,835 symbols drawn, the rest one search or expansion away.</figcaption>
     </figure>
   </div>
 </section>
@@ -359,18 +359,32 @@ export CORTEXDB_REMOTE=host:port</code></pre>
     <div>
       <p class="kicker">See it</p>
       <h2 id="see-title">A brain you can look inside.</h2>
-      <p class="lede" style="font-size:1.06rem">CortexDB is inspectable by design. <code>serve_graph_3d</code> serves a live view from inside the MCP server handling the calls, so the graph lights up as agents touch it. <code>graph_schema</code> reports the schema the data actually has, and every inferred fact can be traced back to the facts it came from.</p>
+      <p class="lede" style="font-size:1.06rem">CortexDB is inspectable by design. <code>serve_graph_3d</code> serves a live view from inside the MCP server handling the calls, so the graph lights up as agents touch it. Find any node across the whole store, ask a question, run read-only Cypher, and expand node by node. <code>graph_schema</code> reports the schema the data actually has, and every inferred fact can be traced back to the facts it came from.</p>
       <ul class="checks">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>Three themes, each light and dark, following the system by default</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>Works on a phone: the inspector becomes a bottom sheet</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>Every view is a link: <code>?focus=</code>, <code>?ask=</code>, <code>?cypher=</code>, <code>?theme=</code></span></li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>One file to back up, copy, diff or open with <code>sqlite3</code></span></li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>Change feed you can read by cursor</span></li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>Explanations for every inference, reports for every contradiction</span></li>
       </ul>
     </div>
-    <figure style="margin:0">
+    <figure class="duo">
       <div class="screen">
-        <div class="screen-bar" aria-hidden="true"><i></i><i></i><i></i><span>orbit</span></div>
-        <video src="assets/img/brain-orbit.mp4" poster="assets/img/brain-orbit-poster.webp" width="960" height="600" muted loop playsinline controls preload="none" aria-label="The CortexDB brain rotating in 3D"></video>
+        <div class="screen-bar" aria-hidden="true"><i></i><i></i><i></i><span>?theme=ember&amp;mode=light&amp;focus=pkg/liveview</span></div>
+        <img src="assets/img/live-view-light-1600.webp"
+             srcset="assets/img/live-view-light-800.webp 800w, assets/img/live-view-light-1600.webp 1600w"
+             sizes="(min-width: 980px) 560px, 100vw"
+             width="1600" height="1000" loading="lazy" decoding="async"
+             alt="The live view in the Ember light theme, focused on one package, with its files labelled and the inspector open">
       </div>
+      <div class="phone">
+        <img src="assets/img/live-view-phone-390.webp"
+             srcset="assets/img/live-view-phone-390.webp 390w, assets/img/live-view-phone-780.webp 780w"
+             sizes="170px"
+             width="390" height="844" loading="lazy" decoding="async"
+             alt="The live view on a phone: the focused package at the top, the inspector as a bottom sheet">
+      </div>
+      <figcaption class="caption">Ember light on a desktop, Space dark on a phone.</figcaption>
     </figure>
   </div>
 </section>
@@ -475,7 +489,7 @@ export CORTEXDB_REMOTE=host:port</code></pre>
     </div>
     <div class="fine">
       <span>© 2026 Liang Li · MIT License</span>
-      <span>Updated <time datetime="2026-10-02">2 October 2026</time> · v2.117.0</span>
+      <span>Updated <time datetime="2026-10-03">3 October 2026</time> · v2.117.0</span>
     </div>
   </div>
 </footer>

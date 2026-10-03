@@ -568,3 +568,13 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-fam
   .site-header, .menu, .copy, .cta { display: none !important; }
   body { background: #fff; }
 }
+
+/* Desktop shot with a phone shot overlapping its corner. */
+.duo { margin: 0; position: relative; padding-bottom: 36px; }
+.duo .phone {
+  position: absolute; right: -6px; bottom: 0; width: clamp(110px, 26%, 170px);
+  border-radius: 22px; overflow: hidden; border: 5px solid #11151d;
+  box-shadow: 0 18px 40px -12px rgba(20, 24, 33, .45);
+}
+.duo .phone img { display: block; width: 100%; height: auto; }
+.duo .caption { max-width: calc(100% - clamp(120px, 28%, 180px)); }

@@ -61,7 +61,7 @@
       "isPartOf": { "@id": "https://liliang-cn.github.io/cortexdb/#website" },
       "about": { "@id": "https://liliang-cn.github.io/cortexdb/#code" },
       "inLanguage": "zh-CN",
-      "dateModified": "2026-10-02"
+      "dateModified": "2026-10-03"
     },
     {
       "@type": "FAQPage",
@@ -140,13 +140,13 @@
     <figure style="margin:0">
       <div class="screen">
         <div class="screen-bar" aria-hidden="true"><i></i><i></i><i></i><span>serve_graph_3d — live brain</span></div>
-        <img src="../assets/img/live-3d-openclaw-cluster-1600.webp"
-             srcset="../assets/img/live-3d-openclaw-cluster-800.webp 800w, ../assets/img/live-3d-openclaw-cluster-1600.webp 1600w"
+        <img src="../assets/img/live-view-dark-1600.webp"
+             srcset="../assets/img/live-view-dark-800.webp 800w, ../assets/img/live-view-dark-1600.webp 1600w"
              sizes="(min-width: 980px) 540px, 100vw"
              width="1600" height="1000" fetchpriority="high"
-             alt="CortexDB 知识图谱的 3D 视图：2000 个实体、5953 条关系，按节点类型着色">
+             alt="CortexDB 实时视图（深色主题）：CortexDB 自身源码的代码图谱，包、文件和类型按节点类型着色，包名直接标在场景里">
       </div>
-      <figcaption class="caption">一个真实的共享大脑，支撑着一个 OpenClaw 集群：2000 个实体、5953 条关系，节点类型都是 Agent 自己写进去的。</figcaption>
+      <figcaption class="caption"><code>serve_graph_3d</code> 打开 CortexDB 自己的代码图谱：3835 个符号里画出 600 个，其余的一次搜索或展开就能到。</figcaption>
     </figure>
   </div>
 </section>
@@ -324,18 +324,32 @@ export CORTEXDB_REMOTE=host:port</code></pre>
     <div>
       <p class="kicker">看得见</p>
       <h2 id="see-title">一个能看进去的大脑。</h2>
-      <p class="lede" style="font-size:1.06rem">CortexDB 生来可检查。<code>serve_graph_3d</code> 直接从处理调用的 MCP 服务里提供实时视图，Agent 碰到哪里，图就在哪里亮起来。<code>graph_schema</code> 报告数据实际呈现的 schema，每条推理出的事实都能追溯到它所依据的事实。</p>
+      <p class="lede" style="font-size:1.06rem">CortexDB 生来可检查。<code>serve_graph_3d</code> 直接从处理调用的 MCP 服务里提供实时视图，Agent 碰到哪里，图就在哪里亮起来。可以在整个库里查找任意节点、直接提问、跑只读 Cypher，再一个节点一个节点地展开。<code>graph_schema</code> 报告数据实际呈现的 schema，每条推理出的事实都能追溯到它所依据的事实。</p>
       <ul class="checks">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>三套主题，各有浅色和深色，默认跟随系统</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>手机上也好用：详情面板变成底部抽屉</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>每个视图都是一个链接：<code>?focus=</code>、<code>?ask=</code>、<code>?cypher=</code>、<code>?theme=</code></span></li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>一个文件：备份、拷贝、比对，或直接用 <code>sqlite3</code> 打开</span></li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>可按游标读取的变更事件流</span></li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>每条推理都有解释，每个矛盾都有报告</span></li>
       </ul>
     </div>
-    <figure style="margin:0">
+    <figure class="duo">
       <div class="screen">
-        <div class="screen-bar" aria-hidden="true"><i></i><i></i><i></i><span>orbit</span></div>
-        <video src="../assets/img/brain-orbit.mp4" poster="../assets/img/brain-orbit-poster.webp" width="960" height="600" muted loop playsinline controls preload="none" aria-label="CortexDB 大脑的 3D 旋转视图"></video>
+        <div class="screen-bar" aria-hidden="true"><i></i><i></i><i></i><span>?theme=ember&amp;mode=light&amp;focus=pkg/liveview</span></div>
+        <img src="../assets/img/live-view-light-1600.webp"
+             srcset="../assets/img/live-view-light-800.webp 800w, ../assets/img/live-view-light-1600.webp 1600w"
+             sizes="(min-width: 980px) 560px, 100vw"
+             width="1600" height="1000" loading="lazy" decoding="async"
+             alt="Ember 浅色主题下的实时视图：聚焦一个包，文件名标在场景里，右侧是详情面板">
       </div>
+      <div class="phone">
+        <img src="../assets/img/live-view-phone-390.webp"
+             srcset="../assets/img/live-view-phone-390.webp 390w, ../assets/img/live-view-phone-780.webp 780w"
+             sizes="170px"
+             width="390" height="844" loading="lazy" decoding="async"
+             alt="手机上的实时视图：上方是聚焦的包，详情面板是底部抽屉">
+      </div>
+      <figcaption class="caption">桌面上是 Ember 浅色，手机上是 Space 深色。</figcaption>
     </figure>
   </div>
 </section>
@@ -440,7 +454,7 @@ export CORTEXDB_REMOTE=host:port</code></pre>
     </div>
     <div class="fine">
       <span>© 2026 Liang Li · MIT 协议</span>
-      <span>更新于 <time datetime="2026-10-02">2026 年 10 月 2 日</time> · v2.117.0</span>
+      <span>更新于 <time datetime="2026-10-03">2026 年 10 月 3 日</time> · v2.117.0</span>
     </div>
   </div>
 </footer>

@@ -2,17 +2,21 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/liliang-cn/cortexdb/v2.svg)](https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2) [![CI](https://github.com/liliang-cn/cortexdb/actions/workflows/ci.yml/badge.svg)](https://github.com/liliang-cn/cortexdb/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/liliang-cn/cortexdb/branch/main/graph/badge.svg)](https://codecov.io/gh/liliang-cn/cortexdb) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-纯 Go、单文件的 AI 记忆与知识图谱。一个 SQLite 文件装下:向量、混合 RAG 检索、分作用域的 agent 记忆、RDF/SPARQL 知识图谱、Palantir 风格 ontology、60+ agent 工具——既可嵌进你的 Go 程序,也可作为 Claude Code / Codex 的共享大脑插件。**无 embedder 也能跑**(词法模式,无需 API key,中文整句提问同样能召回),或接任何 OpenAI 兼容 embeddings 端点。零外部服务。
+一个 SQLite 文件装下 AI 记忆与知识图谱。纯 Go，不用额外跑服务，没有 embedding 模型也能用。
 
-```bash
-go get github.com/liliang-cn/cortexdb/v2
-```
+![CortexDB 实时视图](docs/assets/img/live-view-dark-1600.webp)
 
-[![CortexDB 大脑的实时 3D 视图](docs/assets/live-3d-openclaw-cluster.png)](docs/assets/live-3d-openclaw-cluster.png)
+## 安装
 
-![同一个大脑，Orbit 转起来](docs/assets/live-3d-orbit.gif)
+| | |
+| --- | --- |
+| Go 库 | `go get github.com/liliang-cn/cortexdb/v2` |
+| Claude Code | `/plugin marketplace add liliang-cn/cortexdb`，再 `/plugin install cortexdb@cortexdb` |
+| Codex | `codex plugin marketplace add liliang-cn/cortexdb && codex plugin add cortexdb@cortexdb` |
+| 共享大脑服务端 | `go install github.com/liliang-cn/cortexdb/v2/cmd/cortexdb-grpc@latest` |
+| 客户端 | `cargo add cortexdb-client` · `pip install cortexdb-client` · `npm install cortexdb-client` |
 
-<sub>`serve_graph_3d` 跑在一个真实共享大脑上 —— OpenClaw 集群背后的那个：2000 个实体、5953 条关系，节点类型是 agent 自己写进去的。它由处理这些调用的 MCP 服务端内部提供，所以工具每碰一次图谱，图就亮一次。（[Orbit 的 MP4 版](docs/assets/live-3d-orbit.mp4)）</sub>
+## 使用
 
 ```go
 db, _ := cortexdb.Open(cortexdb.DefaultConfig("brain.db"))
@@ -20,44 +24,37 @@ defer db.Close()
 brain := db.KnowledgeMemory()
 _, _ = brain.Remember(ctx, cortexdb.KnowledgeMemoryRememberRequest{Content: "Alice 偏好 tab 缩进。", Scope: "user"})
 rec, _ := brain.Recall(ctx, cortexdb.KnowledgeMemoryRecallRequest{Query: "Alice 偏好什么?"})
-fmt.Println(rec.ContextPack.Text) // 可直接粘贴的上下文包,带来源标注
+fmt.Println(rec.ContextPack.Text)
 ```
+
+插件给 Claude Code 和 Codex 一个全局大脑 `~/.cortexdb/cortexdb.db`，带 `/remember`、`/recall` 和自动召回 hook。多个 agent、多台机器指向同一个 `cortexdb-grpc`，就共享同一份记忆和图谱。
 
 ## 里面有什么
 
-- **KnowledgeMemory 大脑门面** — `Recall` / `Remember` / `Reflect` / `Consolidate` / `PromoteToKnowledge` / 上下文包;融合检索横跨情景记忆、持久知识与 GraphRAG 分块;关系型问题以**图边事实**回答(`Alice —uses→ Apollo`),无 embedder 也可靠;确定性(不调 LLM)的 `extract_conversation`;记忆可内联携带实体/关系,存储与入图一次完成。
-- **可组合检索** — `cortex_query`:vector / lexical / hybrid / graph 四条预取通道,RRF、加权 RRF 或 DBSF 融合,带元数据过滤与逐源打分调试;`Authorize` 回调在检索层对每个候选做 RBAC/ABAC 门禁;可插拔重排器。
-- **向量 + 词法引擎** — FTS5、HNSW / IVF / Flat 索引、标量与乘积量化，以及 `IndexTypeBinary`：1 bit 编码（内存只占 1/32），按汉明距离粗筛，再用原始精度对候选精确重排——真实 768 维向量上，默认 8 倍过采样时 recall@10 为 0.979–0.996，10 万条向量时比精确扫描快约 110 倍；PostgreSQL 上用 pgvector 的 `binary_quantize`。地理索引、语义查询路由。
-- **外部召回通道** — 你已经在跑的搜索集群（Meilisearch、Weaviate…）可以通过 `QuerySource` 成为参与融合的一条 lane，而不必成为存储：它只点名候选 id，内容仍归大脑所有，过期的 id 会被丢弃而不是被编造成结果。
-- **知识契约** — 每条记录都能回答*我怎么知道的*和*我多确定*：`_source`、`_chunk`、`_producer`，以及一个闭集里的 `_grade` —— `verified`（有名有姓的人留下的）、`self_consistent`（从已陈述的东西推导出来的）、`asserted`（模型或人说的，没人核过）、`held`、`refused`（被词汇表拒绝，附原因）。`contract_tally` 回答整个书架站在什么之上，未标注的行也算进去；`contract_needs_attention` 列出需要人看的 —— 包括实体消解在"两个名字可能是同一个实体"时写下的 `possiblySame` 链接，而不是凭猜测直接合并；`fact_provenance` 引出事实所来自的原文；`verify_claims` 拿 (主语, 关系, 宾语) 三元组对照图谱逐条判定 —— supported、contradicted（单值关系上当前是另一个值、有效期已结束、或有 `_contradicts` 记录否定它）或 absent —— 每条判定都附来源，全程不调模型。生产者写入前调 `ValidateContract`。[alchemy](https://github.com/liliang-cn/alchemy) 往这里入库的每张图都带契约 —— 它六个 sink 里唯一这么做的。
-- **可换存储后端** — 默认 SQLite；把 DSN 换成 `postgres://` 就把同一个大脑搬到 **PostgreSQL + pgvector**，向量、混合检索、记忆和 RDF 图谱在两个后端上都跑。注册表是编译期的，不是插件系统（存储是热路径）。104 个 opt-in 的 PostgreSQL 测试，大多是 parity 测试：一份测试体、两个数据库、必须给出相同答案。
-- **知识图谱** — 同一文件上的 RDF 三元组/四元组,**属性图也能当 RDF 读**:抽取和 `upsert_entities` 写进去的一切,都以只读三元组的形式参与 SPARQL、推理和 SHACL(`cxn:` 节点、`cxt:` 类型、`cxr:` 关系、`cxp:` 属性),不复制数据,也就没有同步问题。**RDF 1.2**:三元组项 `<<( s p o )>>`、具名化三元组和 `{| |}` 注解,于是"关于一条事实的事实"(谁说的、多大把握)本身也能查询;支持带书写方向的字面量。SPARQL 1.1 子集加上 SPARQL 1.2 的三元组项模式和函数(更新、FROM/FROM NAMED、OPTIONAL/UNION/MINUS/VALUES、函数库、聚合、子查询、属性路径)——范围内的 W3C RDF 1.2 和 SPARQL 1.2 官方测试在两种后端上全部通过。半朴素求值的物化推理,覆盖 RDFS 和一个 OWL 2 RL 子集——`inverseOf`、对称、传递、`equivalentClass`/`equivalentProperty`、`sameAs`、**键**(`FunctionalProperty` / `InverseFunctionalProperty` 推出 `sameAs`:邮箱相同就是同一个人)和**属性链**——事实变化时**自动**保持最新(删除再重推,异步执行,`WaitForInference` 可读到自己刚写入的结果),每条推理结果都能解释来源。矛盾(`disjointWith`、`propertyDisjointWith`、函数型属性出现两个值、`differentFrom` 与推出的 `sameAs` 冲突)会连同冲突的三元组一起报告,绝不靠猜来消解。SHACL 校验(`sh:class`、`sh:node`、`sh:and`/`or`/`not`/`xone`、`sh:closed`、`sh:equals`/`sh:disjoint`、取值范围、长度、语言)以及 **SHACL-AF 规则**(`sh:TripleRule`,支持条件、顺序和节点表达式,迭代到不动点,结果可解释)。属性图上的**只读 Cypher / GQL**(`graph_cypher_query`:MATCH / OPTIONAL MATCH / WITH / 最多 6 跳的变长路径 / 聚合;3,897 个 openCypher TCK 场景 0 错答——做不到的直接拒绝)。N-Triples/N-Quads/Turtle/TriG/JSON-LD 读写,JSON-LD 绝不拉取远程 context;属性图侧 `apply_inference` 物化两跳关系组合并带出处;实体记录断言文档,`delete_document_graph` 是按摄入形状做的删除。
-- **Ontology(Palantir 风格)** — 带主键与基数的对象/链接/接口类型,对象集代数(union / intersect / filter / `search_around`),带审计的受治理**动作类型**,自动生成的类型化 agent 工具,以及破坏性变更的 schema diff;`strict` 与 `vocabulary` 两种执行模式。
-- **流水线** — `memoryflow`(转录 → 召回 → 唤醒 → 晋升)、`graphflow`(语料 → 图 → HTML 报告)、`importflow`(CSV / SQL dump / 在线 Postgres-MySQL → RAG + KG)、`connector`(PII 脱敏、签名计划、可逆保险库、CDC 同步)。
-- **工具与 MCP** — 80+ 工具,进程内与 MCP 同名同义,另有交互式图谱视图 `render_graph_html`,实时 3D 视图 `serve_graph_3d`(可在全库查找、提问、用 Cypher 查询、逐个节点展开邻居;只读、适配手机,每个视角都是可分享的链接:`?focus=`、`?ask=`、`?cypher=`),以及会分页的批量列举工具 `memory_list_all`、`graph_list_all`——`graph_list_all` 默认只给连接最密的核心子图,传 `order: "id"` 才会逐页走完整张图,像 `memory_list_all` 一样返回 `next_cursor`。
-- **对整个库发问** — 检索回答"什么与这个查询相关"，这几个回答"里面有什么"。*范围*检索返回距离查询一定距离内的全部、以外的一个不要，当 top-K 只是在编造一个 K 时这才是诚实的答案（`search_vector_range`，而且响应会说明是否有匹配被上限挡住）。`Aggregate` 按元数据字段计数、求和、分组（`aggregate_metadata`）。`VectorAggregate` 归约向量本身 —— 质心、几何中位数，以及 **medoid**：组内距离其余成员最近的那条**真实记录**，它用算术回答"这批近重复里哪条是正本""这一簇到底在讲什么"，全程不需要模型（`representative_records`）。两个后端行为一致，每种行为一份测试体、两边都跑。
-- **图自己描述自己** — `graph_schema` 报告**观察到的** schema（有哪些节点类型和边类型、每种边实际连接哪对类型、每种节点带哪些属性键），`graph_property_values` 报告某个键实际取哪些值——因为照着键名写的过滤（`color == "black"` 而库里存的是 `BLK`）返回空，而空看起来像个事实。声明的本体是可选的，恰恰在"没人知道形状"的那些图上不存在；这个是从行里量出来的，还附带一份**可以直接贴进 prompt** 的文本形式。同组还有 `rank_graph_nodes`（这个大脑在结构上到底关于什么；结果带计算时间缓存，只在图变了之后才重算）、`graph_statistics`（连通分量远大于 1 说明实体写进去了却从没被连上）、`graph_health`（按 producer 的增长突增、度数长尾里的枢纽节点、每天的 supersede 次数、单值关系同时存在多个值）和 `predict_graph_edges`（缺的事实，或同一实体存了两份）。
-- **整库问题** — `global_search` 把 GraphRAG 全局检索做成调用方显式选择的工具：`build_community_hierarchy` 用 Leiden 保留每一层社区（每一层的每个社区都内部连通，Louvain 保证不了这一点），自底向上写社区报告；`global_search` 在指定 `level` 的报告上做 map-reduce。有模型时由模型写报告和答案，没有模型时报告按确定性规则生成，按词面相关度排序后原样返回，不做综合。
-- **沿着图走的检索** — `retrieval_mode: "ppr"` 从问题点名的实体出发做个性化 PageRank（HippoRAG 2 的做法），再和词法或混合检索的第一阶段结果按排名融合。没有 embedder 时，问题点名了足够具体的实体（不是大多数段落都提到的那种，比如对话里的说话人），`auto` 就走这条路，否则保持词法检索。不管有没有 embedder，`SaveKnowledge` 都会建好这张实体图；读起来像名字的标题会关联到文档的每个分块。经 `SaveKnowledge`/`SearchKnowledge` 实测（`cortexdb-bench`，无 embedder），recall@5 词法 → `auto`：2WikiMultiHopQA 0.657 → 0.807，MuSiQue 0.457 → 0.542，LoCoMo 0.493 → 0.495，LongMemEval 0.861 → 0.862；p95 低于 30 ms。`graph` 模式按排名融合词法、实体关联和扩展出来的片段，精确的词法命中不会被图上的邻居挤下去。
-- **变更事件流** — 对节点、边、三元组、记忆、知识和本体 schema 的每一次已提交写入，都在同一个事务里追加到 `change_log`：按提交顺序、恰好一次，回滚的事务不留任何记录。可以按游标读取（`changes_since`、`db.Changes`），也可以在进程内订阅；默认保留 7 天或 50 万条。推理结果就是靠它保持最新的，触发器和同步也可以建在它上面。
-- **拿图给名字消歧** — `disambiguate_mentions` 用同句出现的其它名字来解析一个有歧义的名字：在候选之间找最短路径，每条渲染成一句话并带上 `edge_ids`。确定性的前四步归库，第五步"选哪个"归调用方——所以完全不需要模型也能用，而且任何时候都能说出为什么。连不上任何东西的提及标记为未解析，绝不退化成最接近的字符串。
-- **多跳问题的路径检索** — `search_paths` 在问题点名的实体之间遍历图，返回把它们连起来的事实链，按长度和关系类型打分，每条边都带着它出自的 chunk；`return_paths` 把这些链加进一次 GraphRAG 查询。`relation_policies`（按关系类型设权重和最大深度）可用于 `search_paths`、`expand_graph` 和 `HybridSearch`，让 `co_occurs_with` 不再和 `works_at` 算一样重。在一个带"长得像但错误"干扰项的 10 题多跳集上，5 个 chunk 预算下完整证据命中率从 0.50（chunk 检索）升到 0.80，干扰项占比从 0.36–0.43 降到 0.20。
-- **命中不再是半句话** — `chunk_window` 把命中块的邻块作为**上下文**带回来，明确标注、绝不当成命中。它治的是分块必然带来的那个毛病：一次真实检索返回的命中块第一个词是 `ance.`——*importance* 被切在块边界上。
-- **质量是测出来的** — `pkg/eval` 用标注查询集走真实检索路径,recall@k / nDCG 回归下限进 CI;FTS5 / SPARQL / SQL-dump 解析器有 fuzz 测试。
+- 向量（HNSW、IVF、Flat、二值编码）、FTS5 全文检索、混合检索与图检索
+- RAG 知识、分作用域的 agent 记忆、带来源的上下文包
+- RDF 1.2 知识图谱：SPARQL、RDFS + OWL 2 RL 推理、SHACL、只读 Cypher
+- Palantir 风格的 ontology，带受治理的动作
+- 80+ 工具，进程内调用或走 MCP
+- `serve_graph_3d`：实时 3D 视图，可查找、提问、查询、展开，桌面和手机都能用
+- 变更事件流：每次已提交的写入，按顺序、恰好一次
+- 默认 SQLite，换成 `postgres://` DSN 就跑在 PostgreSQL + pgvector 上
 
-## Claude Code / Codex 插件与共享大脑
+## 环境变量
 
-```text
-/plugin marketplace add liliang-cn/cortexdb   →   /plugin install cortexdb@cortexdb      (Claude Code)
-codex plugin marketplace add liliang-cn/cortexdb && codex plugin add cortexdb@cortexdb   (Codex)
-```
+| 变量 | 含义 |
+| --- | --- |
+| `CORTEXDB_PATH` | 数据库文件（默认 `~/.cortexdb/cortexdb.db`） |
+| `CORTEXDB_REMOTE` | 连到 `host:port` 上的共享 `cortexdb-grpc`，不用本地文件 |
+| `CORTEXDB_GRPC_TOKEN` | 该服务的 Bearer token |
+| `CORTEXDB_GRPC_ADDR` | 服务端监听地址（默认 `127.0.0.1:47821`） |
+| `CORTEXDB_EMBED_BASE_URL` | OpenAI 兼容的 embeddings 端点；不设就是词法模式 |
+| `CORTEXDB_EMBED_MODEL` / `CORTEXDB_EMBED_DIM` | embedding 模型和维度 |
 
-默认词法模式,全局大脑在 `~/.cortexdb/cortexdb.db`,带斜杠命令(`/remember`、`/recall`、`/cortexdb-graph`)和自动召回 hook。把多个 agent、多台机器指向同一个 `cortexdb-grpc`(`CORTEXDB_REMOTE=host:port` + token),Claude Code、Codex、[OpenClaw](https://github.com/liliang-cn/openclaw-cortexdb-memory)、[Hermes](https://github.com/liliang-cn/hermes-cortexdb-memory) 就共享**同一份**记忆与图谱。多语言客户端:`cargo add cortexdb-client` · `pip install cortexdb-client` · `npm install cortexdb-client`。
+## 文档
 
-要让这个服务常驻,[`deploy/`](deploy/) 提供了加固过的 systemd unit,以及 healthcheck 就是服务端二进制自己(`cortexdb-grpc -health`)的容器镜像。所有端口都有默认值,也都可以覆盖。
+[官网](https://liliang-cn.github.io/cortexdb/zh/) · [指南](docs/GUIDE_CN.md)（完整功能一览） · [示例](examples/README.md) · [更新日志](CHANGELOG.md) · [English](README.md)
 
-## 更多
+## License
 
-完整指南(分层、ontology 细节、共享大脑运维):[docs/GUIDE_CN.md](docs/GUIDE_CN.md) · 16 个可运行[示例](examples/README.md)(`go run ./examples/01_core` … `16_ontology`) · 发布套件:[docs/LAUNCH_KIT.md](docs/LAUNCH_KIT.md) · English: [README.md](README.md)
-
-嵌入式、可审视、local-first——不做分布式向量数据库,也不做企业级 RDF 服务器。
+MIT
