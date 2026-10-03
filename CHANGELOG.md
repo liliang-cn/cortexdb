@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.119.1] - 2026-10-03
+
+### Fixed
+
+- `--doctor` reported healthy local brains as failed in two cases. The
+  integrity check shared the 15-second network timeout, and at the ~90 MB/s
+  measured on a cluster node any brain over about 1.3 GB timed out; it now has
+  its own 10-minute limit and says so if it runs out. A WAL brain in a
+  directory that cannot be written, with no `-shm` file, failed with "attempt
+  to write a readonly database"; it is now checked as immutable and the report
+  notes it.
+- The `hook_trust` field is gone from the `--doctor` report: it was the same
+  sentence on every run and checked nothing.
+
 ## [2.119.0] - 2026-10-03
 
 ### Added
