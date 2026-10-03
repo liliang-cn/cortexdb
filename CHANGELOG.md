@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.118.0] - 2026-10-03
+
+### Added
+
+- **`liveview.RemoteSource(addr, token)`** — a live-view source over a shared
+  brain whose address and token a host keeps in its own settings. Assembling
+  one from `LoadRemote` alone gave a view that drew the graph and nothing else:
+  no find, ask or Cypher across the store, no node-by-node expansion, no
+  inspector, no contract. `OpenSource` now builds its remote branch with it, so
+  there is one implementation. (`SourceFor` is the same for a local brain a
+  host already holds open.)
+
+### Changed
+
+- **No violet or magenta in the live view.** `concept` was a violet and
+  `person` a magenta, the ontology page's lane colours had both, and the hashed
+  colour for any other node type could land in that band. Concept is now an
+  ochre, person a rose, and hashed hues skip 250°–330°. Products embedding the
+  view had been re-painting it through page globals to get there.
+
 ## [2.117.1] - 2026-10-03
 
 ### Fixed
