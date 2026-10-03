@@ -95,16 +95,27 @@ const pageTemplate = `<!DOCTYPE html>
   .fold{position:absolute;top:5px;right:5px;z-index:1;width:22px;height:22px;flex:none;padding:0;
     background:none;border:none;color:#3f4d66;font-size:15px;line-height:20px;cursor:pointer}
   .fold:hover{background:none;color:#cbd5e1}
-  .fold::before{content:"–"}
+  /* Drawn, not typed: a "+" or "–" glyph sits wherever its font puts it,
+     which is never the middle of the button and never level with the label
+     beside it. Two bars are centred by construction. */
+  .fold::before{content:"";position:absolute;inset:0;--g:9px;
+    background:linear-gradient(currentColor,currentColor) center/var(--g) 1.5px no-repeat}
   /* Written per panel, not as one .panel.folded rule: each panel sets its own
      width, padding and display through an id selector, and a class can never
      outrank one of those. */
   #head.folded>.fold::before,#tools.folded>.fold::before,
-  #legend.folded>.fold::before,#feed.folded>.fold::before,#contract.folded>.fold::before{content:"+"}
+  #legend.folded>.fold::before,#feed.folded>.fold::before,#contract.folded>.fold::before{
+    background:linear-gradient(currentColor,currentColor) center/var(--g) 1.5px no-repeat,
+      linear-gradient(currentColor,currentColor) center/1.5px var(--g) no-repeat}
   #head.folded>.bd,#tools.folded>.bd,#legend.folded>.bd,#feed.folded>.bd,
   #contract.folded>.bd{display:none}
   #head.folded,#tools.folded,#legend.folded,#feed.folded,#contract.folded{
-    display:block;width:auto;min-width:0;max-height:none;overflow:visible;padding:5px 30px 5px 11px}
+    display:block;width:auto;min-width:0;max-height:none;overflow:visible;padding:5px 30px 5px 11px;
+    font-size:10px;line-height:20px}
+  /* The chip's height came from each panel's own font, so chips differed by
+     3px and the button, pinned 5px from the top, sat low in the short ones. */
+  #head.folded>.fold,#tools.folded>.fold,#legend.folded>.fold,#feed.folded>.fold,
+  #contract.folded>.fold,#explore.folded>.fold{top:0;bottom:0;margin:auto 0}
   #head.folded::before,#tools.folded::before,#legend.folded::before,#feed.folded::before,
   #contract.folded::before{
     content:attr(data-label);font-size:10px;text-transform:uppercase;
@@ -270,9 +281,12 @@ const pageTemplate = `<!DOCTYPE html>
   #xbar button{flex:none;padding:3px 9px}
   #explore.min #xout{display:none}
   #xbar .push{margin-left:auto}
-  #explore.folded>.fold::before{content:"+"}
+  #explore.folded>.fold::before{
+    background:linear-gradient(currentColor,currentColor) center/var(--g) 1.5px no-repeat,
+      linear-gradient(currentColor,currentColor) center/1.5px var(--g) no-repeat}
   #explore.folded>.bd{display:none}
-  #explore.folded{display:block;width:auto;min-width:0;max-height:none;padding:5px 30px 5px 11px}
+  #explore.folded{display:block;width:auto;min-width:0;max-height:none;padding:5px 30px 5px 11px;
+    font-size:10px;line-height:20px}
   #explore.folded::before{content:attr(data-label);font-size:10px;text-transform:uppercase;
     letter-spacing:.06em;color:#4b5b76;white-space:nowrap}
   /* The record's own actions: walk out from it, share where you are. */
@@ -305,7 +319,9 @@ const pageTemplate = `<!DOCTYPE html>
     #head #counts{margin-top:2px}
     #head .badge{margin-top:4px}
     #tools{top:calc(8px + env(safe-area-inset-top));right:8px}
-    #explore{top:calc(88px + env(safe-area-inset-top));left:8px;right:8px;transform:none;width:auto}
+    /* Below the title card, which is three lines (title, counts, state) and
+       ends at about 97px: 88px put the bar over its last line. */
+    #explore{top:calc(106px + env(safe-area-inset-top));left:8px;right:8px;transform:none;width:auto}
     #xout{max-height:38vh}
     #detail{top:auto;left:0;right:0;bottom:0;width:auto;max-height:62vh;border-radius:14px 14px 0 0;
       padding:14px 14px calc(14px + env(safe-area-inset-bottom))}
@@ -318,6 +334,9 @@ const pageTemplate = `<!DOCTYPE html>
     button{min-height:36px;font-size:12px}
     #explore .tabs button{min-height:34px;padding:4px 12px}
     .fold{width:34px;height:34px;top:1px;right:1px;font-size:18px}
+    .fold::before{--g:12px}
+    #head.folded,#tools.folded,#legend.folded,#feed.folded,#contract.folded,
+    #explore.folded{padding:7px 40px 7px 12px}
     .hit{padding:9px 8px}
   }
   #boot{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;
@@ -483,14 +502,28 @@ const pageTemplate = `<!DOCTYPE html>
     --ink:#052e16;--ink2:#1f4d33;--mute:#5b7d68}
   #themes,#modes{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
   #themes button,#modes button{padding:5px 0;font-size:11px}
-  #themebtn{position:absolute;top:8px;right:30px;width:22px;height:22px;padding:0;border:none;background:none;
+  /* The switch sits beside the collapse button, and the title card keeps a
+     gutter wide enough for both: the title and its ontology link never run
+     under either control. Folded, the card is a label and the switch goes. */
+  #head{padding-right:64px}
+  #head h1{padding-right:0}
+  #themebtn{position:absolute;top:5px;right:32px;width:24px;height:22px;padding:0;border:none;background:none;
     color:var(--mute);font-size:13px;line-height:22px;cursor:pointer}
   #themebtn:hover{color:var(--acc);background:none}
+  #head.folded>#themebtn{display:none}
+  /* A touch screen gets the 34px collapse button; the switch moves over and
+     grows to match. */
+  @media (pointer:coarse){
+    #head{padding-right:80px}
+    #themebtn{top:1px;right:37px;width:34px;height:34px;line-height:34px;font-size:16px}
+  }
   /* On a phone the title card is one line wide; the switch gets its own room
      and a thumb-sized target. */
   @media (max-width:760px){
-    #head{padding-right:70px}
-    #themebtn{top:4px;right:34px;width:32px;height:32px;line-height:32px;font-size:16px}
+    #head{padding-right:70px;max-width:calc(100vw - 128px)}
+    #head .badge,#head #counts{white-space:nowrap}
+    #head #counts{overflow:hidden;text-overflow:ellipsis}
+    #themebtn{top:2px;right:36px;width:30px;height:32px;line-height:32px;font-size:16px}
   }
 </style>
 </head>
@@ -1935,12 +1968,14 @@ function showPast(p){
       "</b> — this is the past, and it is not updating.";
     bar.classList.add("on");
     document.body.classList.add("pinned");
+    placeExplore();   // the banner moved the title card down
     pinBtn.classList.add("on");
     note.className = ""; note.textContent = "live updates are stopped";
     return;
   }
   bar.classList.remove("on");
   document.body.classList.remove("pinned");
+  placeExplore();
   pinBtn.classList.remove("on");
   // Coming back to now, the tally is worth reading again at once. It refuses to
   // count under a pinned scene, so without this the panel would go on saying
@@ -2628,6 +2663,34 @@ if(window.ResizeObserver){
 } else {
   window.addEventListener("resize", fitToContainer);
 }
+
+/* On a narrow screen the explore bar stacks under the title card, and the
+   card's height is not fixed: it wraps on the smallest phones, shrinks to a
+   chip when folded, and moves down when the past banner is pinned. A fixed
+   offset put the bar over the card's last line; this follows its real edge.
+   Wider, the stylesheet places the bar beside or below the card on its own.
+   The title card's width is bounded the same way, by where the controls chip
+   actually starts: that chip is wider on a touch screen than any fixed
+   allowance assumed. */
+function placeExplore(){
+  var ex = document.getElementById("explore"), hd = document.getElementById("head"),
+      tl = document.getElementById("tools");
+  if(!ex || !hd) return;
+  if(window.innerWidth > 760){ ex.style.top = ""; hd.style.maxWidth = ""; return; }
+  // Only the folded chip shares the row; opened, the controls are a sheet that
+  // covers the card while it is in use, and squeezing the card would not help.
+  if(tl && tl.classList.contains("folded"))
+    hd.style.maxWidth = Math.max(120, Math.floor(tl.getBoundingClientRect().left - 8 - hd.getBoundingClientRect().left)) + "px";
+  else hd.style.maxWidth = "";
+  ex.style.top = Math.round(hd.getBoundingClientRect().bottom + 8) + "px";
+}
+if(window.ResizeObserver){
+  var placer = new ResizeObserver(placeExplore);
+  placer.observe(document.getElementById("head"));
+  if(document.getElementById("tools")) placer.observe(document.getElementById("tools"));
+}
+window.addEventListener("resize", placeExplore);
+placeExplore();
 </script>
 
 <script type="importmap">

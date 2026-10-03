@@ -337,3 +337,29 @@ func TestThemesComeInLightAndDarkAndFollowTheSystem(t *testing.T) {
 		}
 	}
 }
+
+// The layout bugs these guard against were all a control sitting on top of
+// something: the light/dark switch over the title's ontology link, the
+// explore bar over the title card's last line on a phone, and a typed "+"
+// sitting low in folded chips of differing heights. The geometry was checked
+// in a browser at 320–1344px; this pins the choices that made it hold.
+func TestTitleCardControlsAndChipsDoNotOverlap(t *testing.T) {
+	for _, want := range []string{
+		"#head{padding-right:64px}",            // room for collapse + switch, not just collapse
+		"#head.folded>#themebtn{display:none}", // a folded card is a label, nothing beside it
+		`.fold::before{content:"";`,            // the glyphs are drawn bars, centred by construction
+		"#contract.folded>.fold,#explore.folded>.fold{top:0;bottom:0;margin:auto 0}",
+		"font-size:10px;line-height:20px", // one chip height whatever the panel's own font
+		"function placeExplore()",         // the phone explore bar follows the card's real edge
+		"placer.observe(document.getElementById(\"head\"))",
+	} {
+		if !strings.Contains(pageHTML, want) {
+			t.Errorf("page is missing %q", want)
+		}
+	}
+	for _, typed := range []string{`content:"+"`, `content:"–"`} {
+		if strings.Contains(pageHTML, typed) {
+			t.Errorf("page still types a fold glyph (%s); it sits off-centre in the chip", typed)
+		}
+	}
+}
