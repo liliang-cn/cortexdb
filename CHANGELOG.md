@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.117.1] - 2026-10-03
+
+### Fixed
+
+- **Live view: nothing covers the title card any more.** The ☀/☾ switch sat on
+  the end of the title's "ontology →" link — the card kept room for the
+  collapse button only — and now has its own gutter, and goes away when the
+  card is folded. On narrow screens and phones the explore bar was placed 88px
+  down while the card ends near 97px, so it hid the card's last line; it now
+  follows the card's real bottom edge (wrapped, folded, or moved down by the
+  past banner), and the card is bounded by where the controls chip actually
+  starts, which is wider on a touch screen.
+- **Live view: the + and – on folded chips are centred.** They were typed
+  glyphs pinned 5px from the top of chips whose height came from each panel's
+  own font (29px for one, 32px for the rest), so they sat low. They are now
+  drawn bars, centred by construction, in chips of one height; on a touch
+  screen the chip grows to hold the 34px button. Checked in a browser from
+  320px to 1344px wide, with and without touch.
+
 ## [2.117.0] - 2026-10-02
 
 ### Changed
