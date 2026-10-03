@@ -191,7 +191,7 @@ remote tool discovery. Tokens are never printed. A missing local brain is
 reported as `not_initialized` and is not created. Connection or database errors
 exit nonzero. `--self-test` additionally checks memory write, close, reopen and
 lexical recall in a temporary database, leaving the configured brain untouched.
-Hook trust must be checked in Codex `/hooks`; the server cannot inspect it.
+Hook trust is set in Codex `/hooks`.
 This command requires v2.119.0 or a newer release binary.
 
 ## Usage

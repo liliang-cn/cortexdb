@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -105,5 +106,50 @@ func TestRecallLauncherRemoteWithoutLocalBrain(t *testing.T) {
 				t.Fatalf("missing local DB should be silent: %s", out)
 			}
 		})
+	}
+}
+
+// A WAL brain in a directory that cannot be written, with no -shm to attach
+// to, is healthy; it was reported failed with "attempt to write a readonly
+// database".
+func TestDoctorBrainInReadOnlyDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs POSIX permissions enforced on this user")
+	}
+	path := doctorEnv(t)
+	db, err := cortexdb.Open(cortexdb.DefaultConfig(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL().Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(path + "-shm")
+	_ = os.Remove(path + "-wal")
+	dir := filepath.Dir(path)
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+
+	report, err := inspectBrain(context.Background())
+	if err != nil || report.Status != "ready" {
+		t.Fatalf("report=%+v error=%v", report, err)
+	}
+	if report.Note == "" {
+		t.Error("the immutable fallback is not reported")
+	}
+}
+
+// The report carries only what was checked.
+func TestDoctorReportHasNoUncheckedFields(t *testing.T) {
+	doctorEnv(t)
+	report, _ := inspectBrain(context.Background())
+	out, _ := json.Marshal(report)
+	if strings.Contains(string(out), "hook_trust") {
+		t.Errorf("report still has hook_trust: %s", out)
 	}
 }

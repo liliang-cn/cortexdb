@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	cortexdbroot "github.com/liliang-cn/cortexdb/v2"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
@@ -22,12 +24,21 @@ type doctorReport struct {
 	Remote          string `json:"remote,omitempty"`
 	TokenConfigured bool   `json:"token_configured"`
 	AutoRecall      string `json:"auto_recall"`
-	HookTrust       string `json:"hook_trust"`
 	Status          string `json:"status"`
 	Tools           int    `json:"tools,omitempty"`
 	SelfTest        string `json:"self_test,omitempty"`
+	Note            string `json:"note,omitempty"`
 	Error           string `json:"error,omitempty"`
 }
+
+// localCheckTimeout bounds the integrity check, which reads every page: at
+// the ~90 MB/s measured on a cluster node, the network timeout this used to
+// share (15s) reported any healthy brain over about 1.3 GB as failed.
+const localCheckTimeout = 10 * time.Minute
+
+// sqliteReadonlyDirectory is SQLITE_READONLY_DIRECTORY: a WAL database whose
+// directory cannot be written, with no -shm file for a reader to attach to.
+const sqliteReadonlyDirectory = 1544
 
 func runDoctor(args []string) error {
 	selfTest := false
@@ -37,11 +48,9 @@ func runDoctor(args []string) error {
 		}
 		selfTest = true
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), remoteDialTimeout)
-	defer cancel()
-	report, err := inspectBrain(ctx)
+	report, err := inspectBrain(context.Background())
 	if selfTest {
-		testCtx, testCancel := context.WithTimeout(context.Background(), remoteDialTimeout)
+		testCtx, testCancel := context.WithTimeout(context.Background(), localCheckTimeout)
 		defer testCancel()
 		if testErr := doctorSelfTest(testCtx); testErr != nil {
 			report.SelfTest = "failed"
@@ -63,7 +72,7 @@ func runDoctor(args []string) error {
 }
 
 func inspectBrain(ctx context.Context) (doctorReport, error) {
-	report := doctorReport{Version: cortexdbroot.Version, Mode: "local", Status: "ready", AutoRecall: "not_configured", HookTrust: "review in Codex /hooks; not detectable by the server"}
+	report := doctorReport{Version: cortexdbroot.Version, Mode: "local", Status: "ready", AutoRecall: "not_configured"}
 	cache := os.Getenv("XDG_CACHE_HOME")
 	if cache == "" {
 		home, _ := os.UserHomeDir()
@@ -84,7 +93,9 @@ func inspectBrain(ctx context.Context) (doctorReport, error) {
 			return report, err
 		}
 		defer conn.Close()
-		list, err := rpcv1.NewToolsServiceClient(conn).ListTools(ctx, &rpcv1.ListToolsRequest{})
+		rctx, cancel := context.WithTimeout(ctx, remoteDialTimeout)
+		defer cancel()
+		list, err := rpcv1.NewToolsServiceClient(conn).ListTools(rctx, &rpcv1.ListToolsRequest{})
 		if err != nil {
 			return report, fmt.Errorf("remote tool discovery failed: %w", err)
 		}
@@ -113,28 +124,58 @@ func inspectBrain(ctx context.Context) (doctorReport, error) {
 	} else if err != nil {
 		return report, err
 	}
-	// Read-only URI prevents diagnostics from creating or migrating a brain.
-	uri := url.URL{Scheme: "file", Path: absolute, RawQuery: "mode=ro"}
+	cctx, cancel := context.WithTimeout(ctx, localCheckTimeout)
+	defer cancel()
+	err = checkSQLite(cctx, absolute, false)
+	if isReadonlyDirectory(err) {
+		// Healthy, just not openable the usual way. Immutable skips the -shm
+		// a WAL reader needs; no writer can be active without one, so the file
+		// is all there is to read.
+		report.Note = "directory is not writable; checked the database file as immutable"
+		err = checkSQLite(cctx, absolute, true)
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return report, fmt.Errorf("integrity check did not finish within %s", localCheckTimeout)
+	}
+	return report, err
+}
+
+// checkSQLite runs the integrity and schema checks over a read-only
+// connection, which can neither create nor migrate a brain.
+func checkSQLite(ctx context.Context, path string, immutable bool) error {
+	query := "mode=ro"
+	if immutable {
+		query += "&immutable=1"
+	}
+	uri := url.URL{Scheme: "file", Path: path, RawQuery: query}
 	db, err := sql.Open("sqlite", uri.String())
 	if err != nil {
-		return report, err
+		return err
 	}
 	defer db.Close()
 	var integrity string
 	if err := db.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&integrity); err != nil {
-		return report, err
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return err
 	}
 	if integrity != "ok" {
-		return report, fmt.Errorf("SQLite integrity check: %s", integrity)
+		return fmt.Errorf("SQLite integrity check: %s", integrity)
 	}
 	var tables int
 	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ('messages', 'embeddings')").Scan(&tables); err != nil {
-		return report, err
+		return err
 	}
 	if tables != 2 {
-		return report, fmt.Errorf("database is missing CortexDB memory/storage tables")
+		return fmt.Errorf("database is missing CortexDB memory/storage tables")
 	}
-	return report, nil
+	return nil
+}
+
+func isReadonlyDirectory(err error) bool {
+	var coded interface{ Code() int }
+	return errors.As(err, &coded) && coded.Code() == sqliteReadonlyDirectory
 }
 
 func doctorSelfTest(ctx context.Context) error {
