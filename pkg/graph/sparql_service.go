@@ -16,6 +16,7 @@ package graph
 // author wrote it.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -142,9 +143,15 @@ func (g *GraphStore) executeSPARQLService(ctx context.Context, step sparqlServic
 	return out, nil
 }
 
+// maxServiceResponseBytes bounds what HTTPSPARQLService reads from an
+// endpoint: the answer is held in memory to be joined, and an endpoint is
+// whatever the query names.
+const maxServiceResponseBytes = 64 << 20
+
 // HTTPSPARQLService is a SPARQL 1.1 Protocol client: it POSTs the query to
-// the endpoint and reads SPARQL JSON results. client nil is
-// http.DefaultClient. Wrap it to restrict which endpoints may be reached.
+// the endpoint and reads SPARQL JSON results, at most 64MB of them. client
+// nil is http.DefaultClient. Wrap it to restrict which endpoints may be
+// reached.
 func HTTPSPARQLService(client *http.Client) SPARQLServiceFunc {
 	if client == nil {
 		client = http.DefaultClient
@@ -169,7 +176,14 @@ func HTTPSPARQLService(client *http.Client) SPARQLServiceFunc {
 			body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 			return nil, fmt.Errorf("SERVICE <%s>: %s: %s", endpoint, resp.Status, strings.TrimSpace(string(body)))
 		}
-		return ReadSPARQLResultsJSON(resp.Body)
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxServiceResponseBytes+1))
+		if err != nil {
+			return nil, fmt.Errorf("SERVICE <%s>: %w", endpoint, err)
+		}
+		if len(body) > maxServiceResponseBytes {
+			return nil, fmt.Errorf("SERVICE <%s>: the answer is larger than %d bytes", endpoint, maxServiceResponseBytes)
+		}
+		return ReadSPARQLResultsJSON(bytes.NewReader(body))
 	}
 }
 
