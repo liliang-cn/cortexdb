@@ -177,7 +177,7 @@ func benchWrite(ctx context.Context, path string, cfg benchConfig, steps, payloa
 func benchRun(ctx context.Context, g *graph.GraphStore, rng *rand.Rand, run int, twoPhase bool, out string, res *benchResult, mu *sync.Mutex) ([]time.Duration, error) {
 	runID := fmt.Sprintf("run:%06d", run)
 	if err := g.UpsertNode(ctx, &graph.GraphNode{
-		ID: runID, NodeType: typeRun, Content: "bench run", Vector: stepVector("bench run"),
+		ID: runID, NodeType: typeRun, Content: "bench run",
 		Properties: map[string]any{"name": runID, "status": "running"},
 	}); err != nil {
 		return nil, err
@@ -190,7 +190,7 @@ func benchRun(ctx context.Context, g *graph.GraphStore, rng *rand.Rand, run int,
 		id := fmt.Sprintf("%s/step-%02d", runID, i)
 		nodeType := types[(i-1)%len(types)]
 		props := map[string]any{"name": fmt.Sprintf("step-%02d", i), "run_id": runID, "seq": i, "status": "running"}
-		node := &graph.GraphNode{ID: id, NodeType: nodeType, Content: nodeType, Vector: stepVector(nodeType), Properties: props}
+		node := &graph.GraphNode{ID: id, NodeType: nodeType, Content: nodeType, Properties: props}
 		if twoPhase {
 			if err := g.UpsertNode(ctx, node); err != nil {
 				return lats, err
@@ -249,7 +249,7 @@ func benchRunBatched(ctx context.Context, g *graph.GraphStore, rng *rand.Rand, r
 	t0 := time.Now()
 	runID := fmt.Sprintf("run:%06d", run)
 	nodes := []*graph.GraphNode{{
-		ID: runID, NodeType: typeRun, Content: "bench run", Vector: stepVector("bench run"),
+		ID: runID, NodeType: typeRun, Content: "bench run",
 		Properties: map[string]any{"name": runID, "status": "done"},
 	}}
 	var edges []*graph.GraphEdge
@@ -264,7 +264,7 @@ func benchRunBatched(ctx context.Context, g *graph.GraphStore, rng *rand.Rand, r
 			props["confidence"] = float64(rng.Intn(100)) / 100
 			props["tokens"] = 200 + rng.Intn(3000)
 		}
-		nodes = append(nodes, &graph.GraphNode{ID: id, NodeType: nodeType, Content: nodeType, Vector: stepVector(nodeType), Properties: props})
+		nodes = append(nodes, &graph.GraphNode{ID: id, NodeType: nodeType, Content: nodeType, Properties: props})
 		edges = append(edges, &graph.GraphEdge{ID: runID + "->" + id, FromNodeID: runID, ToNodeID: id, EdgeType: edgeHasStep, Weight: 1})
 		if prev != "" {
 			edges = append(edges, &graph.GraphEdge{ID: prev + "->" + id, FromNodeID: prev, ToNodeID: id, EdgeType: edgeTriggered, Weight: 1})

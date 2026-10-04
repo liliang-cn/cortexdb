@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- A graph node no longer needs a vector. `UpsertNode`, `UpsertNodesBatch` and
+  `ExecuteBatch` accept a node with none, for structural records found by id,
+  type, properties and edges rather than by similarity (an agent's execution
+  steps, runs, bookkeeping), which previously had to invent one. It is stored
+  as an empty vector, so existing brains need no migration, and it is never a
+  vector-search candidate: hybrid search, `GraphVectorSearch`,
+  `SimilarityInGraph` and `PredictEdges` skip it or give it no vector score,
+  instead of scoring it 0 (cosine) or -Inf (Euclidean). A node rewritten
+  without a vector is removed from the HNSW index and from pgvector's table.
+
 ### Fixed
 
 - A backdated graph write — a `GraphNode` or `GraphEdge` whose `ValidFrom` is

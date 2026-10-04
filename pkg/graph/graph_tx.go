@@ -62,10 +62,14 @@ func (g *GraphStore) SyncUpsertedNodes(_ context.Context, nodes []*GraphNode) {
 	}
 
 	for _, node := range nodes {
-		if node == nil || node.ID == "" || len(node.Vector) == 0 {
+		if node == nil || node.ID == "" {
 			continue
 		}
+		// Removed even when there is nothing to add: a node rewritten without
+		// a vector must stop being found by the one it had.
 		g.hnswIndex.index.Remove(node.ID)
-		_ = g.hnswIndex.index.Add(node.ID, node.Vector)
+		if hasVector(node) {
+			_ = g.hnswIndex.index.Add(node.ID, node.Vector)
+		}
 	}
 }

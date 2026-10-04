@@ -91,14 +91,8 @@ func (g *GraphStore) UpsertNodesBatch(ctx context.Context, nodes []*GraphNode) (
 			continue
 		}
 
-		if len(node.Vector) == 0 {
-			result.Errors = append(result.Errors, fmt.Errorf("invalid node %s: missing vector", node.ID))
-			result.FailedCount++
-			continue
-		}
-
-		// Encode vector
-		vectorBytes, err := encoding.EncodeVector(node.Vector)
+		// Encode vector; a node may have none (see UpsertNode).
+		vectorBytes, err := encodeNodeVector(node.Vector)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("failed to encode vector for %s: %w", node.ID, err))
 			result.FailedCount++
@@ -640,15 +634,15 @@ func (g *GraphStore) upsertNodesBatchTx(ctx context.Context, tx *sql.Tx, nodes [
 	defer func() { _ = stmt.Close(); _ = archive.Close() }()
 
 	for _, node := range nodes {
-		if node == nil || node.ID == "" || len(node.Vector) == 0 {
+		if node == nil || node.ID == "" {
 			// Recorded, not just counted: Err folds the per-row failures into an
 			// error for callers, and a silently counted one would be invisible there.
-			result.Errors = append(result.Errors, fmt.Errorf("invalid node: missing ID or vector"))
+			result.Errors = append(result.Errors, fmt.Errorf("invalid node: missing ID"))
 			result.FailedCount++
 			continue
 		}
 
-		vectorBytes, _ := encoding.EncodeVector(node.Vector)
+		vectorBytes, _ := encodeNodeVector(node.Vector)
 		var propertiesJSON []byte
 		if node.Properties != nil {
 			propertiesJSON, _ = json.Marshal(node.Properties)

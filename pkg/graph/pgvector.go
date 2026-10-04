@@ -110,10 +110,13 @@ func (g *GraphStore) initPgVector(ctx context.Context, dim int) vectorCapability
 	return cap
 }
 
-// pgUpsertVector mirrors a node's vector into the searchable table.
+// pgUpsertVector mirrors a node's vector into the searchable table. A node
+// without one is removed from it: a vector a node no longer has must not keep
+// it findable by similarity.
 func (g *GraphStore) pgUpsertVector(ctx context.Context, nodeID string, vec []float32) error {
 	if len(vec) == 0 {
-		return nil
+		_, err := g.exec(ctx, `DELETE FROM graph_node_vectors WHERE node_id = ?`, nodeID)
+		return err
 	}
 	_, err := g.exec(ctx, `
 		INSERT INTO graph_node_vectors (node_id, embedding) VALUES (?, ?)

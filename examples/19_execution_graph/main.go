@@ -29,7 +29,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"hash/fnv"
 	"log"
 	"os"
 	"path/filepath"
@@ -264,7 +263,7 @@ type stepResult struct {
 
 func (r *recorder) start(ctx context.Context, task string) error {
 	return r.g.UpsertNode(ctx, &graph.GraphNode{
-		ID: r.runID, NodeType: typeRun, Content: task, Vector: stepVector(task),
+		ID: r.runID, NodeType: typeRun, Content: task,
 		Properties: map[string]any{"name": r.runID, "task": task, "status": "running"},
 	})
 }
@@ -295,7 +294,7 @@ func (r *recorder) step(ctx context.Context, nodeType, name string, parents []st
 		"name": name, "run_id": r.runID, "seq": len(r.steps) + 1, "status": "running",
 		"parents": strings.Join(parents, ","),
 	}
-	node := &graph.GraphNode{ID: id, NodeType: nodeType, Content: name, Vector: stepVector(name), Properties: props}
+	node := &graph.GraphNode{ID: id, NodeType: nodeType, Content: name, Properties: props}
 	if err := r.g.UpsertNode(ctx, node); err != nil {
 		return "", err
 	}
@@ -339,25 +338,6 @@ func printCypher(ctx context.Context, g *graph.GraphStore, title string, req gra
 		fmt.Printf("  %s\n", strings.Join(cells, " | "))
 	}
 	return nil
-}
-
-// stepVector gives a node the vector graph_nodes requires. Steps are found
-// by structure, not similarity, so a cheap hashed bag of words is enough; it
-// has the 64 dimensions CortexDB's own no-embedder writers (decisions among
-// them) use, so every node on this graph shares one vector space.
-func stepVector(text string) []float32 {
-	v := make([]float32, 64)
-	for _, tok := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
-	}) {
-		h := fnv.New64a()
-		_, _ = h.Write([]byte(tok))
-		v[h.Sum64()%64]++
-	}
-	if v[0] == 0 {
-		v[0] = 1e-3
-	}
-	return v
 }
 
 // statusOf reads the status out of a history row's properties JSON.

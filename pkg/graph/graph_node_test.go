@@ -146,13 +146,15 @@ func TestGraphNodeCRUD(t *testing.T) {
 			t.Errorf("Expected error for node without ID")
 		}
 
-		// Test node without vector
+		// A node without a vector is valid: a structural node (see
+		// vectorless_test.go). It reads back with none.
 		node = &GraphNode{
 			ID: "no_vector",
 		}
-		err = graph.UpsertNode(ctx, node)
-		if err == nil {
-			t.Errorf("Expected error for node without vector")
+		if err = graph.UpsertNode(ctx, node); err != nil {
+			t.Errorf("node without vector: %v", err)
+		} else if got, err := graph.GetNode(ctx, "no_vector"); err != nil || len(got.Vector) != 0 {
+			t.Errorf("node without vector read back as %+v (%v)", got, err)
 		}
 	})
 
