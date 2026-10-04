@@ -118,6 +118,14 @@ type owlRLState struct {
 	candidates    []*rdfsInferenceRecord
 	candidateKeys map[string]bool
 	clashes       map[string]*InferenceInconsistency
+
+	// The list axioms of owl_rl_rules.go, by member and by the class or
+	// property they are about, and the owl:AllDifferent axioms, which
+	// sameAsConflicts checks once the run is over.
+	listAxiomKeys map[string]bool
+	listByMember  map[string][]*owlListAxiom
+	listByHead    map[string][]*owlListAxiom
+	allDifferent  []*owlListAxiom
 }
 
 type chainAxiom struct {
@@ -202,6 +210,7 @@ func (e *inferenceEngine) fireOWLRL(record *rdfsInferenceRecord) {
 	for _, ref := range e.owlRL.chainsByLink[engineTermKey(t.Predicate)] {
 		e.extendChain(ref.axiom, ref.position, record)
 	}
+	e.fireOWLRules(record)
 }
 
 // applyFunctional is prp-fp with use as one of the two statements.
@@ -580,7 +589,7 @@ func reportedTriple(record *rdfsInferenceRecord) RDFTriple {
 // is already suspended is still recognised as the one in conflict.
 func (e *inferenceEngine) sameAsConflicts() ([]string, []InferenceInconsistency) {
 	differents := e.byPredicate[keyOWLDifferentFrom]
-	if len(differents) == 0 {
+	if len(differents) == 0 && len(e.owlRL.allDifferent) == 0 {
 		return nil, nil
 	}
 	parent := make(map[string]string)
@@ -627,8 +636,91 @@ func (e *inferenceEngine) sameAsConflicts() ([]string, []InferenceInconsistency)
 		join(record, false)
 	}
 
+	// addPath adds the shortest sameAs path joining s and o to a report,
+	// found breadth-first over neighbours in a fixed order so the report does
+	// not depend on map order.
+	addPath := func(report *InferenceInconsistency, s, o string) {
+		via := map[string]edge{s: {}}
+		from := map[string]string{}
+		queue := []string{s}
+		for len(queue) > 0 && !hasKey(via, o) {
+			current := queue[0]
+			queue = queue[1:]
+			edges := append([]edge(nil), adjacent[current]...)
+			sort.Slice(edges, func(i, j int) bool {
+				if edges[i].to != edges[j].to {
+					return edges[i].to < edges[j].to
+				}
+				return edges[i].record.key < edges[j].record.key
+			})
+			for _, next := range edges {
+				if hasKey(via, next.to) {
+					continue
+				}
+				via[next.to] = next
+				from[next.to] = current
+				queue = append(queue, next.to)
+			}
+		}
+		var path []edge
+		for at := o; at != s; at = from[at] {
+			path = append(path, via[at])
+		}
+		for i := len(path) - 1; i >= 0; i-- {
+			if path[i].held {
+				report.Triples = append(report.Triples, reportedTriple(path[i].record))
+			} else {
+				report.SuspendedSameAs = append(report.SuspendedSameAs, reportedTriple(path[i].record))
+			}
+		}
+	}
+	classMembers := func(root string) []string {
+		var members []string
+		for key := range parent {
+			if find(key) == root {
+				members = append(members, terms[key].String())
+			}
+		}
+		sort.Strings(members)
+		return members
+	}
+
 	var reports []InferenceInconsistency
 	conflicted := make(map[string]bool)
+	// eq-diff2 / eq-diff3: two members of an owl:AllDifferent in one class.
+	for _, axiom := range e.owlRL.allDifferent {
+		firstByRoot := map[string]string{}
+		for _, m := range axiom.members {
+			key := engineTermKey(m)
+			if _, ok := parent[key]; !ok || !isResourceTerm(m) {
+				continue
+			}
+			root := find(key)
+			first, seen := firstByRoot[root]
+			if !seen {
+				firstByRoot[root] = key
+				continue
+			}
+			if first == key {
+				continue
+			}
+			conflicted[root] = true
+			report := InferenceInconsistency{Rule: InconsistencyAllDifferent}
+			for _, support := range axiom.supports {
+				report.Triples = append(report.Triples, reportedTriple(support))
+			}
+			addPath(&report, first, key)
+			members := classMembers(root)
+			report.ClassSize = len(members)
+			if len(members) > oversizedSameAsSampleSize {
+				members = members[:oversizedSameAsSampleSize]
+			}
+			report.Members = members
+			report.Explanation = fmt.Sprintf("%s and %s are members of an owl:AllDifferent, but owl:sameAs reasoning makes them one individual; sameAs reasoning over their class of %d terms is suspended and nothing in it was merged",
+				terms[first], m, report.ClassSize)
+			reports = append(reports, report)
+		}
+	}
 	for _, different := range differents {
 		d := different.Triple
 		if !isResourceTerm(d.Subject) || !isResourceTerm(d.Object) {
@@ -652,52 +744,12 @@ func (e *inferenceEngine) sameAsConflicts() ([]string, []InferenceInconsistency)
 		root := find(s)
 		conflicted[root] = true
 
-		// The shortest joining path, found breadth-first over neighbours
-		// in a fixed order so the report does not depend on map order.
-		via := map[string]edge{s: {}}
-		from := map[string]string{}
-		queue := []string{s}
-		for len(queue) > 0 && !hasKey(via, o) {
-			current := queue[0]
-			queue = queue[1:]
-			edges := append([]edge(nil), adjacent[current]...)
-			sort.Slice(edges, func(i, j int) bool {
-				if edges[i].to != edges[j].to {
-					return edges[i].to < edges[j].to
-				}
-				return edges[i].record.key < edges[j].record.key
-			})
-			for _, next := range edges {
-				if hasKey(via, next.to) {
-					continue
-				}
-				via[next.to] = next
-				from[next.to] = current
-				queue = append(queue, next.to)
-			}
-		}
 		report := InferenceInconsistency{
 			Rule:    InconsistencyDifferentFrom,
 			Triples: []RDFTriple{reportedTriple(different)},
 		}
-		var path []edge
-		for at := o; at != s; at = from[at] {
-			path = append(path, via[at])
-		}
-		for i := len(path) - 1; i >= 0; i-- {
-			if path[i].held {
-				report.Triples = append(report.Triples, reportedTriple(path[i].record))
-			} else {
-				report.SuspendedSameAs = append(report.SuspendedSameAs, reportedTriple(path[i].record))
-			}
-		}
-		var members []string
-		for key := range parent {
-			if find(key) == root {
-				members = append(members, terms[key].String())
-			}
-		}
-		sort.Strings(members)
+		addPath(&report, s, o)
+		members := classMembers(root)
 		report.ClassSize = len(members)
 		if len(members) > oversizedSameAsSampleSize {
 			members = members[:oversizedSameAsSampleSize]

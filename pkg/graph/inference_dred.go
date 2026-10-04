@@ -602,7 +602,7 @@ const rdfsNamespace = "http://www.w3.org/2000/01/rdf-schema#"
 // they are read from, and the declarations whose violation is reported as a
 // contradiction.
 func isRecomputeVocabulary(triple RDFTriple) bool {
-	return triple.Predicate.Value == owlSameAsIRI || isOWLRLVocabulary(triple)
+	return triple.Predicate.Value == owlSameAsIRI || isOWLRLVocabulary(triple) || isOWLClassExpressionVocabulary(triple)
 }
 
 // isOWLRLVocabulary names the vocabulary of owl_rl.go.

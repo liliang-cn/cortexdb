@@ -20,9 +20,10 @@ import "sort"
 // ExplainTriple can walk any of them back to what was actually stated.
 //
 // Keys, property chains and the contradictions — disjointness, differentFrom —
-// are in owl_rl.go, which also gives the engine its inconsistency report.
-// Restrictions, cardinality and the rest of OWL are deliberately absent: each
-// would need a volume of materialization no one has asked for.
+// are in owl_rl.go, which also gives the engine its inconsistency report; the
+// rest of OWL 2 RL — restrictions, intersections and unions, cardinality,
+// owl:hasKey, the All* axioms and the schema rules over them — is in
+// owl_rl_rules.go.
 
 const (
 	owlNamespace              = "http://www.w3.org/2002/07/owl#"
