@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Node property indexes: `GraphStore.IndexNodeProperty(ctx, key)` puts an
+  expression index on one JSON property (`NodePropertyIndexes`,
+  `DropNodePropertyIndex`; opt-in per key, as each is paid for on every
+  write). Equality and `IN` filters on an indexed key become index lookups in
+  `GraphFilter.Properties` with no change of its own, and in Cypher, which
+  reads the index catalog and also starts its joins from such a filter as it
+  does from `id(n) = …`; on SQLite numeric ranges on an indexed key use it as
+  well. Results are identical with and without an index. Keys are identifier
+  characters only, and a key is written into SQL only from the catalog.
+
 ### Changed
 
 - A graph node no longer needs a vector. `UpsertNode`, `UpsertNodesBatch` and
@@ -18,6 +30,19 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Concurrent writers in one process no longer fail with `database is locked`
+  on SQLite. SQLite's busy handler polls with sleeps growing to 100ms, so
+  under steady contention the writer that had waited longest kept waking
+  after the lock had been taken again and could starve past `busy_timeout`:
+  eight goroutines batch-upserting an execution graph lost 3–9 writes in
+  15,000, after waits of 5–8.5s, and with the change feed off the worst wait
+  still reached 4.6s. The store now wraps its SQLite connections so that a
+  transaction that may write, or a statement outside one that writes, first
+  takes its turn on a first-come-first-served queue shared by every pool on
+  the same file in the process; reads and read-only transactions never
+  queue. Throughput is unchanged, there are no failures, and the slowest
+  write in the same run takes 48–78ms. Other processes still meet at SQLite's
+  lock as before.
 - Cypher queries anchored on an id (`WHERE id(t) = $id`, or a node bound by
   an earlier clause) now walk out from that node on SQLite instead of growing
   with the graph. The anchor was already the traversal's seed, but SQLite's

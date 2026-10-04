@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"os"
@@ -48,7 +47,8 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 
 	pinAllocatorSlabs()
 	dsn := fmt.Sprintf("%s?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)&_pragma=cache_size(-2000)&_pragma=foreign_keys(ON)&_pragma=temp_store(MEMORY)", s.config.Path)
-	db, err := sql.Open("sqlite", dsn)
+	// Writers take turns: see sqlite_writelock.go.
+	db, err := openQueuedSQLite(dsn, s.config.Path)
 	if err != nil {
 		return wrapError("init", fmt.Errorf("failed to open database: %w", err))
 	}

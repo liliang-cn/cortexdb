@@ -13,7 +13,8 @@
 //  2. a decision ledger entry (RecordDecision) whose premises are steps;
 //  3. a structural Cypher query: tool calls that followed a low-confidence
 //     LLM call and then ran slow;
-//  4. lineage: every step upstream of the action;
+//  4. lineage: every step upstream of the action, and a filter on indexed
+//     step properties (IndexNodeProperty);
 //  5. an as-of replay of the run as it stood mid-flight;
 //  6. the change feed a downstream evaluator would subscribe to;
 //  7. promotion of the lesson into a separate long-term brain (agentmem).
@@ -85,6 +86,14 @@ func runDemo(ctx context.Context, dir string) error {
 	defer func() { _ = runs.Close() }()
 
 	g := runs.Graph()
+	// Steps are filtered by run, state and cost far more than by anything
+	// else; index those properties so such a question is a lookup, not a
+	// scan of every step ever recorded.
+	for _, key := range []string{"run_id", "status", "latency_ms"} {
+		if err := g.IndexNodeProperty(ctx, key); err != nil {
+			return err
+		}
+	}
 	head, err := g.ChangesHead(ctx)
 	if err != nil {
 		return err
@@ -175,6 +184,15 @@ func runDemo(ctx context.Context, dir string) error {
 	if err := printCypher(ctx, g, "\nlineage of restart_pool:", graph.CypherRequest{
 		Query: `MATCH (s)-[:TRIGGERED*1..6]->(t {name: 'restart_pool'})
 		        RETURN DISTINCT labels(s)[0] AS type, s.name AS step ORDER BY step`,
+	}); err != nil {
+		return err
+	}
+
+	// 4b. By indexed properties: this run's steps that took over a second.
+	if err := printCypher(ctx, g, "\nsteps of this run slower than 1s (indexed run_id, latency_ms):", graph.CypherRequest{
+		Query: `MATCH (s) WHERE s.run_id = $run AND s.latency_ms > 1000
+		        RETURN s.name AS step, s.latency_ms AS latency_ms ORDER BY latency_ms DESC`,
+		Params: map[string]any{"run": rec.runID},
 	}); err != nil {
 		return err
 	}

@@ -61,5 +61,19 @@ func (b cypherBackend) Query(ctx context.Context, q string, args ...any) (*sql.R
 	return b.g.query(ctx, q, args...)
 }
 
+// IndexedNodeProperties reads the property-index catalog for this query. A
+// read failure means no index is used, never a failed query.
+func (b cypherBackend) IndexedNodeProperties(ctx context.Context) map[string]bool {
+	keys, err := b.g.NodePropertyIndexes(ctx)
+	if err != nil || len(keys) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		out[k] = true
+	}
+	return out
+}
+
 func (b cypherBackend) NodeSource(ctx context.Context) (string, []any) { return b.g.NodeSource(ctx) }
 func (b cypherBackend) EdgeSource(ctx context.Context) (string, []any) { return b.g.EdgeSource(ctx) }

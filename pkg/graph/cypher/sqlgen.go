@@ -2,6 +2,7 @@ package cypher
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -138,6 +139,44 @@ type sources struct {
 	// written into properties by temporal facts) is judged at, RFC 3339 UTC;
 	// empty disables the filter.
 	validAt string
+	// indexedProps are the node property keys with an expression index, from
+	// the backend's catalog (IndexedProperties); see indexedExpr.
+	indexedProps map[string]bool
+}
+
+// indexedExpr is the indexed expression for a node property, read against
+// alias, when key has an index the filter can use.
+//
+// This is the one place this file writes a key into SQL text rather than
+// binding it, and it has to: a planner matches an expression index only
+// against the same expression, and a bound JSON path is a different one. The
+// key written is a key the catalog holds — so it was checked by
+// IndexNodeProperty when the index was made, not taken from the query, which
+// merely named the same key — and it is checked again here against the same
+// identifier rule. A query naming any key the catalog does not hold gets the
+// bound-parameter pre-filter as before.
+//
+// name and content are excluded: their filters also accept a fallback (title,
+// the content column), and an OR across two expressions is not an index
+// lookup.
+func (src *sources) indexedExpr(alias, key string) (string, bool) {
+	if !src.indexedProps[key] || key == "name" || key == "content" || !identKey.MatchString(key) {
+		return "", false
+	}
+	return src.dialect.JSONTextGuarded(alias+".properties", key), true
+}
+
+// identKey is the rule pkg/graph's IndexNodeProperty enforces on a key.
+var identKey = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,39}$`)
+
+// indexedLookup reports whether an equality or IN filter on key is an index
+// lookup: selective enough to start a join from, like an id.
+func (src *sources) indexedLookup(key, op string) bool {
+	if op != "=" && op != "IN" {
+		return false
+	}
+	_, ok := src.indexedExpr("n", key)
+	return ok
 }
 
 func (src *sources) nodeFrom(s *sqlBuilder, alias string) {
@@ -226,6 +265,19 @@ func safeJSONKey(k string) bool {
 // filter is never narrower than the exact Go check.
 func (src *sources) propCond(isNode bool, key, op string, vals []string) cond {
 	return func(s *sqlBuilder, alias string) {
+		if isNode && src.indexedLookup(key, op) {
+			ex, _ := src.indexedExpr(alias, key)
+			s.w("(", ex)
+			if op == "=" {
+				s.w(" = ")
+				s.arg(vals[0])
+			} else {
+				s.w(" IN ")
+				s.argList(vals)
+			}
+			s.w(")")
+			return
+		}
 		alts := []func(*sqlBuilder) bool{
 			func(s *sqlBuilder) bool { return src.jsonProp(s, alias, key) },
 		}
@@ -327,6 +379,8 @@ func (src *sources) pushdown(e Expr, params map[string]any, nodeByVar map[string
 				return
 			}
 			src.pushOne(l, "IN", vals, nodeByVar, relByVar)
+		case "<", ">", "<=", ">=":
+			src.pushRange(x, params, nodeByVar)
 		case "STARTS", "ENDS", "CONTAINS":
 			v, ok := stringValue(r, params)
 			if !ok {
@@ -375,6 +429,10 @@ func (src *sources) pushOne(l Expr, op string, vals []string, nodeByVar map[stri
 		if n := nodeByVar[v.Name]; n != nil {
 			n.conds = append(n.conds, src.propCond(true, t.Key, op, vals))
 			n.score += 4
+			if src.indexedLookup(t.Key, op) {
+				n.score += 4
+				n.anchored = true
+			}
 		}
 		if r := relByVar[v.Name]; r != nil && !r.pat.VarLen {
 			r.conds = append(r.conds, src.propCond(false, t.Key, op, vals))
@@ -452,18 +510,93 @@ func stringListValue(e Expr, params map[string]any) ([]string, bool) {
 }
 
 // mapPushdown turns an inline property map into pre-filters: {name: 'x'} is
-// the same question as WHERE n.name = 'x'.
-func (src *sources) mapPushdown(m *MapLit, isNode bool, params map[string]any) (conds []cond, score int) {
+// the same question as WHERE n.name = 'x'. anchored is true when one of them
+// is an index lookup.
+func (src *sources) mapPushdown(m *MapLit, isNode bool, params map[string]any) (conds []cond, score int, anchored bool) {
 	if m == nil {
-		return nil, 0
+		return nil, 0, false
 	}
 	for i, k := range m.Keys {
 		if v, ok := stringValue(m.Values[i], params); ok {
 			conds = append(conds, src.propCond(isNode, k, "=", []string{v}))
 			score += 4
+			if isNode && src.indexedLookup(k, "=") {
+				score += 4
+				anchored = true
+			}
 		}
 	}
-	return conds, score
+	return conds, score, anchored
+}
+
+// pushRange pre-filters `n.key < number` (and >, <=, >=, either way round) on
+// an indexed key, on SQLite only.
+//
+// It is a superset there because SQLite's json_extract keeps a JSON number a
+// number and compares numbers numerically, which is openCypher's rule; a
+// string-valued property sorts above every number, so it can only be let
+// through by > or >=, never wrongly kept out, and the exact check in Go then
+// drops it, as openCypher compares a string with a number to null. PostgreSQL's
+// ->> yields text, on which '900' > '3000': a filter there could drop a true
+// match, so it gets none and the comparison is left to Go.
+func (src *sources) pushRange(x *Binary, params map[string]any, nodeByVar map[string]*nodeEl) {
+	if src.kind == sqldialect.Postgres {
+		return
+	}
+	op := x.Op
+	pa, isProp := x.L.(*PropAccess)
+	num, isNum := numericValue(x.R, params)
+	if !isProp || !isNum {
+		pa, isProp = x.R.(*PropAccess)
+		num, isNum = numericValue(x.L, params)
+		op = map[string]string{"<": ">", ">": "<", "<=": ">=", ">=": "<="}[op]
+	}
+	if !isProp || !isNum {
+		return
+	}
+	v, ok := pa.Target.(*Variable)
+	if !ok {
+		return
+	}
+	n := nodeByVar[v.Name]
+	if n == nil {
+		return
+	}
+	if _, ok := src.indexedExpr(n.alias, pa.Key); !ok {
+		return
+	}
+	key := pa.Key
+	n.conds = append(n.conds, func(s *sqlBuilder, alias string) {
+		ex, _ := src.indexedExpr(alias, key)
+		s.w("(", ex, " ", op, " ")
+		s.arg(num)
+		s.w(")")
+	})
+	n.score += 2
+}
+
+// numericValue is a number literal or parameter, as the type the driver binds.
+func numericValue(e Expr, params map[string]any) (any, bool) {
+	var v any
+	switch x := e.(type) {
+	case *Literal:
+		v = x.Value
+	case *Param:
+		v = params[x.Name]
+	default:
+		return nil, false
+	}
+	switch n := v.(type) {
+	case int64, float64:
+		return n, true
+	case int:
+		return int64(n), true
+	case int32:
+		return int64(n), true
+	case float32:
+		return float64(n), true
+	}
+	return nil, false
 }
 
 // compile builds the SQL for one MATCH clause.
@@ -476,9 +609,10 @@ func (src *sources) compile(c *MatchClause, params map[string]any, bound map[str
 		if np.Var != "" {
 			if n := nodeByVar[np.Var]; n != nil {
 				n.props = append(n.props, np.Props)
-				cs, sc := src.mapPushdown(np.Props, true, params)
+				cs, sc, anc := src.mapPushdown(np.Props, true, params)
 				n.conds = append(n.conds, cs...)
 				n.score += sc
+				n.anchored = n.anchored || anc
 				for _, g := range np.Labels {
 					n.conds = append(n.conds, colIn("node_type", g))
 					n.score++
@@ -492,9 +626,10 @@ func (src *sources) compile(c *MatchClause, params map[string]any, bound map[str
 			n.conds = append(n.conds, colIn("node_type", g))
 			n.score++
 		}
-		cs, sc := src.mapPushdown(np.Props, true, params)
+		cs, sc, anc := src.mapPushdown(np.Props, true, params)
 		n.conds = append(n.conds, cs...)
 		n.score += sc
+		n.anchored = anc
 		if np.Var != "" {
 			if ids, ok := bound[np.Var]; ok {
 				n.bound = true
@@ -528,7 +663,7 @@ func (src *sources) compile(c *MatchClause, params map[string]any, bound map[str
 					r.typeConds = append(r.typeConds, colIn("edge_type", rp.Types))
 				}
 				if !rp.VarLen {
-					cs, _ := src.mapPushdown(rp.Props, false, params)
+					cs, _, _ := src.mapPushdown(rp.Props, false, params)
 					r.conds = append(r.conds, cs...)
 				}
 				if rp.Var != "" {
