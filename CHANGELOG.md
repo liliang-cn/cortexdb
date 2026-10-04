@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- SPARQL: a trailing `VALUES` clause after `GROUP BY`, `HAVING` or `ORDER BY`
+  failed to parse (`unexpected token "VALUES"`): those modifiers read it as one
+  more group or sort key. SPARQL 1.1 puts the ValuesClause after every solution
+  modifier; it now parses after any of them.
+
 ## [2.120.0] - 2026-10-04
 
 ### Added

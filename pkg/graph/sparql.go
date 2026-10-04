@@ -2286,6 +2286,26 @@ func (p *sparqlParser) parseTrailingValues(query *sparqlQuery) error {
 	return nil
 }
 
+// atModifierEnd reports whether the next token ends the solution modifier
+// being read: one of the modifiers that may follow it, or VALUES, the
+// ValuesClause that follows them all. Leaving VALUES out of a stop list read
+// it as one more group or sort key.
+func (p *sparqlParser) atModifierEnd(next ...string) bool {
+	tok := p.peek()
+	if tok.Type != sparqlTokenKeyword {
+		return false
+	}
+	if strings.EqualFold(tok.Value, "VALUES") {
+		return true
+	}
+	for _, kw := range next {
+		if strings.EqualFold(tok.Value, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 func (p *sparqlParser) parseSolutionModifiers(query *sparqlQuery) {
 	if p.matchKeyword("GROUP") {
 		if !p.matchKeyword("BY") {
@@ -2295,11 +2315,7 @@ func (p *sparqlParser) parseSolutionModifiers(query *sparqlQuery) {
 			if p.peek().Type == sparqlTokenEOF || p.peek().Value == "}" {
 				break
 			}
-			if p.peek().Type == sparqlTokenKeyword &&
-				(strings.EqualFold(p.peek().Value, "HAVING") ||
-					strings.EqualFold(p.peek().Value, "ORDER") ||
-					strings.EqualFold(p.peek().Value, "LIMIT") ||
-					strings.EqualFold(p.peek().Value, "OFFSET")) {
+			if p.atModifierEnd("HAVING", "ORDER", "LIMIT", "OFFSET") {
 				break
 			}
 			groupKey, err := p.parseGroupKey(query.Prefixes)
@@ -2317,10 +2333,7 @@ func (p *sparqlParser) parseSolutionModifiers(query *sparqlQuery) {
 				panic(err)
 			}
 			query.Having = append(query.Having, filter)
-			if p.peek().Type == sparqlTokenKeyword &&
-				(strings.EqualFold(p.peek().Value, "ORDER") ||
-					strings.EqualFold(p.peek().Value, "LIMIT") ||
-					strings.EqualFold(p.peek().Value, "OFFSET")) {
+			if p.atModifierEnd("ORDER", "LIMIT", "OFFSET") {
 				break
 			}
 			if p.peek().Type == sparqlTokenEOF || p.peek().Value == "}" {
@@ -2337,8 +2350,7 @@ func (p *sparqlParser) parseSolutionModifiers(query *sparqlQuery) {
 			if p.peek().Type == sparqlTokenEOF || p.peek().Value == "}" {
 				break
 			}
-			if p.peek().Type == sparqlTokenKeyword &&
-				(strings.EqualFold(p.peek().Value, "LIMIT") || strings.EqualFold(p.peek().Value, "OFFSET")) {
+			if p.atModifierEnd("LIMIT", "OFFSET") {
 				break
 			}
 			clause, err := p.parseOrderClause(query.Prefixes)
