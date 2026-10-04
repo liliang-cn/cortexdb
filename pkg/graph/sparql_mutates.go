@@ -24,15 +24,12 @@ func (g *GraphStore) SPARQLMutates(ctx context.Context, query string) bool {
 	return sparqlQueryTypeMutates(parsed.QueryType)
 }
 
-// sparqlQueryTypeMutates lists the update forms ExecuteSPARQL dispatches on.
-// Kept beside them, and asserted against them by a test, because a new update
-// form added there without a line here is exactly the drift this file exists to
-// prevent.
+// sparqlQueryTypeMutates is the parser's own notion of an update: the query
+// types after which it accepts ';' and another operation, and that the
+// executor dispatches as writes. One list, not two, so an update form added
+// to the parser is a write here the moment it exists — graph management
+// (CLEAR, DROP, ADD, COPY, MOVE, CREATE, LOAD) arrived after this file and
+// would otherwise have been a read-only key's way to drop the graph.
 func sparqlQueryTypeMutates(queryType string) bool {
-	switch queryType {
-	case SPARQLQueryInsertData, SPARQLQueryDeleteData, SPARQLQueryDeleteWhere, SPARQLQueryModify:
-		return true
-	default:
-		return false
-	}
+	return isSPARQLUpdate(queryType)
 }

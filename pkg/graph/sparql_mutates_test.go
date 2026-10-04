@@ -42,6 +42,16 @@ func TestSPARQLMutatesSeparatesUpdatesFromQueries(t *testing.T) {
 		{"delete data", `DELETE DATA { <http://example.org/a> <http://example.org/b> "c" }`, true},
 		{"delete where", "DELETE WHERE { ?s ?p ?o }", true},
 		{"modify", "DELETE { ?s ?p ?o } INSERT { ?s ?p 1 } WHERE { ?s ?p ?o }", true},
+		{"clear", "CLEAR ALL", true},
+		{"drop", "DROP SILENT GRAPH <http://example.org/g>", true},
+		{"add", "ADD DEFAULT TO <http://example.org/g>", true},
+		{"copy", "COPY <http://example.org/g> TO DEFAULT", true},
+		{"move", "MOVE GRAPH <http://example.org/g> TO <http://example.org/h>", true},
+		{"create", "CREATE GRAPH <http://example.org/g>", true},
+		{"load", "LOAD <http://example.org/data.ttl>", true},
+		{"chained", "INSERT DATA { <http://example.org/a> <http://example.org/b> 1 } ; DROP ALL", true},
+		{"empty update", "# nothing", true},
+		{"service", "SELECT * WHERE { SERVICE <http://example.org/sparql> { ?s ?p ?o } }", false},
 		// A query that will not parse is a write, so a caller cannot smuggle an
 		// update past the policy by making it unparseable to the policy alone.
 		{"nonsense", "this is not sparql", true},
@@ -60,7 +70,7 @@ func TestSPARQLMutatesSeparatesUpdatesFromQueries(t *testing.T) {
 // If a new update form is added to the executor without a line there, a
 // read-only key would be allowed to run it.
 func TestEverySPARQLUpdateFormIsCountedAsMutating(t *testing.T) {
-	writing := []string{SPARQLQueryInsertData, SPARQLQueryDeleteData, SPARQLQueryDeleteWhere, SPARQLQueryModify}
+	writing := []string{SPARQLQueryInsertData, SPARQLQueryDeleteData, SPARQLQueryDeleteWhere, SPARQLQueryModify, SPARQLQueryGraphManagement}
 	reading := []string{SPARQLQuerySelect, SPARQLQueryAsk, SPARQLQueryConstruct, SPARQLQueryDescribe}
 	for _, qt := range writing {
 		if !sparqlQueryTypeMutates(qt) {
