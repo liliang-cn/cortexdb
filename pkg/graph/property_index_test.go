@@ -246,3 +246,42 @@ func explain(t *testing.T, g *GraphStore, q string, args ...any) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// The edges of the catalog: an as-of context is not a place to write, a key
+// that cannot be indexed cannot be dropped either, and a catalog row nobody
+// could have made through IndexNodeProperty is never spliced into SQL.
+func TestTheNodePropertyIndexCatalogRefusesWhatItMustNot(t *testing.T) {
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			ctx := context.Background()
+			if err := b.store.InitGraphSchema(ctx); err != nil {
+				t.Fatalf("schema: %v", err)
+			}
+			if got := (cypherBackend{b.store}).IndexedNodeProperties(ctx); got != nil {
+				t.Errorf("with nothing indexed the Cypher hook reported %v", got)
+			}
+			past := AsOf(ctx, b.store.Now())
+			if err := b.store.IndexNodeProperty(past, "run_id"); err == nil {
+				t.Error("IndexNodeProperty ran under an as-of context")
+			}
+			if err := b.store.DropNodePropertyIndex(past, "run_id"); err == nil {
+				t.Error("DropNodePropertyIndex ran under an as-of context")
+			}
+			if err := b.store.DropNodePropertyIndex(ctx, "run-id"); err == nil {
+				t.Error("DropNodePropertyIndex accepted a key that cannot be indexed")
+			}
+			if _, err := b.store.exec(ctx, `INSERT INTO graph_property_indexes (prop_key) VALUES (?)`, "x'); DROP TABLE graph_nodes; --"); err != nil {
+				t.Fatalf("seed a hand-written row: %v", err)
+			}
+			if err := b.store.IndexNodeProperty(ctx, "status"); err != nil {
+				t.Fatalf("IndexNodeProperty: %v", err)
+			}
+			if got, err := b.store.NodePropertyIndexes(ctx); err != nil || !reflect.DeepEqual(got, []string{"status"}) {
+				t.Errorf("indexes = %v (%v), want only [status]", got, err)
+			}
+			if got := (cypherBackend{b.store}).IndexedNodeProperties(ctx); !reflect.DeepEqual(got, map[string]bool{"status": true}) {
+				t.Errorf("the Cypher hook reported %v, want only status", got)
+			}
+		})
+	}
+}
