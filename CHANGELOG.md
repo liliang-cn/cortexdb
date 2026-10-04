@@ -6,6 +6,17 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- The execution graph API: an agent's record of its own run, as graph
+  records. `StartRun`, `BeginStep` / `EndStep` (the two-phase write: a step is
+  on the record as running, with `TRIGGERED` edges from the steps it consumed,
+  before its work runs), `RecordStep`, `FinishRun`; and to read it back
+  `GetRun`, `ListRuns`, `GetStep`, `RunSteps`, `SummarizeRun` (tokens, cost,
+  open and failed steps, critical path, least confident step), `StepLineage`
+  (upstream or downstream over `TRIGGERED`) and `ReplayRun` (the run as of any
+  instant, from history). Step kinds are node types and Cypher labels;
+  sub-agent runs hang off the step that started them (`SPAWNED`). The nine are
+  also MCP tools, `execution_*`, five of them writes. `examples/19_execution_graph`
+  now uses the API.
 - SPARQL 1.1 in full, measured against the W3C suites on SQLite and
   PostgreSQL: query 329/331 (the two are a deliberate leniency, `"1" + "2"`
   is 3), update 157/157, results formats 10/10, federated query 10/10; SPARQL

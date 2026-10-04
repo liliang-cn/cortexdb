@@ -52,6 +52,8 @@ type DB struct {
 	pageRankRefreshMu   sync.Mutex
 	// changes is the change feed and inference maintainer; see changes.go.
 	changes changeRuntime
+	// execution is the execution-graph recorder's state; see execution.go.
+	execution executionRuntime
 }
 
 // Config represents database configuration

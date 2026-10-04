@@ -502,6 +502,9 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 	// --- decision ledger (pkg/cortexdb/decision_tooldefs.go) ---
 	definitions = append(definitions, decisionToolDefinitions()...)
 	// --- end decision ledger ---
+	// --- execution graph (pkg/cortexdb/execution_tooldefs.go) ---
+	definitions = append(definitions, executionToolDefinitions()...)
+	// --- end execution graph ---
 	// --- point-in-time reads (pkg/cortexdb/temporal_tooldefs.go) ---
 	definitions = append(definitions, temporalToolDefinitions()...)
 	// --- end point-in-time reads ---
@@ -519,6 +522,11 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 		return resp, err
 	}
 	// --- end decision ledger ---
+	// --- execution graph (pkg/cortexdb/execution_tooldefs.go) ---
+	if resp, handled, err := t.callExecutionTool(ctx, name, input); handled {
+		return resp, err
+	}
+	// --- end execution graph ---
 	// --- point-in-time reads (pkg/cortexdb/temporal_tooldefs.go) ---
 	if resp, handled, err := t.callTemporalTool(ctx, name, input); handled {
 		return resp, err

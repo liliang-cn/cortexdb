@@ -377,6 +377,43 @@ Tools (in-process and MCP), and the mirroring `cortexdb.v1.DecisionService`:
 - `decision_chain` — reads
 - `decision_precedents` — reads
 
+## Execution graph
+
+An agent's own record of a task: one `AgentRun` node per run and one node per
+step — `LLMCall`, `ToolCall`, `Retrieval`, `DecisionPoint`, `Validation` or a
+kind of your own, which is also the node type and Cypher label — joined by
+`HAS_STEP` (run → step), `TRIGGERED` (a step → a step that consumed its output)
+and `SPAWNED` (a step → a sub-agent's run). Steps need no vector.
+
+```go
+run, _ := db.StartRun(ctx, cortexdb.RunStart{Task: "checkout p99 alert", Agent: "devops-agent"})
+plan, _ := db.RecordStep(ctx, cortexdb.StepStart{RunID: run.ID, Kind: cortexdb.StepKindLLMCall, Name: "plan"},
+    cortexdb.StepEnd{Output: "check deps", Tokens: 640, CostUSD: 0.004})
+
+// Two-phase: begin before the work (written as running, with its TRIGGERED
+// edges), end after. A crash still leaves what was attempted.
+st, _ := db.BeginStep(ctx, cortexdb.StepStart{RunID: run.ID, Kind: cortexdb.StepKindToolCall, Name: "restart_pool", Parents: []string{plan.ID}})
+_, _ = db.EndStep(ctx, st.ID, cortexdb.StepEnd{Output: "pool recycled"}) // latency measured from begin
+_, _ = db.FinishRun(ctx, run.ID, cortexdb.RunEnd{Outcome: "resolved"})
+
+sum, _ := db.SummarizeRun(ctx, run.ID)                                // tokens, cost, open/failed steps, critical path, least confident step
+up, _ := db.StepLineage(ctx, st.ID, cortexdb.LineageUpstream, 0)      // everything the action depended on
+then, _ := db.ReplayRun(ctx, run.ID, someInstant)                     // the run as it stood then, from history
+_, _, _ = sum, up, then
+```
+
+Every write fails before writing anything when the run is not running, a
+parent does not exist, the kind cannot be a label, or an attribute reuses a
+name the graph writes itself. A step ends once; a run finishes once. Steps are
+ordinary graph records, so Cypher, `RecordDecision` premises, `expand_graph`
+and the change feed all read them. Keep many runs in a file of their own if
+step nodes should not appear in a knowledge graph's schema.
+
+Tools (in-process and MCP): `execution_run_start`, `execution_step_begin`,
+`execution_step_end`, `execution_step_record`, `execution_run_finish` — write;
+`execution_run_get`, `execution_runs_list`, `execution_step_lineage`,
+`execution_run_replay` — read.
+
 ## Declared inference rules
 
 `apply_inference` composes two hops. That is one rule shape; the engine behind
@@ -1004,6 +1041,7 @@ Important tools:
 - Ontology: `ontology_save`, `ontology_get`, `ontology_list`, `ontology_delete`, `ontology_diff`, `ontology_action_list`, `ontology_action_apply`, `object_set_resolve`
 - Inference: `apply_inference`, `rules_save`, `rules_list`, `rules_delete`, `rules_apply`, `inference_explain`
 - Decision ledger: `decision_record`, `decision_chain`, `decision_precedents`
+- Execution graph: `execution_run_start`, `execution_step_begin`, `execution_step_end`, `execution_step_record`, `execution_run_finish`, `execution_run_get`, `execution_runs_list`, `execution_step_lineage`, `execution_run_replay`
 - Aggregates and thresholds: `aggregate_metadata`, `representative_records`, `search_vector_range`
 - Graph introspection: `graph_schema`, `graph_property_values`, `graph_statistics`, `graph_health`
 - Claim checking: `verify_claims`, `fact_provenance`, `uncited_facts`

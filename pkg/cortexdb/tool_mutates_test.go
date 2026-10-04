@@ -135,6 +135,19 @@ var toolWrites = map[string]bool{
 	"decision_chain":      false,
 	"decision_precedents": false,
 
+	// The execution graph. The five that record a run write; run_start also
+	// creates the run_id property index the first time. The four reads go
+	// through ListNodes, GetNode and GetEdges only.
+	"execution_run_start":    true,
+	"execution_step_begin":   true,
+	"execution_step_end":     true,
+	"execution_step_record":  true,
+	"execution_run_finish":   true,
+	"execution_run_get":      false,
+	"execution_runs_list":    false,
+	"execution_step_lineage": false,
+	"execution_run_replay":   false,
+
 	// Point-in-time reads. The two that read the past read only what is
 	// stored; vacuum_graph is the one operation in the whole temporal
 	// machinery that destroys anything, so it is a write — and it has to be,
@@ -164,7 +177,7 @@ var toolWrites = map[string]bool{
 // table so that a tool added without a decision cannot slip through by sharing
 // a name with one already listed, and so that a tool quietly disappearing is
 // noticed too. Change it in the same commit that adds the tool and its row.
-const toolCount = 90
+const toolCount = 99
 
 // TestEveryToolDeclaresWhetherItWrites is the test the Mutates doc comment
 // promises: it makes forgetting impossible rather than merely unlikely.

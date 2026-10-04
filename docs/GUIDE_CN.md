@@ -296,6 +296,8 @@ RDF 1.2 的三元组项（`<<( s p o )>>`、具名化、`{| |}` 注解）和 SPA
 
 节点属性存为 JSON，对某个属性做筛选默认要读遍所有节点，除非给它建了索引。`GraphStore.IndexNodeProperty(ctx, "run_id")` 为单个属性建表达式索引（按键手动开启，每次写入都要付出维护代价；另有 `NodePropertyIndexes`、`DropNodePropertyIndex`）。对已索引键的等值和 `IN` 筛选——`GraphFilter.Properties`，以及 Cypher 里的 `WHERE s.run_id = $run` 或 `{run_id: $run}`——会变成索引查找，Cypher 也会像对待 `id(n) = …` 一样从它出发做连接；在 SQLite 上，数值范围（`s.latency_ms > 3000`）同样走索引。节点可以不带向量：结构性节点（agent 的执行步骤、run）不必带向量写入，也不会参与向量搜索。`examples/19_execution_graph` 把这些组合成一个 agent 的执行记录。
 
+执行图有自己的 API。`db.StartRun` 开启一次运行（一个 `AgentRun` 节点）；`BeginStep` 在执行之前把步骤写成 running，并从它所消费输出的步骤连上 `TRIGGERED` 边；`EndStep` 用输出或错误、置信度、耗时（不填则从 begin 调用开始计算）、token 和费用重写这个步骤——事后补记一步用 `RecordStep` 一次完成——`FinishRun` 结束运行。步骤的种类（`LLMCall`、`ToolCall`、`Retrieval`、`DecisionPoint`、`Validation` 或自定义）就是节点类型，所以 Cypher 可以直接写 `(l:LLMCall)-[:TRIGGERED]->(t:ToolCall)`。`SummarizeRun` 汇总一次运行（按种类和状态计数、未结束和失败的步骤、token、费用、关键路径、置信度最低的步骤），`StepLineage` 向上游找出某个输出依赖的全部步骤，或向下游找出它影响的全部步骤，`ReplayRun` 从双时态历史中读出运行在任意时刻的状态。一个运行的步骤可以启动另一个运行（`RunStart.ParentStep`，一条 `SPAWNED` 边），用于子 agent。同样的九个操作也是 MCP 工具：`execution_run_start` … `execution_run_replay`。
+
 检索：`retrieval_mode: "ppr"` 从问题点名的实体出发做个性化 PageRank，再与第一阶段结果按排名融合；没有 embedder 时，问题点名了实体，`auto` 就会用它。每一次已提交的写入也会追加到变更事件流（`changes_since`、`db.Changes`）。
 
 ```go
