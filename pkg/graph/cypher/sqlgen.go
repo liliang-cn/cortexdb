@@ -77,7 +77,10 @@ type nodeEl struct {
 	bound   bool     // the variable comes from an earlier clause
 	ids     []string // when bound: the candidate ids, nil meaning unconstrained
 	score   int      // how selective its conditions are, for seeding traversals
-	props   []*MapLit
+	// anchored: the node is pinned to listed ids — by id(n) = / IN, or by an
+	// earlier clause — so a join can start from it with a primary-key lookup.
+	anchored bool
+	props    []*MapLit
 	// light nodes are anonymous, unnamed by any path and carry no property
 	// map: nothing will ever read more than their id, so the SQL does not
 	// fetch more.
@@ -90,8 +93,12 @@ type relEl struct {
 	pat         *RelPattern
 	left, right int // node element indexes, in pattern order
 	conds       []cond
-	bound       bool
-	ids         []string
+	// typeConds are the relationship-type filters, kept apart from conds
+	// because they are the ones that can lure SQLite onto idx_edges_type; see
+	// stepFilterAlias and anchoredOrder.
+	typeConds []cond
+	bound     bool
+	ids       []string
 	// variable-length only
 	seedLeft bool
 	cte      string
@@ -141,6 +148,27 @@ func (src *sources) nodeFrom(s *sqlBuilder, alias string) {
 func (src *sources) edgeFrom(s *sqlBuilder, alias string) {
 	s.w(src.edgeSrc, " AS ", alias)
 	s.args = append(s.args, src.edgeArgs...)
+}
+
+// stepFilterAlias is the alias a variable-length step's relationship filters
+// (its types) are written against.
+//
+// On SQLite it is "+e": the unary plus is a no-op on the value and takes the
+// column out of index selection. Without it, a typed step walking against the
+// direction of idx_edges_composite — from_node_id, edge_type — had two
+// equality constraints of equal standing to a planner with no statistics (a
+// brain nobody has run ANALYZE on), and drove the step from idx_edges_type:
+// every edge of that type, read again on every hop, however selective the
+// seed. A lineage walk back from one node in a 20,000-step execution graph
+// took 67ms instead of under one, growing with the graph. The step is a walk
+// from the frontier, so the frontier's adjacency index is the one it should
+// use; the type is then checked on the handful of edges that index returns.
+// PostgreSQL plans from statistics and needs no help.
+func (src *sources) stepFilterAlias(alias string) string {
+	if src.kind == sqldialect.Postgres {
+		return alias
+	}
+	return "+" + alias
 }
 
 func (src *sources) sep() string {
@@ -332,7 +360,7 @@ func (src *sources) pushdown(e Expr, params map[string]any, nodeByVar map[string
 			}
 		}
 		if r := relByVar[v.Name]; r != nil && !r.pat.VarLen && len(x.Labels) == 1 {
-			r.conds = append(r.conds, colIn("edge_type", x.Labels[0]))
+			r.typeConds = append(r.typeConds, colIn("edge_type", x.Labels[0]))
 		}
 	}
 }
@@ -364,13 +392,14 @@ func (src *sources) pushOne(l Expr, op string, vals []string, nodeByVar map[stri
 			if n := nodeByVar[v.Name]; n != nil {
 				n.conds = append(n.conds, colIn("id", vals))
 				n.score += 8
+				n.anchored = true
 			}
 			if r := relByVar[v.Name]; r != nil && !r.pat.VarLen {
 				r.conds = append(r.conds, colIn("id", vals))
 			}
 		case "type":
 			if r := relByVar[v.Name]; r != nil && !r.pat.VarLen {
-				r.conds = append(r.conds, colIn("edge_type", vals))
+				r.typeConds = append(r.typeConds, colIn("edge_type", vals))
 			}
 		}
 	}
@@ -473,6 +502,7 @@ func (src *sources) compile(c *MatchClause, params map[string]any, bound map[str
 				if ids != nil {
 					n.conds = append(n.conds, colIn("id", ids))
 					n.score += 16
+					n.anchored = true
 				}
 			}
 			nodeByVar[np.Var] = n
@@ -495,7 +525,7 @@ func (src *sources) compile(c *MatchClause, params map[string]any, bound map[str
 					r.alias = fmt.Sprintf("vl%d", len(p.rels))
 				}
 				if len(rp.Types) > 0 {
-					r.conds = append(r.conds, colIn("edge_type", rp.Types))
+					r.typeConds = append(r.typeConds, colIn("edge_type", rp.Types))
 				}
 				if !rp.VarLen {
 					cs, _ := src.mapPushdown(rp.Props, false, params)
@@ -583,15 +613,6 @@ func (src *sources) compile(c *MatchClause, params map[string]any, bound map[str
 	}
 
 	from.w(" FROM ")
-	first := true
-	sepFrom := func() {
-		if !first {
-			from.w(", ")
-		}
-		first = false
-	}
-	var conds []func()
-	_ = conds
 	nw := 0
 	and := func() {
 		if nw == 0 {
@@ -601,16 +622,14 @@ func (src *sources) compile(c *MatchClause, params map[string]any, bound map[str
 		}
 		nw++
 	}
-	for _, n := range p.nodes {
-		sepFrom()
+	emitNode := func(n *nodeEl) {
 		src.nodeFrom(&from, n.alias)
 		for _, c := range n.conds {
 			and()
 			c(&where, n.alias)
 		}
 	}
-	for _, r := range p.rels {
-		sepFrom()
+	emitRel := func(r *relEl, anchored bool) {
 		l, rt := p.nodes[r.left].alias, p.nodes[r.right].alias
 		if r.pat.VarLen {
 			from.w(r.cte, " AS ", r.alias)
@@ -621,7 +640,7 @@ func (src *sources) compile(c *MatchClause, params map[string]any, bound map[str
 			and()
 			where.w(r.alias, ".s = ", seed, ".id AND ", r.alias, ".c = ", other, ".id AND ", r.alias, ".d >= ")
 			where.arg(int64(r.pat.Min))
-			continue
+			return
 		}
 		src.edgeFrom(&from, r.alias)
 		and()
@@ -634,6 +653,14 @@ func (src *sources) compile(c *MatchClause, params map[string]any, bound map[str
 			where.w("((", r.alias, ".from_node_id = ", l, ".id AND ", r.alias, ".to_node_id = ", rt, ".id) OR (",
 				r.alias, ".from_node_id = ", rt, ".id AND ", r.alias, ".to_node_id = ", l, ".id))")
 		}
+		typeAlias := r.alias
+		if anchored {
+			typeAlias = src.stepFilterAlias(r.alias)
+		}
+		for _, c := range r.typeConds {
+			and()
+			c(&where, typeAlias)
+		}
 		for _, c := range r.conds {
 			and()
 			c(&where, r.alias)
@@ -641,6 +668,39 @@ func (src *sources) compile(c *MatchClause, params map[string]any, bound map[str
 		if src.validAt != "" {
 			and()
 			src.validity(&where, r.alias)
+		}
+	}
+
+	// Anchored components first, each walked out from its anchor; then
+	// everything else in pattern order, for the planner to arrange.
+	order, rest := src.anchoredOrder(p)
+	wrote := 0
+	for _, comp := range order {
+		for i, it := range comp {
+			switch {
+			case wrote == 0:
+			case i == 0:
+				from.w(", ")
+			default:
+				from.w(src.chainJoin())
+			}
+			wrote++
+			if it.rel >= 0 {
+				emitRel(p.rels[it.rel], true)
+			} else {
+				emitNode(p.nodes[it.node])
+			}
+		}
+	}
+	for _, it := range rest {
+		if wrote > 0 {
+			from.w(", ")
+		}
+		wrote++
+		if it.rel >= 0 {
+			emitRel(p.rels[it.rel], false)
+		} else {
+			emitNode(p.nodes[it.node])
 		}
 	}
 	// Relationship isomorphism between fixed-length relationships is cheap
@@ -667,6 +727,119 @@ func (src *sources) compile(c *MatchClause, params map[string]any, bound map[str
 	all.add(&where)
 	p.sql = &all
 	return p, nil
+}
+
+// planItem is one FROM entry: a node (rel < 0) or a relationship.
+type planItem struct{ node, rel int }
+
+// anchoredOrder decides the FROM order of a clause.
+//
+// A connected part of the pattern that contains an anchored node — one
+// pinned to ids — is listed as a walk out from that node, breadth first: the
+// anchor, then each relationship touching what has been listed, then the
+// node at its far end. Everything else comes after, in pattern order.
+//
+// On SQLite the walk is also fixed in place (chainJoin) and its relationship
+// types are kept off idx_edges_type (stepFilterAlias). A planner without
+// statistics otherwise had two ways to go wrong, both measured on a
+// 20,000-step execution graph: it drove a typed hop from idx_edges_type —
+// every edge of the type — instead of from the anchor's adjacency index, and
+// it scanned a whole node table to probe a variable-length traversal's few
+// rows rather than the reverse. One hop back from a step took 11ms and two
+// hops 40ms, both growing with the graph; walked from the anchor, each hop is
+// an index lookup. Nothing changes for a clause with no anchor, and on
+// PostgreSQL the order is only a listing: its planner reorders a comma join
+// freely, from statistics.
+func (src *sources) anchoredOrder(p *clausePlan) (order [][]planItem, rest []planItem) {
+	incident := make([][]int, len(p.nodes))
+	for j, r := range p.rels {
+		incident[r.left] = append(incident[r.left], j)
+		if r.right != r.left {
+			incident[r.right] = append(incident[r.right], j)
+		}
+	}
+	// The component each node belongs to, and the best anchor in it.
+	comp := make([]int, len(p.nodes))
+	for i := range comp {
+		comp[i] = -1
+	}
+	var anchors []int
+	for i := range p.nodes {
+		if comp[i] >= 0 {
+			continue
+		}
+		c := len(anchors)
+		best := -1
+		queue := []int{i}
+		comp[i] = c
+		for len(queue) > 0 {
+			n := queue[0]
+			queue = queue[1:]
+			if p.nodes[n].anchored && (best < 0 || p.nodes[n].score > p.nodes[best].score) {
+				best = n
+			}
+			for _, j := range incident[n] {
+				for _, m := range []int{p.rels[j].left, p.rels[j].right} {
+					if comp[m] < 0 {
+						comp[m] = c
+						queue = append(queue, m)
+					}
+				}
+			}
+		}
+		anchors = append(anchors, best)
+	}
+
+	listedNode := make([]bool, len(p.nodes))
+	listedRel := make([]bool, len(p.rels))
+	for _, a := range anchors {
+		if a < 0 {
+			continue
+		}
+		walk := []planItem{{node: a, rel: -1}}
+		listedNode[a] = true
+		queue := []int{a}
+		for len(queue) > 0 {
+			n := queue[0]
+			queue = queue[1:]
+			for _, j := range incident[n] {
+				if listedRel[j] {
+					continue
+				}
+				listedRel[j] = true
+				walk = append(walk, planItem{node: -1, rel: j})
+				for _, m := range []int{p.rels[j].left, p.rels[j].right} {
+					if !listedNode[m] {
+						listedNode[m] = true
+						walk = append(walk, planItem{node: m, rel: -1})
+						queue = append(queue, m)
+					}
+				}
+			}
+		}
+		order = append(order, walk)
+	}
+	for i := range p.nodes {
+		if !listedNode[i] {
+			rest = append(rest, planItem{node: i, rel: -1})
+		}
+	}
+	for j := range p.rels {
+		if !listedRel[j] {
+			rest = append(rest, planItem{node: -1, rel: j})
+		}
+	}
+	return order, rest
+}
+
+// chainJoin joins the next step of an anchored walk. SQLite keeps the left
+// operand of a CROSS JOIN in the outer loop, which is the whole point;
+// PostgreSQL gets a plain comma, leaving its planner free.
+func (src *sources) chainJoin() string {
+	if src.kind == sqldialect.Postgres {
+		return ", "
+	}
+	return " CROSS JOIN "
 }
 
 func hasProps(ms []*MapLit) bool {
@@ -757,6 +930,10 @@ func (src *sources) compileVarLen(p *clausePlan, r *relEl, ctes *sqlBuilder) err
 		}
 		b.w(" AND ")
 		src.notIn(&b, "v.p", "e.id")
+		for _, c := range r.typeConds {
+			b.w(" AND ")
+			c(&b, src.stepFilterAlias("e"))
+		}
 		for _, c := range r.conds {
 			b.w(" AND ")
 			c(&b, "e")

@@ -18,6 +18,18 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Cypher queries anchored on an id (`WHERE id(t) = $id`, or a node bound by
+  an earlier clause) now walk out from that node on SQLite instead of growing
+  with the graph. The anchor was already the traversal's seed, but SQLite's
+  planner — with no statistics on a brain nobody has `ANALYZE`d — drove typed
+  hops against the direction of `idx_edges_composite` from `idx_edges_type`
+  (every edge of the type, on every hop) and scanned whole node tables to
+  probe a variable-length traversal's few rows. On a 20,000-step execution
+  graph a lineage walk back from one step took 67–89ms, one hop back 11ms and
+  two hops 40ms; each now takes under 2ms at any size. An anchored part of a
+  pattern is joined in a fixed order out from its anchor with its relationship
+  types kept off the type index; clauses without an anchor, and PostgreSQL,
+  plan as before. The openCypher TCK result is unchanged (2256 pass, 0 wrong).
 - A backdated graph write — a `GraphNode` or `GraphEdge` whose `ValidFrom` is
   earlier than the moment it is written — no longer erases the version it
   replaces from as-of reads. The old version was closed at the stated
