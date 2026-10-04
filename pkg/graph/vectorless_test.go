@@ -204,3 +204,43 @@ func TestANodeThatLosesItsVectorLeavesTheVectorIndexes(t *testing.T) {
 		})
 	}
 }
+
+// The same through ExecuteBatchTx, which leaves the HNSW index to the caller's
+// SyncUpsertedNodes after commit.
+func TestSyncUpsertedNodesDropsAVectorTheNodeNoLongerHas(t *testing.T) {
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			ctx := context.Background()
+			if err := b.store.InitGraphSchema(ctx); err != nil {
+				t.Fatalf("schema: %v", err)
+			}
+			if err := b.store.EnableHNSWIndex(4); err != nil {
+				t.Fatalf("EnableHNSWIndex: %v", err)
+			}
+			for _, n := range []*GraphNode{
+				{ID: "vl:tx", Vector: vec(), Content: "had a vector"},
+				{ID: "vl:tx", Content: "has none now"},
+			} {
+				tx, err := b.store.db.BeginTx(ctx, nil)
+				if err != nil {
+					t.Fatalf("begin: %v", err)
+				}
+				res, err := b.store.ExecuteBatchTx(ctx, tx, &BatchGraphOperation{NodeUpserts: []*GraphNode{n}})
+				if err == nil {
+					err = res.Err()
+				}
+				if err != nil {
+					_ = tx.Rollback()
+					t.Fatalf("ExecuteBatchTx: %v", err)
+				}
+				if err := tx.Commit(); err != nil {
+					t.Fatalf("commit: %v", err)
+				}
+				b.store.SyncUpsertedNodes(ctx, []*GraphNode{n})
+			}
+			if got := b.store.hnswIndex.index.Search(vec(), 10); len(got) != 0 {
+				t.Errorf("HNSW still returns %d candidate(s) after the node lost its vector", len(got))
+			}
+		})
+	}
+}
