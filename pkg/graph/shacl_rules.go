@@ -538,6 +538,9 @@ func (sg *shaclShapesGraph) parseNodeExpr(node RDFTerm, opts SHACLRuleOptions, v
 		if err != nil {
 			return nil, err
 		}
+		if !path.simple() {
+			return nil, fmt.Errorf("path expression %s: rules support a predicate or [ sh:inversePath <iri> ] only", node)
+		}
 		expr := &shaclNodeExpr{kind: shaclExprPath, path: path}
 		if len(values[SHACLNodes]) > 1 {
 			return nil, fmt.Errorf("path expression %s has more than one sh:nodes", node)

@@ -783,13 +783,20 @@ func TestSHACLInversePathReachesTheSubjectsOfIncomingEdges(t *testing.T) {
 	})
 }
 
-func TestSHACLRefusesPathsItCannotWalk(t *testing.T) {
-	seq, seqTriples := rdfList("seq", ex("a"), ex("b"))
+func TestSHACLRefusesIllFormedPaths(t *testing.T) {
+	one, oneTriples := rdfList("one", ex("a"))
 	expectValidationError(t, append([]RDFTriple{
 		tri(ex("S"), sh("targetNode"), ex("x")),
 		tri(ex("S"), sh("property"), ex("P")),
-		tri(ex("P"), sh("path"), seq),
-	}, seqTriples...), "unsupported sh:path")
+		tri(ex("P"), sh("path"), one),
+	}, oneTriples...), "at least two members")
+	bad := NewBlankNode("bad")
+	expectValidationError(t, []RDFTriple{
+		tri(ex("S"), sh("targetNode"), ex("x")),
+		tri(ex("S"), sh("property"), ex("P")),
+		tri(ex("P"), sh("path"), bad),
+		tri(bad, ex("notAPathOperator"), ex("a")),
+	}, "is not a path operator")
 }
 
 // An extraction quality gate, in the vocabulary LLM extraction writes into the

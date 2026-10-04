@@ -769,6 +769,9 @@ func (p *sparqlParser) parseExprTripleTerm(prefixes map[string]string) (sparqlVa
 		if allowLiteral && p.peekPunct("<<(") {
 			return p.parseExprTripleTerm(prefixes)
 		}
+		if term, ok := p.preBoundNext(); ok {
+			return sparqlLiteralExpr{Term: term}, nil
+		}
 		term, err := p.parseTermPattern(prefixes, allowLiteral)
 		if err != nil {
 			return nil, err

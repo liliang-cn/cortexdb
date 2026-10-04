@@ -1790,6 +1790,9 @@ type sparqlParser struct {
 	// requestBlanks are the blank node labels earlier operations of an
 	// update request used: one label cannot name a node in two of them.
 	requestBlanks map[string]bool
+	// preBound are SHACL-SPARQL's pre-bound variables: each is replaced by
+	// its value wherever the query reads it (see shacl_sparql.go).
+	preBound map[string]RDFTerm
 
 	// blankSeq numbers the blank nodes the parser invents for [], reified
 	// triples and annotations; depth bounds recursion; inTemplate is set
@@ -2992,6 +2995,9 @@ func (p *sparqlParser) parsePrimaryValueExpr(prefixes map[string]string) (sparql
 		p.expectPunct("(")
 		variable := strings.TrimPrefix(p.expectType(sparqlTokenVar, "variable").Value, "?")
 		p.expectPunct(")")
+		if _, ok := p.preBound[variable]; ok {
+			return sparqlLiteralExpr{Term: booleanTerm(true)}, nil
+		}
 		return sparqlBoundExpr{Variable: variable}, nil
 	}
 	if p.matchKeyword("COALESCE") {
@@ -3047,6 +3053,9 @@ func (p *sparqlParser) parsePrimaryValueExpr(prefixes map[string]string) (sparql
 	if p.peekPunct("<<") {
 		return nil, fmt.Errorf("a reified triple << >> is a pattern, not an expression; use <<( )>> or TRIPLE()")
 	}
+	if term, ok := p.preBoundNext(); ok {
+		return sparqlLiteralExpr{Term: term}, nil
+	}
 	termPattern, err := p.parseTermPattern(prefixes, true)
 	if err != nil {
 		return nil, err
@@ -3098,6 +3107,9 @@ func (p *sparqlParser) parseTermPattern(prefixes map[string]string, allowLiteral
 	switch token.Type {
 	case sparqlTokenVar:
 		name := strings.TrimPrefix(p.next().Value, "?")
+		if term, ok := p.preBound[name]; ok {
+			return sparqlTermPattern{Term: &term}, nil
+		}
 		if p.refVars != nil && p.aggDepth == 0 {
 			p.refVars[name] = true
 		}

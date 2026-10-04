@@ -117,6 +117,9 @@ type SHACLValidationResult struct {
 	Severity  string  `json:"severity"`
 	Source    RDFTerm `json:"source_shape"`
 	Component string  `json:"source_constraint_component,omitempty"`
+	// SourceConstraint is the sh:sparql constraint or SPARQL validator that
+	// produced a SHACL-SPARQL result (sh:sourceConstraint).
+	SourceConstraint RDFTerm `json:"source_constraint,omitempty"`
 }
 
 // SHACLReport contains the outcome of SHACL validation.
@@ -173,26 +176,53 @@ type shaclShape struct {
 	Xone              [][]RDFTerm
 	Closed            bool
 	IgnoredProperties []RDFTerm
+
+	// Deactivated shapes produce no results (§2.1.5).
+	Deactivated bool
+	// LessThan and LessThanOrEquals name predicates whose values every value
+	// node must be below (§4.5.3, §4.5.4).
+	LessThan         []RDFTerm
+	LessThanOrEquals []RDFTerm
+	// The qualified value shape (§4.7.3): QualifiedMin/Max bound how many
+	// value nodes conform to it; Disjoint excludes those that also conform
+	// to a sibling's qualified shape.
+	QualifiedShape    *RDFTerm
+	QualifiedMin      *int
+	QualifiedMax      *int
+	QualifiedDisjoint bool
+	// siblings are the qualified value shapes of the other property shapes
+	// of this shape's parents, set after parsing.
+	siblings []RDFTerm
+	// SPARQL are the shape's SPARQL-based constraints: its sh:sparql and the
+	// SPARQL constraint components it activates (shacl_sparql.go).
+	SPARQL []*shaclSPARQLConstraint
 }
 
-// shaclPath is the subset of SHACL property paths this engine can walk: a
-// predicate IRI, or sh:inversePath of one. Sequence, alternative and the
-// zero-or-more family are refused at parse time rather than silently matching
-// nothing, because a path that matches nothing makes every constraint on it
-// pass.
+// shaclPath is a SHACL property path (§2.3.1): a predicate, or an inverse,
+// sequence, alternative, zero-or-more, one-or-more or zero-or-one path built
+// from others. Term is the sh:path value as written, which a report gives
+// as sh:resultPath. Predicate and Inverse describe the two simple forms, a
+// predicate IRI and [ sh:inversePath <iri> ], which sh:closed and SHACL rules
+// read directly; see shacl_paths.go for the rest.
 type shaclPath struct {
 	Term      RDFTerm
 	Predicate RDFTerm
 	Inverse   bool
+
+	op   shaclPathOp
+	kids []*shaclPath
 }
 
 // shaclShapesGraph is the parsed shapes graph. Shapes are parsed on demand by
 // reference and memoised, because sh:node, sh:property and the logical
 // constraints can name a shape that is declared nowhere as a sh:NodeShape.
 type shaclShapesGraph struct {
-	bySubject map[string][]RDFTriple
-	shapes    map[string]*shaclShape
-	roots     []*shaclShape
+	// components are the SPARQL-based constraint components, read on first
+	// use.
+	components []*shaclComponent
+	bySubject  map[string][]RDFTriple
+	shapes     map[string]*shaclShape
+	roots      []*shaclShape
 }
 
 // ValidateSHACL runs SHACL validation against the graph store using the provided shapes.
@@ -287,6 +317,19 @@ func parseSHACLShapes(triples []RDFTriple) (*shaclShapesGraph, error) {
 				return nil, fmt.Errorf("property shape %s (sh:property of %s) has no sh:path", ref, shape.ID)
 			}
 		}
+		// Sibling qualified value shapes: those of the other property
+		// shapes of the same parent.
+		for _, ref := range shape.Properties {
+			ps := sg.shapes[ref.String()]
+			if !ps.QualifiedDisjoint {
+				continue
+			}
+			for _, other := range shape.Properties {
+				if os := sg.shapes[other.String()]; os != ps && os.QualifiedShape != nil && !containsTerm(ps.siblings, *os.QualifiedShape) {
+					ps.siblings = append(ps.siblings, *os.QualifiedShape)
+				}
+			}
+		}
 	}
 	if err := sg.refuseRecursion(); err != nil {
 		return nil, err
@@ -328,6 +371,14 @@ func (sg *shaclShapesGraph) shape(id RDFTerm) (*shaclShape, error) {
 		if err := sg.applyShapeTriple(shape, tr); err != nil {
 			return nil, fmt.Errorf("shape %s: %w", id, err)
 		}
+	}
+	if err := sg.applyComponents(shape); err != nil {
+		return nil, fmt.Errorf("shape %s: %w", id, err)
+	}
+	// Implicit class target (§2.1.3.3): a shape that is also a class
+	// targets its own instances.
+	if sg.isClassShape(id) {
+		shape.TargetClass = append(shape.TargetClass, id)
 	}
 	if shape.patternSource != "" {
 		re, err := compileSHACLPattern(shape.patternSource, shape.flags)
@@ -455,11 +506,12 @@ func (sg *shaclShapesGraph) applyShapeTriple(shape *shaclShape, tr RDFTriple) er
 		}
 		shape.HasLanguageIn = true
 	case SHACLUniqueLang:
-		b, err := parseSHACLBool(obj, "sh:uniqueLang")
-		if err != nil {
+		// Only sh:uniqueLang true activates the constraint (§4.4.4): a
+		// different boolean literal, even "1"^^xsd:boolean, is not true.
+		if _, err := parseSHACLBool(obj, "sh:uniqueLang"); err != nil {
 			return err
 		}
-		shape.UniqueLang = b
+		shape.UniqueLang = obj.Value == "true" && (obj.Datatype == "" || obj.Datatype == XSDNamespace+"boolean")
 	case SHACLProperty:
 		return sg.addShapeRef(&shape.Properties, obj, "sh:property")
 	case SHACLNode:
@@ -499,6 +551,47 @@ func (sg *shaclShapesGraph) applyShapeTriple(shape *shaclShape, tr RDFTriple) er
 			return fmt.Errorf("sh:disjoint must be an IRI, got %s", obj)
 		}
 		shape.Disjoint = append(shape.Disjoint, obj)
+	case SHACLNamespace + "sparql":
+		c, err := sg.parseSPARQLConstraint(obj)
+		if err != nil {
+			return err
+		}
+		shape.SPARQL = append(shape.SPARQL, c)
+	case SHACLNamespace + "deactivated":
+		b, err := parseSHACLBool(obj, "sh:deactivated")
+		if err != nil {
+			return err
+		}
+		shape.Deactivated = b
+	case SHACLNamespace + "lessThan":
+		if obj.Kind != RDFTermIRI {
+			return fmt.Errorf("sh:lessThan must be an IRI, got %s", obj)
+		}
+		shape.LessThan = append(shape.LessThan, obj)
+	case SHACLNamespace + "lessThanOrEquals":
+		if obj.Kind != RDFTermIRI {
+			return fmt.Errorf("sh:lessThanOrEquals must be an IRI, got %s", obj)
+		}
+		shape.LessThanOrEquals = append(shape.LessThanOrEquals, obj)
+	case SHACLNamespace + "qualifiedValueShape":
+		if shape.QualifiedShape != nil {
+			return fmt.Errorf("more than one sh:qualifiedValueShape")
+		}
+		var refs []RDFTerm
+		if err := sg.addShapeRef(&refs, obj, "sh:qualifiedValueShape"); err != nil {
+			return err
+		}
+		shape.QualifiedShape = &refs[0]
+	case SHACLNamespace + "qualifiedMinCount":
+		return setSHACLInt(&shape.QualifiedMin, obj, "sh:qualifiedMinCount")
+	case SHACLNamespace + "qualifiedMaxCount":
+		return setSHACLInt(&shape.QualifiedMax, obj, "sh:qualifiedMaxCount")
+	case SHACLNamespace + "qualifiedValueShapesDisjoint":
+		b, err := parseSHACLBool(obj, "sh:qualifiedValueShapesDisjoint")
+		if err != nil {
+			return err
+		}
+		shape.QualifiedDisjoint = b
 	case SHACLSeverity:
 		if obj.Kind != RDFTermIRI {
 			return fmt.Errorf("sh:severity must be an IRI, got %s", obj)
@@ -510,21 +603,6 @@ func (sg *shaclShapesGraph) applyShapeTriple(shape *shaclShape, tr RDFTriple) er
 		}
 	}
 	return nil
-}
-
-func (sg *shaclShapesGraph) parsePath(obj RDFTerm) (*shaclPath, error) {
-	switch obj.Kind {
-	case RDFTermIRI:
-		return &shaclPath{Term: obj, Predicate: obj}, nil
-	case RDFTermBlankNode:
-		triples := sg.bySubject[obj.String()]
-		if len(triples) == 1 && triples[0].Predicate.Value == SHACLInversePath && triples[0].Object.Kind == RDFTermIRI {
-			return &shaclPath{Term: obj, Predicate: triples[0].Object, Inverse: true}, nil
-		}
-		return nil, fmt.Errorf("unsupported sh:path %s: only a predicate IRI or [ sh:inversePath <iri> ] is supported", obj)
-	default:
-		return nil, fmt.Errorf("sh:path must be an IRI or blank node, got %s", obj)
-	}
 }
 
 func (sg *shaclShapesGraph) addShapeRef(dst *[]RDFTerm, obj RDFTerm, param string) error {
@@ -664,8 +742,50 @@ func (sg *shaclShapesGraph) refuseRecursion() error {
 	return nil
 }
 
+// isClassShape reports whether a shape is also a class: a SHACL instance of
+// rdfs:Class in the shapes graph, through rdfs:subClassOf* there.
+func (sg *shaclShapesGraph) isClassShape(id RDFTerm) bool {
+	isShape := false
+	var types []RDFTerm
+	for _, tr := range sg.bySubject[id.String()] {
+		if tr.Predicate.Value != RDFType {
+			continue
+		}
+		switch tr.Object.Value {
+		case SHACLNodeShape, SHACLPropertyShape:
+			isShape = true
+		default:
+			types = append(types, tr.Object)
+		}
+	}
+	if !isShape {
+		return false
+	}
+	seen := map[string]bool{}
+	for len(types) > 0 {
+		t := types[0]
+		types = types[1:]
+		if t.Value == rdfsClassIRI {
+			return true
+		}
+		if seen[t.String()] {
+			continue
+		}
+		seen[t.String()] = true
+		for _, tr := range sg.bySubject[t.String()] {
+			if tr.Predicate.Value == rdfsSubClassOfIRI {
+				types = append(types, tr.Object)
+			}
+		}
+	}
+	return false
+}
+
 func (s *shaclShape) references() []RDFTerm {
 	refs := append([]RDFTerm(nil), s.Properties...)
+	if s.QualifiedShape != nil {
+		refs = append(refs, *s.QualifiedShape)
+	}
 	refs = append(refs, s.Node...)
 	refs = append(refs, s.Not...)
 	for _, lists := range [][][]RDFTerm{s.And, s.Or, s.Xone} {
