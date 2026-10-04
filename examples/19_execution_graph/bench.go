@@ -337,11 +337,14 @@ func benchReads(ctx context.Context, r benchResult) error {
 	for _, q := range queries {
 		var times []time.Duration
 		var res any
-		for i := 0; i < 5; i++ {
+		var failed error
+		for i := 0; i < 5 && failed == nil; i++ {
 			t0 := time.Now()
 			out, err := g.QueryCypher(ctx, q.req)
 			if err != nil {
-				return fmt.Errorf("%s: %w", q.name, err)
+				// A blown time budget is a result, not a reason to stop.
+				failed = fmt.Errorf("after %s: %w", round(time.Since(t0)), err)
+				break
 			}
 			times = append(times, time.Since(t0))
 			res = out.Rows
@@ -349,8 +352,12 @@ func benchReads(ctx context.Context, r benchResult) error {
 				res = fmt.Sprintf("%d rows", len(out.Rows))
 			}
 		}
+		if failed != nil {
+			fmt.Printf("  %-46s FAILED %v\n", q.name, failed)
+			continue
+		}
 		sort.Slice(times, func(i, j int) bool { return times[i] < times[j] })
-		fmt.Printf("  %-46s median %9s  -> %v\n", q.name, round(times[2]), res)
+		fmt.Printf("  %-46s median %9s  -> %v\n", q.name, round(times[len(times)/2]), res)
 	}
 
 	t0 := time.Now()
