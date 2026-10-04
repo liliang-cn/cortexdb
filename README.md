@@ -37,7 +37,7 @@ recall. See the [plugin guide](plugins/cortexdb/README.md) for setup and
 
 - Vectors (HNSW, IVF, flat, binary codes), FTS5 full-text search, hybrid and graph retrieval
 - RAG knowledge, scoped agent memory, context packs with sources
-- RDF 1.2 knowledge graph: SPARQL, RDFS + OWL 2 RL inference, SHACL, read-only Cypher
+- RDF 1.2 knowledge graph: SPARQL 1.1/1.2, RDFS + OWL 2 RL inference, SHACL Core + SHACL-SPARQL, RDF/XML import — passing the W3C test suites — and read-only Cypher
 - Palantir-style ontology with governed actions
 - 80+ tools, in-process or over MCP
 - `serve_graph_3d`: a live 3D view to find, ask, query and expand, on desktop or phone

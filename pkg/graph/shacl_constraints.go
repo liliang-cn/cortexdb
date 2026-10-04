@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/big"
 	"regexp"
 	"strconv"
 	"strings"
@@ -82,6 +83,9 @@ func (v *shaclValidator) targets(ctx context.Context, shape *shaclShape) ([]RDFT
 // the top level starts from, and nested shapes (sh:node, sh:and, …) are
 // applied to whatever node they are handed.
 func (v *shaclValidator) validate(ctx context.Context, shape *shaclShape, focus RDFTerm) ([]SHACLValidationResult, error) {
+	if shape.Deactivated {
+		return nil, nil
+	}
 	values, err := v.valueNodes(ctx, shape, focus)
 	if err != nil {
 		return nil, err
@@ -234,7 +238,36 @@ func (v *shaclValidator) validate(ctx context.Context, shape *shaclShape, focus 
 		}
 	}
 
-	if len(shape.Equals) > 0 || len(shape.Disjoint) > 0 {
+	if shape.QualifiedShape != nil && (shape.QualifiedMin != nil || shape.QualifiedMax != nil) {
+		n := 0
+		for _, val := range values {
+			ok, err := v.conforms(ctx, *shape.QualifiedShape, val)
+			if err != nil {
+				return nil, err
+			}
+			for _, sib := range shape.siblings {
+				if !ok {
+					break
+				}
+				inSibling, err := v.conforms(ctx, sib, val)
+				if err != nil {
+					return nil, err
+				}
+				ok = !inSibling
+			}
+			if ok {
+				n++
+			}
+		}
+		if shape.QualifiedMin != nil && n < *shape.QualifiedMin {
+			report(SHACLNamespace+"QualifiedMinCountConstraintComponent", nil, fmt.Sprintf("%d values conform to %s, fewer than %d", n, *shape.QualifiedShape, *shape.QualifiedMin))
+		}
+		if shape.QualifiedMax != nil && n > *shape.QualifiedMax {
+			report(SHACLNamespace+"QualifiedMaxCountConstraintComponent", nil, fmt.Sprintf("%d values conform to %s, more than %d", n, *shape.QualifiedShape, *shape.QualifiedMax))
+		}
+	}
+
+	if len(shape.Equals) > 0 || len(shape.Disjoint) > 0 || len(shape.LessThan) > 0 || len(shape.LessThanOrEquals) > 0 {
 		pairResults, err := v.propertyPairResults(ctx, shape, focus, values)
 		if err != nil {
 			return nil, err
@@ -269,6 +302,14 @@ func (v *shaclValidator) validate(ctx context.Context, shape *shaclShape, focus 
 				report(SHACLUniqueLangConstraintComponent, nil, fmt.Sprintf("Language tag %q is used by %d values", tag, counts[tag]))
 			}
 		}
+	}
+
+	if len(shape.SPARQL) > 0 {
+		sparqlResults, err := v.sparqlResults(ctx, shape, focus, values)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, sparqlResults...)
 	}
 
 	if shape.Closed {
@@ -348,6 +389,33 @@ func (v *shaclValidator) propertyPairResults(ctx context.Context, shape *shaclSh
 			}
 		}
 	}
+	// sh:lessThan and sh:lessThanOrEquals: each value node against each value
+	// of the other predicate; an incomparable pair is a result too.
+	for _, c := range []struct {
+		predicates []RDFTerm
+		component  string
+		holds      func(int) bool
+		relation   string
+	}{
+		{shape.LessThan, SHACLNamespace + "LessThanConstraintComponent", func(c int) bool { return c < 0 }, "<"},
+		{shape.LessThanOrEquals, SHACLNamespace + "LessThanOrEqualsConstraintComponent", func(c int) bool { return c <= 0 }, "<="},
+	} {
+		for _, predicate := range c.predicates {
+			others, err := other(predicate)
+			if err != nil {
+				return nil, err
+			}
+			for _, val := range values {
+				for _, o := range others {
+					// One result per failing pair, as the spec has it.
+					cmp, ok := compareSHACLLiterals(val, o)
+					if !ok || !c.holds(cmp) {
+						out = append(out, shaclPairResult{c.component, val, fmt.Sprintf("Value %s is not %s %s (a value of %s)", val, c.relation, o, predicate)})
+					}
+				}
+			}
+		}
+	}
 	return out, nil
 }
 
@@ -358,7 +426,7 @@ func (v *shaclValidator) propertyPairResults(ctx context.Context, shape *shaclSh
 func (v *shaclValidator) closedResults(ctx context.Context, shape *shaclShape, focus RDFTerm, values []RDFTerm) ([]SHACLValidationResult, error) {
 	allowed := map[string]struct{}{}
 	for _, ref := range shape.Properties {
-		if p := v.shapes.shapes[ref.String()].Path; p != nil && !p.Inverse {
+		if p := v.shapes.shapes[ref.String()].Path; p != nil && p.op == shaclPathPredicate {
 			allowed[p.Predicate.Value] = struct{}{}
 		}
 	}
@@ -434,34 +502,7 @@ func (v *shaclValidator) valueNodes(ctx context.Context, shape *shaclShape, focu
 	if shape.Path == nil {
 		return []RDFTerm{focus}, nil
 	}
-	predicate := shape.Path.Predicate
-	var pattern TriplePattern
-	if shape.Path.Inverse {
-		pattern = TriplePattern{Predicate: &predicate, Object: &focus}
-	} else {
-		if focus.Kind == RDFTermLiteral {
-			return nil, nil // a literal has no outgoing edges
-		}
-		pattern = TriplePattern{Subject: &focus, Predicate: &predicate}
-	}
-	triples, err := v.findTriples(ctx, pattern)
-	if err != nil {
-		return nil, err
-	}
-	values := make([]RDFTerm, 0, len(triples))
-	for _, tr := range triples {
-		if shape.Path.Inverse {
-			// FindTriples matches a plain literal object against any datatype;
-			// the value node must be exactly the focus term.
-			if !termsEqual(tr.Object, focus) {
-				continue
-			}
-			values = append(values, tr.Subject)
-		} else {
-			values = append(values, tr.Object)
-		}
-	}
-	return uniqueSHACLTargets(values), nil
+	return v.evalPath(ctx, shape.Path, focus, false)
 }
 
 // isInstanceOf is SHACL's "SHACL instance": node has rdf:type of cls or of a
@@ -626,15 +667,43 @@ var (
 // hasSHACLDatatype also requires the lexical form to be valid for the common
 // XSD datatypes, as the spec does: "abc"^^xsd:integer is ill-formed and fails
 // sh:datatype xsd:integer even though its datatype IRI matches.
+// xsdIntegerRanges are the value spaces of XSD's bounded integer types.
+var xsdIntegerRanges = map[string][2]string{
+	"long":          {"-9223372036854775808", "9223372036854775807"},
+	"int":           {"-2147483648", "2147483647"},
+	"short":         {"-32768", "32767"},
+	"byte":          {"-128", "127"},
+	"unsignedLong":  {"0", "18446744073709551615"},
+	"unsignedInt":   {"0", "4294967295"},
+	"unsignedShort": {"0", "65535"},
+	"unsignedByte":  {"0", "255"},
+}
+
+func inXSDIntegerRange(lex, local string) bool {
+	r, ok := xsdIntegerRanges[local]
+	if !ok {
+		return true
+	}
+	n, ok := new(big.Int).SetString(strings.TrimPrefix(lex, "+"), 10)
+	if !ok {
+		return false
+	}
+	lo, _ := new(big.Int).SetString(r[0], 10)
+	hi, _ := new(big.Int).SetString(r[1], 10)
+	return n.Cmp(lo) >= 0 && n.Cmp(hi) <= 0
+}
+
 func hasSHACLDatatype(term RDFTerm, datatype string) bool {
 	if term.Kind != RDFTermLiteral || shaclEffectiveDatatype(term) != datatype {
 		return false
 	}
 	lex := term.Value
-	switch strings.TrimPrefix(datatype, XSDNamespace) {
-	case "integer", "long", "int", "short", "byte":
+	switch local := strings.TrimPrefix(datatype, XSDNamespace); local {
+	case "integer":
 		return xsdIntegerLexical.MatchString(lex)
-	case "nonNegativeInteger", "unsignedLong", "unsignedInt", "unsignedShort", "unsignedByte":
+	case "long", "int", "short", "byte", "unsignedLong", "unsignedInt", "unsignedShort", "unsignedByte":
+		return xsdIntegerLexical.MatchString(lex) && inXSDIntegerRange(lex, local)
+	case "nonNegativeInteger":
 		return xsdIntegerLexical.MatchString(lex) && (!strings.HasPrefix(lex, "-") || strings.Trim(lex, "-0") == "")
 	case "positiveInteger":
 		return xsdIntegerLexical.MatchString(lex) && !strings.HasPrefix(lex, "-") && strings.Trim(lex, "+0") != ""
@@ -681,7 +750,10 @@ func compareSHACLLiterals(value, bound RDFTerm) (int, bool) {
 	if vdt == bdt && (vdt == XSDNamespace+"date" || vdt == XSDNamespace+"dateTime") {
 		a, okA := parseSHACLTime(value.Value, vdt == XSDNamespace+"dateTime")
 		b, okB := parseSHACLTime(bound.Value, vdt == XSDNamespace+"dateTime")
-		if okA && okB {
+		// A value with a timezone and one without are only partially
+		// ordered (XSD §3.2.7.4); this treats every such pair as
+		// incomparable, which the range components report.
+		if okA && okB && hasXSDTimezone(value.Value) == hasXSDTimezone(bound.Value) {
 			return a.Compare(b), true
 		}
 		return 0, false
@@ -724,6 +796,19 @@ func shaclNumber(term RDFTerm) (float64, bool) {
 		return 0, false
 	}
 	return f, true
+}
+
+// hasXSDTimezone reports whether a date or dateTime lexical form ends in a
+// timezone: Z, or +hh:mm / -hh:mm after the date.
+func hasXSDTimezone(lex string) bool {
+	if strings.HasSuffix(lex, "Z") {
+		return true
+	}
+	if len(lex) < 6 {
+		return false
+	}
+	tail := lex[len(lex)-6:]
+	return (tail[0] == '+' || tail[0] == '-') && tail[3] == ':' && len(lex) > 10
 }
 
 func parseSHACLTime(lex string, withTime bool) (time.Time, bool) {

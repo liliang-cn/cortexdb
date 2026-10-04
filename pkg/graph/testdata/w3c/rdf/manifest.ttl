@@ -86,6 +86,26 @@ PREFIX ut:    <http://www.w3.org/2009/sparql/tests/test-update#>
         <rdf-rdf11-rdf-turtle#IRI-resolution-01>
         <rdf-rdf11-rdf-trig#trig-syntax-bad-uri-escape-01>
         <rdf-rdf11-rdf-trig#nested_blankNodePropertyLists>
+        <rdf-rdf11-rdf-xml#amp-in-url-test001>
+        <rdf-rdf11-rdf-xml#datatypes-test001>
+        <rdf-rdf11-rdf-xml#rdf-containers-syntax-vs-schema-test004>
+        <rdf-rdf11-rdf-xml#rdf-ns-prefix-confusion-test0010>
+        <rdf-rdf11-rdf-xml#rdfms-empty-property-elements-test017>
+        <rdf-rdf11-rdf-xml#rdfms-reification-required-test001>
+        <rdf-rdf11-rdf-xml#rdfms-seq-representation-test001>
+        <rdf-rdf11-rdf-xml#rdfms-xmllang-test003>
+        <rdf-rdf11-rdf-xml#rdfms-syntax-incomplete-test004>
+        <rdf-rdf11-rdf-xml#xml-canon-test001>
+        <rdf-rdf11-rdf-xml#xmlbase-test013>
+        <rdf-rdf11-rdf-xml#rdfms-rdf-id-error005>
+        <rdf-rdf11-rdf-xml#rdfms-abouteach-error001>
+        <rdf-rdf11-rdf-xml#rdfms-syntax-incomplete-error001>
+        <rdf-rdf11-rdf-xml#rdf-containers-syntax-vs-schema-error001>
+        <rdf-rdf12-rdf-xml-eval#rdf12-xml-dir-01>
+        <rdf-rdf12-rdf-xml-eval#rdf12-xml-tt-01>
+        <rdf-rdf12-rdf-xml-eval#rdf12-xml-tt-07>
+        <rdf-rdf12-rdf-xml-eval#rdf12-xml-an-01>
+        <rdf-rdf12-rdf-xml-eval#rdf12-xml-an-reif-01>
     ) .
 
 <rdf-rdf12-rdf-n-triples-syntax#ntriples12-01> rdf:type rdft:TestNTriplesPositiveSyntax ;
@@ -480,4 +500,154 @@ PREFIX ut:    <http://www.w3.org/2009/sparql/tests/test-update#>
     mf:name "nested_blankNodePropertyLists" ;
     mf:action <rdf11/rdf-trig/nested_blankNodePropertyLists.trig> ;
     mf:result <rdf11/rdf-trig/nested_blankNodePropertyLists.nq> ;
+    .
+
+<rdf-rdf11-rdf-xml#amp-in-url-test001>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLEval> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf11/rdf-xml/amp-in-url/test001.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "amp-in-url-test001" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <rdf11/rdf-xml/amp-in-url/test001.nt> ;
+    <http://www.w3.org/ns/rdftest#approval> <http://www.w3.org/ns/rdftest#Approved> ;
+    .
+
+<rdf-rdf11-rdf-xml#datatypes-test001>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLEval> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf11/rdf-xml/datatypes/test001.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "datatypes-test001" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <rdf11/rdf-xml/datatypes/test001.nt> ;
+    <http://www.w3.org/ns/rdftest#approval> <http://www.w3.org/ns/rdftest#Approved> ;
+    .
+
+<rdf-rdf11-rdf-xml#rdf-containers-syntax-vs-schema-test004>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLEval> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf11/rdf-xml/rdf-containers-syntax-vs-schema/test004.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "rdf-containers-syntax-vs-schema-test004" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <rdf11/rdf-xml/rdf-containers-syntax-vs-schema/test004.nt> ;
+    <http://www.w3.org/ns/rdftest#approval> <http://www.w3.org/ns/rdftest#Approved> ;
+    .
+
+<rdf-rdf11-rdf-xml#rdf-ns-prefix-confusion-test0010>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLEval> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf11/rdf-xml/rdf-ns-prefix-confusion/test0010.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "rdf-ns-prefix-confusion-test0010" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <rdf11/rdf-xml/rdf-ns-prefix-confusion/test0010.nt> ;
+    <http://www.w3.org/ns/rdftest#approval> <http://www.w3.org/ns/rdftest#Approved> ;
+    .
+
+<rdf-rdf11-rdf-xml#rdfms-empty-property-elements-test017>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLEval> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf11/rdf-xml/rdfms-empty-property-elements/test017.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "rdfms-empty-property-elements-test017" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <rdf11/rdf-xml/rdfms-empty-property-elements/test017.nt> ;
+    <http://www.w3.org/ns/rdftest#approval> <http://www.w3.org/ns/rdftest#Approved> ;
+    .
+
+<rdf-rdf11-rdf-xml#rdfms-reification-required-test001>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLEval> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf11/rdf-xml/rdfms-reification-required/test001.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "rdfms-reification-required-test001" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <rdf11/rdf-xml/rdfms-reification-required/test001.nt> ;
+    <http://www.w3.org/ns/rdftest#approval> <http://www.w3.org/ns/rdftest#Approved> ;
+    .
+
+<rdf-rdf11-rdf-xml#rdfms-seq-representation-test001>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLEval> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf11/rdf-xml/rdfms-seq-representation/test001.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "rdfms-seq-representation-test001" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <rdf11/rdf-xml/rdfms-seq-representation/test001.nt> ;
+    <http://www.w3.org/ns/rdftest#approval> <http://www.w3.org/ns/rdftest#Approved> ;
+    .
+
+<rdf-rdf11-rdf-xml#rdfms-xmllang-test003>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLEval> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf11/rdf-xml/rdfms-xmllang/test003.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "rdfms-xmllang-test003" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <rdf11/rdf-xml/rdfms-xmllang/test003.nt> ;
+    <http://www.w3.org/ns/rdftest#approval> <http://www.w3.org/ns/rdftest#Approved> ;
+    .
+
+<rdf-rdf11-rdf-xml#rdfms-syntax-incomplete-test004>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLEval> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf11/rdf-xml/rdfms-syntax-incomplete/test004.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "rdfms-syntax-incomplete-test004" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <rdf11/rdf-xml/rdfms-syntax-incomplete/test004.nt> ;
+    <http://www.w3.org/ns/rdftest#approval> <http://www.w3.org/ns/rdftest#Approved> ;
+    .
+
+<rdf-rdf11-rdf-xml#xml-canon-test001>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLEval> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf11/rdf-xml/xml-canon/test001.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "xml-canon-test001" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <rdf11/rdf-xml/xml-canon/test001.nt> ;
+    <http://www.w3.org/ns/rdftest#approval> <http://www.w3.org/ns/rdftest#Approved> ;
+    .
+
+<rdf-rdf11-rdf-xml#xmlbase-test013>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLEval> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf11/rdf-xml/xmlbase/test013.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "xmlbase-test013" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <rdf11/rdf-xml/xmlbase/test013.nt> ;
+    <http://www.w3.org/ns/rdftest#approval> <http://www.w3.org/ns/rdftest#Approved> ;
+    .
+
+<rdf-rdf11-rdf-xml#rdfms-rdf-id-error005>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLNegativeSyntax> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf11/rdf-xml/rdfms-rdf-id/error005.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "rdfms-rdf-id-error005" ;
+    <http://www.w3.org/ns/rdftest#approval> <http://www.w3.org/ns/rdftest#Approved> ;
+    .
+
+<rdf-rdf11-rdf-xml#rdfms-abouteach-error001>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLNegativeSyntax> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf11/rdf-xml/rdfms-abouteach/error001.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "rdfms-abouteach-error001" ;
+    <http://www.w3.org/ns/rdftest#approval> <http://www.w3.org/ns/rdftest#Approved> ;
+    .
+
+<rdf-rdf11-rdf-xml#rdfms-syntax-incomplete-error001>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLNegativeSyntax> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf11/rdf-xml/rdfms-syntax-incomplete/error001.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "rdfms-syntax-incomplete-error001" ;
+    <http://www.w3.org/ns/rdftest#approval> <http://www.w3.org/ns/rdftest#Approved> ;
+    .
+
+<rdf-rdf11-rdf-xml#rdf-containers-syntax-vs-schema-error001>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLNegativeSyntax> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf11/rdf-xml/rdf-containers-syntax-vs-schema/error001.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "rdf-containers-syntax-vs-schema-error001" ;
+    <http://www.w3.org/ns/rdftest#approval> <http://www.w3.org/ns/rdftest#Approved> ;
+    .
+
+<rdf-rdf12-rdf-xml-eval#rdf12-xml-dir-01>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLEval> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf12/rdf-xml/eval/rdf12-xml-dir-01.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "rdf12-xml-dir-01" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <rdf12/rdf-xml/eval/rdf12-xml-dir-01.nt> ;
+    .
+
+<rdf-rdf12-rdf-xml-eval#rdf12-xml-tt-01>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLEval> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf12/rdf-xml/eval/rdf12-xml-tt-01.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "rdf12-xml-tt-01" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <rdf12/rdf-xml/eval/rdf12-xml-tt-01.nt> ;
+    .
+
+<rdf-rdf12-rdf-xml-eval#rdf12-xml-tt-07>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLNegativeSyntax> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf12/rdf-xml/eval/rdf12-xml-tt-07.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "rdf12-xml-tt-07" ;
+    .
+
+<rdf-rdf12-rdf-xml-eval#rdf12-xml-an-01>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLEval> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf12/rdf-xml/eval/rdf12-xml-an-01.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "rdf12-xml-an-01" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <rdf12/rdf-xml/eval/rdf12-xml-an-01.nt> ;
+    .
+
+<rdf-rdf12-rdf-xml-eval#rdf12-xml-an-reif-01>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/rdftest#TestXMLEval> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <rdf12/rdf-xml/eval/rdf12-xml-an-reif-01.rdf> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "rdf12-xml-an-reif-01.rdf" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <rdf12/rdf-xml/eval/rdf12-xml-an-reif-01.nt> ;
     .

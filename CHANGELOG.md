@@ -6,6 +6,50 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- The execution graph API: an agent's record of its own run, as graph
+  records. `StartRun`, `BeginStep` / `EndStep` (the two-phase write: a step is
+  on the record as running, with `TRIGGERED` edges from the steps it consumed,
+  before its work runs), `RecordStep`, `FinishRun`; and to read it back
+  `GetRun`, `ListRuns`, `GetStep`, `RunSteps`, `SummarizeRun` (tokens, cost,
+  open and failed steps, critical path, least confident step), `StepLineage`
+  (upstream or downstream over `TRIGGERED`) and `ReplayRun` (the run as of any
+  instant, from history). Step kinds are node types and Cypher labels;
+  sub-agent runs hang off the step that started them (`SPAWNED`). The nine are
+  also MCP tools, `execution_*`, five of them writes. `examples/19_execution_graph`
+  now uses the API.
+- SPARQL 1.1 in full, measured against the W3C suites on SQLite and
+  PostgreSQL: query 329/331 (the two are a deliberate leniency, `"1" + "2"`
+  is 3), update 157/157, results formats 10/10, federated query 10/10; SPARQL
+  1.2 269/269. New: every property path (sequence, negated property sets,
+  `?`, with SPARQL's set/bag semantics); XSD casts and calls by IRI; trailing
+  `VALUES`; `GRAPH ?g` over patterns that do not name the graph, subqueries
+  and `MINUS` inside it; bottom-up scope for `FILTER`/`BIND` and the
+  grouped-`SELECT`, `BIND` and subquery syntax rules; `ADD`, `COPY`, `MOVE`,
+  `CLEAR`, `DROP`, `CREATE` and `LOAD` (refused: the store never fetches);
+  `USING`/`USING NAMED` as the update's dataset; `SELECT *` in order of
+  appearance.
+- `SPARQLResult.WriteResults`: SPARQL results as JSON, XML, CSV or TSV, triple
+  terms and base directions included; `ReadSPARQLResultsJSON`.
+- `SERVICE` through `GraphStore.SetSPARQLServiceHandler`, off by default so a
+  query never reaches the network on its own; `HTTPSPARQLService` is a SPARQL
+  1.1 Protocol client.
+- RDF/XML import (`RDFFormatRDFXML`), including the RDF 1.2 additions
+  (`its:dir`, `rdf:parseType="Triple"`, annotations); the W3C RDF 1.1 and RDF
+  1.2 RDF/XML suites pass in full.
+- SHACL Core in full — every property path, `sh:qualifiedValueShape` with its
+  counts and disjointness, `sh:lessThan`, `sh:lessThanOrEquals`, implicit class
+  targets, `sh:deactivated` — passing the W3C Core suite 98/98; and
+  SHACL-SPARQL: `sh:sparql` constraints and SPARQL-based constraint components
+  with pre-binding, 21/22 (`$shapesGraph`, optional in the spec, is not
+  supported). `SHACLValidationResult.SourceConstraint` names the constraint.
+- The rest of the OWL 2 RL rule tables: `someValuesFrom`, `allValuesFrom`,
+  `hasValue`, `intersectionOf`, `unionOf`, `oneOf`, max (qualified)
+  cardinality and `owl:hasKey`, the schema rules over restrictions and lists,
+  and as reported contradictions irreflexive and asymmetric properties,
+  negative property assertions, `complementOf`, `owl:Nothing`,
+  `AllDisjointClasses`, `AllDisjointProperties` and `AllDifferent`. The rules
+  are gated on their schema, so a graph that states no OWL pays about 5% on a
+  refresh.
 - Node property indexes: `GraphStore.IndexNodeProperty(ctx, key)` puts an
   expression index on one JSON property (`NodePropertyIndexes`,
   `DropNodePropertyIndex`; opt-in per key, as each is paid for on every
@@ -30,6 +74,16 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- SPARQL `FILTER` and `BIND` no longer see variables bound outside their group
+  (a nested group's `FILTER(?v = ?z)` read an outer `?z`; a `BIND` in a `UNION`
+  branch computed from an outer variable), and a `FILTER` applies to its whole
+  group wherever it is written. `IRI()` resolves against `BASE`, `BNODE(str)`
+  is per solution, decimal results print exactly (the W3C test's `SUM` is `11.1`,
+  not `11.100000000000001`), and `SELECT` aliases already in scope are a
+  syntax error.
+- SHACL: `sh:datatype` checks the range of bounded integer types
+  (`"300"^^xsd:byte` is ill-formed), a date with a timezone and one without are
+  incomparable, and only `sh:uniqueLang true` activates the constraint.
 - Concurrent writers in one process no longer fail with `database is locked`
   on SQLite. SQLite's busy handler polls with sleeps growing to 100ms, so
   under steady contention the writer that had waited longest kept waking

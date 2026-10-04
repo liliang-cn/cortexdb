@@ -4,18 +4,20 @@
 // autobiography: one node per atomic operation (LLM call, tool invocation,
 // retrieval, decision point) carrying its input, output and cost, joined by
 // TRIGGERED edges that say whose output became whose input. This example
-// writes one simulated DevOps-agent run that way and then reads it back the
-// ways the book asks for:
+// writes one simulated DevOps-agent run that way, through the execution-graph
+// API (StartRun, BeginStep/EndStep, FinishRun — also the execution_* MCP
+// tools), and then reads it back the ways the book asks for:
 //
-//  1. two-phase step writes: a step is upserted as "running" before it
-//     executes and again as "done" after, so a crash still leaves the causal
+//  1. two-phase step writes: BeginStep writes a step as running before it
+//     executes and EndStep as done after, so a crash still leaves the causal
 //     structure; the bitemporal store keeps the running version in history;
+//     SummarizeRun adds up tokens, cost and the critical path;
 //  2. a decision ledger entry (RecordDecision) whose premises are steps;
 //  3. a structural Cypher query: tool calls that followed a low-confidence
 //     LLM call and then ran slow;
-//  4. lineage: every step upstream of the action, and a filter on indexed
-//     step properties (IndexNodeProperty);
-//  5. an as-of replay of the run as it stood mid-flight;
+//  4. lineage (StepLineage): every step upstream of the action, and a filter
+//     on indexed step properties (IndexNodeProperty);
+//  5. an as-of replay (ReplayRun) of the run as it stood mid-flight;
 //  6. the change feed a downstream evaluator would subscribe to;
 //  7. promotion of the lesson into a separate long-term brain (agentmem).
 //
@@ -41,17 +43,18 @@ import (
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
-// Node and edge types of the execution graph. The node type is the Cypher
-// label, so (l:LLMCall)-[:TRIGGERED]->(t:ToolCall) reads as the book draws it.
+// Node and edge types of the execution graph, as the API writes them; the
+// bench writes the same shapes by hand to measure the store underneath. The
+// node type is the Cypher label, so (l:LLMCall)-[:TRIGGERED]->(t:ToolCall)
+// reads as the book draws it.
 const (
-	typeRun        = "AgentRun"
-	typeLLMCall    = "LLMCall"
-	typeToolCall   = "ToolCall"
-	typeRetrieval  = "Retrieval"
-	typeValidation = "Validation"
+	typeRun       = cortexdb.RunNodeType
+	typeLLMCall   = cortexdb.StepKindLLMCall
+	typeToolCall  = cortexdb.StepKindToolCall
+	typeRetrieval = cortexdb.StepKindRetrieval
 
-	edgeHasStep   = "HAS_STEP"
-	edgeTriggered = "TRIGGERED"
+	edgeHasStep   = cortexdb.ExecutionEdgeHasStep
+	edgeTriggered = cortexdb.ExecutionEdgeTriggered
 )
 
 func main() {
@@ -99,52 +102,58 @@ func runDemo(ctx context.Context, dir string) error {
 		return err
 	}
 
-	rec := &recorder{g: g, runID: "run:alert-4711", runningAt: map[string]time.Time{}}
-	if err := rec.start(ctx, "checkout p99 latency alert"); err != nil {
+	run, err := runs.StartRun(ctx, cortexdb.RunStart{ID: "run:alert-4711", Task: "checkout p99 latency alert", Agent: "devops-agent"})
+	if err != nil {
 		return err
 	}
+	rec := &recorder{db: runs, runID: run.ID, runningAt: map[string]time.Time{}}
 
 	// The workflow: plan, then two independent lookups, a diagnosis that
 	// reads both, an action, and a validation of the action.
-	plan, err := rec.step(ctx, typeLLMCall, "plan", nil, stepResult{
-		output: "check service deps and live metrics", confidence: 0.92, latencyMS: 850, tokens: 640, costUSD: 0.004,
+	plan, err := rec.step(ctx, cortexdb.StepKindLLMCall, "plan", nil, cortexdb.StepEnd{
+		Output: "check service deps and live metrics", Confidence: conf(0.92), LatencyMS: 850, Tokens: 640, CostUSD: 0.004,
 	})
 	if err != nil {
 		return err
 	}
-	deps, err := rec.step(ctx, typeRetrieval, "kg_dependencies", []string{plan}, stepResult{
-		output: "checkout -> payment-gateway -> db-primary", latencyMS: 40,
+	deps, err := rec.step(ctx, cortexdb.StepKindRetrieval, "kg_dependencies", []string{plan}, cortexdb.StepEnd{
+		Output: "checkout -> payment-gateway -> db-primary", LatencyMS: 40,
 	})
 	if err != nil {
 		return err
 	}
-	metrics, err := rec.step(ctx, typeToolCall, "query_metrics", []string{plan}, stepResult{
-		output: "db-primary connections 498/500", latencyMS: 310,
+	metrics, err := rec.step(ctx, cortexdb.StepKindToolCall, "query_metrics", []string{plan}, cortexdb.StepEnd{
+		Output: "db-primary connections 498/500", LatencyMS: 310,
 	})
 	if err != nil {
 		return err
 	}
-	diagnose, err := rec.step(ctx, typeLLMCall, "diagnose", []string{deps, metrics}, stepResult{
-		output: "probably connection-pool exhaustion on db-primary", confidence: 0.62, latencyMS: 1900, tokens: 2100, costUSD: 0.013,
+	diagnose, err := rec.step(ctx, cortexdb.StepKindLLMCall, "diagnose", []string{deps, metrics}, cortexdb.StepEnd{
+		Output: "probably connection-pool exhaustion on db-primary", Confidence: conf(0.62), LatencyMS: 1900, Tokens: 2100, CostUSD: 0.013,
 	})
 	if err != nil {
 		return err
 	}
-	restart, err := rec.step(ctx, typeToolCall, "restart_pool", []string{diagnose}, stepResult{
-		output: "pool recycled", latencyMS: 4200,
+	restart, err := rec.step(ctx, cortexdb.StepKindToolCall, "restart_pool", []string{diagnose}, cortexdb.StepEnd{
+		Output: "pool recycled", LatencyMS: 4200,
 	})
 	if err != nil {
 		return err
 	}
-	if _, err := rec.step(ctx, typeValidation, "verify_latency", []string{restart}, stepResult{
-		output: "p99 back to 180ms", latencyMS: 600,
+	if _, err := rec.step(ctx, cortexdb.StepKindValidation, "verify_latency", []string{restart}, cortexdb.StepEnd{
+		Output: "p99 back to 180ms", LatencyMS: 600,
 	}); err != nil {
 		return err
 	}
-	if err := rec.finish(ctx, "resolved"); err != nil {
+	if _, err := runs.FinishRun(ctx, run.ID, cortexdb.RunEnd{Outcome: "resolved"}); err != nil {
 		return err
 	}
-	fmt.Printf("recorded %s: %d steps\n", rec.runID, len(rec.steps))
+	summary, err := runs.SummarizeRun(ctx, run.ID)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("recorded %s: %d steps, %d tokens, $%.3f, critical path %dms over %d steps, least confident: %s\n",
+		run.ID, summary.Steps, summary.Tokens, summary.CostUSD, summary.CriticalPathMS, len(summary.CriticalPath), summary.LowestConfidence)
 
 	// 2. Why the agent restarted the pool, on the same graph as the steps.
 	decision, err := runs.RecordDecision(ctx, cortexdb.DecisionRecordRequest{
@@ -153,7 +162,7 @@ func runDemo(ctx context.Context, dir string) error {
 		Actor:    "devops-agent",
 		Note:     "Recycle the db-primary pool: the pool is saturated and checkout depends on it.",
 		Verdict:  "restart",
-		Subject:  rec.runID,
+		Subject:  run.ID,
 		Premises: []string{deps, metrics, diagnose},
 		Producer: cortexdb.ProducerLLMExtract,
 		Grade:    cortexdb.GradeAsserted,
@@ -181,31 +190,33 @@ func runDemo(ctx context.Context, dir string) error {
 	}
 
 	// 4. Everything upstream of the action, however many hops back.
-	if err := printCypher(ctx, g, "\nlineage of restart_pool:", graph.CypherRequest{
-		Query: `MATCH (s)-[:TRIGGERED*1..6]->(t {name: 'restart_pool'})
-		        RETURN DISTINCT labels(s)[0] AS type, s.name AS step ORDER BY step`,
-	}); err != nil {
+	lineage, err := runs.StepLineage(ctx, restart, cortexdb.LineageUpstream, 0)
+	if err != nil {
 		return err
+	}
+	fmt.Println("\nlineage of restart_pool:")
+	for _, s := range lineage {
+		fmt.Printf("  %d hop(s) back: %-10s %s\n", s.Depth, s.Kind, s.Name)
 	}
 
 	// 4b. By indexed properties: this run's steps that took over a second.
 	if err := printCypher(ctx, g, "\nsteps of this run slower than 1s (indexed run_id, latency_ms):", graph.CypherRequest{
 		Query: `MATCH (s) WHERE s.run_id = $run AND s.latency_ms > 1000
 		        RETURN s.name AS step, s.latency_ms AS latency_ms ORDER BY latency_ms DESC`,
-		Params: map[string]any{"run": rec.runID},
+		Params: map[string]any{"run": run.ID},
 	}); err != nil {
 		return err
 	}
 
 	// 5. The run as it stood while the action was executing.
 	midRun := rec.runningAt[restart]
-	if err := printCypher(ctx, g, "\nrun state as of "+midRun.Format("15:04:05.000")+" (while restart_pool ran):", graph.CypherRequest{
-		Query: `MATCH (r:AgentRun)-[:HAS_STEP]->(s) WHERE id(r) = $run
-		        RETURN s.seq AS seq, s.name AS step, s.status AS status ORDER BY seq`,
-		Params: map[string]any{"run": rec.runID},
-		AsOf:   midRun,
-	}); err != nil {
+	replay, err := runs.ReplayRun(ctx, run.ID, midRun)
+	if err != nil {
 		return err
+	}
+	fmt.Printf("\nrun state as of %s (while restart_pool ran):\n", midRun.Format("15:04:05.000"))
+	for _, s := range replay.Steps {
+		fmt.Printf("  %d %-16s %s\n", s.Seq, s.Name, s.Status)
 	}
 	versions, err := g.NodeHistory(ctx, restart)
 	if err != nil {
@@ -245,7 +256,7 @@ func runDemo(ctx context.Context, dir string) error {
 		Importance:  0.8,
 		Confidence:  0.62,
 		Tags:        []string{"checkout", "db-primary", "connection-pool"},
-		EvidenceIDs: []string{rec.runID, diagnose, restart, decision.ID},
+		EvidenceIDs: []string{run.ID, diagnose, restart, decision.ID},
 	}
 	if err := brain.Save(ctx, lesson); err != nil {
 		return err
@@ -261,85 +272,33 @@ func runDemo(ctx context.Context, dir string) error {
 	return nil
 }
 
-// recorder writes one run's execution graph.
+// recorder notes when each step was in flight, so the demo can replay the
+// run at that instant. The writes are the execution-graph API's.
 type recorder struct {
-	g     *graph.GraphStore
+	db    *cortexdb.DB
 	runID string
-	steps []string
-	// runningAt is when each step's phase-one write had committed: an
-	// instant at which the step was in flight.
+	// runningAt is when each step's begin write had committed: an instant
+	// at which the step was in flight.
 	runningAt map[string]time.Time
 }
 
-type stepResult struct {
-	output     string
-	confidence float64
-	latencyMS  int
-	tokens     int
-	costUSD    float64
-}
-
-func (r *recorder) start(ctx context.Context, task string) error {
-	return r.g.UpsertNode(ctx, &graph.GraphNode{
-		ID: r.runID, NodeType: typeRun, Content: task,
-		Properties: map[string]any{"name": r.runID, "task": task, "status": "running"},
-	})
-}
-
-func (r *recorder) finish(ctx context.Context, outcome string) error {
-	n, err := r.g.GetNode(ctx, r.runID)
+// step is the two-phase write from the book's Example 7-1: BeginStep makes
+// the node and its causal edges exist before the work runs, EndStep
+// replaces it with the result, and the running version stays in history.
+func (r *recorder) step(ctx context.Context, kind, name string, parents []string, end cortexdb.StepEnd) (string, error) {
+	st, err := r.db.BeginStep(ctx, cortexdb.StepStart{RunID: r.runID, Kind: kind, Name: name, Parents: parents})
 	if err != nil {
-		return err
-	}
-	// GetNode hands back the version's ValidFrom, and a ValidFrom on a write
-	// means "this was true since then": written back as is, the run would be
-	// recorded as a correction — done all along, from the moment it started.
-	// A state change happens now, so let the store date it.
-	n.ValidFrom = time.Time{}
-	n.Properties["status"] = "done"
-	n.Properties["outcome"] = outcome
-	n.Properties["steps"] = len(r.steps)
-	return r.g.UpsertNode(ctx, n)
-}
-
-// step is the two-phase write from the book's Example 7-1. Phase one makes
-// the node and its causal edges exist before the work runs; phase two
-// replaces the node with its result. The store moves the running version to
-// graph_node_history, which is what the as-of replay reads.
-func (r *recorder) step(ctx context.Context, nodeType, name string, parents []string, res stepResult) (string, error) {
-	id := fmt.Sprintf("%s/step-%02d-%s", r.runID, len(r.steps)+1, name)
-	props := map[string]any{
-		"name": name, "run_id": r.runID, "seq": len(r.steps) + 1, "status": "running",
-		"parents": strings.Join(parents, ","),
-	}
-	node := &graph.GraphNode{ID: id, NodeType: nodeType, Content: name, Properties: props}
-	if err := r.g.UpsertNode(ctx, node); err != nil {
 		return "", err
 	}
-	edges := []*graph.GraphEdge{{ID: r.runID + "->" + id, FromNodeID: r.runID, ToNodeID: id, EdgeType: edgeHasStep, Weight: 1}}
-	for _, p := range parents {
-		edges = append(edges, &graph.GraphEdge{ID: p + "->" + id, FromNodeID: p, ToNodeID: id, EdgeType: edgeTriggered, Weight: 1})
-	}
-	if _, err := r.g.UpsertEdgesBatch(ctx, edges); err != nil {
-		return "", err
-	}
-	r.steps = append(r.steps, id)
-	r.runningAt[id] = time.Now()
-
+	r.runningAt[st.ID] = time.Now()
 	time.Sleep(5 * time.Millisecond) // the step's work
-
-	props["status"] = "done"
-	props["output"] = res.output
-	props["latency_ms"] = res.latencyMS
-	if res.confidence > 0 {
-		props["confidence"] = res.confidence
+	if _, err := r.db.EndStep(ctx, st.ID, end); err != nil {
+		return "", err
 	}
-	if res.tokens > 0 {
-		props["tokens"] = res.tokens
-		props["cost_usd"] = res.costUSD
-	}
-	return id, r.g.UpsertNode(ctx, node)
+	return st.ID, nil
 }
+
+func conf(f float64) *float64 { return &f }
 
 func printCypher(ctx context.Context, g *graph.GraphStore, title string, req graph.CypherRequest) error {
 	res, err := g.QueryCypher(ctx, req)

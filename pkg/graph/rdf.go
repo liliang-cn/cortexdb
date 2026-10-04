@@ -38,6 +38,9 @@ const (
 	RDFFormatTriG RDFFormat = "trig"
 	// RDFFormatJSONLD reads and writes JSON-LD 1.1. Remote contexts are never fetched.
 	RDFFormatJSONLD RDFFormat = "jsonld"
+	// RDFFormatRDFXML reads RDF/XML, including the RDF 1.2 additions. It is
+	// import-only: OWL ontologies are commonly published in it.
+	RDFFormatRDFXML RDFFormat = "rdfxml"
 )
 
 // RDFFormat represents a supported RDF serialization format.
@@ -696,6 +699,8 @@ func (g *GraphStore) ImportRDF(ctx context.Context, reader io.Reader, format RDF
 		return g.importTriG(ctx, reader)
 	case RDFFormatJSONLD:
 		return g.importJSONLD(ctx, reader)
+	case RDFFormatRDFXML:
+		return g.importRDFDocument(ctx, reader, rdfSyntaxRDFXML)
 	default:
 		return 0, fmt.Errorf("unsupported rdf import format: %s", format)
 	}

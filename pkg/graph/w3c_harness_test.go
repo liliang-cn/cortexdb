@@ -205,6 +205,9 @@ func (m *manifestGraph) subjectsOfType(typ string) []RDFTerm {
 // w3cDocumentBase is the base IRI the suites assume for a test document: its
 // URL on w3c.github.io, which is what every mf:assumedTestBase spells out.
 func w3cDocumentBase(root, localPath string) string {
+	if abs, err := filepath.Abs(root); err == nil {
+		root = abs
+	}
 	rel, err := filepath.Rel(root, localPath)
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return fileURLOf(localPath)
