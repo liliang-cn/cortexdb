@@ -33,6 +33,7 @@ type benchConfig struct {
 	handles  int  // separate *cortexdb.DB opened on the file (1 = shared)
 	twoPhase bool // running then done, or done only
 	noFeed   bool // change feed disabled
+	batched  bool // a whole run buffered and written as two batch calls
 }
 
 type benchResult struct {
@@ -55,6 +56,8 @@ func runBench(ctx context.Context, dir string, steps, payload int) error {
 		{name: "two-phase, 1 writer", writers: 1, handles: 1, twoPhase: true},
 		{name: "final write only, 1 writer", writers: 1, handles: 1},
 		{name: "two-phase, change feed off", writers: 1, handles: 1, twoPhase: true, noFeed: true},
+		{name: "final only, batched per run", writers: 1, handles: 1, batched: true},
+		{name: "final only, batched, 4 writers", writers: 4, handles: 1, batched: true},
 		{name: "two-phase, 4 writers", writers: 4, handles: 1, twoPhase: true},
 		{name: "two-phase, 16 writers", writers: 16, handles: 1, twoPhase: true},
 		{name: "two-phase, 4 writers on 4 DB handles", writers: 4, handles: 4, twoPhase: true},
@@ -122,7 +125,13 @@ func benchWrite(ctx context.Context, path string, cfg benchConfig, steps, payloa
 				if run >= runs {
 					break
 				}
-				lats, err := benchRun(ctx, g, rng, run, cfg.twoPhase, out, &res, &mu)
+				var lats []time.Duration
+				var err error
+				if cfg.batched {
+					lats, err = benchRunBatched(ctx, g, rng, run, out)
+				} else {
+					lats, err = benchRun(ctx, g, rng, run, cfg.twoPhase, out, &res, &mu)
+				}
 				local = append(local, lats...)
 				if err != nil {
 					if atomic.AddInt64(&res.errors, 1) == 1 {
@@ -233,6 +242,55 @@ func benchRun(ctx context.Context, g *graph.GraphStore, rng *rand.Rand, run int,
 	return lats, nil
 }
 
+// benchRunBatched buffers a finished run and writes it as one node batch and
+// one edge batch — the shape of an OpenTelemetry batch span processor. Each
+// step's latency is its share of the run's write time.
+func benchRunBatched(ctx context.Context, g *graph.GraphStore, rng *rand.Rand, run int, out string) ([]time.Duration, error) {
+	t0 := time.Now()
+	runID := fmt.Sprintf("run:%06d", run)
+	nodes := []*graph.GraphNode{{
+		ID: runID, NodeType: typeRun, Content: "bench run", Vector: stepVector("bench run"),
+		Properties: map[string]any{"name": runID, "status": "done"},
+	}}
+	var edges []*graph.GraphEdge
+	types := []string{typeLLMCall, typeRetrieval, typeToolCall}
+	prev := ""
+	for i := 1; i <= benchStepsPerRun; i++ {
+		id := fmt.Sprintf("%s/step-%02d", runID, i)
+		nodeType := types[(i-1)%len(types)]
+		props := map[string]any{"name": fmt.Sprintf("step-%02d", i), "run_id": runID, "seq": i, "status": "done",
+			"output": out, "latency_ms": 50 + rng.Intn(5000)}
+		if nodeType == typeLLMCall {
+			props["confidence"] = float64(rng.Intn(100)) / 100
+			props["tokens"] = 200 + rng.Intn(3000)
+		}
+		nodes = append(nodes, &graph.GraphNode{ID: id, NodeType: nodeType, Content: nodeType, Vector: stepVector(nodeType), Properties: props})
+		edges = append(edges, &graph.GraphEdge{ID: runID + "->" + id, FromNodeID: runID, ToNodeID: id, EdgeType: edgeHasStep, Weight: 1})
+		if prev != "" {
+			edges = append(edges, &graph.GraphEdge{ID: prev + "->" + id, FromNodeID: prev, ToNodeID: id, EdgeType: edgeTriggered, Weight: 1})
+		}
+		prev = id
+	}
+	for _, write := range []func() (*graph.BatchResult, error){
+		func() (*graph.BatchResult, error) { return g.UpsertNodesBatch(ctx, nodes) },
+		func() (*graph.BatchResult, error) { return g.UpsertEdgesBatch(ctx, edges) },
+	} {
+		br, err := write()
+		if err == nil {
+			err = br.Err()
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	per := time.Since(t0) / benchStepsPerRun
+	lats := make([]time.Duration, benchStepsPerRun)
+	for i := range lats {
+		lats[i] = per
+	}
+	return lats, nil
+}
+
 // benchReads times the demo's queries against a finished bench file.
 func benchReads(ctx context.Context, r benchResult) error {
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(r.dbPath))
@@ -249,6 +307,10 @@ func benchReads(ctx context.Context, r benchResult) error {
 		{"low-confidence LLM -> slow tool, *1..2 hops", graph.CypherRequest{
 			Query:   `MATCH (l:LLMCall)-[:TRIGGERED*1..2]->(t:ToolCall) WHERE l.confidence < 0.3 AND t.latency_ms > 4500 RETURN count(t)`,
 			MaxRows: 10000, Timeout: 60 * time.Second,
+		}},
+		{"same, *1..2 hops, seeded inside one run", graph.CypherRequest{
+			Query:  `MATCH (l:LLMCall {run_id: $run})-[:TRIGGERED*1..2]->(t:ToolCall) WHERE l.confidence < 0.3 AND t.latency_ms > 4500 RETURN count(t)`,
+			Params: map[string]any{"run": "run:000000"},
 		}},
 		{"low-confidence LLM -> slow tool, one hop", graph.CypherRequest{
 			Query:   `MATCH (l:LLMCall)-[:TRIGGERED]->(t:Retrieval) WHERE l.confidence < 0.3 AND t.latency_ms > 4500 RETURN count(t)`,
