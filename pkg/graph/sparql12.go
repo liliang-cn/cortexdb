@@ -402,27 +402,34 @@ func (b *sparqlTriplesBuilder) verb() (sparqlTermPattern, *sparqlPropertyPath, [
 		}
 		return sparqlTermPattern{Variable: strings.TrimPrefix(v.Value, "?")}, nil, nil, nil
 	}
-	var steps []sparqlPathStep
-	for {
-		predicate, path, err := p.parsePredicatePattern(b.prefixes)
-		if err != nil {
-			return sparqlTermPattern{}, nil, nil, err
-		}
-		steps = append(steps, sparqlPathStep{predicate: predicate, path: path})
-		if !p.matchOperator("/") {
-			break
-		}
-		if p.inTemplate {
-			return sparqlTermPattern{}, nil, nil, fmt.Errorf("property paths are not allowed in a template")
-		}
+	expr, err := p.parsePathAlternative(b.prefixes)
+	if err != nil {
+		return sparqlTermPattern{}, nil, nil, err
 	}
-	if len(steps) > 1 {
-		return sparqlTermPattern{}, nil, steps, nil
-	}
-	if steps[0].path != nil && p.inTemplate {
+	if p.inTemplate && !expr.simpleIRI() {
 		return sparqlTermPattern{}, nil, nil, fmt.Errorf("property paths are not allowed in a template")
 	}
-	return steps[0].predicate, steps[0].path, nil, nil
+	// A top-level sequence is a join through fresh blank nodes, which is
+	// how the spec's own translation states it and how the engine joins
+	// best; each step is then a predicate or a path of its own.
+	if expr.op == pathSequence {
+		steps := make([]sparqlPathStep, len(expr.kids))
+		for i, k := range expr.kids {
+			steps[i] = pathStepOf(k)
+		}
+		return sparqlTermPattern{}, nil, steps, nil
+	}
+	step := pathStepOf(expr)
+	return step.predicate, step.path, nil, nil
+}
+
+// pathStepOf states a path as a plain predicate when it is one IRI.
+func pathStepOf(e *sparqlPathExpr) sparqlPathStep {
+	if e.simpleIRI() {
+		iri := e.iri
+		return sparqlPathStep{predicate: sparqlTermPattern{Term: &iri}}
+	}
+	return sparqlPathStep{path: &sparqlPropertyPath{Expr: e}}
 }
 
 // annotation parses (Reifier | AnnotationBlock)* after an object.

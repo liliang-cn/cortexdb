@@ -31,6 +31,7 @@ const (
 	rdfSyntaxNQuads
 	rdfSyntaxTurtle
 	rdfSyntaxTriG
+	rdfSyntaxRDFXML
 )
 
 func (s rdfSyntax) String() string {
@@ -41,6 +42,8 @@ func (s rdfSyntax) String() string {
 		return "N-Quads"
 	case rdfSyntaxTurtle:
 		return "Turtle"
+	case rdfSyntaxRDFXML:
+		return "RDF/XML"
 	default:
 		return "TriG"
 	}
@@ -111,6 +114,9 @@ func newRDFSyntaxParser(src string, syntax rdfSyntax, base string) *rdfSyntaxPar
 func parseRDFDocument(src string, syntax rdfSyntax, base string) (triples []RDFTriple, err error) {
 	if !utf8.ValidString(src) {
 		return nil, &rdfSyntaxError{Syntax: syntax, Line: 1, Column: 1, Msg: "document is not valid UTF-8"}
+	}
+	if syntax == rdfSyntaxRDFXML {
+		return parseRDFXML(src, base)
 	}
 	p := newRDFSyntaxParser(src, syntax, base)
 	defer func() {

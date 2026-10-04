@@ -27,6 +27,8 @@ func rdfSyntaxForTest(test w3cTest) (rdfSyntax, bool) {
 		return rdfSyntaxTurtle, true
 	case strings.HasPrefix(name, "testtrig"):
 		return rdfSyntaxTriG, true
+	case strings.HasPrefix(name, "testxml"):
+		return rdfSyntaxRDFXML, true
 	}
 	return 0, false
 }
@@ -168,12 +170,20 @@ func reportTallies(t *testing.T, label string, tallies map[string]*suiteTally) {
 
 func TestTheW3CRDF12SyntaxSuitesPassInFull(t *testing.T) {
 	root := w3cSuiteRoot(t)
-	for _, suite := range []string{"rdf-n-triples", "rdf-n-quads", "rdf-turtle", "rdf-trig"} {
+	for _, suite := range []string{"rdf-n-triples", "rdf-n-quads", "rdf-turtle", "rdf-trig", "rdf-xml"} {
 		t.Run(suite, func(t *testing.T) {
 			tallies := runRDFSuite(t, root, filepath.Join(root, "rdf", "rdf12", suite, "manifest.ttl"))
 			reportTallies(t, suite, tallies)
 		})
 	}
+}
+
+// RDF/XML has no RDF 1.2 rewrite of its core suite: the RDF 1.1 tests are the
+// grammar, and rdf12/rdf-xml adds only the 1.2 features on top.
+func TestTheW3CRDF11RDFXMLSuitePassesInFull(t *testing.T) {
+	root := w3cSuiteRoot(t)
+	tallies := runRDFSuite(t, root, filepath.Join(root, "rdf", "rdf11", "rdf-xml", "manifest.ttl"))
+	reportTallies(t, "rdf11/rdf-xml", tallies)
 }
 
 // The subset in testdata/w3c is a copy of a few dozen tests from the same

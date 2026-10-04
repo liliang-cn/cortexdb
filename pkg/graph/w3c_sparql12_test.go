@@ -147,6 +147,8 @@ func parseTestData(root, path string) ([]RDFTriple, string) {
 		syntax = rdfSyntaxNQuads
 	case ".nt":
 		syntax = rdfSyntaxNTriples
+	case ".rdf":
+		syntax = rdfSyntaxRDFXML
 	}
 	triples, err := parseRDFDocument(string(data), syntax, w3cDocumentBase(root, path))
 	if err != nil {
@@ -215,11 +217,64 @@ func compareSPARQLResult(root string, result *SPARQLResult, expectedPath string)
 		if why != "" {
 			return why
 		}
+		// A SELECT or ASK result written as RDF, in the rs: vocabulary.
+		if rows, boolean, ok := resultSetFromGraph(want); ok && result.QueryType != SPARQLQueryConstruct && result.QueryType != SPARQLQueryDescribe {
+			if boolean != nil {
+				if result.Boolean != *boolean {
+					return fmt.Sprintf("ASK returned %v, want %v", result.Boolean, *boolean)
+				}
+				return ""
+			}
+			got, wantQ := solutionsAsQuads(result.Bindings), solutionsAsQuads(rows)
+			if ok, diff := isomorphicDatasets(got, wantQ); !ok {
+				return "solutions differ: " + diff
+			}
+			return ""
+		}
 		if ok, diff := isomorphicDatasets(result.Triples, want); !ok {
 			return diff
 		}
 		return ""
 	}
+}
+
+// resultSetFromGraph reads a result set written in the DAWG result-set
+// vocabulary, which some suites use in place of .srx.
+func resultSetFromGraph(triples []RDFTriple) ([]map[string]RDFTerm, *bool, bool) {
+	const rs = "http://www.w3.org/2001/sw/DataAccess/tests/result-set#"
+	by := map[string]map[string][]RDFTerm{}
+	var set *RDFTerm
+	for _, t := range triples {
+		k := t.Subject.String()
+		if by[k] == nil {
+			by[k] = map[string][]RDFTerm{}
+		}
+		by[k][t.Predicate.Value] = append(by[k][t.Predicate.Value], t.Object)
+		if t.Predicate.Value == rdfNS+"type" && t.Object.Value == rs+"ResultSet" {
+			subject := t.Subject
+			set = &subject
+		}
+	}
+	if set == nil {
+		return nil, nil, false
+	}
+	props := by[set.String()]
+	if b := props[rs+"boolean"]; len(b) == 1 {
+		value := b[0].Value == "true"
+		return nil, &value, true
+	}
+	var rows []map[string]RDFTerm
+	for _, solution := range props[rs+"solution"] {
+		row := map[string]RDFTerm{}
+		for _, binding := range by[solution.String()][rs+"binding"] {
+			bp := by[binding.String()]
+			if len(bp[rs+"variable"]) == 1 && len(bp[rs+"value"]) == 1 {
+				row[bp[rs+"variable"][0].Value] = bp[rs+"value"][0]
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil, true
 }
 
 // solutionsAsQuads encodes a solution multiset as a graph — one blank node per
@@ -235,10 +290,23 @@ func solutionsAsQuads(rows []map[string]RDFTerm) []RDFTriple {
 			if isHiddenVariable(name) {
 				continue
 			}
-			out = append(out, RDFTriple{Subject: node, Predicate: NewIRI("urn:var:" + name), Object: value})
+			out = append(out, RDFTriple{Subject: node, Predicate: NewIRI("urn:var:" + name), Object: numericByValue(value)})
 		}
 	}
 	return out
+}
+
+// numericByValue writes an XSD numeric literal in one form per value, so two
+// results that differ only in how a number is spelled compare equal: the
+// suites' expected results spell the same value differently from test to test
+// ("1.0" and "1" as xsd:decimal), and the datatype still has to agree. This
+// is the value comparison other implementations' harnesses apply to the
+// SPARQL results of the W3C suites.
+func numericByValue(term RDFTerm) RDFTerm {
+	if n, ok := strictNumber(term); ok {
+		return NewTypedLiteral(canonicalNumberLexical(n), term.Datatype)
+	}
+	return term
 }
 
 type srjTerm struct {

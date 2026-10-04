@@ -29,15 +29,6 @@ const (
 	SPARQLQueryModify = "modify"
 )
 
-const (
-	sparqlPathDirect      = "direct"
-	sparqlPathInverse     = "inverse"
-	sparqlPathAlternative = "alternative"
-	sparqlPathZeroOrMore  = "zero_or_more"
-	sparqlPathOneOrMore   = "one_or_more"
-	sparqlPathZeroOrOne   = "zero_or_one"
-)
-
 // SPARQLResult contains the result of executing a SPARQL query.
 type SPARQLResult struct {
 	QueryType string               `json:"query_type"`
@@ -110,6 +101,8 @@ type sparqlPatternStep struct {
 
 type sparqlFilterStep struct {
 	Filter sparqlFilter
+	// refs and outOfScope are set by scopeGroup (sparql_scope.go).
+	refs, outOfScope []string
 }
 
 type sparqlOptionalStep struct {
@@ -122,16 +115,28 @@ type sparqlUnionStep struct {
 
 type sparqlSubQueryStep struct {
 	Query *sparqlQuery
+	// Graph is the enclosing GRAPH's name. The subquery's patterns match in
+	// that graph; when it is a variable they name it by Inner, a variable no
+	// query can write, because the subquery's own ?g is a different one.
+	Graph *sparqlTermPattern
+	Inner string
 }
 
 func (sparqlSubQueryStep) sparqlStep() {}
 
 type sparqlGroupStep struct {
 	Group sparqlGroup
+	// Graph is the graph name of GRAPH ... { }, nil for a plain group.
+	Graph *sparqlTermPattern
 }
 
 type sparqlMinusStep struct {
 	Group sparqlGroup
+	// Graph and Inner are as for sparqlSubQueryStep: inside GRAPH ?g the
+	// right-hand side matches in ?g's graph without binding ?g, so ?g alone
+	// never makes the two sides share a variable.
+	Graph *sparqlTermPattern
+	Inner string
 }
 
 type sparqlValuesStep struct {
@@ -142,6 +147,9 @@ type sparqlValuesStep struct {
 type sparqlBindStep struct {
 	Variable string
 	Expr     sparqlValueExpr
+	// refs and outOfScope are set by scopeGroup (sparql_scope.go).
+	refs, outOfScope []string
+	rt               *sparqlRuntime
 }
 
 type sparqlPattern struct {
@@ -152,14 +160,17 @@ type sparqlPattern struct {
 	Graph     *sparqlTermPattern
 }
 
+// sparqlPropertyPath is a predicate written as a property path; see
+// sparql_paths.go.
 type sparqlPropertyPath struct {
-	Kind  string
-	Terms []RDFTerm
+	Expr *sparqlPathExpr
 }
 
 type sparqlSelectItem struct {
 	Alias string
 	Expr  sparqlValueExpr
+	// refs are the variables Expr reads outside aggregates.
+	refs []string
 }
 
 type sparqlGroupKey struct {
@@ -466,6 +477,7 @@ func extendSPARQLBindings(parsed *sparqlQuery, bindings []map[string]RDFTerm) ([
 	}
 	extended := make([]map[string]RDFTerm, 0, len(bindings))
 	for _, binding := range bindings {
+		parsed.runtime.beginSolution()
 		row := binding
 		cloned := false
 		for _, item := range parsed.SelectItems {
@@ -762,7 +774,7 @@ func (g *GraphStore) executeSPARQLGroup(ctx context.Context, group sparqlGroup, 
 		case sparqlFilterStep:
 			nextBindings := make([]map[string]RDFTerm, 0, len(current))
 			for _, binding := range current {
-				keep, err := evalSPARQLFilter(step.Filter, binding)
+				keep, err := evalSPARQLFilter(step.Filter, inScope(binding, step.outOfScope))
 				if err != nil {
 					return nil, err
 				}
@@ -796,47 +808,21 @@ func (g *GraphStore) executeSPARQLGroup(ctx context.Context, group sparqlGroup, 
 			}
 			current = nextBindings
 		case sparqlGroupStep:
-			nextBindings, err := g.executeSPARQLGroup(ctx, step.Group, current, opts)
+			nextBindings, err := g.executeSPARQLGraphGroup(ctx, step, current, opts)
 			if err != nil {
 				return nil, err
 			}
 			current = nextBindings
 		case sparqlSubQueryStep:
-			subBindings, err := g.executeSPARQLGroup(ctx, step.Query.Group, []map[string]RDFTerm{{}}, opts)
+			nextBindings, err := g.executeSPARQLSubQuery(ctx, step, current, opts)
 			if err != nil {
 				return nil, err
-			}
-			subResult, err := g.executeSPARQLSelect(ctx, step.Query, subBindings, opts)
-			if err != nil {
-				return nil, err
-			}
-
-			nextBindings := make([]map[string]RDFTerm, 0, len(current)*len(subResult.Bindings))
-			for _, outer := range current {
-				for _, inner := range subResult.Bindings {
-					if merged, ok := mergeValueRow(outer, inner); ok {
-						nextBindings = append(nextBindings, merged)
-					}
-				}
 			}
 			current = nextBindings
 		case sparqlMinusStep:
-			minusBindings, err := g.executeSPARQLGroup(ctx, step.Group, []map[string]RDFTerm{{}}, opts)
+			nextBindings, err := g.executeSPARQLMinus(ctx, step, current, opts)
 			if err != nil {
 				return nil, err
-			}
-			nextBindings := make([]map[string]RDFTerm, 0, len(current))
-			for _, binding := range current {
-				remove := false
-				for _, minusBinding := range minusBindings {
-					if bindingsCompatibleAndShared(binding, minusBinding) {
-						remove = true
-						break
-					}
-				}
-				if !remove {
-					nextBindings = append(nextBindings, binding)
-				}
 			}
 			current = nextBindings
 		case sparqlValuesStep:
@@ -855,7 +841,8 @@ func (g *GraphStore) executeSPARQLGroup(ctx context.Context, group sparqlGroup, 
 			// and leaves the variable unbound (SPARQL 1.1 §18.6, Extend).
 			nextBindings := make([]map[string]RDFTerm, 0, len(current))
 			for _, binding := range current {
-				value, ok, err := step.Expr.Eval(binding)
+				step.rt.beginSolution()
+				value, ok, err := step.Expr.Eval(inScope(binding, step.outOfScope))
 				if err != nil && !isSPARQLExprError(err) {
 					return nil, err
 				}
@@ -1020,306 +1007,11 @@ func sparqlPatternCanMatch(pattern TriplePattern) bool {
 	return true
 }
 
-func (g *GraphStore) findSPARQLPathMatches(ctx context.Context, pattern sparqlPattern, binding map[string]RDFTerm, opts sparqlExecOptions) ([]sparqlPathMatch, error) {
-	if pattern.Path == nil || len(pattern.Path.Terms) == 0 {
-		return nil, nil
-	}
-
-	switch pattern.Path.Kind {
-	case sparqlPathInverse:
-		triples, err := g.findSPARQLPathTriples(ctx, pattern, binding, opts, pattern.Path.Terms[0], true)
-		if err != nil {
-			return nil, err
-		}
-		return buildSPARQLPathMatchesFromTriples(filterSPARQLPathTriples(pattern, triples, opts), true), nil
-	case sparqlPathAlternative:
-		all := make([]sparqlPathMatch, 0)
-		seen := make(map[string]struct{})
-		for _, predicate := range pattern.Path.Terms {
-			triples, err := g.findSPARQLPathTriples(ctx, pattern, binding, opts, predicate, false)
-			if err != nil {
-				return nil, err
-			}
-			for _, match := range buildSPARQLPathMatchesFromTriples(filterSPARQLPathTriples(pattern, triples, opts), false) {
-				key := sparqlPathMatchKey(match)
-				if _, ok := seen[key]; ok {
-					continue
-				}
-				seen[key] = struct{}{}
-				all = append(all, match)
-			}
-		}
-		return all, nil
-	case sparqlPathZeroOrMore, sparqlPathOneOrMore:
-		return g.findSPARQLRepeatedPathMatches(ctx, pattern, binding, opts, pattern.Path.Terms[0], pattern.Path.Kind == sparqlPathZeroOrMore)
-	case sparqlPathZeroOrOne:
-		// p? is the zero-length path or one step. The zero-length matches
-		// are exactly the s = o matches of p*, which already knows which
-		// nodes the zero-length path ranges over.
-		repeated, err := g.findSPARQLRepeatedPathMatches(ctx, pattern, binding, opts, pattern.Path.Terms[0], true)
-		if err != nil {
-			return nil, err
-		}
-		direct, err := g.findSPARQLPathTriples(ctx, pattern, binding, opts, pattern.Path.Terms[0], false)
-		if err != nil {
-			return nil, err
-		}
-		out := make([]sparqlPathMatch, 0, len(repeated)+len(direct))
-		seen := make(map[string]struct{})
-		add := func(match sparqlPathMatch) {
-			key := sparqlPathMatchKey(match)
-			if _, dup := seen[key]; dup {
-				return
-			}
-			seen[key] = struct{}{}
-			out = append(out, match)
-		}
-		for _, match := range repeated {
-			if termsEqual(match.Subject, match.Object) {
-				add(match)
-			}
-		}
-		for _, match := range buildSPARQLPathMatchesFromTriples(filterSPARQLPathTriples(pattern, direct, opts), false) {
-			add(match)
-		}
-		return out, nil
-	default:
-		return nil, fmt.Errorf("unsupported property path kind: %s", pattern.Path.Kind)
-	}
-}
-
-func (g *GraphStore) findSPARQLPathTriples(ctx context.Context, pattern sparqlPattern, binding map[string]RDFTerm, opts sparqlExecOptions, predicate RDFTerm, inverse bool) ([]RDFTriple, error) {
-	subjectPattern := pattern.Subject
-	objectPattern := pattern.Object
-	if inverse {
-		subjectPattern, objectPattern = objectPattern, subjectPattern
-	}
-	basePattern := sparqlPattern{
-		Subject:   subjectPattern,
-		Predicate: sparqlTermPattern{Term: &predicate},
-		Object:    objectPattern,
-		Graph:     pattern.Graph,
-	}
-	return g.findSPARQLPatternTriples(ctx, basePattern, binding, opts)
-}
-
-func buildSPARQLPathMatchesFromTriples(triples []RDFTriple, inverse bool) []sparqlPathMatch {
-	matches := make([]sparqlPathMatch, 0, len(triples))
-	for _, triple := range triples {
-		match := sparqlPathMatch{
-			Subject: triple.Subject,
-			Object:  triple.Object,
-			Graph:   cloneGraphTerm(triple.Graph),
-		}
-		if inverse {
-			match.Subject, match.Object = match.Object, match.Subject
-		}
-		matches = append(matches, match)
-	}
-	return matches
-}
-
-func filterSPARQLPathTriples(pattern sparqlPattern, triples []RDFTriple, opts sparqlExecOptions) []RDFTriple {
-	out := make([]RDFTriple, 0, len(triples))
-	for _, triple := range triples {
-		if sparqlTripleAllowedForGraph(pattern, triple, opts) {
-			out = append(out, triple)
-		}
-	}
-	return out
-}
-
-func (g *GraphStore) findSPARQLRepeatedPathMatches(ctx context.Context, pattern sparqlPattern, binding map[string]RDFTerm, opts sparqlExecOptions, predicate RDFTerm, includeZero bool) ([]sparqlPathMatch, error) {
-	triples, err := g.findSPARQLPathTriples(ctx, sparqlPattern{
-		Graph: pattern.Graph,
-	}, binding, opts, predicate, false)
-	if err != nil {
-		return nil, err
-	}
-	graphAdj := make(map[string]map[string][]RDFTerm)
-	graphReverse := make(map[string]map[string][]RDFTerm)
-	graphTerms := make(map[string]*RDFTerm)
-	nodesByGraph := make(map[string]map[string]RDFTerm)
-	for _, triple := range triples {
-		if !sparqlTripleAllowedForGraph(pattern, triple, opts) {
-			continue
-		}
-		// Outside GRAPH the default graph is one graph even when it merges
-		// several, so a path may cross from one listed graph into another.
-		graphKey := ""
-		var graphOfTriple *RDFTerm
-		if pattern.Graph != nil {
-			graphKey = sparqlGraphKey(triple.Graph)
-			graphOfTriple = triple.Graph
-		}
-		if _, ok := graphAdj[graphKey]; !ok {
-			graphAdj[graphKey] = make(map[string][]RDFTerm)
-			graphReverse[graphKey] = make(map[string][]RDFTerm)
-			nodesByGraph[graphKey] = make(map[string]RDFTerm)
-			graphTerms[graphKey] = cloneGraphTerm(graphOfTriple)
-		}
-		subjectKey := inferenceTermKey(triple.Subject)
-		objectKey := inferenceTermKey(triple.Object)
-		graphAdj[graphKey][subjectKey] = append(graphAdj[graphKey][subjectKey], triple.Object)
-		graphReverse[graphKey][objectKey] = append(graphReverse[graphKey][objectKey], triple.Subject)
-		nodesByGraph[graphKey][subjectKey] = triple.Subject
-		nodesByGraph[graphKey][objectKey] = triple.Object
-	}
-
-	subjectTerm, err := resolvePatternTerm(pattern.Subject, binding)
-	if err != nil {
-		return nil, err
-	}
-	objectTerm, err := resolvePatternTerm(pattern.Object, binding)
-	if err != nil {
-		return nil, err
-	}
-	graphTerm, err := resolveOptionalPatternTerm(pattern.Graph, binding)
-	if err != nil {
-		return nil, err
-	}
-
-	matches := make([]sparqlPathMatch, 0)
-	seen := make(map[string]struct{})
-	for graphKey, adj := range graphAdj {
-		if graphTerm != nil {
-			if graphKey != sparqlGraphKey(graphTerm) {
-				continue
-			}
-		}
-		nodes := nodesByGraph[graphKey]
-		if objectTerm != nil && subjectTerm == nil {
-			sources := collectRepeatedPathSources(graphReverse[graphKey], *objectTerm, includeZero)
-			for _, source := range sources {
-				match := sparqlPathMatch{Subject: source, Object: *objectTerm, Graph: cloneGraphTerm(graphTerms[graphKey])}
-				key := sparqlPathMatchKey(match)
-				if _, ok := seen[key]; ok {
-					continue
-				}
-				seen[key] = struct{}{}
-				matches = append(matches, match)
-			}
-			continue
-		}
-		starts := collectPathStartTerms(subjectTerm, nodes)
-		for _, start := range starts {
-			if _, ok := nodes[inferenceTermKey(start)]; !ok {
-				if includeZero && (objectTerm == nil || termsEqual(start, *objectTerm)) {
-					match := sparqlPathMatch{Subject: start, Object: start, Graph: cloneGraphTerm(graphTerms[graphKey])}
-					key := sparqlPathMatchKey(match)
-					if _, exists := seen[key]; !exists {
-						seen[key] = struct{}{}
-						matches = append(matches, match)
-					}
-				}
-				continue
-			}
-			ends := collectRepeatedPathTargets(adj, start, includeZero)
-			for _, end := range ends {
-				if objectTerm != nil && !termsEqual(end, *objectTerm) {
-					continue
-				}
-				match := sparqlPathMatch{Subject: start, Object: end, Graph: cloneGraphTerm(graphTerms[graphKey])}
-				key := sparqlPathMatchKey(match)
-				if _, ok := seen[key]; ok {
-					continue
-				}
-				seen[key] = struct{}{}
-				matches = append(matches, match)
-			}
-		}
-	}
-	return matches, nil
-}
-
 func resolveOptionalPatternTerm(pattern *sparqlTermPattern, binding map[string]RDFTerm) (*RDFTerm, error) {
 	if pattern == nil {
 		return nil, nil
 	}
 	return resolvePatternTerm(*pattern, binding)
-}
-
-func collectPathStartTerms(subjectTerm *RDFTerm, nodes map[string]RDFTerm) []RDFTerm {
-	if subjectTerm != nil {
-		return []RDFTerm{*subjectTerm}
-	}
-	out := make([]RDFTerm, 0, len(nodes))
-	for _, node := range nodes {
-		out = append(out, node)
-	}
-	return out
-}
-
-func collectRepeatedPathTargets(adj map[string][]RDFTerm, start RDFTerm, includeZero bool) []RDFTerm {
-	out := make([]RDFTerm, 0)
-	seen := make(map[string]struct{})
-	queue := make([]RDFTerm, 0)
-	if includeZero {
-		key := inferenceTermKey(start)
-		seen[key] = struct{}{}
-		out = append(out, start)
-	}
-	for _, next := range adj[inferenceTermKey(start)] {
-		key := inferenceTermKey(next)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		queue = append(queue, next)
-		out = append(out, next)
-	}
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-		for _, next := range adj[inferenceTermKey(current)] {
-			key := inferenceTermKey(next)
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			queue = append(queue, next)
-			out = append(out, next)
-		}
-	}
-	return out
-}
-
-func collectRepeatedPathSources(reverse map[string][]RDFTerm, target RDFTerm, includeZero bool) []RDFTerm {
-	out := make([]RDFTerm, 0)
-	seen := make(map[string]struct{})
-	queue := make([]RDFTerm, 0)
-	if includeZero {
-		key := inferenceTermKey(target)
-		seen[key] = struct{}{}
-		out = append(out, target)
-	}
-	for _, prev := range reverse[inferenceTermKey(target)] {
-		key := inferenceTermKey(prev)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		queue = append(queue, prev)
-		out = append(out, prev)
-	}
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-		for _, prev := range reverse[inferenceTermKey(current)] {
-			key := inferenceTermKey(prev)
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			queue = append(queue, prev)
-			out = append(out, prev)
-		}
-	}
-	return out
-}
-
-func sparqlPathMatchKey(match sparqlPathMatch) string {
-	return inferenceTermKey(match.Subject) + "->" + inferenceTermKey(match.Object) + "@" + sparqlGraphKey(match.Graph)
 }
 
 func sparqlGraphKey(graph *RDFTerm) string {
@@ -2059,6 +1751,18 @@ type sparqlParser struct {
 	// exprGraph is the GRAPH block enclosing the FILTER/BIND being parsed,
 	// so an EXISTS inside it inherits the active graph.
 	exprGraph *sparqlTermPattern
+	// selectGraph hands the enclosing GRAPH to a subquery's WHERE.
+	selectGraph *sparqlTermPattern
+	// refVars, while non-nil, collects every variable the parser reads: the
+	// references of the FILTER or BIND being parsed. optionalGroup marks the
+	// next group as an OPTIONAL's, existsDepth counts enclosing EXISTS; both
+	// steer scopeGroup.
+	refVars       map[string]bool
+	optionalGroup bool
+	existsDepth   int
+	// aggDepth counts enclosing aggregates, whose variables are not
+	// references of the expression around them.
+	aggDepth int
 
 	// blankSeq numbers the blank nodes the parser invents for [], reified
 	// triples and annotations; depth bounds recursion; inTemplate is set
@@ -2142,6 +1846,7 @@ func (p *sparqlParser) parsePrologue(prefixes map[string]string) {
 				value = resolveIRIReference(p.base, value)
 			}
 			p.base = value
+			p.rt.base = value
 		case p.matchKeyword("VERSION"):
 			// VersionSpecifier is STRING_LITERAL1 | STRING_LITERAL2 only.
 			if version := p.expectType(sparqlTokenString, "version string"); version.Long {
@@ -2206,6 +1911,9 @@ func (p *sparqlParser) parseOperation(prefixes map[string]string) (query *sparql
 		p.inTemplate = false
 		if err != nil {
 			return nil, err
+		}
+		if !onlyTriplePatterns(group) {
+			return nil, fmt.Errorf("CONSTRUCT WHERE takes triple patterns only")
 		}
 		template, err := flattenTemplatePatterns(group)
 		if err != nil {
@@ -2374,6 +2082,11 @@ func (p *sparqlParser) parseOperation(prefixes map[string]string) (query *sparql
 	}
 
 	p.parseSolutionModifiers(query)
+	if !isSPARQLUpdate(query.QueryType) {
+		if err := p.parseTrailingValues(query); err != nil {
+			return nil, err
+		}
+	}
 
 	if isSPARQLUpdate(query.QueryType) && p.matchPunct(";") {
 		p.parsePrologue(query.Prefixes)
@@ -2390,6 +2103,24 @@ func (p *sparqlParser) parseOperation(prefixes map[string]string) (query *sparql
 		return nil, fmt.Errorf("unexpected trailing token %q", p.peek().Value)
 	}
 	return query, nil
+}
+
+// onlyTriplePatterns reports whether a group is a basic graph pattern. A
+// statement with several objects or predicates parses as a plain group of its
+// patterns, which counts.
+func onlyTriplePatterns(group sparqlGroup) bool {
+	for _, raw := range group.Steps {
+		switch step := raw.(type) {
+		case sparqlPatternStep:
+		case sparqlGroupStep:
+			if step.Graph != nil || !onlyTriplePatterns(step.Group) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func isSPARQLUpdate(queryType string) bool {
@@ -2411,10 +2142,15 @@ func (p *sparqlParser) parseSelectQueryBody(query *sparqlQuery, allowDataset boo
 		query.SelectAll = true
 	} else {
 		for p.peek().Type == sparqlTokenVar || (p.peek().Type == sparqlTokenPunct && p.peek().Value == "(") {
-			item, err := p.parseSelectItem(query.Prefixes)
+			var item sparqlSelectItem
+			refs, err := p.recordRefs(func() (err error) {
+				item, err = p.parseSelectItem(query.Prefixes)
+				return err
+			})
 			if err != nil {
 				return err
 			}
+			item.refs = refs
 			query.SelectItems = append(query.SelectItems, item)
 			query.Vars = append(query.Vars, item.Alias)
 		}
@@ -2431,13 +2167,21 @@ func (p *sparqlParser) parseSelectQueryBody(query *sparqlQuery, allowDataset boo
 	if p.matchKeyword("WHERE") {
 		// optional
 	}
-	group, err := p.parseEnclosedGroup(nil, query.Prefixes)
+	activeGraph := p.selectGraph
+	p.selectGraph = nil
+	group, err := p.parseEnclosedGroup(activeGraph, query.Prefixes)
 	if err != nil {
 		return err
 	}
 	query.Group = group
 
 	p.parseSolutionModifiers(query)
+	if err := validateSelectScope(query); err != nil {
+		return err
+	}
+	if err := p.parseTrailingValues(query); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -2461,6 +2205,21 @@ func (p *sparqlParser) parseDatasetClauses(query *sparqlQuery) error {
 			query.From = append(query.From, term)
 		}
 	}
+	return nil
+}
+
+// parseTrailingValues reads the ValuesClause after a query's solution
+// modifiers. The algebra joins it with the WHERE pattern before grouping and
+// projection, which is what appending it to the group as its last step does.
+func (p *sparqlParser) parseTrailingValues(query *sparqlQuery) error {
+	if !p.matchKeyword("VALUES") {
+		return nil
+	}
+	step, err := p.parseValues(query.Prefixes)
+	if err != nil {
+		return err
+	}
+	query.Group.Steps = append(query.Group.Steps, step)
 	return nil
 }
 
@@ -2643,17 +2402,27 @@ func (p *sparqlParser) parseEnclosedGroup(activeGraph *sparqlTermPattern, prefix
 }
 
 func (p *sparqlParser) parseGroupBody(activeGraph *sparqlTermPattern, prefixes map[string]string) (sparqlGroup, error) {
+	optional := p.optionalGroup
+	p.optionalGroup = false
 	group := sparqlGroup{Steps: make([]sparqlStep, 0)}
 	for {
 		if p.matchPunct("}") {
 			break
 		}
+		first := len(group.Steps) == 0
 		step, err := p.parseGroupStep(activeGraph, prefixes)
 		if err != nil {
 			return sparqlGroup{}, err
 		}
+		// A subquery is a group of its own: { SELECT ... }, nothing else.
+		if _, sub := step.(sparqlSubQueryStep); sub && (!first || !p.peekPunct("}")) {
+			return sparqlGroup{}, fmt.Errorf("a subquery must be the only content of its group: { SELECT ... }")
+		}
 		group.Steps = append(group.Steps, step)
 		p.matchPunct(".")
+	}
+	if err := scopeGroup(&group, activeGraph, optional, p.existsDepth == 0); err != nil {
+		return sparqlGroup{}, err
 	}
 	return group, nil
 }
@@ -2662,25 +2431,39 @@ func (p *sparqlParser) parseGroupStep(activeGraph *sparqlTermPattern, prefixes m
 	if p.matchKeyword("SELECT") {
 		subQuery := &sparqlQuery{
 			Prefixes: prefixes,
+			runtime:  p.rt,
 		}
-		err := p.parseSelectQueryBody(subQuery, false)
-		if err != nil {
+		step := sparqlSubQueryStep{Query: subQuery, Graph: activeGraph}
+		p.selectGraph = activeGraph
+		if activeGraph != nil && activeGraph.Variable != "" {
+			step.Inner = p.hiddenGraphVariable()
+			p.selectGraph = &sparqlTermPattern{Variable: step.Inner}
+		}
+		if err := p.parseSelectQueryBody(subQuery, false); err != nil {
 			return nil, err
 		}
-		return sparqlSubQueryStep{Query: subQuery}, nil
+		return step, nil
 	}
 	if p.matchKeyword("FILTER") {
-		filter, err := p.parseFilter(activeGraph, prefixes)
+		var filter sparqlFilter
+		refs, err := p.recordRefs(func() (err error) {
+			filter, err = p.parseFilter(activeGraph, prefixes)
+			return err
+		})
 		if err != nil {
 			return nil, err
 		}
-		return sparqlFilterStep{Filter: filter}, nil
+		return sparqlFilterStep{Filter: filter, refs: refs}, nil
 	}
 	if p.matchKeyword("BIND") {
 		p.expectPunct("(")
 		savedGraph := p.exprGraph
 		p.exprGraph = activeGraph
-		expr, err := p.parseValueExpr(prefixes)
+		var expr sparqlValueExpr
+		refs, err := p.recordRefs(func() (err error) {
+			expr, err = p.parseValueExpr(prefixes)
+			return err
+		})
 		p.exprGraph = savedGraph
 		if err != nil {
 			return nil, err
@@ -2690,9 +2473,10 @@ func (p *sparqlParser) parseGroupStep(activeGraph *sparqlTermPattern, prefixes m
 		}
 		variable := strings.TrimPrefix(p.expectType(sparqlTokenVar, "bind variable").Value, "?")
 		p.expectPunct(")")
-		return sparqlBindStep{Variable: variable, Expr: expr}, nil
+		return sparqlBindStep{Variable: variable, Expr: expr, refs: refs, rt: p.rt}, nil
 	}
 	if p.matchKeyword("OPTIONAL") {
+		p.optionalGroup = true
 		group, err := p.parseEnclosedGroup(activeGraph, prefixes)
 		if err != nil {
 			return nil, err
@@ -2708,14 +2492,21 @@ func (p *sparqlParser) parseGroupStep(activeGraph *sparqlTermPattern, prefixes m
 		if err != nil {
 			return nil, err
 		}
-		return sparqlGroupStep{Group: group}, nil
+		return sparqlGroupStep{Group: group, Graph: &graphPattern}, nil
 	}
 	if p.matchKeyword("MINUS") {
-		group, err := p.parseEnclosedGroup(activeGraph, prefixes)
+		step := sparqlMinusStep{Graph: activeGraph}
+		inner := activeGraph
+		if activeGraph != nil && activeGraph.Variable != "" {
+			step.Inner = p.hiddenGraphVariable()
+			inner = &sparqlTermPattern{Variable: step.Inner}
+		}
+		group, err := p.parseEnclosedGroup(inner, prefixes)
 		if err != nil {
 			return nil, err
 		}
-		return sparqlMinusStep{Group: group}, nil
+		step.Group = group
+		return step, nil
 	}
 	if p.matchKeyword("VALUES") {
 		return p.parseValues(prefixes)
@@ -2758,7 +2549,10 @@ func (p *sparqlParser) parseGroupStep(activeGraph *sparqlTermPattern, prefixes m
 
 func (p *sparqlParser) parseValues(prefixes map[string]string) (sparqlStep, error) {
 	var variables []string
-	if p.peek().Type == sparqlTokenVar {
+	// A single variable written bare takes bare values; written in
+	// parentheses, (?o), its rows are parenthesised too.
+	parenthesised := p.peek().Type != sparqlTokenVar
+	if !parenthesised {
 		variables = append(variables, strings.TrimPrefix(p.next().Value, "?"))
 	} else {
 		p.expectPunct("(")
@@ -2766,9 +2560,6 @@ func (p *sparqlParser) parseValues(prefixes map[string]string) (sparqlStep, erro
 			variables = append(variables, strings.TrimPrefix(p.next().Value, "?"))
 		}
 		p.expectPunct(")")
-	}
-	if len(variables) == 0 {
-		return nil, fmt.Errorf("VALUES requires variables")
 	}
 
 	p.expectPunct("{")
@@ -2799,7 +2590,7 @@ func (p *sparqlParser) parseValues(prefixes map[string]string) (sparqlStep, erro
 	}
 	for !p.matchPunct("}") {
 		row := make(map[string]RDFTerm, len(variables))
-		if len(variables) == 1 {
+		if !parenthesised {
 			if err := value(row, variables[0]); err != nil {
 				return nil, err
 			}
@@ -2841,75 +2632,6 @@ func (p *sparqlParser) parseOrderClause(prefixes map[string]string) (sparqlOrder
 		return sparqlOrderClause{}, err
 	}
 	return sparqlOrderClause{Expr: expr}, nil
-}
-
-func (p *sparqlParser) parsePredicatePattern(prefixes map[string]string) (sparqlTermPattern, *sparqlPropertyPath, error) {
-	if p.matchOperator("^") {
-		term, err := p.parsePropertyPathTerm(prefixes)
-		if err != nil {
-			return sparqlTermPattern{}, nil, err
-		}
-		return sparqlTermPattern{}, &sparqlPropertyPath{Kind: sparqlPathInverse, Terms: []RDFTerm{term}}, nil
-	}
-
-	predicate, err := p.parseTermPattern(prefixes, false)
-	if err != nil {
-		return sparqlTermPattern{}, nil, err
-	}
-	if predicate.Blank != "" {
-		return sparqlTermPattern{}, nil, fmt.Errorf("a predicate cannot be a blank node")
-	}
-	if predicate.Term != nil && predicate.Term.Kind != RDFTermIRI {
-		return sparqlTermPattern{}, nil, fmt.Errorf("a predicate must be an IRI or variable")
-	}
-
-	if p.matchOperator("?") {
-		if predicate.Term == nil {
-			return sparqlTermPattern{}, nil, fmt.Errorf("property path repetition requires a concrete predicate")
-		}
-		return sparqlTermPattern{}, &sparqlPropertyPath{Kind: sparqlPathZeroOrOne, Terms: []RDFTerm{*predicate.Term}}, nil
-	}
-	if p.matchOperator("|") {
-		if predicate.Term == nil {
-			return sparqlTermPattern{}, nil, fmt.Errorf("property path alternatives require concrete predicates")
-		}
-		terms := []RDFTerm{*predicate.Term}
-		for {
-			term, err := p.parsePropertyPathTerm(prefixes)
-			if err != nil {
-				return sparqlTermPattern{}, nil, err
-			}
-			terms = append(terms, term)
-			if !p.matchOperator("|") {
-				break
-			}
-		}
-		return sparqlTermPattern{}, &sparqlPropertyPath{Kind: sparqlPathAlternative, Terms: terms}, nil
-	}
-	if p.matchOperator("*") {
-		if predicate.Term == nil {
-			return sparqlTermPattern{}, nil, fmt.Errorf("property path repetition requires a concrete predicate")
-		}
-		return sparqlTermPattern{}, &sparqlPropertyPath{Kind: sparqlPathZeroOrMore, Terms: []RDFTerm{*predicate.Term}}, nil
-	}
-	if p.matchOperator("+") {
-		if predicate.Term == nil {
-			return sparqlTermPattern{}, nil, fmt.Errorf("property path repetition requires a concrete predicate")
-		}
-		return sparqlTermPattern{}, &sparqlPropertyPath{Kind: sparqlPathOneOrMore, Terms: []RDFTerm{*predicate.Term}}, nil
-	}
-	return predicate, nil, nil
-}
-
-func (p *sparqlParser) parsePropertyPathTerm(prefixes map[string]string) (RDFTerm, error) {
-	termPattern, err := p.parseTermPattern(prefixes, false)
-	if err != nil {
-		return RDFTerm{}, err
-	}
-	if termPattern.Term == nil || termPattern.Term.Kind != RDFTermIRI {
-		return RDFTerm{}, fmt.Errorf("property paths require IRI predicates")
-	}
-	return *termPattern.Term, nil
 }
 
 // parseFilter reads a FILTER or HAVING constraint: a bracketed expression, or
@@ -3114,7 +2836,9 @@ func (p *sparqlParser) parsePrimaryValueExpr(prefixes map[string]string) (sparql
 			if p.matchKeyword("DISTINCT") {
 				agg.Distinct = true
 			}
+			p.aggDepth++
 			inner, err := p.parseValueExpr(prefixes)
+			p.aggDepth--
 			if err != nil {
 				return nil, err
 			}
@@ -3148,7 +2872,9 @@ func (p *sparqlParser) parsePrimaryValueExpr(prefixes map[string]string) (sparql
 		if p.matchOperator("*") {
 			countExpr.Wildcard = true
 		} else {
+			p.aggDepth++
 			inner, err := p.parseValueExpr(prefixes)
+			p.aggDepth--
 			if err != nil {
 				return nil, err
 			}
@@ -3158,7 +2884,9 @@ func (p *sparqlParser) parsePrimaryValueExpr(prefixes map[string]string) (sparql
 		return countExpr, nil
 	}
 	if p.matchKeyword("EXISTS") {
+		p.existsDepth++
 		group, err := p.parseEnclosedGroup(p.exprGraph, prefixes)
+		p.existsDepth--
 		if err != nil {
 			return nil, err
 		}
@@ -3169,7 +2897,9 @@ func (p *sparqlParser) parsePrimaryValueExpr(prefixes map[string]string) (sparql
 		if !p.matchKeyword("EXISTS") {
 			return nil, fmt.Errorf("expected EXISTS after NOT")
 		}
+		p.existsDepth++
 		group, err := p.parseEnclosedGroup(p.exprGraph, prefixes)
+		p.existsDepth--
 		if err != nil {
 			return nil, err
 		}
@@ -3215,6 +2945,10 @@ func (p *sparqlParser) parsePrimaryValueExpr(prefixes map[string]string) (sparql
 		}
 		return sparqlFuncExpr{Name: name, Args: args, fn: fn, rt: p.rt}, nil
 	}
+	if token := p.peek(); (token.Type == sparqlTokenIRI || token.Type == sparqlTokenQName) &&
+		p.peekN(1).Type == sparqlTokenPunct && p.peekN(1).Value == "(" {
+		return p.parseIRIFunctionCall(prefixes)
+	}
 	if p.matchPunct("(") {
 		expr, err := p.parseValueExpr(prefixes)
 		if err != nil {
@@ -3243,11 +2977,48 @@ func (p *sparqlParser) parsePrimaryValueExpr(prefixes map[string]string) (sparql
 	return sparqlLiteralExpr{Term: *termPattern.Term}, nil
 }
 
+// parseIRIFunctionCall reads iriOrFunction when it is a call: a cast, or an
+// extension function this engine evaluates to an error (sparql_casts.go).
+func (p *sparqlParser) parseIRIFunctionCall(prefixes map[string]string) (sparqlValueExpr, error) {
+	head, err := p.parseTermPattern(prefixes, false)
+	if err != nil {
+		return nil, err
+	}
+	iri := head.Term.Value
+	var args []sparqlValueExpr
+	p.expectPunct("(")
+	p.matchKeyword("DISTINCT") // allowed by ArgList; meaningless for a scalar call
+	if !p.matchPunct(")") {
+		for {
+			arg, err := p.parseValueExpr(prefixes)
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, arg)
+			if p.matchPunct(")") {
+				break
+			}
+			p.expectPunct(",")
+		}
+	}
+	fn, ok := sparqlIRIFunctions[iri]
+	if !ok {
+		fn = unknownIRIFunction(iri)
+	} else if len(args) < fn.minArgs || (fn.maxArgs >= 0 && len(args) > fn.maxArgs) {
+		return nil, fmt.Errorf("<%s>: wrong number of arguments (%d)", iri, len(args))
+	}
+	return sparqlFuncExpr{Name: iri, Args: args, fn: fn, rt: p.rt}, nil
+}
+
 func (p *sparqlParser) parseTermPattern(prefixes map[string]string, allowLiteral bool) (sparqlTermPattern, error) {
 	token := p.peek()
 	switch token.Type {
 	case sparqlTokenVar:
-		return sparqlTermPattern{Variable: strings.TrimPrefix(p.next().Value, "?")}, nil
+		name := strings.TrimPrefix(p.next().Value, "?")
+		if p.refVars != nil && p.aggDepth == 0 {
+			p.refVars[name] = true
+		}
+		return sparqlTermPattern{Variable: name}, nil
 	case sparqlTokenIRI:
 		value := p.next().Value
 		if p.base != "" && !hasIRIScheme(value) {
@@ -3502,12 +3273,24 @@ func tokenizeSPARQL(query string) []sparqlToken {
 			i = j
 		default:
 			j := i + 1
-			for j < len(query) && isSPARQLWordPart(query[j]) {
-				j++
+			for j < len(query) {
+				if isSPARQLWordPart(query[j]) {
+					j++
+					continue
+				}
+				// PN_LOCAL_ESC: a backslash escapes a punctuation character
+				// into the local part of a prefixed name.
+				if query[j] == '\\' && j+1 < len(query) && strings.IndexByte(sparqlLocalEscapes, query[j+1]) >= 0 &&
+					strings.Contains(query[i:j], ":") {
+					j += 2
+					continue
+				}
+				break
 			}
 			// A name never ends in '.': the dot ends the triple instead
-			// (PN_LOCAL and BLANK_NODE_LABEL both forbid a trailing dot).
-			for j > i+1 && query[j-1] == '.' {
+			// (PN_LOCAL and BLANK_NODE_LABEL both forbid a trailing dot),
+			// unless the dot is escaped.
+			for j > i+1 && query[j-1] == '.' && query[j-2] != '\\' {
 				j--
 			}
 			if cut := sequencePathCut(query[i:j]); cut > 0 {
@@ -3516,9 +3299,15 @@ func tokenizeSPARQL(query string) []sparqlToken {
 			value := query[i:j]
 			switch {
 			case strings.HasPrefix(value, "_:"):
-				emit(sparqlTokenBlank, value[2:])
+				// BLANK_NODE_LABEL has no colon after the prefix and no
+				// escapes; an empty label is refused by the parser.
+				if strings.ContainsAny(value[2:], ":\\") {
+					emit(sparqlTokenInvalid, value)
+				} else {
+					emit(sparqlTokenBlank, value[2:])
+				}
 			case strings.Contains(value, ":") && !strings.HasPrefix(value, "http://") && !strings.HasPrefix(value, "https://"):
-				emit(sparqlTokenQName, value)
+				emit(sparqlTokenQName, unescapeSPARQLLocal(value))
 			case strings.EqualFold(value, "true") || strings.EqualFold(value, "false"):
 				emit(sparqlTokenBoolean, strings.ToLower(value))
 			case isSPARQLKeyword(value):
@@ -3577,7 +3366,7 @@ func sequencePathCut(word string) int {
 		return 0
 	}
 	for k := strings.IndexByte(word, ':'); k < len(word); k++ {
-		if word[k] == '/' && sequencePathNext.MatchString(word[k+1:]) {
+		if word[k] == '/' && word[k-1] != '\\' && sequencePathNext.MatchString(word[k+1:]) {
 			return k
 		}
 	}
@@ -3655,6 +3444,24 @@ func isSPARQLIdentPart(ch byte) bool {
 
 // '%' is allowed because SPARQL allows a percent-escape in a prefixed name's
 // local part, and the property-graph projection's IRIs are full of them.
+// sparqlLocalEscapes are the characters PN_LOCAL_ESC may escape.
+const sparqlLocalEscapes = "_~.-!$&'()*+,;=/?#@%"
+
+// unescapeSPARQLLocal drops the backslash of each PN_LOCAL_ESC.
+func unescapeSPARQLLocal(name string) string {
+	if !strings.Contains(name, "\\") {
+		return name
+	}
+	var b strings.Builder
+	for i := 0; i < len(name); i++ {
+		if name[i] == '\\' && i+1 < len(name) {
+			i++
+		}
+		b.WriteByte(name[i])
+	}
+	return b.String()
+}
+
 func isSPARQLWordPart(ch byte) bool {
 	return isSPARQLIdentPart(ch) || ch == ':' || ch == '/' || ch == '#' || ch == '.' || ch == '%'
 }

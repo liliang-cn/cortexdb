@@ -488,9 +488,9 @@ WHERE { VALUES ?x { 1 1 2 10 } }`)
 			assertColumn(t, agg, "min", specInt("1"))
 			assertColumn(t, agg, "max", specInt("10"))
 
-			empty := runSPARQL(t, b.store, `SELECT (COUNT(*) AS ?c) (SUM(?o) AS ?s) (AVG(?o) AS ?a) (MAX(?o) AS ?m) WHERE { ?s ex:nothing ?o }`)
+			empty := runSPARQL(t, b.store, `SELECT (COUNT(*) AS ?c) (SUM(?o) AS ?sum) (AVG(?o) AS ?a) (MAX(?o) AS ?m) WHERE { ?s ex:nothing ?o }`)
 			assertColumn(t, empty, "c", specInt("0"))
-			assertColumn(t, empty, "s", specInt("0"))
+			assertColumn(t, empty, "sum", specInt("0"))
 			assertColumn(t, empty, "a", specInt("0"))
 			assertColumn(t, empty, "m", "unbound")
 

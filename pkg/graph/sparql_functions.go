@@ -88,11 +88,27 @@ type sparqlRuntime struct {
 
 	now   RDFTerm
 	nonce string
+	// base is the query's BASE, which IRI() resolves a relative IRI against.
+	base string
 
 	mu       sync.Mutex
 	regexes  map[string]*regexp.Regexp
 	bnodes   map[string]RDFTerm
 	bnodeSeq int
+	// solution numbers the solution expressions are being evaluated for:
+	// BNODE(str) is the same blank node for the same string within one
+	// solution and a different one in the next.
+	solution int
+}
+
+// beginSolution starts the evaluation of a new solution's expressions.
+func (rt *sparqlRuntime) beginSolution() {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	rt.solution++
+	rt.mu.Unlock()
 }
 
 func newSPARQLRuntime() *sparqlRuntime {
@@ -117,12 +133,13 @@ func (rt *sparqlRuntime) freshBlankNode() RDFTerm {
 func (rt *sparqlRuntime) labelledBlankNode(label string) RDFTerm {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	if node, ok := rt.bnodes[label]; ok {
+	key := strconv.Itoa(rt.solution) + "\x00" + label
+	if node, ok := rt.bnodes[key]; ok {
 		return node
 	}
 	rt.bnodeSeq++
 	node := NewBlankNode(fmt.Sprintf("q%s_%d", rt.nonce, rt.bnodeSeq))
-	rt.bnodes[label] = node
+	rt.bnodes[key] = node
 	return node
 }
 
@@ -654,6 +671,8 @@ func (n sparqlNumber) term() RDFTerm {
 		lexical = "-INF"
 	case n.kind == sparqlNumInteger:
 		lexical = strconv.FormatFloat(math.Trunc(n.value), 'f', -1, 64)
+	case n.kind == sparqlNumDecimal:
+		lexical = strconv.FormatFloat(decimalValue(n.value), 'f', -1, 64)
 	default:
 		lexical = strconv.FormatFloat(n.value, 'f', -1, 64)
 	}
@@ -661,6 +680,21 @@ func (n sparqlNumber) term() RDFTerm {
 		lexical = "0"
 	}
 	return NewTypedLiteral(lexical, datatype)
+}
+
+// decimalValue rounds a decimal result to 16 significant digits. Decimals
+// are carried as float64, so 1.0 + 2.2 + 3.5 is 11.700000000000001; xsd:decimal
+// is exact, and no decimal a query writes or stores needs more digits than a
+// double holds faithfully, so the rounding gives back the exact answer.
+func decimalValue(v float64) float64 {
+	if v == 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+		return v
+	}
+	r, err := strconv.ParseFloat(strconv.FormatFloat(v, 'g', 16, 64), 64)
+	if err != nil {
+		return v
+	}
+	return r
 }
 
 func sparqlNumericArg(name string, term RDFTerm) (sparqlNumber, error) {
@@ -1084,11 +1118,14 @@ func sparqlFnDatatype(_ *sparqlRuntime, a []RDFTerm) (RDFTerm, error) {
 
 // sparqlFnIRI has no BASE to resolve against, so a relative string becomes a
 // relative IRI as written.
-func sparqlFnIRI(_ *sparqlRuntime, a []RDFTerm) (RDFTerm, error) {
+func sparqlFnIRI(rt *sparqlRuntime, a []RDFTerm) (RDFTerm, error) {
 	switch {
 	case a[0].Kind == RDFTermIRI:
 		return a[0], nil
 	case isXSDStringLiteral(a[0]):
+		if rt != nil && rt.base != "" && !hasIRIScheme(a[0].Value) {
+			return NewIRI(resolveIRIReference(rt.base, a[0].Value)), nil
+		}
 		return NewIRI(a[0].Value), nil
 	default:
 		return RDFTerm{}, sparqlTypeErrorf("IRI requires an IRI or a simple literal")
