@@ -1,7 +1,9 @@
 package graph
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -57,7 +59,7 @@ func runSPARQLTest(t *testing.T, root string, test w3cTest, newStore func() *Gra
 			return "accepted invalid syntax"
 		}
 		return ""
-	case test.hasType("QueryEvaluationTest"):
+	case test.hasType("QueryEvaluationTest") || test.hasType("CSVResultFormatTest"):
 		store := newStore()
 		queryFile, ok := m.one(test.action, qtNS+"query")
 		if !ok {
@@ -73,6 +75,39 @@ func runSPARQLTest(t *testing.T, root string, test w3cTest, newStore func() *Gra
 			if why := loadTestData(store, root, manifestFile(data.Value), &name); why != "" {
 				return why
 			}
+		}
+		// qt:serviceData gives each SERVICE endpoint its own dataset: one
+		// store per endpoint, reached through the service handler.
+		endpoints := map[string]*GraphStore{}
+		for _, sd := range m.values(test.action, qtNS+"serviceData") {
+			endpoint, ok := m.one(sd, qtNS+"endpoint")
+			if !ok {
+				return "qt:serviceData without qt:endpoint"
+			}
+			_, remote, cleanup := setupTestGraph(t)
+			t.Cleanup(cleanup)
+			for _, data := range m.values(sd, qtNS+"data") {
+				if why := loadTestData(remote, root, manifestFile(data.Value), nil); why != "" {
+					return why
+				}
+			}
+			endpoints[endpoint.Value] = remote
+		}
+		if len(endpoints) > 0 {
+			// Every endpoint can reach the others: a SERVICE inside a
+			// SERVICE runs at the first endpoint.
+			handler := func(ctx context.Context, endpoint, query string) (*SPARQLResult, error) {
+				remote, ok := endpoints[endpoint]
+				if !ok {
+					return nil, fmt.Errorf("no endpoint %s", endpoint)
+				}
+				return remote.ExecuteSPARQL(ctx, query)
+			}
+			for _, remote := range endpoints {
+				remote.SetSPARQLServiceHandler(handler)
+			}
+			store.SetSPARQLServiceHandler(handler)
+			defer store.SetSPARQLServiceHandler(nil)
 		}
 		query, err := os.ReadFile(manifestFile(queryFile.Value))
 		if err != nil {
@@ -94,11 +129,20 @@ func runSPARQLTest(t *testing.T, root string, test w3cTest, newStore func() *Gra
 				return why
 			}
 		}
+		for _, gd := range m.values(test.action, utNS+"graphData") {
+			file, name, why := updateGraphData(m, gd)
+			if why != "" {
+				return why
+			}
+			if why := loadTestData(store, root, file, &name); why != "" {
+				return why
+			}
+		}
 		update, err := os.ReadFile(manifestFile(request.Value))
 		if err != nil {
 			return err.Error()
 		}
-		if _, err := store.ExecuteSPARQL(context.Background(), string(update)); err != nil {
+		if _, err := store.ExecuteSPARQL(context.Background(), withBase(string(update), w3cDocumentBase(root, manifestFile(request.Value)))); err != nil {
 			return "update failed: " + err.Error()
 		}
 		var want []RDFTriple
@@ -108,6 +152,21 @@ func runSPARQLTest(t *testing.T, root string, test w3cTest, newStore func() *Gra
 				return why
 			}
 			want = parsed
+		}
+		for _, gd := range m.values(test.result, utNS+"graphData") {
+			file, name, why := updateGraphData(m, gd)
+			if why != "" {
+				return why
+			}
+			parsed, why := parseTestData(root, file)
+			if why != "" {
+				return why
+			}
+			for i := range parsed {
+				g := name
+				parsed[i].Graph = &g
+			}
+			want = append(want, parsed...)
 		}
 		got, err := store.findStoredTriples(context.Background(), TriplePattern{})
 		if err != nil {
@@ -119,6 +178,20 @@ func runSPARQLTest(t *testing.T, root string, test w3cTest, newStore func() *Gra
 		return ""
 	}
 	return "unsupported test type " + test.typeName()
+}
+
+// updateGraphData reads an update test's ut:graphData: a node naming the
+// file with ut:graph and the graph with rdfs:label.
+func updateGraphData(m *manifestGraph, node RDFTerm) (string, RDFTerm, string) {
+	file, ok := m.one(node, utNS+"graph")
+	if !ok {
+		return "", RDFTerm{}, "ut:graphData without ut:graph"
+	}
+	label, ok := m.one(node, "http://www.w3.org/2000/01/rdf-schema#label")
+	if !ok {
+		return "", RDFTerm{}, "ut:graphData without rdfs:label"
+	}
+	return manifestFile(file.Value), NewIRI(label.Value), ""
 }
 
 // withBase gives a query without its own BASE the base the suites assume, so
@@ -211,7 +284,40 @@ func compareSPARQLResult(root string, result *SPARQLResult, expectedPath string)
 		if ok, diff := isomorphicDatasets(got, want); !ok {
 			return "solutions differ: " + diff
 		}
-		return ""
+		// The same answer written in the expected file's format must read
+		// back as the same solutions: this tests WriteResults.
+		format, read := SPARQLResultsJSON, readSRJBytes
+		if ext == ".srx" {
+			format, read = SPARQLResultsXML, readSRXBytes
+		}
+		return roundTripResults(result, format, read, want)
+	case ".tsv":
+		data, err := os.ReadFile(expectedPath)
+		if err != nil {
+			return err.Error()
+		}
+		_, rows, err := readTSVResults(data)
+		if err != nil {
+			return "cannot read expected results: " + err.Error()
+		}
+		got, want := solutionsAsQuads(result.Bindings), solutionsAsQuads(rows)
+		if ok, diff := isomorphicDatasets(got, want); !ok {
+			return "solutions differ: " + diff
+		}
+		return roundTripResults(result, SPARQLResultsTSV, func(b []byte) ([]string, []map[string]RDFTerm, *bool, error) {
+			vars, rows, err := readTSVResults(b)
+			return vars, rows, nil, err
+		}, want)
+	case ".csv":
+		var buf bytes.Buffer
+		if err := result.WriteResults(&buf, SPARQLResultsCSV); err != nil {
+			return "write CSV: " + err.Error()
+		}
+		want, err := os.ReadFile(expectedPath)
+		if err != nil {
+			return err.Error()
+		}
+		return compareCSVResults(buf.Bytes(), want)
 	default:
 		want, why := parseTestData(root, expectedPath)
 		if why != "" {
@@ -236,6 +342,97 @@ func compareSPARQLResult(root string, result *SPARQLResult, expectedPath string)
 		}
 		return ""
 	}
+}
+
+// roundTripResults writes result in format, reads it back with read and
+// compares the solutions with want.
+func roundTripResults(result *SPARQLResult, format SPARQLResultsFormat, read func([]byte) ([]string, []map[string]RDFTerm, *bool, error), want []RDFTriple) string {
+	var buf bytes.Buffer
+	if err := result.WriteResults(&buf, format); err != nil {
+		return "write " + string(format) + ": " + err.Error()
+	}
+	_, rows, boolean, err := read(buf.Bytes())
+	if err != nil {
+		return "read back " + string(format) + ": " + err.Error() + "\n" + buf.String()
+	}
+	if boolean != nil {
+		return ""
+	}
+	if ok, diff := isomorphicDatasets(solutionsAsQuads(rows), want); !ok {
+		return string(format) + " round trip differs: " + diff
+	}
+	return ""
+}
+
+// readTSVResults reads a TSV result: a header of ?variables, then one row
+// per line of terms written as in Turtle, an empty field for unbound.
+func readTSVResults(data []byte) ([]string, []map[string]RDFTerm, error) {
+	lines := strings.Split(strings.TrimRight(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n"), "\n")
+	if len(lines) == 0 {
+		return nil, nil, fmt.Errorf("empty TSV")
+	}
+	var vars []string
+	for _, h := range strings.Split(lines[0], "\t") {
+		vars = append(vars, strings.TrimPrefix(strings.TrimPrefix(h, "?"), "$"))
+	}
+	var rows []map[string]RDFTerm
+	for _, line := range lines[1:] {
+		row := map[string]RDFTerm{}
+		for i, cell := range strings.Split(line, "\t") {
+			if cell == "" || i >= len(vars) {
+				continue
+			}
+			parsed, err := parseRDFDocument("<urn:s> <urn:p> "+cell+" .", rdfSyntaxTurtle, "")
+			if err != nil || len(parsed) != 1 {
+				return nil, nil, fmt.Errorf("TSV cell %q: %v", cell, err)
+			}
+			row[vars[i]] = parsed[0].Object
+		}
+		rows = append(rows, row)
+	}
+	return vars, rows, nil
+}
+
+// compareCSVResults compares two CSV results as multisets of rows, blank
+// node labels up to renaming. CSV keeps no term kinds, so a cell is read as
+// a blank node if it starts with _:, else as a plain value.
+func compareCSVResults(got, want []byte) string {
+	read := func(data []byte) ([]string, []map[string]RDFTerm, error) {
+		records, err := csv.NewReader(bytes.NewReader(data)).ReadAll()
+		if err != nil || len(records) == 0 {
+			return nil, nil, fmt.Errorf("bad CSV: %v", err)
+		}
+		var rows []map[string]RDFTerm
+		for _, rec := range records[1:] {
+			row := map[string]RDFTerm{}
+			for i, cell := range rec {
+				switch {
+				case cell == "":
+				case strings.HasPrefix(cell, "_:"):
+					row[records[0][i]] = NewBlankNode(cell[2:])
+				default:
+					row[records[0][i]] = NewLiteral(cell)
+				}
+			}
+			rows = append(rows, row)
+		}
+		return records[0], rows, nil
+	}
+	gv, gr, err := read(got)
+	if err != nil {
+		return "our CSV: " + err.Error() + "\n" + string(got)
+	}
+	wv, wr, err := read(want)
+	if err != nil {
+		return "expected CSV: " + err.Error()
+	}
+	if strings.Join(gv, ",") != strings.Join(wv, ",") {
+		return fmt.Sprintf("CSV header %v, want %v", gv, wv)
+	}
+	if ok, diff := isomorphicDatasets(solutionsAsQuads(gr), solutionsAsQuads(wr)); !ok {
+		return "CSV differs: " + diff
+	}
+	return ""
 }
 
 // resultSetFromGraph reads a result set written in the DAWG result-set
@@ -366,6 +563,10 @@ func readSRJ(path string) ([]string, []map[string]RDFTerm, *bool, error) {
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	return readSRJBytes(data)
+}
+
+func readSRJBytes(data []byte) ([]string, []map[string]RDFTerm, *bool, error) {
 	var doc struct {
 		Head struct {
 			Vars []string `json:"vars"`
@@ -456,6 +657,10 @@ func readSRX(path string) ([]string, []map[string]RDFTerm, *bool, error) {
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	return readSRXBytes(data)
+}
+
+func readSRXBytes(data []byte) ([]string, []map[string]RDFTerm, *bool, error) {
 	var doc xmlNode
 	if err := xml.Unmarshal(data, &doc); err != nil {
 		return nil, nil, nil, err
@@ -506,7 +711,7 @@ func runSPARQLSuite(t *testing.T, root, manifest string, inScope func(w3cTest) b
 			tally[key] = &suiteTally{}
 		}
 		var failures []string
-		if !strings.Contains(test.typeName(), "Evaluation") {
+		if !strings.Contains(test.typeName(), "Evaluation") && !test.hasType("CSVResultFormatTest") {
 			// Syntax tests never touch a store.
 			if why := runSPARQLTest(t, root, test, nil); why != "" {
 				failures = append(failures, why)

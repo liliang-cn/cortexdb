@@ -69,6 +69,8 @@ type sparqlQuery struct {
 	// Next is the update operation after this one, for a request that
 	// chains several with ';'.
 	Next *sparqlQuery
+	// GraphOp is a CLEAR, DROP, CREATE, LOAD, ADD, COPY or MOVE.
+	GraphOp *sparqlGraphOp
 }
 
 type sparqlGroup struct {
@@ -294,6 +296,13 @@ func (g *GraphStore) executeParsedSPARQL(ctx context.Context, parsed *sparqlQuer
 		parsed.runtime.opts = execOptions
 	}
 
+	if parsed.QueryType == SPARQLQueryGraphManagement {
+		count, err := g.executeSPARQLGraphOp(ctx, parsed.GraphOp)
+		if err != nil {
+			return nil, err
+		}
+		return &SPARQLResult{QueryType: parsed.QueryType, Count: count}, nil
+	}
 	if parsed.QueryType == SPARQLQueryInsertData {
 		count, err := g.executeSPARQLInsertData(ctx, parsed.Template)
 		if err != nil {
@@ -395,13 +404,17 @@ func buildSPARQLExecOptions(parsed *sparqlQuery) sparqlExecOptions {
 		opts.NamedGraphs = append(opts.NamedGraphs, parsed.FromNamed...)
 		return opts
 	}
-	if len(parsed.Using) > 0 {
+	// USING and USING NAMED declare the WHERE clause's dataset as FROM and
+	// FROM NAMED do a query's (§3.1.3): USING alone leaves it no named
+	// graphs. WITH only names the default graph.
+	if len(parsed.Using) > 0 || len(parsed.UsingNamed) > 0 {
+		opts.DatasetDeclared = true
 		opts.DefaultGraphs = append(opts.DefaultGraphs, parsed.Using...)
-	} else if parsed.With != nil {
-		opts.DefaultGraphs = append(opts.DefaultGraphs, *parsed.With)
-	}
-	if len(parsed.UsingNamed) > 0 {
 		opts.NamedGraphs = append(opts.NamedGraphs, parsed.UsingNamed...)
+		return opts
+	}
+	if parsed.With != nil {
+		opts.DefaultGraphs = append(opts.DefaultGraphs, *parsed.With)
 	}
 	return opts
 }
@@ -508,7 +521,7 @@ func extendSPARQLBindings(parsed *sparqlQuery, bindings []map[string]RDFTerm) ([
 func projectSPARQLBindings(parsed *sparqlQuery, bindings []map[string]RDFTerm) ([]string, []map[string]RDFTerm) {
 	vars := make([]string, 0, len(parsed.SelectItems))
 	if parsed.SelectAll {
-		vars = collectBindingVars(bindings)
+		vars = selectAllVars(parsed.Group, bindings)
 	} else {
 		for _, item := range parsed.SelectItems {
 			vars = append(vars, item.Alias)
@@ -815,6 +828,12 @@ func (g *GraphStore) executeSPARQLGroup(ctx context.Context, group sparqlGroup, 
 			current = nextBindings
 		case sparqlSubQueryStep:
 			nextBindings, err := g.executeSPARQLSubQuery(ctx, step, current, opts)
+			if err != nil {
+				return nil, err
+			}
+			current = nextBindings
+		case sparqlServiceStep:
+			nextBindings, err := g.executeSPARQLService(ctx, step, current)
 			if err != nil {
 				return nil, err
 			}
@@ -1743,6 +1762,7 @@ func (g *GraphStore) parseSPARQL(ctx context.Context, query string) (*sparqlQuer
 
 type sparqlParser struct {
 	tokens   []sparqlToken
+	src      string
 	position int
 	prefixes map[string]string
 	// rt is shared by every expression node of one query, subqueries
@@ -1763,6 +1783,13 @@ type sparqlParser struct {
 	// aggDepth counts enclosing aggregates, whose variables are not
 	// references of the expression around them.
 	aggDepth int
+	// inAggregate is set while an aggregate's argument is parsed. Unlike
+	// aggDepth it is not saved around EXISTS: an aggregate inside an
+	// aggregate's EXISTS is as nested as any.
+	inAggregate bool
+	// requestBlanks are the blank node labels earlier operations of an
+	// update request used: one label cannot name a node in two of them.
+	requestBlanks map[string]bool
 
 	// blankSeq numbers the blank nodes the parser invents for [], reified
 	// triples and annotations; depth bounds recursion; inTemplate is set
@@ -1798,11 +1825,14 @@ type sparqlToken struct {
 	// Long marks a string written with tripled quotes, which VERSION does
 	// not accept.
 	Long bool
+	// Start is the token's byte offset in the query text.
+	Start int
 }
 
 func newSPARQLParser(query string, prefixes map[string]string) *sparqlParser {
 	return &sparqlParser{
 		tokens:   tokenizeSPARQL(query),
+		src:      query,
 		prefixes: prefixes,
 		rt:       newSPARQLRuntime(),
 	}
@@ -1876,7 +1906,23 @@ func (p *sparqlParser) parseOperation(prefixes map[string]string) (query *sparql
 		query.With = &withTerm
 	}
 
+	// An update request may be empty, or end in ';' (§3, Update): the
+	// operation is then a no-op.
+	if p.peek().Type == sparqlTokenEOF && query.With == nil {
+		query.QueryType = SPARQLQueryGraphManagement
+		return query, nil
+	}
+	graphOp, err := p.parseGraphManagement(query.Prefixes)
+	if err != nil {
+		return nil, err
+	}
+	if graphOp != nil && query.With != nil {
+		return nil, fmt.Errorf("WITH applies to DELETE and INSERT only")
+	}
 	switch {
+	case graphOp != nil:
+		query.QueryType = SPARQLQueryGraphManagement
+		query.GraphOp = graphOp
 	case p.matchKeyword("SELECT"):
 		err := p.parseSelectQueryBody(query, true)
 		if err != nil {
@@ -1948,6 +1994,9 @@ func (p *sparqlParser) parseOperation(prefixes map[string]string) (query *sparql
 			if err != nil {
 				return nil, err
 			}
+			if templateHasVariable(template) {
+				return nil, fmt.Errorf("INSERT DATA cannot contain variables")
+			}
 			query.Template = template
 			break
 		}
@@ -1979,6 +2028,9 @@ func (p *sparqlParser) parseOperation(prefixes map[string]string) (query *sparql
 			}
 			if templateHasBlankNode(template) {
 				return nil, fmt.Errorf("DELETE DATA cannot contain blank nodes")
+			}
+			if templateHasVariable(template) {
+				return nil, fmt.Errorf("DELETE DATA cannot contain variables")
 			}
 			query.Template = template
 		case p.matchKeyword("WHERE"):
@@ -2029,7 +2081,7 @@ func (p *sparqlParser) parseOperation(prefixes map[string]string) (query *sparql
 			}
 		}
 	default:
-		return nil, fmt.Errorf("expected SELECT, CONSTRUCT, DESCRIBE, ASK, INSERT DATA, or DELETE")
+		return nil, fmt.Errorf("expected a query (SELECT, CONSTRUCT, DESCRIBE, ASK) or an update operation")
 	}
 
 	switch query.QueryType {
@@ -2060,17 +2112,20 @@ func (p *sparqlParser) parseOperation(prefixes map[string]string) (query *sparql
 	if p.matchKeyword("WHERE") {
 		// explicit WHERE is optional after SELECT/ASK
 	}
+	hasWhere := false
 	if query.QueryType != SPARQLQueryInsertData &&
 		query.QueryType != SPARQLQueryDeleteData &&
 		query.QueryType != SPARQLQueryDeleteWhere &&
+		query.QueryType != SPARQLQueryGraphManagement &&
 		p.peek().Type == sparqlTokenPunct && p.peek().Value == "{" {
 		group, err := p.parseEnclosedGroup(nil, query.Prefixes)
 		if err != nil {
 			return nil, err
 		}
 		query.Group = group
+		hasWhere = true
 	}
-	if query.QueryType == SPARQLQueryModify && len(query.Group.Steps) == 0 {
+	if query.QueryType == SPARQLQueryModify && !hasWhere {
 		if p.matchKeyword("WHERE") {
 			// optional keyword for modify forms
 		}
@@ -2088,6 +2143,11 @@ func (p *sparqlParser) parseOperation(prefixes map[string]string) (query *sparql
 		}
 	}
 
+	if isSPARQLUpdate(query.QueryType) {
+		if err := p.claimBlankLabels(query); err != nil {
+			return nil, err
+		}
+	}
 	if isSPARQLUpdate(query.QueryType) && p.matchPunct(";") {
 		p.parsePrologue(query.Prefixes)
 		if p.peek().Type != sparqlTokenEOF {
@@ -2125,7 +2185,7 @@ func onlyTriplePatterns(group sparqlGroup) bool {
 
 func isSPARQLUpdate(queryType string) bool {
 	switch queryType {
-	case SPARQLQueryInsertData, SPARQLQueryDeleteData, SPARQLQueryDeleteWhere, SPARQLQueryModify:
+	case SPARQLQueryInsertData, SPARQLQueryDeleteData, SPARQLQueryDeleteWhere, SPARQLQueryModify, SPARQLQueryGraphManagement:
 		return true
 	}
 	return false
@@ -2374,19 +2434,22 @@ func (p *sparqlParser) parseConstructTemplate(prefixes map[string]string) ([]spa
 
 func flattenTemplatePatterns(group sparqlGroup) ([]sparqlPattern, error) {
 	out := make([]sparqlPattern, 0)
-	if err := appendTemplatePatterns(&out, group); err != nil {
+	if err := appendTemplatePatterns(&out, group, false); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func appendTemplatePatterns(out *[]sparqlPattern, group sparqlGroup) error {
+func appendTemplatePatterns(out *[]sparqlPattern, group sparqlGroup, inGraph bool) error {
 	for _, rawStep := range group.Steps {
 		switch step := rawStep.(type) {
 		case sparqlPatternStep:
 			*out = append(*out, step.Pattern)
 		case sparqlGroupStep:
-			if err := appendTemplatePatterns(out, step.Group); err != nil {
+			if step.Graph != nil && inGraph {
+				return fmt.Errorf("GRAPH blocks do not nest in a template")
+			}
+			if err := appendTemplatePatterns(out, step.Group, inGraph || step.Graph != nil); err != nil {
 				return err
 			}
 		default:
@@ -2494,6 +2557,9 @@ func (p *sparqlParser) parseGroupStep(activeGraph *sparqlTermPattern, prefixes m
 		}
 		return sparqlGroupStep{Group: group, Graph: &graphPattern}, nil
 	}
+	if p.matchWord("SERVICE") {
+		return p.parseService(prefixes)
+	}
 	if p.matchKeyword("MINUS") {
 		step := sparqlMinusStep{Graph: activeGraph}
 		inner := activeGraph
@@ -2560,6 +2626,13 @@ func (p *sparqlParser) parseValues(prefixes map[string]string) (sparqlStep, erro
 			variables = append(variables, strings.TrimPrefix(p.next().Value, "?"))
 		}
 		p.expectPunct(")")
+	}
+	for i, v := range variables {
+		for _, w := range variables[:i] {
+			if v == w {
+				return nil, fmt.Errorf("VALUES names ?%s twice", v)
+			}
+		}
 	}
 
 	p.expectPunct("{")
@@ -2833,11 +2906,16 @@ func (p *sparqlParser) parsePrimaryValueExpr(prefixes map[string]string) (sparql
 		if p.matchKeyword(name) {
 			p.expectPunct("(")
 			agg := sparqlAggregateFuncExpr{Name: name}
+			if p.inAggregate {
+				return nil, fmt.Errorf("aggregates do not nest")
+			}
 			if p.matchKeyword("DISTINCT") {
 				agg.Distinct = true
 			}
 			p.aggDepth++
+			p.inAggregate = true
 			inner, err := p.parseValueExpr(prefixes)
+			p.inAggregate = false
 			p.aggDepth--
 			if err != nil {
 				return nil, err
@@ -2866,6 +2944,9 @@ func (p *sparqlParser) parsePrimaryValueExpr(prefixes map[string]string) (sparql
 	if p.matchKeyword("COUNT") {
 		p.expectPunct("(")
 		countExpr := sparqlCountFuncExpr{}
+		if p.inAggregate {
+			return nil, fmt.Errorf("aggregates do not nest")
+		}
 		if p.matchKeyword("DISTINCT") {
 			countExpr.Distinct = true
 		}
@@ -2873,7 +2954,9 @@ func (p *sparqlParser) parsePrimaryValueExpr(prefixes map[string]string) (sparql
 			countExpr.Wildcard = true
 		} else {
 			p.aggDepth++
+			p.inAggregate = true
 			inner, err := p.parseValueExpr(prefixes)
+			p.inAggregate = false
 			p.aggDepth--
 			if err != nil {
 				return nil, err
@@ -3143,8 +3226,12 @@ const sparqlTokenInvalid sparqlTokenType = "invalid"
 
 func tokenizeSPARQL(query string) []sparqlToken {
 	tokens := make([]sparqlToken, 0)
-	emit := func(t sparqlTokenType, v string) { tokens = append(tokens, sparqlToken{Type: t, Value: v}) }
+	start := 0
+	emit := func(t sparqlTokenType, v string) {
+		tokens = append(tokens, sparqlToken{Type: t, Value: v, Start: start})
+	}
 	for i := 0; i < len(query); {
+		start = i
 		switch ch := query[i]; {
 		case unicode.IsSpace(rune(ch)):
 			i++
@@ -3226,7 +3313,7 @@ func tokenizeSPARQL(query string) []sparqlToken {
 				emit(sparqlTokenInvalid, query[i:next])
 			} else {
 				tokens = append(tokens, sparqlToken{Type: sparqlTokenString, Value: value,
-					Long: strings.HasPrefix(query[i:], `"""`) || strings.HasPrefix(query[i:], `'''`)})
+					Start: start, Long: strings.HasPrefix(query[i:], `"""`) || strings.HasPrefix(query[i:], `'''`)})
 			}
 			i = next
 		case ch == '<' || ch == '>':
@@ -3318,7 +3405,7 @@ func tokenizeSPARQL(query string) []sparqlToken {
 			i = j
 		}
 	}
-	tokens = append(tokens, sparqlToken{Type: sparqlTokenEOF, Value: ""})
+	tokens = append(tokens, sparqlToken{Type: sparqlTokenEOF, Value: "", Start: len(query)})
 	return tokens
 }
 

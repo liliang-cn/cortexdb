@@ -200,6 +200,11 @@ type GraphStore struct {
 
 	// feed is the change log's per-store bookkeeping; see changefeed.go.
 	feed changeFeedState
+
+	// service answers SPARQL SERVICE clauses; nil until a caller sets one,
+	// so a query never reaches the network on its own. See
+	// sparql_service.go.
+	service atomic.Pointer[SPARQLServiceFunc]
 }
 
 // NewGraphStore creates a new graph store from a SQLite store.
