@@ -30,6 +30,12 @@ type GraphNode struct {
 	//
 	// ValidFrom is the only one a caller may set on a write: it says when the
 	// fact became true in the world, and defaults to the moment of the write.
+	// A ValidFrom earlier than the write is a correction: the version it
+	// replaces stays readable as of every instant before the write, and is
+	// recorded as retracted at it. GetNode returns the version's own
+	// ValidFrom, so writing a node read back from GetNode unchanged backdates
+	// the new content to when the old content began — clear it to say the
+	// change happened now.
 	// The other three are set by the store and ignored on write, the same way
 	// CreatedAt and UpdatedAt already were — a live row always has an open
 	// ValidTo and no RetractedAt, because a row that has ended or been
@@ -382,14 +388,18 @@ func (g *GraphStore) createGraphSchema(ctx context.Context) error {
 	return g.createTemporalSchema(ctx)
 }
 
-// UpsertNode inserts or updates a node in the graph
+// UpsertNode inserts or updates a node in the graph.
+//
+// The vector is optional. A node without one is structural — a step in an
+// agent's execution record, a run, a bookkeeping record found by its id, its
+// type, its properties and its edges, never by similarity — and making every
+// such caller invent a vector put meaningless points into similarity search.
+// It is stored as the encoding of an empty vector, which graph_nodes.vector's
+// NOT NULL accepts on every existing brain without a migration, and it is
+// never a vector-search candidate: see hasVector.
 func (g *GraphStore) UpsertNode(ctx context.Context, node *GraphNode) error {
 	if node == nil || node.ID == "" {
 		return fmt.Errorf("invalid node: missing ID")
-	}
-
-	if len(node.Vector) == 0 {
-		return fmt.Errorf("invalid node: missing vector")
 	}
 
 	if err := errIfAsOf(ctx); err != nil {
@@ -401,7 +411,7 @@ func (g *GraphStore) UpsertNode(ctx context.Context, node *GraphNode) error {
 	}
 
 	// Encode vector
-	vectorBytes, err := encoding.EncodeVector(node.Vector)
+	vectorBytes, err := encodeNodeVector(node.Vector)
 	if err != nil {
 		return fmt.Errorf("failed to encode vector: %w", err)
 	}
@@ -434,7 +444,7 @@ func (g *GraphStore) UpsertNode(ctx context.Context, node *GraphNode) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := g.archiveNodeVersion(ctx, tx, node.ID, at,
+	if err := g.archiveNodeVersion(ctx, tx, node.ID, at, recorded,
 		node.Content, node.NodeType, string(propertiesJSON)); err != nil {
 		return err
 	}
@@ -456,14 +466,17 @@ func (g *GraphStore) UpsertNode(ctx context.Context, node *GraphNode) error {
 
 	if g.hnswIndex != nil {
 		g.hnswIndex.index.Remove(node.ID)
-		if err := g.hnswIndex.index.Add(node.ID, node.Vector); err != nil {
-			return fmt.Errorf("failed to update hnsw index: %w", err)
+		if hasVector(node) {
+			if err := g.hnswIndex.index.Add(node.ID, node.Vector); err != nil {
+				return fmt.Errorf("failed to update hnsw index: %w", err)
+			}
 		}
 	}
 
 	// The same bookkeeping for the database-side index. A failure here would
 	// leave a node that exists but cannot be found by similarity, so it is an
-	// error rather than a warning.
+	// error rather than a warning. A node written without a vector is taken
+	// out of it, so one that had a vector stops being found by it.
 	if g.vecCap.Enabled {
 		if err := g.pgUpsertVector(ctx, node.ID, node.Vector); err != nil {
 			return fmt.Errorf("mirror vector for search: %w", err)
@@ -472,6 +485,23 @@ func (g *GraphStore) UpsertNode(ctx context.Context, node *GraphNode) error {
 
 	return nil
 }
+
+// encodeNodeVector encodes a node's vector for graph_nodes.vector, a missing
+// one as the empty vector: the column is NOT NULL, and EncodeVector refuses
+// nil.
+func encodeNodeVector(v []float32) ([]byte, error) {
+	if v == nil {
+		v = []float32{}
+	}
+	return encoding.EncodeVector(v)
+}
+
+// hasVector reports whether a node can take part in vector similarity. A
+// vectorless node scored against a query would come out as 0 under cosine and
+// as -Inf under Euclidean distance — a candidate at a threshold of 0 in the
+// first case and a combined score of -Inf in the second — so every scoring
+// path asks this first.
+func hasVector(n *GraphNode) bool { return n != nil && len(n.Vector) > 0 }
 
 // GetNode retrieves a node by ID
 func (g *GraphStore) GetNode(ctx context.Context, nodeID string) (*GraphNode, error) {
@@ -674,7 +704,7 @@ func (g *GraphStore) UpsertEdge(ctx context.Context, edge *GraphEdge) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := g.archiveEdgeVersion(ctx, tx, edge.ID, at,
+	if err := g.archiveEdgeVersion(ctx, tx, edge.ID, at, recorded,
 		edge.FromNodeID, edge.ToNodeID, edge.EdgeType, edge.Weight, string(propertiesJSON)); err != nil {
 		return err
 	}

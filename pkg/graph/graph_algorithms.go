@@ -261,8 +261,11 @@ func (g *GraphStore) PredictEdges(ctx context.Context, nodeID string, topK int) 
 			continue
 		}
 
-		// Method 1: Vector Similarity
-		similarity := g.store.GetSimilarityFunc()(node.Vector, otherNode.Vector)
+		// Method 1: Vector Similarity — none when either side has no vector
+		var similarity float64
+		if hasVector(node) && hasVector(otherNode) {
+			similarity = g.store.GetSimilarityFunc()(node.Vector, otherNode.Vector)
+		}
 
 		// Method 2: Common Neighbors
 		commonNeighbors := 0

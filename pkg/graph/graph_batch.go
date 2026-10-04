@@ -91,14 +91,8 @@ func (g *GraphStore) UpsertNodesBatch(ctx context.Context, nodes []*GraphNode) (
 			continue
 		}
 
-		if len(node.Vector) == 0 {
-			result.Errors = append(result.Errors, fmt.Errorf("invalid node %s: missing vector", node.ID))
-			result.FailedCount++
-			continue
-		}
-
-		// Encode vector
-		vectorBytes, err := encoding.EncodeVector(node.Vector)
+		// Encode vector; a node may have none (see UpsertNode).
+		vectorBytes, err := encodeNodeVector(node.Vector)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("failed to encode vector for %s: %w", node.ID, err))
 			result.FailedCount++
@@ -117,9 +111,15 @@ func (g *GraphStore) UpsertNodesBatch(ctx context.Context, nodes []*GraphNode) (
 		}
 
 		at, recorded := g.versionStamps(node.ValidFrom)
-		if _, err = archive.ExecContext(ctx, archiveNodeVersionArgs(ctx, at, node.ID,
+		if _, err = archive.ExecContext(ctx, archiveNodeVersionArgs(ctx, at, recorded, node.ID,
 			node.Content, node.NodeType, string(propertiesJSON))...); err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("failed to archive node version %s: %w", node.ID, err))
+			result.FailedCount++
+			continue
+		}
+		if err = g.archiveNodeCorrection(ctx, tx, node.ID, at, recorded,
+			node.Content, node.NodeType, string(propertiesJSON)); err != nil {
+			result.Errors = append(result.Errors, err)
 			result.FailedCount++
 			continue
 		}
@@ -280,9 +280,15 @@ func (g *GraphStore) UpsertEdgesBatch(ctx context.Context, edges []*GraphEdge) (
 		}
 
 		at, recorded := g.versionStamps(edge.ValidFrom)
-		if _, err = archive.ExecContext(ctx, archiveEdgeVersionArgs(ctx, at, edge.ID, edge.FromNodeID, edge.ToNodeID,
+		if _, err = archive.ExecContext(ctx, archiveEdgeVersionArgs(ctx, at, recorded, edge.ID, edge.FromNodeID, edge.ToNodeID,
 			edge.EdgeType, edge.Weight, string(propertiesJSON))...); err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("failed to archive edge version %s: %w", edge.ID, err))
+			result.FailedCount++
+			continue
+		}
+		if err = g.archiveEdgeCorrection(ctx, tx, edge.ID, at, recorded, edge.FromNodeID, edge.ToNodeID,
+			edge.EdgeType, edge.Weight, string(propertiesJSON)); err != nil {
+			result.Errors = append(result.Errors, err)
 			result.FailedCount++
 			continue
 		}
@@ -628,23 +634,29 @@ func (g *GraphStore) upsertNodesBatchTx(ctx context.Context, tx *sql.Tx, nodes [
 	defer func() { _ = stmt.Close(); _ = archive.Close() }()
 
 	for _, node := range nodes {
-		if node == nil || node.ID == "" || len(node.Vector) == 0 {
+		if node == nil || node.ID == "" {
 			// Recorded, not just counted: Err folds the per-row failures into an
 			// error for callers, and a silently counted one would be invisible there.
-			result.Errors = append(result.Errors, fmt.Errorf("invalid node: missing ID or vector"))
+			result.Errors = append(result.Errors, fmt.Errorf("invalid node: missing ID"))
 			result.FailedCount++
 			continue
 		}
 
-		vectorBytes, _ := encoding.EncodeVector(node.Vector)
+		vectorBytes, _ := encodeNodeVector(node.Vector)
 		var propertiesJSON []byte
 		if node.Properties != nil {
 			propertiesJSON, _ = json.Marshal(node.Properties)
 		}
 
 		at, recorded := g.versionStamps(node.ValidFrom)
-		if _, err = archive.ExecContext(ctx, archiveNodeVersionArgs(ctx, at, node.ID,
+		if _, err = archive.ExecContext(ctx, archiveNodeVersionArgs(ctx, at, recorded, node.ID,
 			node.Content, node.NodeType, string(propertiesJSON))...); err != nil {
+			result.FailedCount++
+			result.Errors = append(result.Errors, err)
+			continue
+		}
+		if err = g.archiveNodeCorrection(ctx, tx, node.ID, at, recorded,
+			node.Content, node.NodeType, string(propertiesJSON)); err != nil {
 			result.FailedCount++
 			result.Errors = append(result.Errors, err)
 			continue
@@ -727,8 +739,14 @@ func (g *GraphStore) upsertEdgesBatchTx(ctx context.Context, tx *sql.Tx, edges [
 		}
 
 		at, recorded := g.versionStamps(edge.ValidFrom)
-		if _, err = archive.ExecContext(ctx, archiveEdgeVersionArgs(ctx, at, edge.ID, edge.FromNodeID, edge.ToNodeID,
+		if _, err = archive.ExecContext(ctx, archiveEdgeVersionArgs(ctx, at, recorded, edge.ID, edge.FromNodeID, edge.ToNodeID,
 			edge.EdgeType, edge.Weight, string(propertiesJSON))...); err != nil {
+			result.FailedCount++
+			result.Errors = append(result.Errors, err)
+			continue
+		}
+		if err = g.archiveEdgeCorrection(ctx, tx, edge.ID, at, recorded, edge.FromNodeID, edge.ToNodeID,
+			edge.EdgeType, edge.Weight, string(propertiesJSON)); err != nil {
 			result.FailedCount++
 			result.Errors = append(result.Errors, err)
 			continue

@@ -42,6 +42,9 @@ func (g *GraphStore) HybridSearch(ctx context.Context, query *HybridQuery) ([]*H
 		}
 
 		for _, node := range nodes {
+			if !hasVector(node) {
+				continue
+			}
 			nodeCache[node.ID] = node
 			score := g.store.GetSimilarityFunc()(query.Vector, node.Vector)
 			if query.Threshold == 0 || score >= query.Threshold {
@@ -116,8 +119,9 @@ func (g *GraphStore) HybridSearch(ctx context.Context, query *HybridQuery) ([]*H
 				Distance:    gd.distance,
 			}
 
-			// Calculate vector score if query vector provided
-			if len(query.Vector) > 0 {
+			// Calculate vector score if query vector provided; a node
+			// without a vector is reached by the graph alone and scores 0.
+			if len(query.Vector) > 0 && hasVector(node) {
 				result.VectorScore = g.store.GetSimilarityFunc()(query.Vector, node.Vector)
 			}
 
@@ -169,6 +173,9 @@ func (g *GraphStore) GraphVectorSearch(ctx context.Context, startNodeID string, 
 	// Calculate vector similarity for each neighbor
 	results := make([]*HybridResult, 0, len(neighbors))
 	for _, node := range neighbors {
+		if !hasVector(node) {
+			continue
+		}
 		score := g.store.GetSimilarityFunc()(vector, node.Vector)
 
 		results = append(results, &HybridResult{
@@ -201,6 +208,10 @@ func (g *GraphStore) SimilarityInGraph(ctx context.Context, nodeID string, opts 
 		return nil, fmt.Errorf("failed to get node: %w", err)
 	}
 
+	if !hasVector(node) {
+		return []*HybridResult{}, nil
+	}
+
 	// Get all nodes
 	allNodes, err := g.GetAllNodes(ctx, nil)
 	if err != nil {
@@ -210,8 +221,8 @@ func (g *GraphStore) SimilarityInGraph(ctx context.Context, nodeID string, opts 
 	// Calculate similarity scores
 	results := make([]*HybridResult, 0, len(allNodes))
 	for _, otherNode := range allNodes {
-		if otherNode.ID == nodeID {
-			continue // Skip self
+		if otherNode.ID == nodeID || !hasVector(otherNode) {
+			continue // Skip self, and nodes similarity cannot compare
 		}
 
 		score := g.store.GetSimilarityFunc()(node.Vector, otherNode.Vector)

@@ -319,8 +319,8 @@ func (g *GraphStore) EnableHNSWIndex(dimensions int) error {
 		}
 
 		vector, err := encoding.DecodeVector(vectorBytes)
-		if err != nil {
-			continue
+		if err != nil || len(vector) == 0 {
+			continue // undecodable, or a node without a vector
 		}
 
 		_ = g.hnswIndex.index.Add(nodeID, vector)
