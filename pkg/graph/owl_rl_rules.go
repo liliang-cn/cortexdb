@@ -236,37 +236,90 @@ var owlRules = []owlRule{
 type owlRuleTrigger struct {
 	rule     *owlRule
 	position int
+	gate     owlRuleGate
 }
 
-var owlRuleTriggers = func() map[string][]owlRuleTrigger {
-	out := map[string][]owlRuleTrigger{}
+// owlRuleGate is a rule's schema pattern — a constant predicate, and for
+// rdf:type a constant class — as index keys. A rule whose gate matches no
+// record cannot fire, so it is skipped without a join: that is what a graph
+// that states no OWL pays for these rules, a map lookup each.
+type owlRuleGate struct {
+	predicateKey string
+	// typedKey, for an rdf:type gate, is the byPredicateObject key.
+	typedKey string
+}
+
+var (
+	owlRuleTriggers = map[string][]owlRuleTrigger{}
+	owlRuleGates    = map[*owlRule]owlRuleGate{}
+)
+
+func init() {
 	for i := range owlRules {
 		r := &owlRules[i]
+		for _, pat := range r.body {
+			if strings.HasPrefix(pat.p, "?") {
+				continue
+			}
+			if pat.p == rdfTypeIRI {
+				if strings.HasPrefix(pat.o, "?") {
+					continue
+				}
+				owlRuleGates[r] = owlRuleGate{typedKey: keyRDFType + "\x01" + engineTermKey(NewIRI(pat.o))}
+				break
+			}
+			owlRuleGates[r] = owlRuleGate{predicateKey: engineTermKey(NewIRI(pat.p))}
+			break
+		}
+		if _, ok := owlRuleGates[r]; !ok {
+			panic("owl rule " + r.name + " has no schema pattern to gate it")
+		}
 		for pos, pat := range r.body {
 			key := ""
 			if !strings.HasPrefix(pat.p, "?") {
 				key = pat.p
 			}
-			out[key] = append(out[key], owlRuleTrigger{rule: r, position: pos})
+			owlRuleTriggers[key] = append(owlRuleTriggers[key], owlRuleTrigger{rule: r, position: pos, gate: owlRuleGates[r]})
 		}
 	}
-	return out
-}()
+}
+
+// open reports whether some record matches the gate.
+func (e *inferenceEngine) open(g owlRuleGate) bool {
+	if g.typedKey != "" {
+		return len(e.byPredicateObject[g.typedKey]) > 0
+	}
+	return len(e.byPredicate[g.predicateKey]) > 0
+}
 
 // fireOWLRules runs the pattern rules and the list axioms with the record as
 // a premise.
 func (e *inferenceEngine) fireOWLRules(record *rdfsInferenceRecord) {
-	for _, trig := range owlRuleTriggers[record.Triple.Predicate.Value] {
-		e.enterRule(trig.rule, trig.position, record)
+	for _, list := range [2][]owlRuleTrigger{owlRuleTriggers[record.Triple.Predicate.Value], owlRuleTriggers[""]} {
+		for _, trig := range list {
+			if e.open(trig.gate) {
+				e.enterRule(trig.rule, trig.position, record)
+			}
+		}
 	}
-	for _, trig := range owlRuleTriggers[""] {
-		e.enterRule(trig.rule, trig.position, record)
+	if e.owlRL.listAxiomKeys != nil || isListAxiomTrigger(record.Triple) {
+		e.fireOWLListAxioms(record)
 	}
-	e.fireOWLListAxioms(record)
+}
+
+func isListAxiomTrigger(t RDFTriple) bool {
+	switch t.Predicate.Value {
+	case owlIntersectionOfIRI, owlUnionOfIRI, owlOneOfIRI, owlHasKeyIRI, owlMembersIRI, owlDistinctMembersIRI:
+		return true
+	}
+	return false
 }
 
 func (e *inferenceEngine) enterRule(r *owlRule, position int, record *rdfsInferenceRecord) {
-	b := map[string]RDFTerm{}
+	if !owlMatchConstants(r.body[position], record.Triple) {
+		return
+	}
+	b := make(map[string]RDFTerm, 8)
 	if !owlMatch(r.body[position], record.Triple, b) {
 		return
 	}
@@ -275,31 +328,40 @@ func (e *inferenceEngine) enterRule(r *owlRule, position int, record *rdfsInfere
 	e.joinRule(r, matched, b)
 }
 
-// joinRule binds the remaining body patterns, the most constrained first.
+// joinRule binds the remaining body patterns, the one with the fewest
+// candidates first. Counting through the indexes is a map lookup per
+// pattern, and it is what keeps a rule cheap on a graph that never states
+// its vocabulary: the schema pattern has no candidates, and the join stops
+// before it looks at any data.
 func (e *inferenceEngine) joinRule(r *owlRule, matched []*rdfsInferenceRecord, b map[string]RDFTerm) {
-	next, best := -1, -1
+	next := -1
+	var candidates []*rdfsInferenceRecord
 	for i, pat := range r.body {
 		if matched[i] != nil {
 			continue
 		}
-		score := 0
-		for _, part := range []string{pat.s, pat.p, pat.o} {
-			if !strings.HasPrefix(part, "?") {
-				score += 2
-			} else if _, ok := b[part[1:]]; ok {
-				score += 3
-			}
+		c, ok := e.owlCandidates(pat, b)
+		if !ok {
+			continue // nothing to look it up by yet
 		}
-		if score > best {
-			next, best = i, score
+		if next < 0 || len(c) < len(candidates) {
+			next, candidates = i, c
+		}
+		if len(c) == 0 {
+			return
 		}
 	}
 	if next < 0 {
+		for i := range r.body {
+			if matched[i] == nil {
+				return // a pattern no binding reaches; rules are written so this cannot happen
+			}
+		}
 		e.concludeRule(r, matched, b)
 		return
 	}
 	pat := r.body[next]
-	for _, candidate := range e.owlCandidates(pat, b) {
+	for _, candidate := range candidates {
 		nb := make(map[string]RDFTerm, len(b)+3)
 		for k, v := range b {
 			nb[k] = v
@@ -314,8 +376,8 @@ func (e *inferenceEngine) joinRule(r *owlRule, matched []*rdfsInferenceRecord, b
 }
 
 // owlCandidates lists the records that can match pat under b, through the
-// narrowest index available.
-func (e *inferenceEngine) owlCandidates(pat owlPattern, b map[string]RDFTerm) []*rdfsInferenceRecord {
+// narrowest index available; ok is false when no position is known.
+func (e *inferenceEngine) owlCandidates(pat owlPattern, b map[string]RDFTerm) ([]*rdfsInferenceRecord, bool) {
 	term := func(part string) (RDFTerm, bool) {
 		if strings.HasPrefix(part, "?") {
 			v, ok := b[part[1:]]
@@ -330,52 +392,60 @@ func (e *inferenceEngine) owlCandidates(pat owlPattern, b map[string]RDFTerm) []
 	p, pok := term(pat.p)
 	o, ook := term(pat.o)
 	switch {
+	case pok && sok && ook:
+		var out []*rdfsInferenceRecord
+		for _, r := range e.withSubject(engineTermKey(p), s) {
+			if termsEqual(r.Triple.Object, o) {
+				out = append(out, r)
+			}
+		}
+		return out, true
 	case pok && sok:
-		return e.withSubject(engineTermKey(p), s)
+		return e.withSubject(engineTermKey(p), s), true
 	case pok && ook:
-		return e.withObject(engineTermKey(p), o)
+		return e.withObject(engineTermKey(p), o), true
 	case sok:
-		return e.bySubject[engineTermKey(s)]
+		return e.bySubject[engineTermKey(s)], true
 	case ook:
-		return e.byObject[engineTermKey(o)]
+		return e.byObject[engineTermKey(o)], true
 	case pok:
-		return e.byPredicate[engineTermKey(p)]
+		return e.byPredicate[engineTermKey(p)], true
 	}
-	return nil
+	return nil, false
 }
 
 // owlMatch matches a triple against a pattern, extending b.
 func owlMatch(pat owlPattern, t RDFTriple, b map[string]RDFTerm) bool {
-	for _, pair := range []struct {
-		part string
-		term RDFTerm
-	}{{pat.s, t.Subject}, {pat.p, t.Predicate}, {pat.o, t.Object}} {
-		switch {
-		case strings.HasPrefix(pair.part, "?"):
-			name := pair.part[1:]
-			if bound, ok := b[name]; ok {
-				if !termsEqual(bound, pair.term) {
-					return false
-				}
-				continue
-			}
-			b[name] = pair.term
-		case strings.HasPrefix(pair.part, "#"):
-			want, _ := strconv.Atoi(pair.part[1:])
-			if pair.term.Kind != RDFTermLiteral {
-				return false
-			}
-			n, err := strconv.Atoi(strings.TrimPrefix(strings.TrimSpace(pair.term.Value), "+"))
-			if err != nil || n != want {
-				return false
-			}
-		default:
-			if pair.term.Kind != RDFTermIRI || pair.term.Value != pair.part {
-				return false
-			}
+	return owlMatchPart(pat.s, t.Subject, b) && owlMatchPart(pat.p, t.Predicate, b) && owlMatchPart(pat.o, t.Object, b)
+}
+
+// owlMatchConstants checks a pattern's constant positions only, without
+// binding anything.
+func owlMatchConstants(pat owlPattern, t RDFTriple) bool {
+	return owlMatchPart(pat.s, t.Subject, nil) && owlMatchPart(pat.p, t.Predicate, nil) && owlMatchPart(pat.o, t.Object, nil)
+}
+
+func owlMatchPart(part string, term RDFTerm, b map[string]RDFTerm) bool {
+	switch part[0] {
+	case '?':
+		if b == nil {
+			return true
 		}
+		name := part[1:]
+		if bound, ok := b[name]; ok {
+			return termsEqual(bound, term)
+		}
+		b[name] = term
+		return true
+	case '#':
+		want, _ := strconv.Atoi(part[1:])
+		if term.Kind != RDFTermLiteral {
+			return false
+		}
+		n, err := strconv.Atoi(strings.TrimPrefix(strings.TrimSpace(term.Value), "+"))
+		return err == nil && n == want
 	}
-	return true
+	return term.Kind == RDFTermIRI && term.Value == part
 }
 
 func (e *inferenceEngine) concludeRule(r *owlRule, matched []*rdfsInferenceRecord, b map[string]RDFTerm) {
