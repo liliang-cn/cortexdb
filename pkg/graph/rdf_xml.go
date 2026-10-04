@@ -89,8 +89,34 @@ func (n *xnode) text() string {
 
 var xmlEntityDecl = regexp.MustCompile(`<!ENTITY\s+([A-Za-z_][\w.\-]*)\s+(?:"([^"]*)"|'([^']*)')\s*>`)
 
+// maxRDFXMLDepth bounds element nesting. The tree is walked recursively, and
+// a goroutine that outgrows its stack is not a panic anything can recover
+// from but the end of the process, so a hostile document must be refused
+// before that.
+const maxRDFXMLDepth = 512
+
+// checkEntityExpansion refuses a document whose entity references would
+// expand to much more than the document: the decoder copies an entity's
+// value at every reference, so a few kilobytes of &e; can stand for
+// gigabytes.
+func checkEntityExpansion(src string) error {
+	limit := 8*len(src) + 1<<20
+	total := 0
+	for _, m := range xmlEntityDecl.FindAllStringSubmatch(src, -1) {
+		value := m[2] + m[3]
+		total += strings.Count(src, "&"+m[1]+";") * len(value)
+		if total > limit {
+			return fmt.Errorf("entity references expand to more than %d bytes", limit)
+		}
+	}
+	return nil
+}
+
 // readXMLTree reads the document into xnodes.
 func readXMLTree(src, base string) (*xnode, error) {
+	if err := checkEntityExpansion(src); err != nil {
+		return nil, err
+	}
 	dec := xml.NewDecoder(strings.NewReader(src))
 	dec.Strict = true
 	dec.Entity = map[string]string{}
@@ -173,6 +199,9 @@ func readXMLTree(src, base string) (*xnode, error) {
 			}
 			parent.children = append(parent.children, n)
 			stack = append(stack, n)
+			if len(stack) > maxRDFXMLDepth {
+				return nil, fmt.Errorf("elements nest more than %d deep", maxRDFXMLDepth)
+			}
 		case xml.EndElement:
 			stack = stack[:len(stack)-1]
 		case xml.CharData:
