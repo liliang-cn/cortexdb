@@ -117,9 +117,15 @@ func (g *GraphStore) UpsertNodesBatch(ctx context.Context, nodes []*GraphNode) (
 		}
 
 		at, recorded := g.versionStamps(node.ValidFrom)
-		if _, err = archive.ExecContext(ctx, archiveNodeVersionArgs(ctx, at, node.ID,
+		if _, err = archive.ExecContext(ctx, archiveNodeVersionArgs(ctx, at, recorded, node.ID,
 			node.Content, node.NodeType, string(propertiesJSON))...); err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("failed to archive node version %s: %w", node.ID, err))
+			result.FailedCount++
+			continue
+		}
+		if err = g.archiveNodeCorrection(ctx, tx, node.ID, at, recorded,
+			node.Content, node.NodeType, string(propertiesJSON)); err != nil {
+			result.Errors = append(result.Errors, err)
 			result.FailedCount++
 			continue
 		}
@@ -280,9 +286,15 @@ func (g *GraphStore) UpsertEdgesBatch(ctx context.Context, edges []*GraphEdge) (
 		}
 
 		at, recorded := g.versionStamps(edge.ValidFrom)
-		if _, err = archive.ExecContext(ctx, archiveEdgeVersionArgs(ctx, at, edge.ID, edge.FromNodeID, edge.ToNodeID,
+		if _, err = archive.ExecContext(ctx, archiveEdgeVersionArgs(ctx, at, recorded, edge.ID, edge.FromNodeID, edge.ToNodeID,
 			edge.EdgeType, edge.Weight, string(propertiesJSON))...); err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("failed to archive edge version %s: %w", edge.ID, err))
+			result.FailedCount++
+			continue
+		}
+		if err = g.archiveEdgeCorrection(ctx, tx, edge.ID, at, recorded, edge.FromNodeID, edge.ToNodeID,
+			edge.EdgeType, edge.Weight, string(propertiesJSON)); err != nil {
+			result.Errors = append(result.Errors, err)
 			result.FailedCount++
 			continue
 		}
@@ -643,8 +655,14 @@ func (g *GraphStore) upsertNodesBatchTx(ctx context.Context, tx *sql.Tx, nodes [
 		}
 
 		at, recorded := g.versionStamps(node.ValidFrom)
-		if _, err = archive.ExecContext(ctx, archiveNodeVersionArgs(ctx, at, node.ID,
+		if _, err = archive.ExecContext(ctx, archiveNodeVersionArgs(ctx, at, recorded, node.ID,
 			node.Content, node.NodeType, string(propertiesJSON))...); err != nil {
+			result.FailedCount++
+			result.Errors = append(result.Errors, err)
+			continue
+		}
+		if err = g.archiveNodeCorrection(ctx, tx, node.ID, at, recorded,
+			node.Content, node.NodeType, string(propertiesJSON)); err != nil {
 			result.FailedCount++
 			result.Errors = append(result.Errors, err)
 			continue
@@ -727,8 +745,14 @@ func (g *GraphStore) upsertEdgesBatchTx(ctx context.Context, tx *sql.Tx, edges [
 		}
 
 		at, recorded := g.versionStamps(edge.ValidFrom)
-		if _, err = archive.ExecContext(ctx, archiveEdgeVersionArgs(ctx, at, edge.ID, edge.FromNodeID, edge.ToNodeID,
+		if _, err = archive.ExecContext(ctx, archiveEdgeVersionArgs(ctx, at, recorded, edge.ID, edge.FromNodeID, edge.ToNodeID,
 			edge.EdgeType, edge.Weight, string(propertiesJSON))...); err != nil {
+			result.FailedCount++
+			result.Errors = append(result.Errors, err)
+			continue
+		}
+		if err = g.archiveEdgeCorrection(ctx, tx, edge.ID, at, recorded, edge.FromNodeID, edge.ToNodeID,
+			edge.EdgeType, edge.Weight, string(propertiesJSON)); err != nil {
 			result.FailedCount++
 			result.Errors = append(result.Errors, err)
 			continue

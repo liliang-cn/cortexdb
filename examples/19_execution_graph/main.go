@@ -275,9 +275,9 @@ func (r *recorder) finish(ctx context.Context, outcome string) error {
 		return err
 	}
 	// GetNode hands back the version's ValidFrom, and a ValidFrom on a write
-	// means "this was true since then" — a backdated correction that would
-	// close the running version as a zero-length interval no as-of read can
-	// see. A state change is new, not a correction: let the store date it.
+	// means "this was true since then": written back as is, the run would be
+	// recorded as a correction — done all along, from the moment it started.
+	// A state change happens now, so let the store date it.
 	n.ValidFrom = time.Time{}
 	n.Properties["status"] = "done"
 	n.Properties["outcome"] = outcome

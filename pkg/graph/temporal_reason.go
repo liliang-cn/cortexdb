@@ -147,15 +147,27 @@ const invalidationColumnList = `reason, superseded_by, producer`
 
 // archiveNodeVersionArgs and archiveEdgeVersionArgs bind archive*VersionSQL in
 // its textual parameter order: the closing instant, the invalidation, then the
-// WHERE clause.
-func archiveNodeVersionArgs(ctx context.Context, at time.Time, id, content, nodeType, properties string) []any {
+// WHERE clause, whose last two parameters are keepsAPartBefore's.
+func archiveNodeVersionArgs(ctx context.Context, at, recorded time.Time, id, content, nodeType, properties string) []any {
 	inv := versionFrom(ctx, id)
-	return []any{at, inv.Reason, nullIfEmpty(inv.SupersededBy), inv.Producer, id, content, nodeType, properties}
+	return []any{at, inv.Reason, nullIfEmpty(inv.SupersededBy), inv.Producer, id, content, nodeType, properties,
+		backdated(at, recorded), at}
 }
 
-func archiveEdgeVersionArgs(ctx context.Context, at time.Time, id, from, to, edgeType string, weight float64, properties string) []any {
+func archiveEdgeVersionArgs(ctx context.Context, at, recorded time.Time, id, from, to, edgeType string, weight float64, properties string) []any {
 	inv := versionFrom(ctx, id)
-	return []any{at, inv.Reason, nullIfEmpty(inv.SupersededBy), inv.Producer, id, from, to, edgeType, weight, properties}
+	return []any{at, inv.Reason, nullIfEmpty(inv.SupersededBy), inv.Producer, id, from, to, edgeType, weight, properties,
+		backdated(at, recorded), at}
+}
+
+// backdated is keepsAPartBefore's flag: 1 when the write opens its version
+// before the instant it is recorded. An integer, not a bool, so the comparison
+// reads the same on both backends.
+func backdated(at, recorded time.Time) int {
+	if at.Before(recorded) {
+		return 1
+	}
+	return 0
 }
 
 // --- reading -----------------------------------------------------------------

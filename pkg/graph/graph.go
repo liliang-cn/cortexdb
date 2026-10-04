@@ -30,6 +30,12 @@ type GraphNode struct {
 	//
 	// ValidFrom is the only one a caller may set on a write: it says when the
 	// fact became true in the world, and defaults to the moment of the write.
+	// A ValidFrom earlier than the write is a correction: the version it
+	// replaces stays readable as of every instant before the write, and is
+	// recorded as retracted at it. GetNode returns the version's own
+	// ValidFrom, so writing a node read back from GetNode unchanged backdates
+	// the new content to when the old content began — clear it to say the
+	// change happened now.
 	// The other three are set by the store and ignored on write, the same way
 	// CreatedAt and UpdatedAt already were — a live row always has an open
 	// ValidTo and no RetractedAt, because a row that has ended or been
@@ -434,7 +440,7 @@ func (g *GraphStore) UpsertNode(ctx context.Context, node *GraphNode) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := g.archiveNodeVersion(ctx, tx, node.ID, at,
+	if err := g.archiveNodeVersion(ctx, tx, node.ID, at, recorded,
 		node.Content, node.NodeType, string(propertiesJSON)); err != nil {
 		return err
 	}
@@ -674,7 +680,7 @@ func (g *GraphStore) UpsertEdge(ctx context.Context, edge *GraphEdge) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := g.archiveEdgeVersion(ctx, tx, edge.ID, at,
+	if err := g.archiveEdgeVersion(ctx, tx, edge.ID, at, recorded,
 		edge.FromNodeID, edge.ToNodeID, edge.EdgeType, edge.Weight, string(propertiesJSON)); err != nil {
 		return err
 	}

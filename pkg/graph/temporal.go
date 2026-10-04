@@ -414,19 +414,64 @@ type execer interface {
 // archiveNodeVersionSQL and archiveEdgeVersionSQL are the statement text, kept
 // as constants because the batch paths prepare them once and execute them per
 // row rather than rebuilding the string for each.
+//
+// A backdated write — one whose stated ValidFrom is earlier than the moment it
+// is recorded — keeps only the part of the old version that began before that
+// instant here: a version the write replaces from its first instant on has no
+// such part, and closing it at `at` would write an interval that ends where or
+// before it begins, visible at no instant at all. What the store believed
+// about the rest is kept by archiveNodeCorrection.
 const archiveNodeVersionSQL = `
 	INSERT INTO graph_node_history (` + nodeColumns + `, ` + invalidationColumnList + `)
 	SELECT id, vector, content, node_type, properties, created_at, updated_at,
 	       valid_from, COALESCE(valid_to, ?), recorded_at, retracted_at, ?, ?, ?
 	FROM graph_nodes
-	WHERE id = ? AND ` + nodeContentChanged
+	WHERE id = ? AND ` + nodeContentChanged + ` AND ` + keepsAPartBefore
 
 const archiveEdgeVersionSQL = `
 	INSERT INTO graph_edge_history (` + edgeColumns + `, ` + invalidationColumnList + `)
 	SELECT id, from_node_id, to_node_id, edge_type, weight, properties, vector, created_at,
 	       valid_from, COALESCE(valid_to, ?), recorded_at, retracted_at, ?, ?, ?
 	FROM graph_edges
+	WHERE id = ? AND ` + edgeContentChanged + ` AND ` + keepsAPartBefore
+
+// keepsAPartBefore binds (backdated, at): a write recorded when it says it
+// became true closes the old version exactly as it always has; a backdated one
+// archives it here only if it began before `at`.
+const keepsAPartBefore = `(? = 0 OR valid_from IS NULL OR valid_from < ?)`
+
+// archiveNodeCorrectionSQL and archiveEdgeCorrectionSQL keep what a backdated
+// write corrected.
+//
+// Until the write, the store believed the old version over the stretch of
+// valid time the write now claims, [max(valid_from, at), open). That belief
+// is recorded here as a row of its own, retracted at the instant the write is
+// recorded — the transaction-time half of a correction, the way Snodgrass's
+// bitemporal model and Graphiti's expired_at keep it. Without it, an as-of
+// read at an instant between `at` and the write sees neither version: the old
+// one closed at `at`, the new one not yet recorded. That is the read-modify-
+// write case exactly: GetNode returns the version's own ValidFrom, and writing
+// the node back with it otherwise erased the version it replaced.
+//
+// COALESCE(retracted_at, ?) rather than a bare parameter: a live row has no
+// retracted_at, and the function gives PostgreSQL a timestamp type to infer
+// the parameter as, where a bare placeholder in a select list reads as text.
+const archiveNodeCorrectionSQL = `
+	INSERT INTO graph_node_history (` + nodeColumns + `, ` + invalidationColumnList + `)
+	SELECT id, vector, content, node_type, properties, created_at, updated_at,
+	       ` + correctedFrom + `, valid_to, recorded_at, COALESCE(retracted_at, ?), ?, ?, ?
+	FROM graph_nodes
+	WHERE id = ? AND ` + nodeContentChanged
+
+const archiveEdgeCorrectionSQL = `
+	INSERT INTO graph_edge_history (` + edgeColumns + `, ` + invalidationColumnList + `)
+	SELECT id, from_node_id, to_node_id, edge_type, weight, properties, vector, created_at,
+	       ` + correctedFrom + `, valid_to, recorded_at, COALESCE(retracted_at, ?), ?, ?, ?
+	FROM graph_edges
 	WHERE id = ? AND ` + edgeContentChanged
+
+// correctedFrom binds (at, at): the start of the corrected stretch.
+const correctedFrom = `CASE WHEN valid_from IS NULL OR valid_from < ? THEN ? ELSE valid_from END`
 
 // upsertNodeSQL and upsertEdgeSQL are the write, shared by the single-row and
 // batch paths so the two cannot version differently. The CASE guards are what
@@ -459,18 +504,48 @@ const upsertEdgeSQL = `
 		recorded_at = CASE WHEN ` + edgeChangedFromExcluded + ` THEN excluded.recorded_at ELSE graph_edges.recorded_at END
 	`
 
-func (g *GraphStore) archiveNodeVersion(ctx context.Context, ex execer, nodeID string, at time.Time, content, nodeType, properties string) error {
-	_, err := ex.ExecContext(ctx, g.dialect.Rebind(archiveNodeVersionSQL), archiveNodeVersionArgs(ctx, at, nodeID, content, nodeType, properties)...)
+func (g *GraphStore) archiveNodeVersion(ctx context.Context, ex execer, nodeID string, at, recorded time.Time, content, nodeType, properties string) error {
+	_, err := ex.ExecContext(ctx, g.dialect.Rebind(archiveNodeVersionSQL), archiveNodeVersionArgs(ctx, at, recorded, nodeID, content, nodeType, properties)...)
 	if err != nil {
 		return fmt.Errorf("cortexdb/graph: archive node version %s: %w", nodeID, err)
+	}
+	return g.archiveNodeCorrection(ctx, ex, nodeID, at, recorded, content, nodeType, properties)
+}
+
+func (g *GraphStore) archiveEdgeVersion(ctx context.Context, ex execer, edgeID string, at, recorded time.Time, from, to, edgeType string, weight float64, properties string) error {
+	_, err := ex.ExecContext(ctx, g.dialect.Rebind(archiveEdgeVersionSQL), archiveEdgeVersionArgs(ctx, at, recorded, edgeID, from, to, edgeType, weight, properties)...)
+	if err != nil {
+		return fmt.Errorf("cortexdb/graph: archive edge version %s: %w", edgeID, err)
+	}
+	return g.archiveEdgeCorrection(ctx, ex, edgeID, at, recorded, from, to, edgeType, weight, properties)
+}
+
+// archiveNodeCorrection and archiveEdgeCorrection run the correction archive
+// for a backdated write and nothing otherwise, so the ordinary write — stamped
+// when it is recorded — pays no extra statement. The batch paths call them
+// after their prepared archive, inside the same transaction.
+func (g *GraphStore) archiveNodeCorrection(ctx context.Context, ex execer, nodeID string, at, recorded time.Time, content, nodeType, properties string) error {
+	if !at.Before(recorded) {
+		return nil
+	}
+	inv := versionFrom(ctx, nodeID)
+	if _, err := ex.ExecContext(ctx, g.dialect.Rebind(archiveNodeCorrectionSQL),
+		at, at, recorded, inv.Reason, nullIfEmpty(inv.SupersededBy), inv.Producer,
+		nodeID, content, nodeType, properties); err != nil {
+		return fmt.Errorf("cortexdb/graph: archive corrected node version %s: %w", nodeID, err)
 	}
 	return nil
 }
 
-func (g *GraphStore) archiveEdgeVersion(ctx context.Context, ex execer, edgeID string, at time.Time, from, to, edgeType string, weight float64, properties string) error {
-	_, err := ex.ExecContext(ctx, g.dialect.Rebind(archiveEdgeVersionSQL), archiveEdgeVersionArgs(ctx, at, edgeID, from, to, edgeType, weight, properties)...)
-	if err != nil {
-		return fmt.Errorf("cortexdb/graph: archive edge version %s: %w", edgeID, err)
+func (g *GraphStore) archiveEdgeCorrection(ctx context.Context, ex execer, edgeID string, at, recorded time.Time, from, to, edgeType string, weight float64, properties string) error {
+	if !at.Before(recorded) {
+		return nil
+	}
+	inv := versionFrom(ctx, edgeID)
+	if _, err := ex.ExecContext(ctx, g.dialect.Rebind(archiveEdgeCorrectionSQL),
+		at, at, recorded, inv.Reason, nullIfEmpty(inv.SupersededBy), inv.Producer,
+		edgeID, from, to, edgeType, weight, properties); err != nil {
+		return fmt.Errorf("cortexdb/graph: archive corrected edge version %s: %w", edgeID, err)
 	}
 	return nil
 }

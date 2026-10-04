@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- A backdated graph write — a `GraphNode` or `GraphEdge` whose `ValidFrom` is
+  earlier than the moment it is written — no longer erases the version it
+  replaces from as-of reads. The old version was closed at the stated
+  `ValidFrom`, so between that instant and the write no version was visible;
+  writing back a node read with `GetNode`, which returns the version's own
+  `ValidFrom`, made the replaced version invisible at every instant. The
+  replaced version is now also kept as a history row covering the corrected
+  stretch, retracted at the moment of the write, on every write path
+  (`UpsertNode`, `UpsertEdge`, the batch upserts and `ExecuteBatch`) and both
+  backends. Ordinary writes archive exactly as before.
+
 ## [2.119.1] - 2026-10-03
 
 ### Fixed
