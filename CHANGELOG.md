@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Node property indexes: `GraphStore.IndexNodeProperty(ctx, key)` puts an
+  expression index on one JSON property (`NodePropertyIndexes`,
+  `DropNodePropertyIndex`; opt-in per key, as each is paid for on every
+  write). Equality and `IN` filters on an indexed key become index lookups in
+  `GraphFilter.Properties` with no change of its own, and in Cypher, which
+  reads the index catalog and also starts its joins from such a filter as it
+  does from `id(n) = …`; on SQLite numeric ranges on an indexed key use it as
+  well. Results are identical with and without an index. Keys are identifier
+  characters only, and a key is written into SQL only from the catalog.
+
 ### Changed
 
 - A graph node no longer needs a vector. `UpsertNode`, `UpsertNodesBatch` and

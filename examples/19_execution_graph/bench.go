@@ -34,6 +34,7 @@ type benchConfig struct {
 	twoPhase bool // running then done, or done only
 	noFeed   bool // change feed disabled
 	batched  bool // a whole run buffered and written as two batch calls
+	indexed  bool // run_id, status and latency_ms carry property indexes
 }
 
 type benchResult struct {
@@ -54,6 +55,7 @@ type benchResult struct {
 func runBench(ctx context.Context, dir string, steps, payload int) error {
 	configs := []benchConfig{
 		{name: "two-phase, 1 writer", writers: 1, handles: 1, twoPhase: true},
+		{name: "two-phase, 3 properties indexed", writers: 1, handles: 1, twoPhase: true, indexed: true},
 		{name: "final write only, 1 writer", writers: 1, handles: 1},
 		{name: "two-phase, change feed off", writers: 1, handles: 1, twoPhase: true, noFeed: true},
 		{name: "final only, batched per run", writers: 1, handles: 1, batched: true},
@@ -84,8 +86,17 @@ func runBench(ctx context.Context, dir string, steps, payload int) error {
 			fmt.Printf("    first error: %s\n", r.firstErr)
 		}
 	}
-	return benchReads(ctx, results[0])
+	for _, r := range results[:2] { // unindexed, then indexed
+		if err := benchReads(ctx, r); err != nil {
+			return err
+		}
+	}
+	return nil
 }
+
+// indexedKeys are the step properties an execution record is most often
+// filtered by: which run, what state, how slow.
+var indexedKeys = []string{"run_id", "status", "latency_ms"}
 
 func benchWrite(ctx context.Context, path string, cfg benchConfig, steps, payload int) (benchResult, error) {
 	var opts []cortexdb.Option
@@ -101,6 +112,13 @@ func benchWrite(ctx context.Context, path string, cfg benchConfig, steps, payloa
 		// Create the schema before the writers race to.
 		if err := db.Graph().InitGraphSchema(ctx); err != nil {
 			return benchResult{}, err
+		}
+		if cfg.indexed {
+			for _, key := range indexedKeys {
+				if err := db.Graph().IndexNodeProperty(ctx, key); err != nil {
+					return benchResult{}, err
+				}
+			}
 		}
 		handles[i] = db
 	}
@@ -319,6 +337,16 @@ func benchReads(ctx context.Context, r benchResult) error {
 		{"slow tool calls (label + property only)", graph.CypherRequest{
 			Query:   `MATCH (t:ToolCall) WHERE t.latency_ms > 4500 RETURN count(t)`,
 			MaxRows: 10000, Timeout: 60 * time.Second,
+		}},
+		{"every step of one run, by run_id", graph.CypherRequest{
+			Query:  `MATCH (s) WHERE s.run_id = $run RETURN count(s)`,
+			Params: map[string]any{"run": "run:000123"},
+		}},
+		{"steps still running, any run", graph.CypherRequest{
+			Query: `MATCH (s) WHERE s.status = 'running' RETURN count(s)`,
+		}},
+		{"slowest steps, any run (latency_ms > 5000)", graph.CypherRequest{
+			Query: `MATCH (s) WHERE s.latency_ms > 5000 RETURN count(s)`,
 		}},
 		{"lineage of one step (6 hops back)", graph.CypherRequest{
 			Query:  `MATCH (s)-[:TRIGGERED*1..6]->(t) WHERE id(t) = $id RETURN count(DISTINCT s)`,

@@ -24,6 +24,15 @@ type Backend interface {
 	EdgeSource(ctx context.Context) (string, []any)
 }
 
+// IndexedProperties is implemented by a Backend whose node properties can
+// carry expression indexes. It names the indexed keys; the engine then writes
+// its filters on those keys as the exact indexed expression, which is the only
+// form a planner will match against an expression index. A Backend without it
+// gets the generic pre-filter, which is correct and unindexed.
+type IndexedProperties interface {
+	IndexedNodeProperties(ctx context.Context) map[string]bool
+}
+
 // Defaults and hard limits. The hard limits are not negotiable per request:
 // they are what keeps one query from monopolising a shared brain.
 const (
@@ -122,6 +131,9 @@ func Execute(ctx context.Context, b Backend, query string, opts Options) (*Resul
 		edgeSrc: edgeSrc, edgeArgs: edgeArgs,
 		kind: b.Dialect().Kind(), dialect: b.Dialect(),
 		needContent: needsContent(q),
+	}
+	if ip, ok := b.(IndexedProperties); ok {
+		x.src.indexedProps = ip.IndexedNodeProperties(ctx)
 	}
 	if !opts.IncludeEndedFacts {
 		at := opts.ValidAt

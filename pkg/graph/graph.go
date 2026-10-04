@@ -324,6 +324,12 @@ func (g *GraphStore) createGraphSchema(ctx context.Context) error {
 	CREATE INDEX IF NOT EXISTS idx_edges_walk_from ON graph_edges(from_node_id, to_node_id, edge_type, weight, id);
 	CREATE INDEX IF NOT EXISTS idx_edges_walk_to ON graph_edges(to_node_id, from_node_id, edge_type, weight, id);
 
+	-- Node properties indexed by IndexNodeProperty; see property_index.go.
+	CREATE TABLE IF NOT EXISTS graph_property_indexes (
+		prop_key TEXT PRIMARY KEY,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+
 	-- RDF / Knowledge Graph namespace mappings
 	CREATE TABLE IF NOT EXISTS kg_namespaces (
 		prefix TEXT PRIMARY KEY,

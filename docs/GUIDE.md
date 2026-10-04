@@ -328,6 +328,8 @@ Keys (`owl:FunctionalProperty` / `owl:InverseFunctionalProperty`) derive `sameAs
 
 RDF 1.2 triple terms (`<<( s p o )>>`, reifiers, `{| |}` annotations) and SPARQL 1.2 make statements about a fact queryable. `graph_cypher_query` answers read-only openCypher / GQL over the property graph.
 
+Node properties are JSON, so a filter on one reads every node unless the property is indexed. `GraphStore.IndexNodeProperty(ctx, "run_id")` adds an expression index (opt-in per key, paid for on every write; `NodePropertyIndexes`, `DropNodePropertyIndex`). Equality and `IN` filters on an indexed key — `GraphFilter.Properties`, and Cypher `WHERE s.run_id = $run` or `{run_id: $run}` — become index lookups, and Cypher starts its joins from them as it does from `id(n) = …`; on SQLite numeric ranges (`s.latency_ms > 3000`) use the index too. A node needs no vector: structural nodes (an agent's execution steps, runs) are written without one and never take part in vector search. `examples/19_execution_graph` puts these together into an agent's execution record.
+
 Retrieval: `retrieval_mode: "ppr"` is Personalized PageRank from the entities a question names, rank-fused with the first stage; without an embedder `auto` uses it when the question names an entity. Every committed write is also appended to a change feed (`changes_since`, `db.Changes`).
 
 ```go

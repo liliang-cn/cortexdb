@@ -290,6 +290,8 @@ SELECT ?who WHERE { ?x cxr:depends_on ?y . ?y rdfs:label "CortexDB" . ?x rdfs:la
 
 RDF 1.2 的三元组项（`<<( s p o )>>`、具名化、`{| |}` 注解）和 SPARQL 1.2 让"关于事实的事实"可以查询。`graph_cypher_query` 在属性图上回答只读的 openCypher / GQL 查询。
 
+节点属性存为 JSON，对某个属性做筛选默认要读遍所有节点，除非给它建了索引。`GraphStore.IndexNodeProperty(ctx, "run_id")` 为单个属性建表达式索引（按键手动开启，每次写入都要付出维护代价；另有 `NodePropertyIndexes`、`DropNodePropertyIndex`）。对已索引键的等值和 `IN` 筛选——`GraphFilter.Properties`，以及 Cypher 里的 `WHERE s.run_id = $run` 或 `{run_id: $run}`——会变成索引查找，Cypher 也会像对待 `id(n) = …` 一样从它出发做连接；在 SQLite 上，数值范围（`s.latency_ms > 3000`）同样走索引。节点可以不带向量：结构性节点（agent 的执行步骤、run）不必带向量写入，也不会参与向量搜索。`examples/19_execution_graph` 把这些组合成一个 agent 的执行记录。
+
 检索：`retrieval_mode: "ppr"` 从问题点名的实体出发做个性化 PageRank，再与第一阶段结果按排名融合；没有 embedder 时，问题点名了实体，`auto` 就会用它。每一次已提交的写入也会追加到变更事件流（`changes_since`、`db.Changes`）。
 
 ```go
