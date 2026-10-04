@@ -21,6 +21,7 @@ go run ./examples/15_cortex_query
 go run ./examples/16_ontology
 go run ./examples/17_query_source
 go run ./examples/18_vector_graph_ontology
+go run ./examples/19_execution_graph
 ```
 
 ## 01_core
@@ -241,3 +242,17 @@ All three layers over one estate, and the seams between them.
 
 Runs lexically with no model; set `OPENAI_API_KEY` to rank the same corpus by
 meaning. See its own README for the three API defects it surfaced.
+
+## 19_execution_graph
+
+An agent's step-by-step record as a graph, after the execution graph in
+*Agentic GraphRAG* (ch. 7).
+
+- two-phase step writes (running, then done) with TRIGGERED causal edges
+- a decision ledger entry whose premises are steps
+- structural Cypher: tool calls after a low-confidence LLM call, lineage
+- as-of replay of a run while a step was in flight
+- the change feed an evaluator would read; promotion into a separate brain
+
+`-bench` measures write throughput, history and change-feed growth, concurrent
+writers and query latency on the same workload.
