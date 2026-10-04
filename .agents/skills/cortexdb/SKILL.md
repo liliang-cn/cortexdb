@@ -290,6 +290,10 @@ OPENAI_BASE_URL=http://43.167.167.6:8080/v1
 OPENAI_MODEL=gpt-5.4
 ```
 
+## Execution graph
+
+An agent's record of its own run, as graph records: `StartRun`, `BeginStep` / `EndStep` (a step is written as running, with `TRIGGERED` edges from the steps it consumed, before its work runs), `RecordStep`, `FinishRun`; read back with `GetRun`, `ListRuns`, `RunSteps`, `SummarizeRun`, `StepLineage` and `ReplayRun` (the run as of any instant). The same nine are MCP tools: `execution_run_start`, `execution_step_begin`, `execution_step_end`, `execution_step_record`, `execution_run_finish` write; `execution_run_get`, `execution_runs_list`, `execution_step_lineage`, `execution_run_replay` read. See `examples/19_execution_graph`.
+
 ## Tools and MCP
 
 In-process tool calls:
