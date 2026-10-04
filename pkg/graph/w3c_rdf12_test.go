@@ -10,10 +10,10 @@ import (
 	"testing"
 )
 
-// The W3C RDF 1.2 syntax suites for N-Triples, N-Quads, Turtle and TriG, which
-// include the RDF 1.1 suites by reference — RDF 1.2 conformance is defined as
-// passing both. RDF/XML and the semantics tests are out of scope: this store
-// neither reads RDF/XML nor implements RDF 1.2 entailment.
+// The W3C RDF 1.2 syntax suites for N-Triples, N-Quads, Turtle, TriG and
+// RDF/XML, which include the RDF 1.1 suites by reference — RDF 1.2
+// conformance is defined as passing both. The semantics tests are out of
+// scope: this store does not implement RDF 1.2 entailment as such.
 
 // rdfSyntaxForTest maps a test type to the syntax under test.
 func rdfSyntaxForTest(test w3cTest) (rdfSyntax, bool) {

@@ -53,6 +53,48 @@ PREFIX ut:    <http://www.w3.org/2009/sparql/tests/test-update#>
         <sparql-sparql12-lang-basedir#langdir-literal-invalid>
         <sparql-sparql12-expression#triple-on-literals>
         <sparql-sparql12-expression#triple-on-triple-terms>
+        <sparql-sparql11-property-path#pp06>
+        <sparql-sparql11-property-path#pp11>
+        <sparql-sparql11-property-path#pp16>
+        <sparql-sparql11-property-path#pp21>
+        <sparql-sparql11-property-path#pp28a>
+        <sparql-sparql11-property-path#pp34>
+        <sparql-sparql11-property-path#pp36>
+        <sparql-sparql11-property-path#values_and_path>
+        <sparql-sparql11-bind#bind07>
+        <sparql-sparql11-bind#bind08>
+        <sparql-sparql11-bind#bind10>
+        <sparql-sparql11-subquery#subquery01>
+        <sparql-sparql11-subquery#subquery03>
+        <sparql-sparql11-negation#graph-minus>
+        <sparql-sparql11-cast#cast-string>
+        <sparql-sparql11-cast#cast-decimal>
+        <sparql-sparql11-functions#iri01>
+        <sparql-sparql11-functions#bnode01>
+        <sparql-sparql11-aggregates#agg-sum-01>
+        <sparql-sparql11-aggregates#agg08>
+        <sparql-sparql11-aggregates#agg12>
+        <sparql-sparql11-syntax-query#test_49>
+        <sparql-sparql11-syntax-query#test_60>
+        <sparql-sparql11-syntax-query#test_65>
+        <sparql-sparql11-syntax-query#test_pn_05>
+        <sparql-sparql11-syntax-query#test_pn_bad_13>
+        <sparql-sparql11-add#add01>
+        <sparql-sparql11-copy#copy01>
+        <sparql-sparql11-move#move01>
+        <sparql-sparql11-clear#dawg-clear-named-01>
+        <sparql-sparql11-drop#dawg-drop-all-01>
+        <sparql-sparql11-basic-update#insert-where-same-bnode2>
+        <sparql-sparql11-basic-update#insert-data-spo-named1>
+        <sparql-sparql11-delete#dawg-delete-using-02a>
+        <sparql-sparql11-syntax-update-1#test_38>
+        <sparql-sparql11-syntax-update-1#test_43>
+        <sparql-sparql11-syntax-update-1#test_54>
+        <sparql-sparql11-csv-tsv-res#csv01>
+        <sparql-sparql11-csv-tsv-res#tsv02>
+        <sparql-sparql11-json-res#jsonres01>
+        <sparql-sparql11-service#service1>
+        <sparql-sparql11-service#service3>
     ) .
 
 <sparql-sparql12-eval-triple-terms#basic-2> rdf:type mf:QueryEvaluationTest ;
@@ -289,4 +331,288 @@ PREFIX ut:    <http://www.w3.org/2009/sparql/tests/test-update#>
     mf:name "triple-on-triple-terms" ;
     mf:action [ qt:query <sparql12/expression/triple-on-triple-terms.rq> ] ;
     mf:result <sparql12/expression/triple-on-triple-terms.srj> ;
+    .
+
+<sparql-sparql11-property-path#pp06>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#graphData> <sparql11/property-path/pp061.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#graphData> <sparql11/property-path/pp062.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/property-path/pp06.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "(pp06) Path with two graphs" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/property-path/pp06.srx> ;
+    .
+
+<sparql-sparql11-property-path#pp11>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/property-path/pp11.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/property-path/pp11.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "(pp11) Simple path and two paths to same target node" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/property-path/pp11.srx> ;
+    .
+
+<sparql-sparql11-property-path#pp16>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/property-path/pp16.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/property-path/pp14.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "(pp16) Duplicate paths and cycles through foaf:knows*" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/property-path/pp16.srx> ;
+    .
+
+<sparql-sparql11-property-path#pp21>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/property-path/data-diamond.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/property-path/path-2-2.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "(pp21) Diamond -- :p+" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/property-path/diamond-2.srx> ;
+    .
+
+<sparql-sparql11-property-path#pp28a>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/property-path/data-diamond-loop.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/property-path/path-3-3.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "(pp28a) Diamond, with loop -- (:p/:p)?" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/property-path/diamond-loop-5a.srx> ;
+    .
+
+<sparql-sparql11-property-path#pp34>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#graphData> <sparql11/property-path/ng-01.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#graphData> <sparql11/property-path/ng-02.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#graphData> <sparql11/property-path/ng-03.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/property-path/path-ng-01.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "(pp34) Named Graph 1" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/property-path/path-ng-01.srx> ;
+    .
+
+<sparql-sparql11-property-path#pp36>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/property-path/clique3.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/property-path/pp36.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "(pp36) Arbitrary path with bound endpoints" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/property-path/pp36.srx> ;
+    .
+
+<sparql-sparql11-property-path#values_and_path>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/property-path/empty.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/property-path/values_and_path.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "ZeroOrX property paths should only return terms in the graph and not also terms defined in the query" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/property-path/values_and_path.srx> ;
+    .
+
+<sparql-sparql11-bind#bind07>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/bind/data.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/bind/bind07.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "bind07 - BIND" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/bind/bind07.srx> ;
+    .
+
+<sparql-sparql11-bind#bind08>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/bind/data.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/bind/bind08.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "bind08 - BIND" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/bind/bind08.srx> ;
+    .
+
+<sparql-sparql11-bind#bind10>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/bind/data.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/bind/bind10.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "bind10 - BIND scoping - Variable in filter not in scope" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/bind/bind10.srx> ;
+    .
+
+<sparql-sparql11-subquery#subquery01>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#graphData> <sparql11/subquery/sq01.rdf> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/subquery/sq01.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "sq01 - Subquery within graph pattern" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/subquery/sq01.srx> ;
+    .
+
+<sparql-sparql11-subquery#subquery03>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#graphData> <sparql11/subquery/sq01.rdf> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/subquery/sq03.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "sq03 - Subquery within graph pattern, graph variable is not bound" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/subquery/sq03.srx> ;
+    .
+
+<sparql-sparql11-negation#graph-minus>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#graphData> <sparql11/negation/graph-minus.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/negation/graph-minus.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "outer GRAPH operator does not affect MINUS disjointness" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/negation/graph-minus.srx> ;
+    .
+
+<sparql-sparql11-cast#cast-string>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/cast/data.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/cast/cast-string.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "xsd:string cast" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/cast/cast-string.srx> ;
+    .
+
+<sparql-sparql11-cast#cast-decimal>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/cast/data.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/cast/cast-decimal.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "xsd:decimal cast" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/cast/cast-decimal.srx> ;
+    .
+
+<sparql-sparql11-functions#iri01>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/functions/data.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/functions/iri01.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "IRI()/URI()" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/functions/iri01.srx> ;
+    .
+
+<sparql-sparql11-functions#bnode01>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/functions/data.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/functions/bnode01.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "BNODE(str)" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/functions/bnode01.srx> ;
+    .
+
+<sparql-sparql11-aggregates#agg-sum-01>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/aggregates/agg-numeric.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/aggregates/agg-sum-01.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "SUM" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/aggregates/agg-sum-01.srx> ;
+    .
+
+<sparql-sparql11-aggregates#agg08>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#NegativeSyntaxTest11> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <sparql11/aggregates/agg08.rq> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "COUNT 8" ;
+    .
+
+<sparql-sparql11-aggregates#agg12>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#NegativeSyntaxTest11> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <sparql11/aggregates/agg12.rq> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "COUNT 12" ;
+    .
+
+<sparql-sparql11-syntax-query#test_49>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#NegativeSyntaxTest11> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <sparql11/syntax-query/syn-bad-07.rq> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "syn-bad-07.rq" ;
+    .
+
+<sparql-sparql11-syntax-query#test_60>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#NegativeSyntaxTest11> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <sparql11/syntax-query/syntax-BINDscope6.rq> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "syntax-BINDscope6.rq" ;
+    .
+
+<sparql-sparql11-syntax-query#test_65>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#NegativeSyntaxTest11> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <sparql11/syntax-query/syntax-SELECTscope2.rq> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "syntax-SELECTscope2" ;
+    .
+
+<sparql-sparql11-syntax-query#test_pn_05>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#PositiveSyntaxTest11> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <sparql11/syntax-query/syn-pname-05.rq> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "syn-pname-05" ;
+    .
+
+<sparql-sparql11-syntax-query#test_pn_bad_13>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#NegativeSyntaxTest11> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <sparql11/syntax-query/syn-bad-pname-13.rq> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "syn-bad-pname-13" ;
+    .
+
+<sparql-sparql11-add#add01>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#UpdateEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2009/sparql/tests/test-update#data> <sparql11/add/add-default.ttl> ; <http://www.w3.org/2009/sparql/tests/test-update#graphData> [ <http://www.w3.org/2000/01/rdf-schema#label> "http://example.org/g1" ; <http://www.w3.org/2009/sparql/tests/test-update#graph> <sparql11/add/add-01-pre.ttl> ] ; <http://www.w3.org/2009/sparql/tests/test-update#request> <sparql11/add/add-01.ru> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "ADD 1" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> [ <http://www.w3.org/2009/sparql/tests/test-update#data> <sparql11/add/add-default.ttl> ; <http://www.w3.org/2009/sparql/tests/test-update#graphData> [ <http://www.w3.org/2000/01/rdf-schema#label> "http://example.org/g1" ; <http://www.w3.org/2009/sparql/tests/test-update#graph> <sparql11/add/add-01-post.ttl> ] ] ;
+    .
+
+<sparql-sparql11-copy#copy01>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#UpdateEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2009/sparql/tests/test-update#data> <sparql11/copy/copy-default.ttl> ; <http://www.w3.org/2009/sparql/tests/test-update#graphData> [ <http://www.w3.org/2000/01/rdf-schema#label> "http://example.org/g1" ; <http://www.w3.org/2009/sparql/tests/test-update#graph> <sparql11/copy/copy-01.ttl> ] ; <http://www.w3.org/2009/sparql/tests/test-update#request> <sparql11/copy/copy-01.ru> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "COPY 1" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> [ <http://www.w3.org/2009/sparql/tests/test-update#data> <sparql11/copy/copy-default.ttl> ; <http://www.w3.org/2009/sparql/tests/test-update#graphData> [ <http://www.w3.org/2000/01/rdf-schema#label> "http://example.org/g1" ; <http://www.w3.org/2009/sparql/tests/test-update#graph> <sparql11/copy/copy-default.ttl> ] ] ;
+    .
+
+<sparql-sparql11-move#move01>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#UpdateEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2009/sparql/tests/test-update#data> <sparql11/move/move-default.ttl> ; <http://www.w3.org/2009/sparql/tests/test-update#graphData> [ <http://www.w3.org/2000/01/rdf-schema#label> "http://example.org/g1" ; <http://www.w3.org/2009/sparql/tests/test-update#graph> <sparql11/move/move-01.ttl> ] ; <http://www.w3.org/2009/sparql/tests/test-update#request> <sparql11/move/move-01.ru> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "MOVE 1" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> [ <http://www.w3.org/2009/sparql/tests/test-update#graphData> [ <http://www.w3.org/2000/01/rdf-schema#label> "http://example.org/g1" ; <http://www.w3.org/2009/sparql/tests/test-update#graph> <sparql11/move/move-default.ttl> ] ] ;
+    .
+
+<sparql-sparql11-clear#dawg-clear-named-01>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#UpdateEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2009/sparql/tests/test-update#data> <sparql11/clear/clear-default.ttl> ; <http://www.w3.org/2009/sparql/tests/test-update#graphData> [ <http://www.w3.org/2000/01/rdf-schema#label> "http://example.org/g1" ; <http://www.w3.org/2009/sparql/tests/test-update#graph> <sparql11/clear/clear-g1.ttl> ] ; <http://www.w3.org/2009/sparql/tests/test-update#graphData> [ <http://www.w3.org/2000/01/rdf-schema#label> "http://example.org/g2" ; <http://www.w3.org/2009/sparql/tests/test-update#graph> <sparql11/clear/clear-g2.ttl> ] ; <http://www.w3.org/2009/sparql/tests/test-update#request> <sparql11/clear/clear-named-01.ru> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "CLEAR NAMED" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> [ <http://www.w3.org/2009/sparql/tests/test-update#data> <sparql11/clear/clear-default.ttl> ; <http://www.w3.org/2009/sparql/tests/test-update#graphData> [ <http://www.w3.org/2000/01/rdf-schema#label> "http://example.org/g1" ; <http://www.w3.org/2009/sparql/tests/test-update#graph> <sparql11/clear/empty.ttl> ] ; <http://www.w3.org/2009/sparql/tests/test-update#graphData> [ <http://www.w3.org/2000/01/rdf-schema#label> "http://example.org/g2" ; <http://www.w3.org/2009/sparql/tests/test-update#graph> <sparql11/clear/empty.ttl> ] ] ;
+    .
+
+<sparql-sparql11-drop#dawg-drop-all-01>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#UpdateEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2009/sparql/tests/test-update#data> <sparql11/drop/drop-default.ttl> ; <http://www.w3.org/2009/sparql/tests/test-update#graphData> [ <http://www.w3.org/2000/01/rdf-schema#label> "http://example.org/g1" ; <http://www.w3.org/2009/sparql/tests/test-update#graph> <sparql11/drop/drop-g1.ttl> ] ; <http://www.w3.org/2009/sparql/tests/test-update#graphData> [ <http://www.w3.org/2000/01/rdf-schema#label> "http://example.org/g2" ; <http://www.w3.org/2009/sparql/tests/test-update#graph> <sparql11/drop/drop-g2.ttl> ] ; <http://www.w3.org/2009/sparql/tests/test-update#request> <sparql11/drop/drop-all-01.ru> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "DROP ALL" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> [  ] ;
+    .
+
+<sparql-sparql11-basic-update#insert-where-same-bnode2>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#UpdateEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2009/sparql/tests/test-update#data> <sparql11/basic-update/insert-where-same-bnode-pre.ttl> ; <http://www.w3.org/2009/sparql/tests/test-update#request> <sparql11/basic-update/insert-where-same-bnode2.ru> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "INSERTing the same bnode with two INSERT WHERE statement within one request is NOT the same bnode even if both WHERE clauses have the empty solution mapping as the only solution." ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> [ <http://www.w3.org/2009/sparql/tests/test-update#data> <sparql11/basic-update/insert-where-same-bnode-pre.ttl> ; <http://www.w3.org/2009/sparql/tests/test-update#graphData> [ <http://www.w3.org/2000/01/rdf-schema#label> "http://example.org/g3" ; <http://www.w3.org/2009/sparql/tests/test-update#graph> <sparql11/basic-update/insert-where-same-bnode-g3-post.ttl> ] ] ;
+    .
+
+<sparql-sparql11-basic-update#insert-data-spo-named1>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#UpdateEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2009/sparql/tests/test-update#request> <sparql11/basic-update/insert-data-named1.ru> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "Simple insert data named 1" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> [ <http://www.w3.org/2009/sparql/tests/test-update#graphData> [ <http://www.w3.org/2000/01/rdf-schema#label> "http://example.org/g1" ; <http://www.w3.org/2009/sparql/tests/test-update#graph> <sparql11/basic-update/spo.ttl> ] ; <http://www.w3.org/2009/sparql/tests/test-update#result> <http://www.w3.org/2009/sparql/tests/test-update#success> ] ;
+    .
+
+<sparql-sparql11-delete#dawg-delete-using-02a>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#UpdateEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2009/sparql/tests/test-update#data> <sparql11/delete/delete-pre-01.ttl> ; <http://www.w3.org/2009/sparql/tests/test-update#graphData> [ <http://www.w3.org/2000/01/rdf-schema#label> "http://example.org/g2" ; <http://www.w3.org/2009/sparql/tests/test-update#graph> <sparql11/delete/delete-pre-02.ttl> ] ; <http://www.w3.org/2009/sparql/tests/test-update#graphData> [ <http://www.w3.org/2000/01/rdf-schema#label> "http://example.org/g3" ; <http://www.w3.org/2009/sparql/tests/test-update#graph> <sparql11/delete/delete-pre-03.ttl> ] ; <http://www.w3.org/2009/sparql/tests/test-update#request> <sparql11/delete/delete-using-02.ru> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "Simple DELETE 2 (USING)" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> [ <http://www.w3.org/2009/sparql/tests/test-update#data> <sparql11/delete/delete-post-01f.ttl> ; <http://www.w3.org/2009/sparql/tests/test-update#graphData> [ <http://www.w3.org/2000/01/rdf-schema#label> "http://example.org/g2" ; <http://www.w3.org/2009/sparql/tests/test-update#graph> <sparql11/delete/delete-post-02f.ttl> ] ; <http://www.w3.org/2009/sparql/tests/test-update#graphData> [ <http://www.w3.org/2000/01/rdf-schema#label> "http://example.org/g3" ; <http://www.w3.org/2009/sparql/tests/test-update#graph> <sparql11/delete/delete-post-03f.ttl> ] ] ;
+    .
+
+<sparql-sparql11-syntax-update-1#test_38>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#PositiveUpdateSyntaxTest11> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <sparql11/syntax-update-1/syntax-update-38.ru> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "syntax-update-38.ru" ;
+    .
+
+<sparql-sparql11-syntax-update-1#test_43>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#NegativeUpdateSyntaxTest11> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <sparql11/syntax-update-1/syntax-update-bad-03.ru> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "syntax-update-bad-03.ru" ;
+    .
+
+<sparql-sparql11-syntax-update-1#test_54>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#NegativeUpdateSyntaxTest11> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> <sparql11/syntax-update-1/syntax-update-54.ru> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "syntax-update-54.ru" ;
+    .
+
+<sparql-sparql11-csv-tsv-res#csv01>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#CSVResultFormatTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/csv-tsv-res/data.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/csv-tsv-res/csvtsv01.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "csv01 - CSV Result Format" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/csv-tsv-res/csvtsv01.csv> ;
+    .
+
+<sparql-sparql11-csv-tsv-res#tsv02>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/csv-tsv-res/data.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/csv-tsv-res/csvtsv02.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "tsv02 - TSV Result Format" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/csv-tsv-res/csvtsv02.tsv> ;
+    .
+
+<sparql-sparql11-json-res#jsonres01>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/json-res/data.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/json-res/jsonres01.rq> ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "jsonres01 - JSON Result Format" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/json-res/jsonres01.srj> ;
+    .
+
+<sparql-sparql11-service#service1>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/service/data01.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/service/service01.rq> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#serviceData> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/service/data01endpoint.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#endpoint> <http://example.org/sparql> ] ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "SERVICE test 1" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/service/service01.srx> ;
+    .
+
+<sparql-sparql11-service#service3>
+    <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#QueryEvaluationTest> ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#action> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#query> <sparql11/service/service03.rq> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#serviceData> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/service/data03endpoint1.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#endpoint> <http://example1.org/sparql> ] ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#serviceData> [ <http://www.w3.org/2001/sw/DataAccess/tests/test-query#data> <sparql11/service/data03endpoint2.ttl> ; <http://www.w3.org/2001/sw/DataAccess/tests/test-query#endpoint> <http://example2.org/sparql> ] ] ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#name> "SERVICE test 3" ;
+    <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#result> <sparql11/service/service03.srx> ;
     .

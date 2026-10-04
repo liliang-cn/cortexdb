@@ -253,6 +253,24 @@ func TestTheW3CSHACLSPARQLSuitePasses(t *testing.T) {
 	runSHACLSuite(t, "sparql", "SHACL-SPARQL")
 }
 
+// The subset in testdata/shacl is a copy of some of the suite's tests — the
+// paths, qualified shapes, implicit targets, SPARQL constraints, components
+// and pre-binding rules — so CI runs them on every change.
+func TestARepresentativeW3CSHACLSubsetPasses(t *testing.T) {
+	tests, err := collectSHACLTests(filepath.Join("testdata", "shacl", "manifest.ttl"), map[string]bool{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tests) < 15 {
+		t.Fatalf("subset ran %d tests; the manifest should include at least 15", len(tests))
+	}
+	for _, test := range tests {
+		if why := runSHACLTest(t, test); why != "" {
+			t.Errorf("%s (%s): %s", test.name, test.node.Value, why)
+		}
+	}
+}
+
 func runSHACLSuite(t *testing.T, dir, label string) {
 	root := shaclSuiteRoot(t)
 	tests, err := collectSHACLTests(filepath.Join(root, dir, "manifest.ttl"), map[string]bool{})
@@ -261,7 +279,12 @@ func runSHACLSuite(t *testing.T, dir, label string) {
 	}
 	pass, fail := 0, 0
 	for _, test := range tests {
+		local := test.node.Value[strings.LastIndex(test.node.Value, "/")+1:]
 		if why := runSHACLTest(t, test); why != "" {
+			if shaclUnsupported[local] {
+				t.Logf("unsupported (optional in the spec): %s: %s", test.name, why)
+				continue
+			}
 			fail++
 			t.Errorf("%s (%s): %s", test.name, test.node.Value, why)
 			continue
@@ -270,3 +293,8 @@ func runSHACLSuite(t *testing.T, dir, label string) {
 	}
 	t.Logf("%s: total %d, passed %d, failed %d", label, pass+fail, pass, fail)
 }
+
+// shaclUnsupported are tests of a feature the spec makes optional:
+// $shapesGraph (SHACL §5.2.1), which needs the shapes graph queryable as a
+// named graph of the data.
+var shaclUnsupported = map[string]bool{"shapesGraph-001": true}

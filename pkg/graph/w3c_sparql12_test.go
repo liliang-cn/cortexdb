@@ -22,12 +22,14 @@ import (
 // features of a full engine; it is run and counted, and reported separately,
 // but a failure there does not fail this test.
 
-var sparql12InScope = map[string]bool{
-	"eval-triple-terms":            true,
-	"syntax-triple-terms-positive": true,
-	"syntax-triple-terms-negative": true,
-	"expression":                   true,
-	"lang-basedir":                 true,
+// sparql11Deviations are the SPARQL 1.1 tests this engine fails on purpose.
+// plus-1-corrected and plus-2-corrected expect "1" + "2" — simple literals
+// that look like numbers — to be a type error; arithmetic here reads such a
+// string as a number (see lenientNumber), because data written through the
+// non-SPARQL APIs commonly stores numbers as plain strings.
+var sparql11Deviations = map[string]bool{
+	"plus-1-corrected": true,
+	"plus-2-corrected": true,
 }
 
 func sparqlTestDir(test w3cTest) string {
@@ -718,14 +720,19 @@ func runSPARQLSuite(t *testing.T, root, manifest string, inScope func(w3cTest) b
 			}
 		} else {
 			// Every evaluation test starts from an empty dataset on each
-			// backend: backends creates fresh stores on every call.
-			for _, b := range backends(t) {
-				store := b.store
-				store.SetPropertyGraphProjection(false)
-				if why := runSPARQLTest(t, root, test, func() *GraphStore { return store }); why != "" {
-					failures = append(failures, b.name+": "+why)
+			// backend: backends creates fresh stores on every call. The
+			// subtest is what releases them — a PostgreSQL schema and its
+			// connections — before the next test, not at the end of the
+			// suite.
+			t.Run(test.name, func(t *testing.T) {
+				for _, b := range backends(t) {
+					store := b.store
+					store.SetPropertyGraphProjection(false)
+					if why := runSPARQLTest(t, root, test, func() *GraphStore { return store }); why != "" {
+						failures = append(failures, b.name+": "+why)
+					}
 				}
-			}
+			})
 		}
 		if len(failures) > 0 {
 			tally[key].fail++
@@ -749,24 +756,40 @@ func logOutOfScope(t *testing.T, tallies map[string]*suiteTally) {
 		tally := tallies[k]
 		total += tally.pass + tally.fail
 		failed += tally.fail
-		t.Logf("out of scope %-48s pass %4d  fail %4d", k, tally.pass, tally.fail)
+		t.Logf("deviation %-48s pass %4d  fail %4d", k, tally.pass, tally.fail)
 		for _, f := range tally.failures {
-			t.Logf("  out of scope failure: %s", f)
+			t.Logf("  deviation: %s", f)
 		}
 	}
-	t.Logf("out of scope total %d, passed %d, failed %d", total, total-failed, failed)
+	t.Logf("deviations total %d, passed %d, failed %d", total, total-failed, failed)
 }
 
-func TestTheW3CSPARQL12TripleTermSuitesPassInFull(t *testing.T) {
+func TestTheW3CSPARQL12SuitesPassInFull(t *testing.T) {
 	root := w3cSuiteRoot(t)
-	inTally, outTally := runSPARQLSuite(t, root, filepath.Join(root, "sparql", "sparql12", "manifest.ttl"), func(test w3cTest) bool {
-		return sparql12InScope[sparqlTestDir(test)]
-	})
+	inTally, _ := runSPARQLSuite(t, root, filepath.Join(root, "sparql", "sparql12", "manifest.ttl"), func(w3cTest) bool { return true })
 	reportTallies(t, "sparql12", inTally)
-	logOutOfScope(t, outTally)
 }
 
-func TestARepresentativeW3CSPARQL12SubsetPasses(t *testing.T) {
+// The SPARQL 1.1 query, update, results-format and federation suites, and
+// the second update syntax suite. Entailment regimes, the protocol, the graph
+// store protocol and service descriptions are HTTP or reasoning-profile
+// specifications this embedded store does not implement as such.
+func TestTheW3CSPARQL11SuitesPassInFull(t *testing.T) {
+	root := w3cSuiteRoot(t)
+	for _, manifest := range []string{"manifest-sparql11-query.ttl", "manifest-sparql11-update.ttl",
+		"manifest-sparql11-results.ttl", "manifest-sparql11-fed.ttl", filepath.Join("syntax-update-2", "manifest.ttl")} {
+		t.Run(manifest, func(t *testing.T) {
+			inTally, outTally := runSPARQLSuite(t, root, filepath.Join(root, "sparql", "sparql11", manifest), func(test w3cTest) bool {
+				local := test.node.Value[strings.LastIndex(test.node.Value, "#")+1:]
+				return !sparql11Deviations[local]
+			})
+			reportTallies(t, "sparql11", inTally)
+			logOutOfScope(t, outTally)
+		})
+	}
+}
+
+func TestARepresentativeW3CSPARQLSubsetPasses(t *testing.T) {
 	root := filepath.Join("testdata", "w3c")
 	manifest := filepath.Join(root, "sparql", "manifest.ttl")
 	if _, err := os.Stat(manifest); err != nil {

@@ -36,7 +36,7 @@ Codex 中需要在 `/hooks` 审阅并信任插件 hooks，自动召回才会运�
 
 - 向量（HNSW、IVF、Flat、二值编码）、FTS5 全文检索、混合检索与图检索
 - RAG 知识、分作用域的 agent 记忆、带来源的上下文包
-- RDF 1.2 知识图谱：SPARQL、RDFS + OWL 2 RL 推理、SHACL、只读 Cypher
+- RDF 1.2 知识图谱：SPARQL 1.1/1.2、RDFS + OWL 2 RL 推理、SHACL Core + SHACL-SPARQL、RDF/XML 导入（通过 W3C 官方测试），以及只读 Cypher
 - Palantir 风格的 ontology，带受治理的动作
 - 80+ 工具，进程内调用或走 MCP
 - `serve_graph_3d`：实时 3D 视图，可查找、提问、查询、展开，桌面和手机都能用
