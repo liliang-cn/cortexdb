@@ -431,3 +431,38 @@ func hueSat(c string) (float64, float64) {
 	}
 	return h, d / mx
 }
+
+// A node with no relations is still a node: finding it and asking to go there
+// used to expand to nothing, so the page said there was no such node.
+func TestExpandOfANodeWithNoRelationsReturnsTheNode(t *testing.T) {
+	db := exploreBrain(t)
+	ctx := context.Background()
+	if _, err := db.GraphRAGTools().UpsertEntities(ctx, cortexdb.ToolUpsertEntitiesRequest{
+		Entities: []cortexdb.ToolEntityInput{{Name: "Lone Beacon", Type: "place"}}}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	id := cortexdb.EntityNodeID("Lone Beacon")
+	nb, err := Expand(ctx, localCaller(db), id, 0)
+	if err != nil {
+		t.Fatalf("expand: %v", err)
+	}
+	if len(nb.Nodes) != 1 || nb.Nodes[0].ID != id || len(nb.Edges) != 0 {
+		t.Fatalf("got %+v, want the lone node and no edges", nb)
+	}
+	if nb, err = Expand(ctx, localCaller(db), "entity:no_such_node", 0); err != nil || len(nb.Nodes) != 0 {
+		t.Fatalf("a missing id should expand to nothing, got %+v, %v", nb, err)
+	}
+}
+
+// Indigo, lit and shaded, reads violet, and a light ground's pastel dimming
+// turned blue nodes lavender; neither is allowed on this page.
+func TestNoIndigoHueAndGreyDimmingOnLightGrounds(t *testing.T) {
+	for _, want := range []string{
+		"if(h >= 225 && h < 250) h = 212;",
+		"if(T.light){ var y = 0.3*r + 0.59*g + 0.11*b; r = g = b = y; }",
+	} {
+		if !strings.Contains(pageHTML, want) {
+			t.Errorf("page is missing %q", want)
+		}
+	}
+}

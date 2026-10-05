@@ -408,6 +408,19 @@ const pageTemplate = `<!DOCTYPE html>
   .hit .hl{color:var(--ink)}
   .hit .hm{color:var(--mute)}
   .txt{border-left:2px solid rgba(var(--acc-rgb),.35);color:var(--ink2);padding:6px 10px;margin:5px 0}
+  /* The source title and id kept the dark theme's literal greys, which on a
+     light ground were close to invisible. */
+  .txt b{color:var(--ink)}
+  .txt .m{color:var(--mute)}
+  /* The same leftover dark-theme literals elsewhere: Cypher's table (its
+     header was a near-black bar on a light ground), facts, the contract's
+     figures and an inspector field's value. */
+  #xout th,#xout td{color:var(--ink2);border-bottom-color:var(--line)}
+  #xout th{color:var(--mute);background:var(--panel)}
+  .fact{color:var(--ink2)}
+  #contract .say b{color:var(--ink)}
+  .att .aw{color:var(--ink2)}
+  .att .aw.missing{color:#ef4444}
   .fact{border-radius:8px;padding:5px 9px}
   .fact:hover{background:rgba(255,255,255,.05)}
   .fact i{color:var(--acc)}
@@ -751,7 +764,10 @@ var NAMED_LIGHT = {entity:"#0284c7", concept:"#b7791f", memory:"#059669", knowle
   location:"#b45309", event:"#dc2626", chunk:"#94a3b8"};
 function colorOf(t){
   var h=0; for(var i=0;t && i<t.length;i++) h=(h*31+t.charCodeAt(i))%360;
-  if(h >= 250 && h < 330) h = (h + 110) % 360;   // the violet-to-magenta band, skipped
+  // Indigo (225-250) reads violet once lit and shaded, so it is pulled to a
+  // plain blue; the violet-to-magenta band (250-330) is skipped outright.
+  if(h >= 225 && h < 250) h = 212;
+  else if(h >= 250 && h < 330) h = (h + 110) % 360;
   if(T.mono) return t ? "hsl(" + (115 + h%50) + ",62%," + (42 + h%28) + "%)" : "#3f6b52";
   if(T.light){
     if(!t) return "#94a3b8";
@@ -894,6 +910,10 @@ function dimColor(c){
   if(/^#[0-9a-f]{6}$/i.test(hex)){ r = parseInt(hex.substr(1,2),16); g = parseInt(hex.substr(3,2),16); b = parseInt(hex.substr(5,2),16); }
   var k = T.light ? 0.22 : 0.2;
   var br = parseInt(T.bg.substr(1,2),16), bg2 = parseInt(T.bg.substr(3,2),16), bb = parseInt(T.bg.substr(5,2),16);
+  // On a light ground a fifth of a hue over cream is a pastel, and a pastel
+  // blue under the scene's lighting is lavender. So light grounds dim to the
+  // colour's own grey: a dimmed node there recedes into the paper instead.
+  if(T.light){ var y = 0.3*r + 0.59*g + 0.11*b; r = g = b = y; }
   var out = "rgb(" + Math.round(br + (r-br)*k) + "," + Math.round(bg2 + (g-bg2)*k) + "," + Math.round(bb + (b-bb)*k) + ")";
   dimCache[c] = out;
   return out;

@@ -261,14 +261,35 @@ func Expand(ctx context.Context, call Caller, id string, limit int) (Neighbourho
 		TimeoutMS: int(exploreTimeout / time.Millisecond),
 	}, &cy)
 	if err == nil {
-		return neighbourhoodFromRows(cy.Rows), nil
+		nb := neighbourhoodFromRows(cy.Rows)
+		if len(nb.Nodes) == 0 {
+			// A node with no relations still exists, and the page asked for it
+			// to fly there: without it the neighbourhood is empty and the page
+			// can only say there is no such node.
+			nb.Nodes = anchorNode(ctx, call, id)
+		}
+		return nb, nil
 	}
 	var resp cortexdb.ToolExpandGraphResponse
 	if err := callInto(ctx, call, "expand_graph", cortexdb.ToolExpandGraphRequest{NodeIDs: []string{id}, MaxHops: 1, Limit: limit}, &resp); err != nil {
 		return Neighbourhood{}, err
 	}
 	nodes, edges := viewGraph(resp.Nodes, resp.Edges)
+	if len(nodes) == 0 {
+		nodes = anchorNode(ctx, call, id)
+	}
 	return Neighbourhood{Nodes: nodes, Edges: edges}, nil
+}
+
+// anchorNode is the expanded node on its own, for one with no relations to
+// expand: nil if the brain has no such node.
+func anchorNode(ctx context.Context, call Caller, id string) []Node {
+	var got cortexdb.ToolGetNodesResponse
+	if err := callInto(ctx, call, "get_nodes", cortexdb.ToolGetNodesRequest{NodeIDs: []string{id}}, &got); err != nil {
+		return nil
+	}
+	nodes, _ := viewGraph(got.Nodes, nil)
+	return nodes
 }
 
 // neighbourhoodFromRows reads the nodes and relations out of Cypher rows,

@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- Live view: a node with no relations could be found but not opened —
+  clicking it said "No node …", because expanding it returned nothing, not
+  even the node itself. Expanding such a node now returns the node.
+- Live view: no more lavender. The hashed colour of a type whose hue fell in
+  indigo (`file` among them) read violet once lit and shaded; hues 225°–250°
+  are now pulled to a plain blue. On light grounds, dimmed nodes faded to a
+  pastel of their hue, which made blue ones lavender; they now fade to their
+  own grey.
+- Live view, light themes: answer source titles and ids, Cypher's table (its
+  header was a near-black bar), facts, the contract's figures and an
+  inspector field's value still used the dark theme's literal greys and were
+  close to invisible; they now use the theme's inks.
+
 ## [2.120.1] - 2026-10-04
 
 ### Fixed
