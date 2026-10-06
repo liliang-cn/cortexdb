@@ -220,6 +220,15 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 	// states, and a switch on one page would have had to carry all of that
 	// while pretending the two were views of one thing.
 	mux.HandleFunc("/ontology", s.handleOntologyPage)
+	// The library is the same brain as the graph page, laid out as a reading
+	// room: a memory is a book on its project's shelf. A page of its own for
+	// the reason the ontology is one — a different layout with its own
+	// interactions — but drawn from the same snapshot, so the two never
+	// disagree about what is in the brain.
+	mux.HandleFunc("/library", s.handleLibraryPage)
+	mux.HandleFunc("/api/library", s.handleLibrary)
+	mux.HandleFunc("/api/library/card", s.handleLibraryCard)
+	mux.HandleFunc("/api/library/book", s.handleLibraryBook)
 	mux.HandleFunc("/api/graph", s.handleGraph)
 	mux.HandleFunc("/api/record", s.handleRecord)
 	mux.HandleFunc("/api/contract", s.handleContract)

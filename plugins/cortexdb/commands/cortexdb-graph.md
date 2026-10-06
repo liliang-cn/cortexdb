@@ -6,7 +6,7 @@ Two views of the same graph. Pick by what the user asked for, and default to the
 
 ## Live 3D (default)
 
-Ask for it with the **`serve_graph_3d`** MCP tool. It opens a rotatable, glowing 3D view in the browser and returns its URL. Prefer this whenever the user says show / see / open / watch the graph, or mentions 3D, live, or rotating.
+Ask for it with the **`serve_graph_3d`** MCP tool. It opens a rotatable, glowing 3D view in the browser and returns its URL. Prefer this whenever the user says show / see / open / watch the graph, or mentions 3D, live, or rotating. When they ask for their memories as a library, books or shelves, pass `view: "library"`: the same server draws each memory as a book on its project's shelf.
 
 It is served from inside this MCP server, which is what makes it live: nodes and relations appear as they are written, and **every query, save and relation this server handles lights up the nodes it touched** — so the user watching the page sees the brain react to what you do next. Calling the tool again returns the same URL rather than opening a second view.
 

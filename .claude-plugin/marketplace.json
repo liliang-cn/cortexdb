@@ -9,7 +9,7 @@
       "name": "cortexdb",
       "source": "./plugins/cortexdb",
       "description": "Local-first AI memory and knowledge graph for Claude Code: vector search, RAG, GraphRAG, RDF/SPARQL/RDFS/SHACL, scoped agent memory, and corpus-to-graph workflows — bundled as a skill plus live MCP tools.",
-      "version": "2.121.2",
+      "version": "2.122.0",
       "author": {
         "name": "Liang Li"
       }
@@ -18,7 +18,7 @@
       "name": "cortexdb-live",
       "source": "./plugins/cortexdb-live",
       "description": "CortexDB inside Claude Code: haiku-planned auto-recall shown above the prompt, the brain on the status line, and durable facts captured while the session is idle. A mod: Claude Code only, needs the cortexdb plugin.",
-      "version": "2.121.2",
+      "version": "2.122.0",
       "author": {
         "name": "Liang Li"
       }

@@ -69,7 +69,7 @@ Haiku runs on Claude Code's own model access, so no API key is needed. Language:
 - RDF 1.2 knowledge graph: SPARQL 1.1/1.2, RDFS + OWL 2 RL inference, SHACL Core + SHACL-SPARQL, RDF/XML import — passing the W3C test suites — and read-only Cypher
 - Palantir-style ontology with governed actions
 - 80+ tools, in-process or over MCP
-- `serve_graph_3d`: a live 3D view to find, ask, query and expand, on desktop or phone
+- `serve_graph_3d`: a live 3D view to find, ask, query and expand, on desktop or phone — or the same brain as a library, each memory a book on its project's shelf
 - Change feed: every committed write, in order, exactly once
 - SQLite by default, PostgreSQL + pgvector with a `postgres://` DSN
 

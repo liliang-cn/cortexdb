@@ -68,7 +68,7 @@ haiku 用的是 Claude Code 自己的模型额度，不需要 API key。语言�
 - RDF 1.2 知识图谱：SPARQL 1.1/1.2、RDFS + OWL 2 RL 推理、SHACL Core + SHACL-SPARQL、RDF/XML 导入（通过 W3C 官方测试），以及只读 Cypher
 - Palantir 风格的 ontology，带受治理的动作
 - 80+ 工具，进程内调用或走 MCP
-- `serve_graph_3d`：实时 3D 视图，可查找、提问、查询、展开，桌面和手机都能用
+- `serve_graph_3d`：实时 3D 视图，可查找、提问、查询、展开，桌面和手机都能用；也可以切成图书馆，每条记忆是它所属项目书架上的一本书
 - 变更事件流：每次已提交的写入，按顺序、恰好一次
 - 默认 SQLite，换成 `postgres://` DSN 就跑在 PostgreSQL + pgvector 上
 

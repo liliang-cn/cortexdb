@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.122.0] - 2026-10-06
+
+### Added
+
+- Live view: a library. The same brain, drawn as a reading room at
+  `/library` and linked from the graph and ontology pages. Each memory is a
+  book on the shelf of the project it names — the most specific one, when it
+  names several — and shelves stand in wings cut from the projects' own
+  relations with the module's Leiden. Memories that name no project fill the
+  general stacks, documents the reference room. An entity is an index card:
+  opening it threads every book that mentions it back to the catalogue and
+  lays its relations out on a table. A book opens on the lectern with its text
+  paged, its index and the books sharing most of it, each a link. Recalls
+  reported over the activity stream light books where they stand. Day and
+  night follow the graph page's setting; Chinese or English follows the
+  browser (`?lang=`). `serve_graph_3d` returns `library_url` and opens it with
+  `view: "library"`.
+
 ## [2.121.2] - 2026-10-06
 
 ### Fixed

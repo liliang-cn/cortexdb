@@ -209,7 +209,7 @@ const ontologyHTML = `<!DOCTYPE html>
 <div class="panel" id="head" data-label="Ontology">
   <button class="fold" type="button" title="Collapse"></button>
   <div class="bd">
-    <h1>CortexDB — ontology &nbsp;<a href="." title="The instance graph: what is actually in this brain">← live brain</a></h1>
+    <h1>CortexDB — ontology &nbsp;<a href="." title="The instance graph: what is actually in this brain">← live brain</a> <a href="library" title="The same brain as a reading room">library →</a></h1>
     <div id="sub">reading…</div>
     <div id="headrow">
       <button id="gapbtn" class="on" title="Count what the store actually holds and hold the declarations against it">Declared vs actual</button>

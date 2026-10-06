@@ -60,6 +60,14 @@
 // store nobody can ask and a store nobody has graded are different findings,
 // and the second is the one a real machine is usually in.
 //
+// Besides the ontology page described next, a page at /library draws the
+// instance graph again as a reading room rather than a field of points: a
+// memory is a book on the shelf of the project it names, shelves stand in wings
+// cut from the projects' own relations, an entity is an index card, and a book
+// opens on a lectern. It reads the same snapshot the graph page polls, so the
+// two never disagree about what is in the brain; library.go says what is
+// shelved where and why.
+//
 // There is a second page, at /ontology, and it draws a different graph about
 // the same store: not what is in this brain but what it is allowed to talk
 // about — tens of declared object types with link types between them, read

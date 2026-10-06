@@ -24,6 +24,12 @@ type serveGraph3DIn struct {
 	// the knowledge it will eventually contribute to.
 	Graph string `json:"graph,omitempty"`
 
+	// View picks the page the browser opens: "graph" (the default), or
+	// "library", the same brain laid out as a reading room where a memory is a
+	// book on its project's shelf. Both are served either way; this only
+	// decides which one is opened and returned first.
+	View string `json:"view,omitempty" jsonschema:"graph (default) or library"`
+
 	// Open launches the browser. On by default: the reason to ask for a live
 	// view is to look at it, and returning a URL nobody opens is a slower way
 	// of doing nothing.
@@ -31,11 +37,13 @@ type serveGraph3DIn struct {
 }
 
 type serveGraph3DOut struct {
-	Graph  string `json:"graph,omitempty"`
-	URL    string `json:"url"`
-	Nodes  int    `json:"nodes"`
-	Edges  int    `json:"edges"`
-	Source string `json:"source"`
+	Graph string `json:"graph,omitempty"`
+	URL   string `json:"url"`
+	// LibraryURL is the reading-room view of the same brain.
+	LibraryURL string `json:"library_url"`
+	Nodes      int    `json:"nodes"`
+	Edges      int    `json:"edges"`
+	Source     string `json:"source"`
 	// Activity reports whether tool calls are being watched, which is what
 	// separates this from a page that only redraws when the graph changes.
 	Activity bool   `json:"activity"`
@@ -47,8 +55,11 @@ const serveGraph3DDescription = "Open a LIVE 3D view of the brain's knowledge gr
 	"its URL. Use it when asked to watch, monitor or see the graph live, or for a 3D/rotating/glowing view. " +
 	"Unlike render_graph_html, which writes a static file, this serves a page on 127.0.0.1 that updates by " +
 	"itself: nodes and relations appear as they are written, and every query, save and relation this server " +
-	"handles lights up the nodes it touched. Calling it again returns the same URL rather than starting a " +
-	"second view. Read-only — it never writes to the graph."
+	"handles lights up the nodes it touched. The same server also draws the brain as a library (library_url, " +
+	"or view=library to open it): each memory is a book on the shelf of the project it names, an entity is an " +
+	"index card that lists every book mentioning it, and a book opens on a lectern with its text and index. " +
+	"Calling it again returns the same URL rather than starting a second view. Read-only — it never writes " +
+	"to the graph."
 
 // addServeGraph3DTool registers the live view on an MCP server and installs the
 // middleware that feeds it. Both happen here, together, because a view without
@@ -81,16 +92,25 @@ func addServeGraph3DTool(server *mcp.Server) {
 		}
 		snap := sv.Snapshot()
 		out := serveGraph3DOut{
-			URL:      sv.URL(),
-			Nodes:    len(snap.Nodes),
-			Edges:    len(snap.Edges),
-			Source:   sv.SourceName(),
-			Activity: sv.WatchesCalls(),
-			Graph:    name,
+			URL:        sv.URL(),
+			LibraryURL: strings.TrimRight(sv.URL(), "/") + "/library",
+			Nodes:      len(snap.Nodes),
+			Edges:      len(snap.Edges),
+			Source:     sv.SourceName(),
+			Activity:   sv.WatchesCalls(),
+			Graph:      name,
+		}
+		page := out.URL
+		switch strings.ToLower(strings.TrimSpace(in.View)) {
+		case "", "graph":
+		case "library":
+			page = out.LibraryURL
+		default:
+			return nil, serveGraph3DOut{}, fmt.Errorf("view %q: want graph or library", in.View)
 		}
 		open := in.Open == nil || *in.Open
 		if open {
-			if oerr := liveview.OpenInBrowser(sv.URL()); oerr != nil {
+			if oerr := liveview.OpenInBrowser(page); oerr != nil {
 				out.Note = "could not open a browser (" + oerr.Error() + "); open the URL yourself"
 			} else {
 				out.Opened = true

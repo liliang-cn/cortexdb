@@ -1111,7 +1111,7 @@ held against the catalogue's `Mutates` by a test); SPARQL is not on it, because
 `?focus=ID|name&hops=N`, `?find=`, `?ask=`, `?cypher=`, `?q=`, `?type=`,
 `?edge=`, `?explore=0`, `?theme=space|ember|mono`, `?mode=light|dark|auto` — and embedders can drive it with `postMessage`
 (`cortexdb:focus`, `cortexdb:find`, `cortexdb:ask`, `cortexdb:cypher`). On a
-phone the inspector is a bottom sheet and the other panels start folded.
+phone the inspector is a bottom sheet and the other panels start folded. The same server draws the brain as a library (`library_url` in the result, or `view=library`): each memory is a book on the shelf of the project it names, shelves group into wings by their projects' relations, an entity is an index card listing every book that mentions it, and a book opens on a lectern with its text, index and see-also.
 
 Both bulk listings behind these views are paged: `memory_list_all` (default
 limit 500) and `graph_list_all` (default limit 2000) each take `limit` and

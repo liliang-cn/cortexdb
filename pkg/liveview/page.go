@@ -553,7 +553,7 @@ const pageTemplate = `<!DOCTYPE html>
   <button class="fold" type="button" title="Collapse"></button>
   <button id="themebtn" type="button" title="Light / dark" aria-label="Switch light and dark">☾</button>
   <div class="bd">
-    <h1>CortexDB — live brain &nbsp;<a href="ontology" title="The ontology: what this brain is allowed to talk about">ontology →</a></h1>
+    <h1>CortexDB — live brain &nbsp;<a href="library" title="The same brain as a reading room: a memory is a book on its project's shelf">library →</a> <a href="ontology" title="The ontology: what this brain is allowed to talk about">ontology →</a></h1>
     <div id="counts"><b id="n">0</b> nodes · <b id="e">0</b> edges</div>
     <div class="badge" id="live"><span class="led"></span><span id="livetext">connecting</span></div>
   </div>
