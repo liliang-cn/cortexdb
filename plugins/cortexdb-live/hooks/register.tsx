@@ -21,6 +21,7 @@ const PLAN_TIMEOUT_MS = 2500
 // A recall runs before every prompt: past this the prompt goes on without it.
 const RECALL_BUDGET_MS = 6000
 const STATS_EVERY_MS = 5 * 60 * 1000
+const CONNECT_RETRY_MS = 5 * 1000
 // session.end gets 1.5 s, too little for a model call, so a session is
 // captured while it is idle instead: this long after its last turn.
 const CAPTURE_IDLE_MS = 90 * 1000
@@ -134,6 +135,12 @@ async function refreshStats($: EngineInterface) {
     const stats = (await callTool($, 'graph_statistics', {})) as { node_count?: number }
     brain = { ...brain, nodes: stats.node_count, error: undefined }
   } catch (err) {
+    if (isConnecting(err)) {
+      // The session starts before its MCP servers finish connecting: the
+      // first ask can come too early, which says nothing about the brain.
+      $.clock.after(CONNECT_RETRY_MS, () => void refreshStats($))
+      return
+    }
     brain = { ...brain, error: isDenied(err) ? t().denied(TOOLS_TO_ALLOW) : `${t().unreachable}: ${messageOf(err)}` }
   }
   showStatus($)
@@ -392,6 +399,7 @@ export const register: Register = (on, options) => {
     }
 
     brain = { ...brain, error: undefined, skipped: false, recallMs: found.ms }
+    if (brain.nodes === undefined) void refreshStats($)
     showStatus($)
     await update($, last, () => found)
     await update($, isHidden, () => false)
@@ -531,6 +539,8 @@ const messageOf = (err: unknown) => String((err as Error)?.message ?? err).slice
 // A call the module makes goes through the session's permission rules like
 // the model's, and a hook has no prompt to ask with: without an allow rule the
 // call is denied, which says nothing about the brain itself.
+const isConnecting = (err: unknown) => /no connected MCP tool/i.test(String((err as Error)?.message ?? err))
+
 const isDenied = (err: unknown) => /refused|denied|permission/i.test(String((err as Error)?.message ?? err))
 
 // The tools this module calls, as permissions.allow spells them.

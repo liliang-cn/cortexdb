@@ -1,6 +1,6 @@
 # CortexDB — full documentation
 
-> Generated from README.md and docs/GUIDE.md at commit 5f38021. Summary: https://liliang-cn.github.io/cortexdb/llms.txt
+> Generated from README.md and docs/GUIDE.md at commit b66f721. Summary: https://liliang-cn.github.io/cortexdb/llms.txt
 
 # CortexDB
 

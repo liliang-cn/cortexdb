@@ -25,6 +25,7 @@ type World = {
   messages?: { role: 'user' | 'assistant'; text: string; toolUses: never[] }[]
   isBrainDown?: boolean
   isDenied?: boolean
+  connectsAfter?: number
 }
 
 type Seen = {
@@ -57,6 +58,10 @@ const world = (on: On, w: World): Seen => {
   })
   on('mcp.call', ($, e) => {
     seen.calls.push({ tool: e.tool, args: e.args })
+    if ((w.connectsAfter ?? 0) > 0) {
+      w.connectsAfter! -= 1
+      return { deny: `$.mcp.call: no connected MCP tool "${e.tool}" on a server` }
+    }
     if (w.isDenied) return { deny: 'Claude requested permissions to use this tool, but you have not granted it yet.' }
     if (w.isBrainDown) return { value: { content: [{ type: 'text', text: 'dial tcp: refused' }], isError: true } }
     const body = e.tool === 'graph_statistics' ? { node_count: 4493 } : e.tool === 'memory_save' ? { ok: true } : recallPayload
@@ -142,6 +147,16 @@ test('a denied tool says which permissions to add, not that the brain is down', 
 
   expect(out.additionalContext).toEqual([SHELL, 'another plugin'])
   expect(seen.status.at(-1)).toContain('permissions.allow: mcp__plugin_cortexdb_cortexdb__knowledge_memory_recall')
+})
+
+test('a server still connecting at start is asked again, not reported down', async ($, on) => {
+  const seen = world(on, { autorecall: 'on', connectsAfter: 1 })
+  await $.session.start({ cwd: '/w', surface: 'terminal' } as never)
+  await seen.clock.advance(1)
+
+  expect(seen.status.join('\n')).not.toContain('unreachable')
+  await seen.clock.advance(5 * 1000)
+  expect(seen.status.at(-1)).toBe('🧠 10.0.0.9 · 4,493 nodes')
 })
 
 test('a brain that fails keeps the shell block', async ($, on) => {

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.121.2] - 2026-10-06
+
+### Fixed
+
+- `cortexdb-live`: every session started with "unreachable: no connected MCP
+  tool graph_statistics" and no node count for five minutes. The mod asked
+  for the count before the session's MCP servers had finished connecting. A
+  server still connecting is now asked again a few seconds later, and a
+  successful recall fills in a missing count.
+
 ## [2.121.1] - 2026-10-06
 
 ### Fixed
