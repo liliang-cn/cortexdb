@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.121.1] - 2026-10-06
+
+### Fixed
+
+- `cortexdb-live`: outside bypass mode every recall, node count and capture
+  failed with a clipped "recall failed: … ref". A mod's own MCP calls pass the
+  session's permission rules and a hook has no prompt to ask with, so they
+  were denied. The status line now names the `permissions.allow` rules to
+  add, and the README gives them.
+- `cortexdb-live`: the band and status line came out in English on a
+  Chinese system, because Claude Code's own `language` row reads English
+  until set. Only a Chinese value there decides now; otherwise the locale and
+  macOS's language do.
+
 ## [2.121.0] - 2026-10-06
 
 ### Added

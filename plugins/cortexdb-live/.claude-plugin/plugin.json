@@ -1,6 +1,6 @@
 {
   "name": "cortexdb-live",
-  "version": "2.121.0",
+  "version": "2.121.1",
   "description": "CortexDB inside Claude Code: haiku-planned auto-recall shown above the prompt, the brain on the status line, and durable facts captured while the session is idle. A mod: Claude Code only, needs the cortexdb plugin.",
   "author": {
     "name": "Liang Li",

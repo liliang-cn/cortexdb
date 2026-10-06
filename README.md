@@ -42,6 +42,20 @@ recall. See the [plugin guide](plugins/cortexdb/README.md) for setup and
 /plugin install cortexdb-live@cortexdb
 ```
 
+The mod calls three of the plugin's tools itself, and a hook gets no permission prompt, so allow them once in `~/.claude/settings.json` (not needed in bypass mode):
+
+```json
+"permissions": {
+  "allow": [
+    "mcp__plugin_cortexdb_cortexdb__knowledge_memory_recall",
+    "mcp__plugin_cortexdb_cortexdb__graph_statistics",
+    "mcp__plugin_cortexdb_cortexdb__memory_save"
+  ]
+}
+```
+
+Without them the status line names the missing rules.
+
 - **Planned recall.** Before the brain is searched, haiku turns each prompt into keywords in Chinese and English, aliases, entity names and a retrieval mode. A bare "ok" or "go ahead" searches nothing. The band above the prompt shows what was recalled; expand it to see the plan and every hit. Hide lasts until the next recall; `/cortexdb-show` brings the hidden one back.
 - **Status line.** Which brain the session uses, its node count and the last recall's time, or why the brain can't be reached.
 - **Capture.** 90 seconds after a session goes idle, haiku distils the new part of the conversation into durable memories (`auto:<session>:<slug>`). Each later pass replaces a memory under the same slug rather than adding a copy.

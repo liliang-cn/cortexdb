@@ -44,6 +44,7 @@ const STRINGS = {
     skipped: '这条不用召回',
     unreachable: '连不上',
     recallFailed: '召回失败',
+    denied: (tools: string) => `没有调用 CortexDB 工具的权限，请在 settings.json 的 permissions.allow 里允许：${tools}`,
     local: '本地大脑',
     captured: (n: number) => `CortexDB 记下了 ${n} 条新记忆`,
     showCommand: '重新显示上一条 prompt 的 CortexDB 召回结果（隐藏之后用）',
@@ -65,6 +66,7 @@ const STRINGS = {
     skipped: 'no recall needed',
     unreachable: 'unreachable',
     recallFailed: 'recall failed',
+    denied: (tools: string) => `not allowed to call CortexDB tools; allow them in settings.json permissions.allow: ${tools}`,
     local: 'local brain',
     captured: (n: number) => `CortexDB saved ${n} new memories`,
     showCommand: "Show what CortexDB recalled for the last prompt again (after Hide)",
@@ -89,8 +91,10 @@ const t = () => STRINGS[lang]
 async function resolveLang($: EngineInterface, options: PluginOptions): Promise<Lang> {
   if (options.language === 'zh' || options.language === 'en') return options.language
   const isZh = (value: unknown) => typeof value === 'string' && /^zh|chinese|中文|汉语|简体|繁體/i.test(value.trim())
+  // Claude Code's own language row reads English until someone sets it, so
+  // only a Chinese value there decides; anything else falls to the locale.
   const setting = (await $.config.list().catch(() => [])).find(row => row.key === 'language')?.value
-  if (typeof setting === 'string' && setting.trim() !== '') return isZh(setting) ? 'zh' : 'en'
+  if (isZh(setting)) return 'zh'
   for (const value of [await $.env.get('LC_ALL'), await $.env.get('LC_MESSAGES'), await $.env.get('LANG')]) {
     if (isZh(value)) return 'zh'
   }
@@ -130,7 +134,7 @@ async function refreshStats($: EngineInterface) {
     const stats = (await callTool($, 'graph_statistics', {})) as { node_count?: number }
     brain = { ...brain, nodes: stats.node_count, error: undefined }
   } catch (err) {
-    brain = { ...brain, error: `${t().unreachable}: ${messageOf(err)}` }
+    brain = { ...brain, error: isDenied(err) ? t().denied(TOOLS_TO_ALLOW) : `${t().unreachable}: ${messageOf(err)}` }
   }
   showStatus($)
 }
@@ -366,7 +370,7 @@ export const register: Register = (on, options) => {
       prompt !== '' && (await sentinel($, 'autorecall'))?.startsWith('on')
         ? Promise.race([
             recall($, prompt).catch(err => {
-              brain = { ...brain, error: `${t().recallFailed}: ${messageOf(err)}` }
+              brain = { ...brain, error: isDenied(err) ? t().denied(TOOLS_TO_ALLOW) : `${t().recallFailed}: ${messageOf(err)}` }
               return undefined
             }),
             $.clock.sleep(RECALL_BUDGET_MS).then(() => undefined),
@@ -523,6 +527,16 @@ const slugOf = (text: string) =>
 const today = () => new Date().toISOString().slice(0, 10)
 
 const messageOf = (err: unknown) => String((err as Error)?.message ?? err).slice(0, 80)
+
+// A call the module makes goes through the session's permission rules like
+// the model's, and a hook has no prompt to ask with: without an allow rule the
+// call is denied, which says nothing about the brain itself.
+const isDenied = (err: unknown) => /refused|denied|permission/i.test(String((err as Error)?.message ?? err))
+
+// The tools this module calls, as permissions.allow spells them.
+const TOOLS_TO_ALLOW = ['knowledge_memory_recall', 'graph_statistics', 'memory_save']
+  .map(tool => `mcp__plugin_cortexdb_cortexdb__${tool}`)
+  .join(', ')
 
 // The shell hook's keywordsFromPrompt: letter and digit runs, lowercased,
 // deduped, two characters or more; a CJK run stays one token.

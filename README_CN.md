@@ -41,6 +41,20 @@ Codex 中需要在 `/hooks` 审阅并信任插件 hooks，自动召回才会运�
 /plugin install cortexdb-live@cortexdb
 ```
 
+mod 会自己调用插件的三个工具，而钩子里的调用不会弹权限确认，所以要在 `~/.claude/settings.json` 里允许一次（bypass 模式下不需要）：
+
+```json
+"permissions": {
+  "allow": [
+    "mcp__plugin_cortexdb_cortexdb__knowledge_memory_recall",
+    "mcp__plugin_cortexdb_cortexdb__graph_statistics",
+    "mcp__plugin_cortexdb_cortexdb__memory_save"
+  ]
+}
+```
+
+没加的话，状态栏会提示缺哪几条。
+
 - **规划过的召回**：检索之前，haiku 先把每条 prompt 拆成中英文关键词、别名、实体名和检索方式。只是「好」「发」这类确认就不检索。输入框上方显示召回了什么，展开能看到查询规划和每一条结果。隐藏后，下一次召回会自动重新出现；想马上找回刚隐藏的那条，用 `/cortexdb-show`。
 - **状态栏**：当前连的是哪个大脑、节点数、上次召回用时；连不上时显示原因。
 - **自动记忆**：会话空闲 90 秒后，haiku 把新增的对话提炼成长期记忆（`auto:<会话>:<slug>`）。之后再提炼时，同一个 slug 是替换而不是重复写一条。

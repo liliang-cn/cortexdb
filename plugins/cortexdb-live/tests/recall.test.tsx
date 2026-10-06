@@ -24,6 +24,7 @@ type World = {
   captured?: object
   messages?: { role: 'user' | 'assistant'; text: string; toolUses: never[] }[]
   isBrainDown?: boolean
+  isDenied?: boolean
 }
 
 type Seen = {
@@ -56,6 +57,7 @@ const world = (on: On, w: World): Seen => {
   })
   on('mcp.call', ($, e) => {
     seen.calls.push({ tool: e.tool, args: e.args })
+    if (w.isDenied) return { deny: 'Claude requested permissions to use this tool, but you have not granted it yet.' }
     if (w.isBrainDown) return { value: { content: [{ type: 'text', text: 'dial tcp: refused' }], isError: true } }
     const body = e.tool === 'graph_statistics' ? { node_count: 4493 } : e.tool === 'memory_save' ? { ok: true } : recallPayload
     return { value: { content: [{ type: 'text', text: JSON.stringify(body) }], isError: false } }
@@ -131,6 +133,15 @@ test('auto-recall switched off leaves the prompt as the hooks beneath made it', 
 
   expect(seen.calls.some(c => c.tool === 'knowledge_memory_recall')).toBe(false)
   expect(out.additionalContext).toEqual([SHELL, 'another plugin'])
+})
+
+test('a denied tool says which permissions to add, not that the brain is down', async ($, on) => {
+  const seen = world(on, { autorecall: 'on', isDenied: true })
+
+  const out = await $.classic.UserPromptSubmit({ prompt: 'what does Alice prefer?' })
+
+  expect(out.additionalContext).toEqual([SHELL, 'another plugin'])
+  expect(seen.status.at(-1)).toContain('permissions.allow: mcp__plugin_cortexdb_cortexdb__knowledge_memory_recall')
 })
 
 test('a brain that fails keeps the shell block', async ($, on) => {
