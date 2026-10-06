@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.122.1] - 2026-10-06
+
+### Added
+
+- `import_agent_memory`, an MCP tool that brings in the memory a person
+  already has: Claude Code's memory notes, `CLAUDE.md` / `AGENTS.md`, and
+  Codex's own memories (`~/.codex/memories_1.sqlite`, `~/.codex/memories`) by
+  default; with `claude_sessions` / `codex_sessions`, past transcripts
+  distilled into memories the way a session is captured when it ends, a few
+  per call (`max_sessions`, `since`), remembered in
+  `~/.cortexdb/imported-sessions.json` so none is read twice. It reads files
+  where the MCP server runs and writes to the brain that server uses, local
+  or shared. `dry_run` counts first.
+- Capture retires what it made untrue. The SessionEnd capture, the
+  cortexdb-live mod and the session import look each new fact up and ask the
+  model which existing memories it contradicts; those are saved as
+  superseded by it — kept and exported, no longer recalled as current. The
+  later date wins: an old session's fact never retires a newer memory, and is
+  dropped when a newer one already contradicts it. At most five per pass.
+- A superseded memory records when (`superseded_at`), so a mistaken pass can
+  be found and undone.
+
+### Fixed
+
+- `--import-agent-memory` wrote to the local file even when `CORTEXDB_REMOTE`
+  named a shared brain, and reported success. It now runs the same import as
+  the tool, into the configured brain, and takes `--sessions`, `--since`,
+  `--max` and `--dry-run`.
+- Live view library: walls, cornices, window mullions and bookcases no longer
+  flicker where two faces shared a plane.
+
 ## [2.122.0] - 2026-10-06
 
 ### Added

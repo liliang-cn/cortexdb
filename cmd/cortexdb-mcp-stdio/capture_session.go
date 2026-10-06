@@ -10,9 +10,9 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
-	rpcv1 "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1"
 )
 
 // runCaptureSession turns a finished session into fact-scoped memories.
@@ -75,7 +75,7 @@ func runCaptureSession(args []string) {
 		return
 	}
 
-	facts, err := extractSessionFacts(context.Background(), llm, digest)
+	facts, err := extractSessionFacts(context.Background(), llm, digest, time.Now())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cortexdb: capture: %v\n", err)
 		os.Exit(1)
@@ -85,50 +85,95 @@ func runCaptureSession(args []string) {
 		return
 	}
 
-	shortSession := sessionID
-	if len(shortSession) > 8 {
-		shortSession = shortSession[:8]
+	ctx := context.Background()
+	brain, _, _, closeBrain, err := openBrainWriter()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cortexdb: capture: %v\n", err)
+		os.Exit(1)
 	}
-	date := time.Now().Format("2006-01-02")
-	saved := 0
+	defer closeBrain()
+	now := time.Now()
+	plan, err := reconcileFacts(ctx, llm, brain, facts, capturedIDPrefix(sessionID), now)
+	if err != nil {
+		// Saving without retiring anything is what capture always did.
+		fmt.Fprintf(os.Stderr, "cortexdb: capture: checking for outdated memories: %v\n", err)
+	}
+
+	date := now.Format("2006-01-02")
+	saved, retired := 0, 0
 	for _, f := range facts {
-		req := cortexdb.MemorySaveRequest{
-			// Stable per session+slug, so re-capturing a session overwrites its
-			// own memories instead of stacking duplicates.
-			MemoryID:   fmt.Sprintf("auto:%s:%s", shortSession, f.Slug),
-			Scope:      "global",
-			Content:    strings.TrimSpace(f.Content),
-			Importance: clamp01(f.Importance),
-			Metadata: map[string]any{
-				"source":  "auto-capture",
-				"session": sessionID,
-				"date":    date,
-				"type":    firstNonEmptyStr(f.Type, "fact"),
-			},
-		}
-		for _, e := range f.Entities {
-			if strings.TrimSpace(e.Name) == "" {
-				continue
-			}
-			req.Entities = append(req.Entities, cortexdb.ToolEntityInput{Name: e.Name, Type: e.Type})
-		}
+		req := capturedRequest(sessionID, date, f)
 		if req.Content == "" {
+			continue
+		}
+		if !plan.apply(f.Slug, &req) {
+			fmt.Printf("outdated %s (contradicted by %s): %s\n", req.MemoryID, plan.Outdated[f.Slug], clip(req.Content, 120))
 			continue
 		}
 		if dryRun {
 			fmt.Printf("would save %s (importance %.2f): %s\n", req.MemoryID, req.Importance, clip(req.Content, 160))
+			for _, id := range req.Supersedes {
+				fmt.Printf("  would retire %s\n", id)
+			}
 			continue
 		}
-		if err := saveCapturedMemory(context.Background(), req); err != nil {
+		if err := brain.SaveMemory(ctx, req); err != nil {
 			fmt.Fprintf(os.Stderr, "cortexdb: capture: save %s: %v\n", req.MemoryID, err)
 			os.Exit(1)
 		}
 		fmt.Printf("saved %s: %s\n", req.MemoryID, clip(req.Content, 120))
+		for _, id := range req.Supersedes {
+			fmt.Printf("  retired %s\n", id)
+		}
 		saved++
+		retired += len(req.Supersedes)
 	}
 	if !dryRun {
-		fmt.Printf("capture: %d memories from %d user turns\n", saved, userTurns)
+		fmt.Printf("capture: %d memories from %d user turns, %d older ones retired\n", saved, userTurns, retired)
 	}
+}
+
+// capturedRequest is the memory one captured fact becomes. Every capture path —
+// the SessionEnd hook, the cortexdb-live mod, an import of past sessions —
+// writes this same record, so a fact reads the same whichever wrote it.
+func capturedRequest(sessionID, date string, f capturedFact) cortexdb.MemorySaveRequest {
+	req := cortexdb.MemorySaveRequest{
+		// Stable per session+slug, so re-capturing a session overwrites its
+		// own memories instead of stacking duplicates.
+		MemoryID:   capturedIDPrefix(sessionID) + f.Slug,
+		Scope:      "global",
+		Content:    strings.TrimSpace(f.Content),
+		Importance: clamp01(f.Importance),
+		Metadata: map[string]any{
+			"source":  "auto-capture",
+			"session": sessionID,
+			"date":    date,
+			"type":    firstNonEmptyStr(f.Type, "fact"),
+		},
+	}
+	for _, e := range f.Entities {
+		if strings.TrimSpace(e.Name) == "" {
+			continue
+		}
+		req.Entities = append(req.Entities, cortexdb.ToolEntityInput{Name: e.Name, Type: e.Type})
+	}
+	return req
+}
+
+// capturedIDPrefix is what every memory captured from one session starts with.
+func capturedIDPrefix(sessionID string) string {
+	short := sessionID
+	if len(short) > 8 {
+		short = short[:8]
+	}
+	return "auto:" + short + ":"
+}
+
+// codexIDPrefix is capturedIDPrefix for a Codex session. Codex ids are UUIDv7:
+// their first eight characters are a clock that sessions a minute apart share,
+// so the tail tells them apart.
+func codexIDPrefix(sessionID string) string {
+	return "auto:codex-" + sessionID[max(0, len(sessionID)-8):] + ":"
 }
 
 // digestTranscript reduces a session transcript to the conversation itself:
@@ -175,14 +220,26 @@ func digestTranscript(path string) (string, int, error) {
 	if err := scanner.Err(); err != nil {
 		return "", 0, err
 	}
-	digest := b.String()
-	// Long sessions conclude late: keep the head for context and spend the
-	// budget on the tail, where decisions and outcomes live.
+	return budgetDigest(b.String()), userTurns, nil
+}
+
+// budgetDigest keeps a digest within what one extraction call is given. Long
+// sessions conclude late: keep the head for context and spend the budget on
+// the tail, where decisions and outcomes live. The cut lands on a rune
+// boundary, so a session in Chinese is never handed over mid-character.
+func budgetDigest(digest string) string {
 	const headBudget, tailBudget = 6000, 22000
-	if len(digest) > headBudget+tailBudget {
-		digest = digest[:headBudget] + "\n[...trimmed...]\n" + digest[len(digest)-tailBudget:]
+	if len(digest) <= headBudget+tailBudget {
+		return digest
 	}
-	return digest, userTurns, nil
+	head, tail := headBudget, len(digest)-tailBudget
+	for head > 0 && !utf8.RuneStart(digest[head]) {
+		head--
+	}
+	for tail < len(digest) && !utf8.RuneStart(digest[tail]) {
+		tail++
+	}
+	return digest[:head] + "\n[...trimmed...]\n" + digest[tail:]
 }
 
 // textFromContent extracts the text of a message whose content is either a
@@ -249,8 +306,10 @@ Respond with JSON only: {"memories":[{"slug":"...","content":"...","importance":
 
 func extractSessionFacts(ctx context.Context, llm interface {
 	GenerateJSON(ctx context.Context, systemPrompt, userPrompt string) ([]byte, error)
-}, digest string) ([]capturedFact, error) {
-	userPrompt := fmt.Sprintf("Today is %s.\n\nTranscript digest:\n%s", time.Now().Format("2006-01-02"), digest)
+}, digest string, asOf time.Time) ([]capturedFact, error) {
+	// asOf is the day the session happened, not the day it is read: a session
+	// imported months later must not have its "today" dated to the import.
+	userPrompt := fmt.Sprintf("Today is %s.\n\nTranscript digest:\n%s", asOf.Format("2006-01-02"), digest)
 	raw, err := llm.GenerateJSON(ctx, captureSystemPrompt, userPrompt)
 	if err != nil {
 		return nil, fmt.Errorf("llm: %w", err)
@@ -324,40 +383,6 @@ func repairJSON(raw []byte) []byte {
 		s += string(stack[i])
 	}
 	return []byte(s)
-}
-
-// saveCapturedMemory writes to whichever brain this process is pointed at.
-func saveCapturedMemory(ctx context.Context, req cortexdb.MemorySaveRequest) error {
-	if addr, token, ok := remoteConfigured(); ok {
-		conn, err := dialCortexDB(addr, token)
-		if err != nil {
-			return fmt.Errorf("connect to %s: %w", addr, err)
-		}
-		defer func() { _ = conn.Close() }()
-		args, err := json.Marshal(req)
-		if err != nil {
-			return err
-		}
-		callCtx, cancel := context.WithTimeout(ctx, remoteDialTimeout)
-		defer cancel()
-		if _, err := rpcv1.NewToolsServiceClient(conn).CallTool(callCtx, &rpcv1.CallToolRequest{
-			Name: "memory_save", ArgsJson: string(args),
-		}); err != nil {
-			return fmt.Errorf("memory_save on %s: %w", addr, err)
-		}
-		return nil
-	}
-	dbPath := os.Getenv("CORTEXDB_PATH")
-	if dbPath == "" {
-		dbPath = cortexdb.DefaultDBPath()
-	}
-	db, err := openBrainDB(dbPath)
-	if err != nil {
-		return fmt.Errorf("open %s: %w", dbPath, err)
-	}
-	defer func() { _ = db.Close() }()
-	_, err = db.SaveMemory(ctx, req)
-	return err
 }
 
 func clamp01(f float64) float64 {

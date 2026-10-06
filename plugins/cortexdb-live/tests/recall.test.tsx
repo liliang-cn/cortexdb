@@ -22,6 +22,9 @@ type World = {
   autocapture?: string
   plan?: object | 'fail'
   captured?: object
+  // existing answers the recall a capture makes to find what it may retire.
+  existing?: object
+  retire?: object
   messages?: { role: 'user' | 'assistant'; text: string; toolUses: never[] }[]
   isBrainDown?: boolean
   isDenied?: boolean
@@ -64,7 +67,15 @@ const world = (on: On, w: World): Seen => {
     }
     if (w.isDenied) return { deny: 'Claude requested permissions to use this tool, but you have not granted it yet.' }
     if (w.isBrainDown) return { value: { content: [{ type: 'text', text: 'dial tcp: refused' }], isError: true } }
-    const body = e.tool === 'graph_statistics' ? { node_count: 4493 } : e.tool === 'memory_save' ? { ok: true } : recallPayload
+    const isCaptureLookup = e.tool === 'knowledge_memory_recall' && e.args.disable_knowledge === true
+    const body =
+      e.tool === 'graph_statistics'
+        ? { node_count: 4493 }
+        : e.tool === 'memory_save'
+          ? { ok: true }
+          : isCaptureLookup && w.existing
+            ? w.existing
+            : recallPayload
     return { value: { content: [{ type: 'text', text: JSON.stringify(body) }], isError: false } }
   })
   on('model.complete', ($, e) => {
@@ -73,6 +84,7 @@ const world = (on: On, w: World): Seen => {
       if (w.plan === 'fail') return { value: { isAnswered: false, reason: 'api-error', status: 529, error: 'overloaded' } as never }
       return answered('```json\n' + JSON.stringify(w.plan ?? PLAN) + '\n```')
     }
+    if (e.system?.startsWith('You maintain')) return answered(JSON.stringify(w.retire ?? { retire: [] }))
     return answered(JSON.stringify(w.captured ?? { memories: [] }))
   })
   on('session.messages', () => ({ value: (w.messages ?? []) as never }))
@@ -244,6 +256,39 @@ test('an idle session is captured once, with stable ids, and not again', async (
   await $.turn.complete(turnDone)
   await clock.advance(91 * 1000)
   expect(seen.calls.filter(c => c.tool === 'memory_save').length).toBe(1)
+})
+
+test('a capture retires the older memory it made untrue, never a later one', async ($, on) => {
+  const seen = world(on, {
+    messages: conversation,
+    captured: {
+      memories: [
+        { slug: 'deploy-node-b', content: 'CortexDB deploys go to node-b since 2026-10-06.', entities: [{ name: 'CortexDB', type: 'project' }] },
+      ],
+    },
+    existing: {
+      memories: [
+        { memory: { id: 'auto:11111111:deploy-node-a', content: 'CortexDB deploys go to node-a.', metadata: { date: '2026-09-01' } } },
+        { memory: { id: 'later', content: 'CortexDB deploys go to node-c.', metadata: { date: '2099-01-01' } } },
+        { memory: { id: 'auto:abcdef12:own', content: 'from this session', metadata: { date: '2026-10-06' } } },
+        { memory: { id: 'undated', content: 'no date' } },
+      ],
+    },
+    retire: { retire: [{ new: 'deploy-node-b', old: ['auto:11111111:deploy-node-a (2026-09-01)', 'later', 'made-up'], reason: 'moved to node-b' }] },
+  })
+  const clock = seen.clock
+
+  await $.turn.complete(turnDone)
+  await clock.advance(91 * 1000)
+
+  const asked = seen.prompts.find(p => p.includes('EXISTING memories')) ?? ''
+  expect(asked).toContain('old "auto:11111111:deploy-node-a", recorded 2026-09-01')
+  expect(asked).not.toContain('auto:abcdef12:own')
+  expect(asked).not.toContain('undated')
+  const save = seen.calls.find(c => c.tool === 'memory_save')
+  expect(save?.args.supersedes).toEqual(['auto:11111111:deploy-node-a'])
+  expect(save?.args.metadata).toMatchObject({ supersede_reason: 'moved to node-b' })
+  expect(seen.toasts).toEqual(['CortexDB saved 1 new memories, retired 1 outdated'])
 })
 
 test('capture switched off writes nothing', async ($, on) => {

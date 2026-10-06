@@ -1005,6 +1005,8 @@ func (db *DB) markMemoriesSuperseded(ctx context.Context, newID string, targets 
 		}
 		metadata := cloneAnyMap(row.record.Metadata)
 		metadata["superseded_by"] = newID
+		// When, so a mistaken pass can be found and undone by time.
+		metadata["superseded_at"] = time.Now().UTC().Format(time.RFC3339)
 		metadataJSON, err := json.Marshal(metadata)
 		if err != nil {
 			return fmt.Errorf("supersede %q: marshal metadata: %w", target, err)

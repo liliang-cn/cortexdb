@@ -73,6 +73,9 @@ func runRemoteMCPStdio(ctx context.Context, addr, token string) error {
 	addRenderGraphHTMLTool(server)
 	addServeGraph3DTool(server)
 	addSideGraphTools(server, sideGraphs_)
+	// Also handled here: the files it imports are on this machine, not the
+	// brain's. See import_agent.go.
+	addImportAgentMemoryTool(server, remoteBrain{client}, addr)
 	return server.Run(ctx, &mcp.StdioTransport{})
 }
 

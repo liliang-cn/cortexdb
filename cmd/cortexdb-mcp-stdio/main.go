@@ -240,6 +240,7 @@ func main() {
 	addRenderGraphHTMLTool(server)
 	addServeGraph3DTool(server)
 	addSideGraphTools(server, sideGraphs_)
+	addImportAgentMemoryTool(server, localBrain{db}, dbPath)
 	// global_search / build_community_hierarchy live in graphflow, which the
 	// facade cannot import, so they are registered here. The model is the
 	// same CORTEXDB_LLM_* one the CLI modes use; without it both tools run

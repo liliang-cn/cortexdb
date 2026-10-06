@@ -57,7 +57,7 @@ mod 会自己调用插件的三个工具，而钩子里的调用不会弹权限�
 
 - **规划过的召回**：检索之前，haiku 先把每条 prompt 拆成中英文关键词、别名、实体名和检索方式。只是「好」「发」这类确认就不检索。输入框上方显示召回了什么，展开能看到查询规划和每一条结果。隐藏后，下一次召回会自动重新出现；想马上找回刚隐藏的那条，用 `/cortexdb-show`。
 - **状态栏**：当前连的是哪个大脑、节点数、上次召回用时；连不上时显示原因。
-- **自动记忆**：会话空闲 90 秒后，haiku 把新增的对话提炼成长期记忆（`auto:<会话>:<slug>`）。之后再提炼时，同一个 slug 是替换而不是重复写一条。
+- **自动记忆**：会话空闲 90 秒后，haiku 把新增的对话提炼成长期记忆（`auto:<会话>:<slug>`）。之后再提炼时，同一个 slug 是替换而不是重复写一条。新记忆推翻的旧记忆（换了主机、改了决定）会被标记为已替代：仍然保留，但不再作为当前事实被召回。
 
 haiku 用的是 Claude Code 自己的模型额度，不需要 API key。语言：`/config` → `cortexdb-live` → `language`（`auto`、`zh`、`en`）。mod 认插件原有的开关：`cortexdb-recall --disable`、`cortexdb-session-end --disable` 会同时关掉两边的召回和记忆。mod 运行时，插件的 shell 召回和记忆钩子会自动让开，不会重复做。Codex 仍然用那两个钩子。mod 是 Claude Code 的早期功能（按 2.1.290 构建）。
 
@@ -69,6 +69,7 @@ haiku 用的是 Claude Code 自己的模型额度，不需要 API key。语言�
 - Palantir 风格的 ontology，带受治理的动作
 - 80+ 工具，进程内调用或走 MCP
 - `serve_graph_3d`：实时 3D 视图，可查找、提问、查询、展开，桌面和手机都能用；也可以切成图书馆，每条记忆是它所属项目书架上的一本书
+- `import_agent_memory`：把 Claude Code 和 Codex 已有的记忆导进来——记忆笔记、`CLAUDE.md` / `AGENTS.md`、Codex 的记忆库，也可以把历史会话提炼成记忆——本地大脑和共享大脑都行
 - 变更事件流：每次已提交的写入，按顺序、恰好一次
 - 默认 SQLite，换成 `postgres://` DSN 就跑在 PostgreSQL + pgvector 上
 

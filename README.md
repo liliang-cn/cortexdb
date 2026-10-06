@@ -58,7 +58,7 @@ Without them the status line names the missing rules.
 
 - **Planned recall.** Before the brain is searched, haiku turns each prompt into keywords in Chinese and English, aliases, entity names and a retrieval mode. A bare "ok" or "go ahead" searches nothing. The band above the prompt shows what was recalled; expand it to see the plan and every hit. Hide lasts until the next recall; `/cortexdb-show` brings the hidden one back.
 - **Status line.** Which brain the session uses, its node count and the last recall's time, or why the brain can't be reached.
-- **Capture.** 90 seconds after a session goes idle, haiku distils the new part of the conversation into durable memories (`auto:<session>:<slug>`). Each later pass replaces a memory under the same slug rather than adding a copy.
+- **Capture.** 90 seconds after a session goes idle, haiku distils the new part of the conversation into durable memories (`auto:<session>:<slug>`). Each later pass replaces a memory under the same slug rather than adding a copy. Older memories a new one makes untrue (a host moved, a decision reversed) are marked superseded: kept, but no longer recalled as current.
 
 Haiku runs on Claude Code's own model access, so no API key is needed. Language: `/config` → `cortexdb-live` → `language` (`auto`, `zh`, `en`). The mod honours the plugin's own switches: `cortexdb-recall --disable` and `cortexdb-session-end --disable` turn recall and capture off for both. While the mod runs, the plugin's shell recall and capture hooks stand down, so nothing is done twice. Codex keeps those hooks. Mods are an early-access Claude Code feature (built against 2.1.290).
 
@@ -70,6 +70,7 @@ Haiku runs on Claude Code's own model access, so no API key is needed. Language:
 - Palantir-style ontology with governed actions
 - 80+ tools, in-process or over MCP
 - `serve_graph_3d`: a live 3D view to find, ask, query and expand, on desktop or phone — or the same brain as a library, each memory a book on its project's shelf
+- `import_agent_memory`: bring in what Claude Code and Codex already remember — memory notes, `CLAUDE.md` / `AGENTS.md`, Codex's memories, and optionally past sessions distilled into memories — into a local or shared brain
 - Change feed: every committed write, in order, exactly once
 - SQLite by default, PostgreSQL + pgvector with a `postgres://` DSN
 

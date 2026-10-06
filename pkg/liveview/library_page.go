@@ -204,7 +204,9 @@ var labels = new CSS2DRenderer();
 labels.setSize(innerWidth, innerHeight);
 labels.domElement.className = "labels";
 $("stage").appendChild(labels.domElement);
-var camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.5, 900);
+// near at 1, not lower: depth precision is spent close to the camera, and the
+// hall is seen from tens of metres away
+var camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 1, 900);
 var controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true; controls.dampingFactor = 0.08;
 controls.minPolarAngle = 0.2; controls.maxPolarAngle = 1.32;
@@ -259,7 +261,8 @@ var LIB = null, WORLD = null, BOOKS = [], BYID = {}, MESH = null, PLAN = null;
 var focusWing = -1, openCardId = "", openBookState = null, fx = null;
 
 // ---- layout: where every case, book and plaque goes. Pure function of the library.
-var LEVEL_H = 0.58, BOOK_D = 0.34;
+// STACK_STEP keeps neighbouring stacks' cornices (case width + 0.4) apart
+var LEVEL_H = 0.58, BOOK_D = 0.34, STACK_STEP = 3.95;
 function bookWidth(terms){ return 0.07 + Math.min(1, (terms || 0) / 12) * 0.13; }
 function packCases(shelves, perCase){
   var cases = [], cur = [], starts = [];
@@ -302,7 +305,7 @@ function plan(lib){
   });
   var rows = Math.max(fill[0].length, fill[1].length, 1);
   var REF = lib.docs.length ? 4.5 : 0;
-  var halfW = Math.max(14, grandW / 2 + (Math.max(stL.length, stR.length)) * (3.4 + 0.3) + 2.5, NAVE + ROW * (SIDEW + GAP) + 4 + REF);
+  var halfW = Math.max(14, grandW / 2 + (Math.max(stL.length, stR.length)) * STACK_STEP + 2.5, NAVE + ROW * (SIDEW + GAP) + 4 + REF);
   var back = -(8 + rows * 6.4), front = 12.5;
   P.hall = {x0:-halfW, x1:halfW, z0:back - 2.4, z1:front};
   // grand
@@ -310,9 +313,9 @@ function plan(lib){
   if(main){ P.plaques.push({x:0, z:back + 3.4, rot:0, title:main.name, sub:STR.wingSub(main.shelves.length, main.books), wing:0}); }
   P.wings[0] = {x:0, z:back + 1, w:Math.max(grandW, 6)};
   // stacks
-  stL.forEach(function(b, i){ P.cases.push({x:-grandW/2 - 2.3 - i * 3.7, z:back - 0.2, rot:0, levels:8, width:3.4, books:b, starts:[], pal:BROWN, wing:-1}); });
-  stR.forEach(function(b, i){ P.cases.push({x:grandW/2 + 2.3 + i * 3.7, z:back - 0.2, rot:0, levels:8, width:3.4, books:b, starts:[], pal:BROWN, wing:-1}); });
-  if(lib.stacks.length){ P.plaques.push({x:(stR.length ? grandW/2 + 2.3 + (stR.length - 1) * 1.85 : -grandW/2 - 2.3), z:back + 3.2, rot:0, title:STR.stacks, sub:lib.stacks.length + " · " + STR.stacksSub, wing:-1}); }
+  stL.forEach(function(b, i){ P.cases.push({x:-grandW/2 - 2.3 - i * STACK_STEP, z:back - 0.2, rot:0, levels:8, width:3.4, books:b, starts:[], pal:BROWN, wing:-1}); });
+  stR.forEach(function(b, i){ P.cases.push({x:grandW/2 + 2.3 + i * STACK_STEP, z:back - 0.2, rot:0, levels:8, width:3.4, books:b, starts:[], pal:BROWN, wing:-1}); });
+  if(lib.stacks.length){ P.plaques.push({x:(stR.length ? grandW/2 + 2.3 + (stR.length - 1) * STACK_STEP / 2 : -grandW/2 - 2.3), z:back + 3.2, rot:0, title:STR.stacks, sub:lib.stacks.length + " · " + STR.stacksSub, wing:-1}); }
   [-1, 1].forEach(function(sign, si){
     fill[si].forEach(function(row, r){
       var z = back + 7.4 + r * 6.4, slot = 0;
@@ -367,18 +370,22 @@ function walls(W, H){
       add(g, new THREE.BoxGeometry(winW - 0.02, gh, 0.12), M.glass, wc, 2.2 + gh/2, 0, true);
       var arch = new THREE.Shape(); arch.moveTo(-winW/2 + 0.01, 0); arch.absarc(0, 0, winW/2 - 0.01, Math.PI, 0, true); arch.lineTo(-winW/2 + 0.01, 0);
       add(g, new THREE.ShapeGeometry(arch, 24), M.glass, wc, 2.2 + gh + 0.001, 0.03, true);
-      for(var k = 1; k < 3; k++) blk(g, M.walnutDark, 0.08, gh, 0.2, wc - winW/2 + winW * k / 3, 2.2, 0, 0.01);
-      for(var k2 = 1; k2 < 4; k2++) blk(g, M.walnutDark, winW - 0.04, 0.08, 0.2, wc, 2.2 + gh * k2 / 4, 0, 0.01);
+      for(var k = 1; k < 3; k++) blk(g, M.walnutDark, 0.08, gh - 0.02, 0.2, wc - winW/2 + winW * k / 3, 2.21, 0, 0.01);
+      for(var k2 = 1; k2 < 4; k2++) blk(g, M.walnutDark, winW - 0.04, 0.08, 0.17, wc, 2.2 + gh * k2 / 4, 0, 0.01);
     }
     blk(g, M.wall, pierW, WALL_H, 0.8, len/2 - pierW/2, 0, 0, 0.02);
     // the wainscot stops short of the ends and the cornice runs past them, so
     // neither shares an end face with the wall
-    blk(g, M.wainscot, len - 0.04, 1.2, 0.9, 0, 0, 0.05, 0.02);
+    // and stands proud of the wall's room side only: its back stays inside the
+    // wall, so the two never share the face seen from outside the hall
+    blk(g, M.wainscot, len - 0.04, 1.2, 0.84, 0, 0, 0.08, 0.02);
     blk(g, M.walnutDark, len + 0.06, 0.4 + cap, 1.0, 0, WALL_H - 0.4, 0.05, 0.02);
     return g;
   }
   var back = wall(W.x1 - W.x0, Math.max(4, Math.round((W.x1 - W.x0) / 7.5)), 0.06); back.position.set(0, 0, W.z0 + 0.4); WORLD.add(back);
-  var left = wall(W.z1 - W.z0, Math.max(3, Math.round((W.z1 - W.z0) / 7.5)), 0.1); left.rotation.y = Math.PI / 2; left.position.set(W.x0 + 0.4, 0, (W.z0 + W.z1) / 2); WORLD.add(left);
+  // the left wall starts where the back wall ends, so the corner is one wall's,
+  // not two walls overlapping (their faces would share planes there)
+  var left = wall(W.z1 - W.z0 - 1.0, Math.max(3, Math.round((W.z1 - W.z0) / 7.5)), 0.1); left.rotation.y = Math.PI / 2; left.position.set(W.x0 + 0.4, 0, (W.z0 + W.z1) / 2 + 0.5); WORLD.add(left);
 }
 function caseMesh(c){
   var g = new THREE.Group(); g.position.set(c.x, 0, c.z); g.rotation.y = c.rot; WORLD.add(g);
@@ -387,7 +394,7 @@ function caseMesh(c){
   blk(g, M.walnutDark, w + 0.3, 0.12, D + 0.08, 0, H - 0.04, 0, 0.03); blk(g, M.walnutDark, w + 0.4, 0.2, D + 0.12, 0, H + 0.08, 0, 0.04);
   // the back panel stands a hair proud of the sides and the shelves stop short
   // of it, so nothing shares the case's back plane (coplanar faces flicker)
-  blk(g, M.walnutDark, w, H, 0.06, 0, 0, -D/2 + 0.025, 0.01);
+  blk(g, M.walnutDark, w, H, 0.06, 0, 0, -D/2 + 0.01, 0.01);
   for(var l = 0; l <= c.levels; l++) blk(g, M.walnut, w - 0.01, 0.07, D - 0.08, 0, 0.25 + l * LEVEL_H - 0.07, 0.04, 0.01);
   // the books, left to right, bottom shelf up
   var lvl = 0, cx = -w/2 + 0.04, perRow = [];

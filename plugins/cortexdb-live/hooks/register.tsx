@@ -47,7 +47,7 @@ const STRINGS = {
     recallFailed: '召回失败',
     denied: (tools: string) => `没有调用 CortexDB 工具的权限，请在 settings.json 的 permissions.allow 里允许：${tools}`,
     local: '本地大脑',
-    captured: (n: number) => `CortexDB 记下了 ${n} 条新记忆`,
+    captured: (n: number, retired: number) => `CortexDB 记下了 ${n} 条新记忆${retired > 0 ? `，替换了 ${retired} 条过时的` : ''}`,
     showCommand: '重新显示上一条 prompt 的 CortexDB 召回结果（隐藏之后用）',
     shown: '已在输入框上方重新显示召回结果。',
     nothingShown: '上一条 prompt 没有召回到内容。',
@@ -69,7 +69,7 @@ const STRINGS = {
     recallFailed: 'recall failed',
     denied: (tools: string) => `not allowed to call CortexDB tools; allow them in settings.json permissions.allow: ${tools}`,
     local: 'local brain',
-    captured: (n: number) => `CortexDB saved ${n} new memories`,
+    captured: (n: number, retired: number) => `CortexDB saved ${n} new memories${retired > 0 ? `, retired ${retired} outdated` : ''}`,
     showCommand: "Show what CortexDB recalled for the last prompt again (after Hide)",
     shown: 'The recall is shown above the prompt again.',
     nothingShown: 'The last prompt recalled nothing.',
@@ -277,6 +277,135 @@ type CapturedReply = {
   }[]
 }
 
+// --- retiring what a capture made untrue -------------------------------------
+
+// The shell capture's step (cmd/cortexdb-mcp-stdio/capture_supersede.go), with
+// the same prompt and the same limits: each new memory is looked up, and
+// haiku says which older memories it makes untrue. Those are saved as
+// superseded — kept, linked forward, no longer recalled as current — so a
+// wrong call is undone by clearing one key. The later date wins.
+const CANDIDATES_PER_MEMORY = 4
+const CANDIDATE_LIMIT = 24
+const MAX_SUPERSEDES = 5
+
+const SUPERSEDE_SYSTEM = `You maintain an AI agent's long-term memory. A session just produced NEW memories. EXISTING memories are already stored, each with the date it was recorded.
+
+Decide, for each NEW memory, whether it makes an EXISTING memory untrue: the same thing, with a different current value (a host moved, a version changed, a decision was reversed, a preference changed, a plan was dropped, something "not done yet" is now done). The memory dated later wins:
+- "retire": a NEW memory replaces EXISTING memories dated on or before the session.
+- "outdated": a NEW memory is itself contradicted by an EXISTING memory dated after the session; it should not be saved.
+
+Be strict. Being about the same topic is not enough; adding detail is not a contradiction; two facts that can both be true are not one. When unsure, leave it out — an outdated memory left in place is a smaller harm than a true one retired.
+
+Name memories exactly as listed: a NEW memory by its "new" name, an EXISTING one by its "old" id — never by a date.
+
+Respond with JSON only: {"retire":[{"new":"<new name>","old":["<old id>"],"reason":"..."}],"outdated":[{"new":"<new name>","by":"<old id>"}]}`
+
+type Fresh = { slug: string; content: string; entities: { name: string; type: string }[] }
+type Candidate = { id: string; content: string; date: string }
+type Retirement = { retire: Map<string, string[]>; reason: Map<string, string>; outdated: Set<string> }
+
+const noRetirement = (): Retirement => ({ retire: new Map(), reason: new Map(), outdated: new Set() })
+
+// A memory speaks for the day of its session when it says, else the day it
+// was stored. One with neither is never compared: no one can say which is later.
+const dateOf = (memory: { metadata?: { date?: unknown }; created_at?: string }) => {
+  const date = typeof memory.metadata?.date === 'string' ? memory.metadata.date : memory.created_at ?? ''
+  return /^\d{4}-\d{2}-\d{2}/.test(date) ? date.slice(0, 10) : ''
+}
+
+async function candidatesFor($: EngineInterface, fresh: Fresh[], ownPrefix: string) {
+  const seen = new Set<string>()
+  const out: Candidate[] = []
+  for (const m of fresh) {
+    let payload: RecallPayload
+    try {
+      payload = (await callTool($, 'knowledge_memory_recall', {
+        query: clip(m.content, 400),
+        entity_names: m.entities.map(e => e.name),
+        top_k_memories: CANDIDATES_PER_MEMORY,
+        disable_knowledge: true,
+        graph_light: true,
+      })) as RecallPayload
+    } catch {
+      continue // finding nothing to retire is the safe failure
+    }
+    for (const hit of payload.memories ?? []) {
+      const id = hit.memory?.id ?? ''
+      const date = hit.memory ? dateOf(hit.memory) : ''
+      // This session's own memories are rewritten by slug, not superseded.
+      if (id === '' || date === '' || seen.has(id) || id.startsWith(ownPrefix)) continue
+      seen.add(id)
+      out.push({ id, content: hit.memory?.content ?? '', date })
+      if (out.length >= CANDIDATE_LIMIT) return out
+    }
+  }
+  return out
+}
+
+type RetireReply = {
+  retire?: { new?: string; old?: unknown; reason?: string }[]
+  outdated?: { new?: string; by?: string }[]
+}
+
+// Models embellish names ("later-deploy (2026-11-02)"); read back only the
+// names that were given, never one made up or a date.
+const nameIn = (said: string, names: string[]) => {
+  const s = said.trim()
+  let best = ''
+  for (const n of names) {
+    if (s === n) return n
+    if (n.length > best.length && (s.startsWith(`${n} `) || s.startsWith(`${n}(`) || s.includes(`"${n}"`))) best = n
+  }
+  return best
+}
+
+async function planRetirement($: EngineInterface, fresh: Fresh[], ownPrefix: string, session: string) {
+  const plan = noRetirement()
+  const candidates = await candidatesFor($, fresh, ownPrefix)
+  if (fresh.length === 0 || candidates.length === 0) return plan
+  const prompt = [
+    `The session is dated ${session}.`,
+    '',
+    'NEW memories:',
+    ...fresh.map(m => `- new ${JSON.stringify(m.slug)}: ${clip(m.content, 400)}`),
+    '',
+    'EXISTING memories:',
+    ...candidates.map(c => `- old ${JSON.stringify(c.id)}, recorded ${c.date}: ${clip(c.content.trim(), 400)}`),
+  ].join('\n')
+  const reply = await $.model.complete({ model: PLANNER, system: SUPERSEDE_SYSTEM, prompt, maxTokens: 1500, timeoutMs: 60 * 1000 })
+  if (!reply.isAnswered) return plan
+  const out = parseJSON<RetireReply>(reply.text)
+  if (!out) return plan
+
+  const slugs = fresh.map(m => m.slug)
+  const ids = candidates.map(c => c.id)
+  const byId = new Map(candidates.map(c => [c.id, c]))
+  for (const o of out.outdated ?? []) {
+    const slug = nameIn(o.new ?? '', slugs)
+    const later = byId.get(nameIn(o.by ?? '', ids))
+    if (slug && later && later.date > session) plan.outdated.add(slug)
+  }
+  let budget = MAX_SUPERSEDES
+  const retired = new Set<string>()
+  for (const r of out.retire ?? []) {
+    const slug = nameIn(r.new ?? '', slugs)
+    if (!slug || plan.outdated.has(slug)) continue
+    const chosen = strings(r.old, CANDIDATE_LIMIT)
+      .map(said => nameIn(said, ids))
+      .filter(id => {
+        const c = byId.get(id)
+        if (!c || retired.has(id) || c.date > session || budget === 0) return false
+        retired.add(id)
+        budget -= 1
+        return true
+      })
+    if (chosen.length === 0) continue
+    plan.retire.set(slug, [...(plan.retire.get(slug) ?? []), ...chosen])
+    if (r.reason?.trim()) plan.reason.set(slug, clip(r.reason.trim(), 300))
+  }
+  return plan
+}
+
 type Message = { role: string; text: string; toolUses: readonly unknown[] }
 
 const keyOf = (m: Message) => `${m.role}:${m.toolUses.length}:${m.text.slice(0, 160)}`
@@ -308,31 +437,52 @@ async function capture($: EngineInterface) {
     const out = parseJSON<CapturedReply>(reply.text)
     if (!out) return
 
-    const short = sessionId.slice(0, 8)
-    const written: CapturedMemory[] = []
+    // Stable per session and slug, as the shell capture's: capturing again
+    // replaces a memory instead of stacking a second copy.
+    const ownPrefix = `auto:${sessionId.slice(0, 8)}:`
+    const drafts: (Fresh & { importance?: number; type?: string })[] = []
     for (const m of out.memories ?? []) {
       const content = (m.content ?? '').trim()
       const slug = slugOf(m.slug || content)
       if (content === '' || slug === '') continue
+      const entities = (m.entities ?? [])
+        .map(entity => ({ name: (entity.name ?? '').trim(), type: entity.type ?? '' }))
+        .filter(entity => entity.name !== '')
+      drafts.push({ slug, content, entities, importance: m.importance, type: m.type })
+    }
+    // Failing here saves everything and retires nothing, as capture always did.
+    const plan = await planRetirement($, drafts, ownPrefix, today()).catch(noRetirement)
+
+    const written: CapturedMemory[] = []
+    let retiredCount = 0
+    for (const m of drafts) {
+      if (plan.outdated.has(m.slug)) continue
+      const supersedes = plan.retire.get(m.slug) ?? []
+      const reason = plan.reason.get(m.slug)
       await callTool($, 'memory_save', {
-        // Stable per session and slug, as the shell capture's: capturing again
-        // replaces a memory instead of stacking a second copy.
-        memory_id: `auto:${short}:${slug}`,
+        memory_id: ownPrefix + m.slug,
         scope: 'global',
-        content,
+        content: m.content,
         importance: Math.min(1, Math.max(0, m.importance ?? 0.5)),
-        metadata: { source: 'auto-capture', session: sessionId, date: today(), type: m.type || 'fact', model: PLANNER },
-        entities: (m.entities ?? [])
-          .map(entity => ({ name: (entity.name ?? '').trim(), type: entity.type ?? '' }))
-          .filter(entity => entity.name !== ''),
+        metadata: {
+          source: 'auto-capture',
+          session: sessionId,
+          date: today(),
+          type: m.type || 'fact',
+          model: PLANNER,
+          ...(reason ? { supersede_reason: reason } : {}),
+        },
+        entities: m.entities,
+        ...(supersedes.length > 0 ? { supersedes } : {}),
       })
-      written.push({ slug, content })
+      written.push({ slug: m.slug, content: m.content })
+      retiredCount += supersedes.length
     }
 
     const end = fresh.at(-1)
     const memories = [...mark.memories.filter(m => !written.some(w => w.slug === m.slug)), ...written]
     await update($, captureMark, () => ({ sessionId, lastKey: end ? keyOf(end) : mark.lastKey, memories }))
-    if (written.length > 0) $.ui.toast(t().captured(written.length))
+    if (written.length > 0) $.ui.toast(t().captured(written.length, retiredCount))
   } catch (err) {
     $.ui.log(`cortexdb-live: capture failed: ${messageOf(err)}`)
   } finally {
@@ -457,7 +607,7 @@ export const register: Register = (on, options) => {
 // --- text -------------------------------------------------------------------
 
 type RecallPayload = {
-  memories?: { memory?: { id?: string; content?: string } }[]
+  memories?: { memory?: { id?: string; content?: string; metadata?: { date?: unknown }; created_at?: string } }[]
   knowledge?: { knowledge_id?: string; title?: string; snippet?: string }[]
   results?: { knowledge_id?: string; title?: string; snippet?: string }[]
 }
