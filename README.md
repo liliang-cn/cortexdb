@@ -13,6 +13,7 @@ AI memory and a knowledge graph in one SQLite file. Pure Go, no service to run, 
 | Go library | `go get github.com/liliang-cn/cortexdb/v2` |
 | Claude Code | `/plugin marketplace add liliang-cn/cortexdb`, then `/plugin install cortexdb@cortexdb` |
 | Codex | `codex plugin marketplace add liliang-cn/cortexdb && codex plugin add cortexdb@cortexdb` |
+| Claude Code mod (optional) | `/plugin install cortexdb-live@cortexdb` |
 | Shared-brain server | `go install github.com/liliang-cn/cortexdb/v2/cmd/cortexdb-grpc@latest` |
 | Clients | `cargo add cortexdb-client` · `pip install cortexdb-client` · `npm install cortexdb-client` |
 
@@ -32,6 +33,20 @@ The plugin gives Claude Code and Codex one global brain at `~/.cortexdb/cortexdb
 In Codex, review and trust the plugin hooks in `/hooks` to activate automatic
 recall. See the [plugin guide](plugins/cortexdb/README.md) for setup and
 `cortexdb-mcp --doctor --self-test` diagnostics (v2.119.0+).
+
+## Claude Code mod
+
+`cortexdb-live` is an optional [mod](https://code.claude.com/docs/en/plugins/mods/overview) that runs inside Claude Code on top of the `cortexdb` plugin. Install it after the plugin:
+
+```
+/plugin install cortexdb-live@cortexdb
+```
+
+- **Planned recall.** Before the brain is searched, haiku turns each prompt into keywords in Chinese and English, aliases, entity names and a retrieval mode. A bare "ok" or "go ahead" searches nothing. The band above the prompt shows what was recalled; expand it to see the plan and every hit. Hide lasts until the next recall; `/cortexdb-show` brings the hidden one back.
+- **Status line.** Which brain the session uses, its node count and the last recall's time, or why the brain can't be reached.
+- **Capture.** 90 seconds after a session goes idle, haiku distils the new part of the conversation into durable memories (`auto:<session>:<slug>`). Each later pass replaces a memory under the same slug rather than adding a copy.
+
+Haiku runs on Claude Code's own model access, so no API key is needed. Language: `/config` → `cortexdb-live` → `language` (`auto`, `zh`, `en`). The mod honours the plugin's own switches: `cortexdb-recall --disable` and `cortexdb-session-end --disable` turn recall and capture off for both. While the mod runs, the plugin's shell recall and capture hooks stand down, so nothing is done twice. Codex keeps those hooks. Mods are an early-access Claude Code feature (built against 2.1.290).
 
 ## What's inside
 

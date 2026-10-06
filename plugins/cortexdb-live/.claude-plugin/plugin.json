@@ -1,0 +1,22 @@
+{
+  "name": "cortexdb-live",
+  "version": "2.121.0",
+  "description": "CortexDB inside Claude Code: haiku-planned auto-recall shown above the prompt, the brain on the status line, and durable facts captured while the session is idle. A mod: Claude Code only, needs the cortexdb plugin.",
+  "author": {
+    "name": "Liang Li",
+    "email": "ll_faw@hotmail.com"
+  },
+  "homepage": "https://github.com/liliang-cn/cortexdb",
+  "repository": "https://github.com/liliang-cn/cortexdb",
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "language": {
+      "type": "string",
+      "title": "Language",
+      "description": "Language of the band and status line. auto follows Claude Code's language setting, then the locale.",
+      "options": ["auto", "zh", "en"],
+      "default": "auto"
+    }
+  }
+}

@@ -48,6 +48,9 @@ else
   exit 0
 fi
 
+# A Claude Code session running the cortexdb-live mod recalls in-process.
+[ "${CORTEXDB_RECALL_BY_MOD:-}" = 1 ] && exit 0
+
 # Enabled: reuse the same prebuilt MCP binary, in one-shot --recall mode.
 if [ -n "${CORTEXDB_MCP_BIN:-}" ] && [ -x "${CORTEXDB_MCP_BIN}" ]; then
   exec "${CORTEXDB_MCP_BIN}" --recall

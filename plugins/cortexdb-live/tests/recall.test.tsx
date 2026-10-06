@@ -1,0 +1,231 @@
+import type { On } from 'claude-code'
+import { expect, mock, test } from 'claude-code/testing'
+
+const SHELL = 'Relevant CortexDB memories for this prompt (retrieved automatically — verify before relying on them):\n- old: from the shell hook'
+
+const recallPayload = {
+  memories: [{ memory: { id: 'pref-tabs', content: 'Alice   prefers\n tabs.' } }],
+  knowledge: [{ knowledge_id: 'k1', title: 'Indent policy', snippet: 'Tabs in Go.' }],
+}
+
+const PLAN = {
+  skip: false,
+  query: 'What indentation does Alice prefer?',
+  keywords: ['Alice', 'indentation', '缩进', 'tabs'],
+  alternate_queries: ['Alice tabs or spaces'],
+  entity_names: ['Alice'],
+  retrieval_mode: 'auto',
+}
+
+type World = {
+  autorecall?: string
+  autocapture?: string
+  plan?: object | 'fail'
+  captured?: object
+  messages?: { role: 'user' | 'assistant'; text: string; toolUses: never[] }[]
+  isBrainDown?: boolean
+}
+
+type Seen = {
+  calls: { tool: string; args: Record<string, unknown> }[]
+  status: string[]
+  toasts: string[]
+  prompts: string[]
+  clock: ReturnType<typeof mock.clock>
+}
+
+const answered = (text: string) => ({
+  value: {
+    isAnswered: true as const,
+    text,
+    usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+  },
+})
+
+const world = (on: On, w: World): Seen => {
+  const seen: Seen = { calls: [], status: [], toasts: [], prompts: [], clock: mock.clock(on) }
+  mock.env(on, { HOME: '/home/a', CORTEXDB_REMOTE: '10.0.0.9:47821', LANG: 'en_US.UTF-8' })
+  on('env.set', () => ({ value: undefined }))
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('turn.complete', ($, e) => ({ text: e.answer }))
+  on('command.register', () => ({ value: undefined as never }))
+  on('fs.read', ($, e) => {
+    const value = e.path.endsWith('autorecall') ? w.autorecall : w.autocapture
+    if (value === undefined) throw new Error('ENOENT')
+    return { value }
+  })
+  on('mcp.call', ($, e) => {
+    seen.calls.push({ tool: e.tool, args: e.args })
+    if (w.isBrainDown) return { value: { content: [{ type: 'text', text: 'dial tcp: refused' }], isError: true } }
+    const body = e.tool === 'graph_statistics' ? { node_count: 4493 } : e.tool === 'memory_save' ? { ok: true } : recallPayload
+    return { value: { content: [{ type: 'text', text: JSON.stringify(body) }], isError: false } }
+  })
+  on('model.complete', ($, e) => {
+    seen.prompts.push(e.prompt)
+    if (e.system?.startsWith('You plan')) {
+      if (w.plan === 'fail') return { value: { isAnswered: false, reason: 'api-error', status: 529, error: 'overloaded' } as never }
+      return answered('```json\n' + JSON.stringify(w.plan ?? PLAN) + '\n```')
+    }
+    return answered(JSON.stringify(w.captured ?? { memories: [] }))
+  })
+  on('session.messages', () => ({ value: (w.messages ?? []) as never }))
+  on('session.id', () => ({ value: 'abcdef1234567890' }))
+  on('config.list', () => ({ value: [] }))
+  on('process.run', () => ({ value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('ui.status', ($, e) => {
+    seen.status.push(String(e.text))
+    return { value: undefined }
+  })
+  on('ui.toast', ($, e) => {
+    seen.toasts.push(e.text)
+    return { value: undefined }
+  })
+  on('classic.UserPromptSubmit', () => ({ additionalContext: [SHELL, 'another plugin'] }))
+  return seen
+}
+
+test('a haiku plan drives the recall, and its block replaces the shell one', async ($, on) => {
+  const seen = world(on, { autorecall: 'on' })
+
+  const out = await $.classic.UserPromptSubmit({ prompt: 'what does Alice prefer?' })
+
+  const recall = seen.calls.find(c => c.tool === 'knowledge_memory_recall')
+  expect(recall?.args.query).toBe('What indentation does Alice prefer?')
+  expect(recall?.args.entity_names).toEqual(['Alice'])
+  expect(recall?.args.alternate_queries).toEqual(['Alice tabs or spaces'])
+  expect(recall?.args.keywords).toContain('缩进')
+  expect(recall?.args.keywords).toContain('prefer')
+  expect(out.additionalContext?.[0]).toBe('another plugin')
+  const mine = out.additionalContext?.[1] ?? ''
+  expect(mine).toContain('- pref-tabs: Alice prefers tabs.')
+  expect(mine).toContain('- Indent policy: Tabs in Go.')
+  expect(mine).not.toContain('from the shell hook')
+  expect(seen.status.at(-1)).toMatch(/^🧠 .* · recall \d+\.\ds$/)
+})
+
+test('a failed plan falls back to the lexical keywords', async ($, on) => {
+  const seen = world(on, { autorecall: 'on', plan: 'fail' })
+
+  const out = await $.classic.UserPromptSubmit({ prompt: 'what does Alice prefer?' })
+
+  const recall = seen.calls.find(c => c.tool === 'knowledge_memory_recall')
+  expect(recall?.args.query).toBe('what does Alice prefer?')
+  expect(recall?.args.keywords).toEqual(['what', 'does', 'alice', 'prefer'])
+  expect(out.additionalContext?.[1]).toContain('pref-tabs')
+})
+
+test('a go-ahead haiku marks skip asks nothing and drops the shell block', async ($, on) => {
+  const seen = world(on, { autorecall: 'on', plan: { skip: true } })
+
+  const out = await $.classic.UserPromptSubmit({ prompt: '发' })
+
+  expect(seen.calls.some(c => c.tool === 'knowledge_memory_recall')).toBe(false)
+  expect(out.additionalContext).toEqual(['another plugin'])
+  expect(seen.status.at(-1)).toContain('no recall needed')
+})
+
+test('auto-recall switched off leaves the prompt as the hooks beneath made it', async ($, on) => {
+  const seen = world(on, { autorecall: 'off' })
+
+  const out = await $.classic.UserPromptSubmit({ prompt: 'what does Alice prefer?' })
+
+  expect(seen.calls.some(c => c.tool === 'knowledge_memory_recall')).toBe(false)
+  expect(out.additionalContext).toEqual([SHELL, 'another plugin'])
+})
+
+test('a brain that fails keeps the shell block', async ($, on) => {
+  world(on, { autorecall: 'on', isBrainDown: true })
+
+  const out = await $.classic.UserPromptSubmit({ prompt: 'anything' })
+
+  expect(out.additionalContext).toEqual([SHELL, 'another plugin'])
+})
+
+const props = { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 80 } as never
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`the band shows what was recalled and the plan on ${surface}`, async ($, on) => {
+    world(on, { autorecall: 'on' })
+    on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+      const { Text } = $.ui.resolve(e)
+      return <Text>engine</Text>
+    })
+    await $.classic.UserPromptSubmit({ prompt: 'what does Alice prefer?' })
+
+    const band = await $.ui.mount({ plugin: 'cortexdb-live', surface, component: 'AbovePrompt', props })
+    expect((await band.findAll({ text: /Recalled 2/ })).length).toBeGreaterThan(0)
+    expect(await band.find({ text: /pref-tabs/ })).toBeUndefined()
+
+    await band.press({ key: 'toggle' })
+    expect(await band.find({ text: /pref-tabs/ }), 'expanded hit').toBeDefined()
+    expect(await band.find({ text: /Query \(haiku\): Alice · indentation · 缩进 · tabs \| Entities: Alice/ }), 'plan').toBeDefined()
+
+    await band.press({ key: 'hide' })
+    expect(await band.drawn()).toEqual({ type: 'Text', children: ['engine'] })
+
+    const shown = await $.command.run({ command: 'cortexdb-show', args: '' } as never)
+    expect(shown).toMatchObject({ text: 'The recall is shown above the prompt again.' })
+    expect(await band.find({ text: /pref-tabs/ }), 'shown again, expanded').toBeDefined()
+  })
+}
+
+test('language zh draws the band in Chinese', { options: { language: 'zh' } }, async ($, on) => {
+  world(on, { autorecall: 'on' })
+  await $.session.start({ cwd: '/w', surface: 'terminal' } as never)
+  await $.classic.UserPromptSubmit({ prompt: 'what does Alice prefer?' })
+
+  const band = await $.ui.mount({ plugin: 'cortexdb-live', surface: 'terminal', component: 'AbovePrompt', props })
+  expect((await band.findAll({ text: /已召回 2 条/ })).length).toBeGreaterThan(0)
+  expect((await band.findAll({ text: /（记忆 1 · 知识 1 · \d+\.\ds）/ })).length).toBeGreaterThan(0)
+  expect(await band.find({ text: '展开' })).toBeDefined()
+})
+
+const turnDone = { answer: 'done', durationMs: 1000, isAborted: false, turnId: 't1', reason: 'answer' as const }
+
+const conversation = [
+  { role: 'user' as const, text: 'Deploy v2.120.2 to the cluster', toolUses: [] },
+  { role: 'assistant' as const, text: 'Deployed to node-a..e.', toolUses: [] },
+  { role: 'user' as const, text: '<system-reminder>noise</system-reminder>Also bump the docs', toolUses: [] },
+  { role: 'assistant' as const, text: 'Docs bumped.', toolUses: [] },
+]
+
+test('an idle session is captured once, with stable ids, and not again', async ($, on) => {
+  const seen = world(on, {
+    messages: conversation,
+    captured: {
+      memories: [
+        { slug: 'cortexdb-2120-2-deployed', content: 'CortexDB v2.120.2 deployed to node-a..e on 2026-10-06.', importance: 0.6, type: 'fact', entities: [{ name: 'CortexDB', type: 'project' }] },
+        { slug: '', content: '' },
+      ],
+    },
+  })
+  const clock = seen.clock
+
+  await $.turn.complete(turnDone)
+  await clock.advance(89 * 1000)
+  expect(seen.calls.some(c => c.tool === 'memory_save')).toBe(false)
+  await clock.advance(2 * 1000)
+
+  const saves = seen.calls.filter(c => c.tool === 'memory_save')
+  expect(saves.map(s => s.args.memory_id)).toEqual(['auto:abcdef12:cortexdb-2120-2-deployed'])
+  expect(saves[0]?.args.metadata).toMatchObject({ source: 'auto-capture', session: 'abcdef1234567890', model: 'haiku' })
+  const digest = seen.prompts.at(-1) ?? ''
+  expect(digest).toContain('USER: Also bump the docs')
+  expect(digest).not.toContain('noise')
+  expect(seen.toasts).toEqual(['CortexDB saved 1 new memories'])
+
+  // Nothing new since: the next idle stretch writes nothing.
+  await $.turn.complete(turnDone)
+  await clock.advance(91 * 1000)
+  expect(seen.calls.filter(c => c.tool === 'memory_save').length).toBe(1)
+})
+
+test('capture switched off writes nothing', async ($, on) => {
+  const seen = world(on, { autocapture: 'off', messages: conversation })
+  const clock = seen.clock
+
+  await $.turn.complete(turnDone)
+  await clock.advance(91 * 1000)
+
+  expect(seen.calls.some(c => c.tool === 'memory_save')).toBe(false)
+})

@@ -32,6 +32,10 @@ if [ -f "$sentinel" ]; then
   esac
 fi
 
+# A Claude Code session running the cortexdb-live mod has captured itself while
+# it was idle; capturing again here would write each fact a second time.
+[ "${CORTEXDB_CAPTURE_BY_MOD:-}" = 1 ] && exit 0
+
 self="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/$(basename "$0")"
 
 # Resolve the server binary exactly like cortexdb-recall does.

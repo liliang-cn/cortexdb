@@ -56,9 +56,10 @@ jobs:
           go_ver=$(sed -n 's/.*Version = "\([^"]*\)".*/\1/p' version.go)
           claude_ver=$(extract plugins/cortexdb/.claude-plugin/plugin.json)
           codex_ver=$(extract plugins/cortexdb/.codex-plugin/plugin.json)
+          live_ver=$(extract plugins/cortexdb-live/.claude-plugin/plugin.json)
           market_ver=$(extract .claude-plugin/marketplace.json)
-          echo "version.go=$go_ver claude=$claude_ver codex=$codex_ver marketplace=$market_ver"
-          for v in "$claude_ver" "$codex_ver" "$market_ver"; do
+          echo "version.go=$go_ver claude=$claude_ver codex=$codex_ver live=$live_ver marketplace=$market_ver"
+          for v in "$claude_ver" "$codex_ver" "$live_ver" "$market_ver"; do
             if [ "$v" != "$go_ver" ]; then
               echo "::error::Version mismatch: version.go ($go_ver) must match all plugin manifests. The MCP launcher pins its binary download to the plugin version, so a stale manifest ships a stale server."
               exit 1

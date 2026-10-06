@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.121.0] - 2026-10-06
+
+### Added
+
+- `cortexdb-live`, an optional Claude Code mod in the same marketplace
+  (`/plugin install cortexdb-live@cortexdb`). Haiku plans each prompt's
+  recall (Chinese and English keywords, aliases, entity names, retrieval mode,
+  or no search at all for a bare go-ahead); what was recalled shows above the
+  prompt (`/cortexdb-show` brings back one that was hidden); the status line shows the brain, its size and the last recall's
+  time; and an idle session is distilled into memories with haiku. No API
+  key: it runs on Claude Code's own model access. `language` is `auto`, `zh`
+  or `en`.
+
+### Changed
+
+- The plugin's shell recall and capture hooks stand down in a session the
+  mod runs (`CORTEXDB_RECALL_BY_MOD`, `CORTEXDB_CAPTURE_BY_MOD`), so nothing
+  is recalled or captured twice. Codex is unaffected.
+
 ## [2.120.2] - 2026-10-05
 
 ### Fixed
