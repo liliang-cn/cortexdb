@@ -138,12 +138,18 @@ func (*InfoRequest) Descriptor() ([]byte, []int) {
 }
 
 type InfoResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Version       string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
-	DbPath        string                 `protobuf:"bytes,2,opt,name=db_path,json=dbPath,proto3" json:"db_path,omitempty"`
-	HasEmbedder   bool                   `protobuf:"varint,3,opt,name=has_embedder,json=hasEmbedder,proto3" json:"has_embedder,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Version     string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
+	DbPath      string                 `protobuf:"bytes,2,opt,name=db_path,json=dbPath,proto3" json:"db_path,omitempty"`
+	HasEmbedder bool                   `protobuf:"varint,3,opt,name=has_embedder,json=hasEmbedder,proto3" json:"has_embedder,omitempty"`
+	// embedder_healthy is false while calls to the embedder fail; memories saved
+	// meanwhile are stored without a vector and embedded once it answers again.
+	EmbedderHealthy bool   `protobuf:"varint,4,opt,name=embedder_healthy,json=embedderHealthy,proto3" json:"embedder_healthy,omitempty"`
+	EmbedderError   string `protobuf:"bytes,5,opt,name=embedder_error,json=embedderError,proto3" json:"embedder_error,omitempty"`
+	// memories_without_vector are found by keyword search only until embedded.
+	MemoriesWithoutVector int64 `protobuf:"varint,6,opt,name=memories_without_vector,json=memoriesWithoutVector,proto3" json:"memories_without_vector,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *InfoResponse) Reset() {
@@ -195,6 +201,27 @@ func (x *InfoResponse) GetHasEmbedder() bool {
 		return x.HasEmbedder
 	}
 	return false
+}
+
+func (x *InfoResponse) GetEmbedderHealthy() bool {
+	if x != nil {
+		return x.EmbedderHealthy
+	}
+	return false
+}
+
+func (x *InfoResponse) GetEmbedderError() string {
+	if x != nil {
+		return x.EmbedderError
+	}
+	return ""
+}
+
+func (x *InfoResponse) GetMemoriesWithoutVector() int64 {
+	if x != nil {
+		return x.MemoriesWithoutVector
+	}
+	return 0
 }
 
 // BackupRequest names the destination *relative to the server's backup
@@ -308,11 +335,14 @@ const file_cortexdb_v1_admin_proto_rawDesc = "" +
 	"\rHealthRequest\" \n" +
 	"\x0eHealthResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\"\r\n" +
-	"\vInfoRequest\"d\n" +
+	"\vInfoRequest\"\xee\x01\n" +
 	"\fInfoResponse\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12\x17\n" +
 	"\adb_path\x18\x02 \x01(\tR\x06dbPath\x12!\n" +
-	"\fhas_embedder\x18\x03 \x01(\bR\vhasEmbedder\"#\n" +
+	"\fhas_embedder\x18\x03 \x01(\bR\vhasEmbedder\x12)\n" +
+	"\x10embedder_healthy\x18\x04 \x01(\bR\x0fembedderHealthy\x12%\n" +
+	"\x0eembedder_error\x18\x05 \x01(\tR\rembedderError\x126\n" +
+	"\x17memories_without_vector\x18\x06 \x01(\x03R\x15memoriesWithoutVector\"#\n" +
 	"\rBackupRequest\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\"C\n" +
 	"\x0eBackupResponse\x12\x12\n" +

@@ -54,6 +54,12 @@ type DB struct {
 	changes changeRuntime
 	// execution is the execution-graph recorder's state; see execution.go.
 	execution executionRuntime
+	// heal watches the embedder and embeds memories saved while it was down;
+	// see memory_vector_heal.go.
+	heal vectorHealRuntime
+	// memoryFloor is the cosine below which a semantic memory hit is dropped;
+	// see WithMemorySemanticFloor.
+	memoryFloor float64
 }
 
 // Config represents database configuration
@@ -190,20 +196,25 @@ func Open(config Config, opts ...Option) (*DB, error) {
 	}
 
 	db := &DB{
-		store:   store,
-		graph:   graphStore,
-		dialect: sqldialect.For(kind),
+		store:       store,
+		graph:       graphStore,
+		dialect:     sqldialect.For(kind),
+		memoryFloor: DefaultMemorySemanticFloor,
 	}
 
 	// Apply options
 	for _, opt := range opts {
 		opt(db)
 	}
+	if db.embedder != nil {
+		db.embedder = watchedEmbedder{Embedder: db.embedder, heal: &db.heal}
+	}
 
 	if err := db.startChangeRuntime(ctx); err != nil {
 		_ = store.Close()
 		return nil, fmt.Errorf("failed to start change feed: %w", err)
 	}
+	db.startVectorHealer()
 
 	return db, nil
 }
@@ -292,7 +303,7 @@ func (db *DB) Info() DBInfo {
 	info.SimilarityFn = "cosine"
 
 	if db.embedder != nil {
-		info.Embedder = fmt.Sprintf("%T", db.embedder)
+		info.Embedder = fmt.Sprintf("%T", unwrapEmbedder(db.embedder))
 	}
 
 	return info
@@ -300,6 +311,7 @@ func (db *DB) Info() DBInfo {
 
 // Close closes the database
 func (db *DB) Close() error {
+	db.stopVectorHealer()
 	db.stopChangeRuntime()
 	return db.store.Close()
 }

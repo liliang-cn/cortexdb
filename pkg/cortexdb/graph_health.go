@@ -97,6 +97,10 @@ type GraphHealthReport struct {
 	Degree       DegreeHealthCheck      `json:"degree"`
 	Supersession SupersessionHealth     `json:"supersession"`
 	Temporal     TemporalInvariantCheck `json:"temporal"`
+	// Embedder is how the configured embedder has been answering and how many
+	// memories still lack a vector. Raises the "embedder" alert while it is
+	// failing or owes vectors: semantic recall cannot see those memories.
+	Embedder EmbedderStatus `json:"embedder"`
 }
 
 // DayCount is one day's count, day as YYYY-MM-DD in UTC.
@@ -210,9 +214,14 @@ func (db *DB) GraphHealth(ctx context.Context, opts GraphHealthOptions) (*GraphH
 	if report.Temporal, err = db.healthTemporal(ctx, opts); err != nil {
 		return nil, fmt.Errorf("cortexdb: graph health: temporal: %w", err)
 	}
+	if report.Embedder, err = db.EmbedderStatus(ctx); err != nil {
+		return nil, fmt.Errorf("cortexdb: graph health: embedder: %w", err)
+	}
+	embedderAlert := report.Embedder.Configured && (!report.Embedder.Healthy || report.Embedder.MemoriesWithoutVector > 0)
 	for name, fired := range map[string]bool{
 		"growth": report.Growth.Alert, "degree": report.Degree.Alert,
 		"supersession": report.Supersession.Alert, "temporal": report.Temporal.Alert,
+		"embedder": embedderAlert,
 	} {
 		if fired {
 			report.Alerts = append(report.Alerts, name)

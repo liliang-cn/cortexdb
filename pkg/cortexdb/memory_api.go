@@ -18,13 +18,49 @@ import (
 	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 )
 
-// memorySemanticFloor is the cosine similarity below which a semantic hit is
-// noise. A vector search has a nearest neighbour to every query, including
-// queries the store holds nothing about; the floor is what lets it answer
-// "nothing relevant". Calibrated on a live store of ~2k memories with
-// embeddinggemma: unrelated probes (weather, cooking, novels) peaked at 0.263
-// while the weakest genuine hit scored 0.311.
-const memorySemanticFloor = 0.28
+// DefaultMemorySemanticFloor is the cosine similarity below which a semantic
+// memory hit is noise. A vector search has a nearest neighbour to every query,
+// including queries the store holds nothing about; the floor is what lets it
+// answer "nothing relevant".
+//
+// Calibrated on embeddinggemma (768-dim) over two stores. A live one of ~2k
+// memories: unrelated probes (weather, cooking, novels) peaked at 0.263, the
+// weakest genuine hit scored 0.311. A 43-memory store built from five days of
+// a simulated user's chat: nine unrelated probes (weather, recipes, football,
+// Kubernetes…) topped out at 0.163–0.307 — "今天天气怎么样" reached 0.307 on a
+// note about New Zealand's winter roads — while twenty paraphrased questions
+// found their answer as the top hit at 0.342–0.677, and the noise trailing
+// genuine answers sat at 0.24–0.29. 0.28 let the 0.28–0.31 band through;
+// 0.31 drops it and keeps every genuine top hit seen. It also drops one
+// genuine second-best hit, at 0.282 — keyword search is what still finds such
+// a memory when it shares the words asked about.
+//
+// It is a floor for noise, not a relevance oracle: one unrelated probe scored
+// 0.331 against a store that held nothing on its subject, above the weakest
+// genuine top hit's neighbours, and no single number separates those. Another
+// embedding model has another scale; set the floor with
+// WithMemorySemanticFloor (CORTEXDB_MEMORY_SEMANTIC_FLOOR in the binaries).
+const DefaultMemorySemanticFloor = 0.31
+
+// WithMemorySemanticFloor sets the cosine similarity below which semantic
+// memory hits are dropped. Keyword matches are never subject to it: a memory
+// that contains the words asked about is still returned. A value <= 0 or >= 1
+// keeps the default.
+func WithMemorySemanticFloor(floor float64) Option {
+	return func(db *DB) {
+		if floor > 0 && floor < 1 {
+			db.memoryFloor = floor
+		}
+	}
+}
+
+// semanticFloor is the floor in force: the default for a DB not built by Open.
+func (db *DB) semanticFloor() float64 {
+	if db.memoryFloor <= 0 {
+		return DefaultMemorySemanticFloor
+	}
+	return db.memoryFloor
+}
 
 type memoryRow struct {
 	record MemoryRecord
@@ -239,7 +275,16 @@ func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordR
 		queryVec, err := db.embedder.Embed(ctx, resolution.Plan.Query)
 		if err != nil {
 			log.Printf("cortexdb: memory semantic embed fallback to lexical: %v", err)
+			// Said in the answer too, not only the log: the decision used to
+			// keep claiming a vector search had run, so a caller could not tell
+			// a store with nothing semantically close from one whose embedder
+			// was down.
+			resolution.Decision.EffectiveMode = RetrievalModeLexical
+			resolution.Decision.Reason = fmt.Sprintf("embedder failing (%v); answered by keyword search only", err)
 		} else {
+			if note := db.vectorDebtNote(); note != "" {
+				resolution.Decision.Reason = strings.TrimSpace(resolution.Decision.Reason + "; " + note)
+			}
 			// Wider than topK on purpose: boosts reorder, and a memory just
 			// below the raw-similarity cut is exactly the one importance or
 			// recency should be able to lift into view.
@@ -249,7 +294,7 @@ func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordR
 			} else {
 				now := time.Now().UTC()
 				for _, sm := range scored {
-					if sm.Score < memorySemanticFloor {
+					if sm.Score < db.semanticFloor() {
 						continue
 					}
 					record := memoryRecordFromMessage(bucketID, "", sm.Message)
@@ -460,8 +505,10 @@ func (db *DB) embedMemoryContent(ctx context.Context, content string) ([]byte, e
 		// The embedder is a network service; failing the save couples "can I
 		// remember" to "is that box awake", and a memory refused is gone —
 		// unlike its vector, which a re-embed pass can fill in later. Search
-		// already degrades to lexical for exactly this reason.
+		// already degrades to lexical for exactly this reason; the healer
+		// embeds it once the embedder answers again.
 		log.Printf("cortexdb: memory save proceeding without vector (embed failed: %v)", err)
+		db.noteVectorDebt()
 		return nil, nil
 	}
 	vectorBytes, err := encodeMemoryVector(db.Dialect(), vec)

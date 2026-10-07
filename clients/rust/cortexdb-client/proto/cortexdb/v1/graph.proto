@@ -111,6 +111,15 @@ message RefreshInferenceRequest {
   repeated string triple_ids = 2;
   repeated RdfTriple triples = 3;
   optional TriplePattern pattern = 4;
+  // Largest owl:sameAs class to materialize; 0 means the default (32).
+  int32 max_same_as_class_size = 5;
+}
+// An owl:sameAs class too large to materialize, reported instead of copied.
+message OversizedSameAsClass {
+  int32 size = 1;
+  int32 cap = 2;
+  // A sorted sample of at most sixteen members, in N-Triples syntax.
+  repeated string members = 3;
 }
 message InferenceRefreshResult {
   int32 explicit_count = 1;
@@ -118,6 +127,24 @@ message InferenceRefreshResult {
   bool incremental = 3;
   int32 affected_explicit_count = 4;
   int32 removed_inferred_count = 5;
+  repeated OversizedSameAsClass oversized_same_as_classes = 6;
+  // Contradictions the OWL 2 RL rules found — at most a hundred; the count is
+  // all of them. Reported, never resolved.
+  repeated InferenceInconsistency inconsistencies = 7;
+  int32 inconsistency_count = 8;
+}
+// A contradiction between stated or inferred facts, with the triples that
+// conflict. rule is the OWL 2 RL rule that found it: cax-dw, prp-pdw, prp-fp
+// or eq-diff1.
+message InferenceInconsistency {
+  string rule = 1;
+  string explanation = 2;
+  repeated RdfTriple triples = 3;
+  // eq-diff1 only: the sameAs conclusions withheld because of the conflict,
+  // and a sorted sample of the class whose reasoning was suspended.
+  repeated RdfTriple suspended_same_as = 4;
+  repeated string members = 5;
+  int32 class_size = 6;
 }
 message RefreshInferenceResponse { InferenceRefreshResult result = 1; }
 

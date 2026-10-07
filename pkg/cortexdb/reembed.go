@@ -186,14 +186,8 @@ func (db *DB) ReembedMemoryVectors(ctx context.Context, opts ReembedOptions) (*R
 		batchSize = 16
 	}
 
-	// A stored vector is a 4-byte length header plus float32s, so the byte
-	// length identifies the dimension without decoding.
-	query := `
-		SELECT id, content FROM messages
-		WHERE session_id LIKE 'memory:%'
-		  AND (vector IS NULL OR length(vector) != ?)
-		ORDER BY created_at DESC`
-	args := []any{4 + 4*targetDim}
+	clause, args := db.missingMemoryVectorClause()
+	query := `SELECT id, content FROM messages WHERE ` + clause + ` ORDER BY created_at DESC`
 	if opts.Limit > 0 {
 		query += " LIMIT ?"
 		args = append(args, opts.Limit)

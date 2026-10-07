@@ -32,6 +32,9 @@ import (
 //	CORTEXDB_EMBED_DIM                         dimension (default 1536; embeddinggemma=768)
 //	CORTEXDB_EMBED_BATCH_SIZE                  texts per request (default 4)
 //	CORTEXDB_EMBED_TIMEOUT_SECONDS             request timeout (default 300)
+//	CORTEXDB_MEMORY_SEMANTIC_FLOOR             cosine below which a semantic memory
+//	                                           hit is noise (default calibrated on
+//	                                           embeddinggemma; other models differ)
 func openBrainDB(dbPath string) (*cortexdb.DB, error) {
 	var opts []cortexdb.Option
 	baseURL := firstEnv("CORTEXDB_EMBED_BASE_URL", "OPENAI_BASE_URL")
@@ -43,6 +46,13 @@ func openBrainDB(dbPath string) (*cortexdb.DB, error) {
 	}
 	if r := newReranker(); r != nil {
 		opts = append(opts, cortexdb.WithReranker(r))
+	}
+	if v := os.Getenv("CORTEXDB_MEMORY_SEMANTIC_FLOOR"); v != "" {
+		floor, err := strconv.ParseFloat(v, 64)
+		if err != nil || floor <= 0 || floor >= 1 {
+			return nil, fmt.Errorf("invalid CORTEXDB_MEMORY_SEMANTIC_FLOOR %q: want a cosine between 0 and 1", v)
+		}
+		opts = append(opts, cortexdb.WithMemorySemanticFloor(floor))
 	}
 	if qt := newQueryTransformer(); qt != nil {
 		opts = append(opts, cortexdb.WithQueryTransformer(qt))

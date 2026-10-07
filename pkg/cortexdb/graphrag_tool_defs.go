@@ -390,7 +390,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 		},
 		{
 			Name:        "graph_health",
-			Description: "Health checks for a shared graph, each saying whether it fired: growth per producer (a day at spike_factor times a producer's usual volume), the high out- and in-degree tail (hubs far above the median degree, usually extraction artefacts every traversal walks through), supersessions per day (facts closed, versions replaced, edges retracted — bulk churn means writers overwriting each other), and temporal invariants (a single-valued relation holding more than one value over the same time, or an interval ending before it begins). Read-only and deterministic. healthy is false when any check fired; alerts names which. Use graph_statistics for plain size and connectivity.",
+			Description: "Health checks for a shared graph, each saying whether it fired: growth per producer (a day at spike_factor times a producer's usual volume), the high out- and in-degree tail (hubs far above the median degree, usually extraction artefacts every traversal walks through), supersessions per day (facts closed, versions replaced, edges retracted — bulk churn means writers overwriting each other), temporal invariants (a single-valued relation holding more than one value over the same time, or an interval ending before it begins), and the embedder (failing calls, and memories saved while it was down that still have no vector and so are invisible to semantic recall). Read-only and deterministic. healthy is false when any check fired; alerts names which. Use graph_statistics for plain size and connectivity.",
 			InputSchema: toolObjectSchema(
 				nil,
 				map[string]any{

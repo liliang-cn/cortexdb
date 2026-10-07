@@ -30,12 +30,21 @@ func (s *adminService) Health(context.Context, *rpcv1.HealthRequest) (*rpcv1.Hea
 	return &rpcv1.HealthResponse{Ok: true}, nil
 }
 
-func (s *adminService) Info(context.Context, *rpcv1.InfoRequest) (*rpcv1.InfoResponse, error) {
-	return &rpcv1.InfoResponse{
-		Version:     cortexdbroot.Version,
-		DbPath:      s.dbPath,
-		HasEmbedder: s.db.HasEmbedder(),
-	}, nil
+func (s *adminService) Info(ctx context.Context, _ *rpcv1.InfoRequest) (*rpcv1.InfoResponse, error) {
+	resp := &rpcv1.InfoResponse{
+		Version:         cortexdbroot.Version,
+		DbPath:          s.dbPath,
+		HasEmbedder:     s.db.HasEmbedder(),
+		EmbedderHealthy: true,
+	}
+	// A failing embedder degrades the brain without stopping it, so Info
+	// reports it rather than failing: -health stays a liveness probe.
+	if st, err := s.db.EmbedderStatus(ctx); err == nil {
+		resp.EmbedderHealthy = st.Healthy
+		resp.EmbedderError = st.LastError
+		resp.MemoriesWithoutVector = int64(st.MemoriesWithoutVector)
+	}
+	return resp, nil
 }
 
 // Backup snapshots the brain to a file on the server, without stopping it.

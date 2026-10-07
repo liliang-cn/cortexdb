@@ -104,9 +104,12 @@ type healthResponse struct {
 }
 
 type infoResponse struct {
-	Version     string `json:"version"`
-	DBPath      string `json:"db_path,omitempty"`
-	HasEmbedder bool   `json:"has_embedder"`
+	Version               string `json:"version"`
+	DBPath                string `json:"db_path,omitempty"`
+	HasEmbedder           bool   `json:"has_embedder"`
+	EmbedderHealthy       bool   `json:"embedder_healthy"`
+	EmbedderError         string `json:"embedder_error,omitempty"`
+	MemoriesWithoutVector int    `json:"memories_without_vector"`
 }
 
 // health answers without touching the database, like AdminService.Health: a
@@ -117,11 +120,16 @@ func health(w http.ResponseWriter, _ *http.Request) {
 }
 
 func info(db *cortexdb.DB, dbPath string) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, infoResponse{
-			Version:     cortexdbroot.Version,
-			DBPath:      dbPath,
-			HasEmbedder: db.HasEmbedder(),
-		})
+	return func(w http.ResponseWriter, r *http.Request) {
+		resp := infoResponse{
+			Version:         cortexdbroot.Version,
+			DBPath:          dbPath,
+			HasEmbedder:     db.HasEmbedder(),
+			EmbedderHealthy: true,
+		}
+		if st, err := db.EmbedderStatus(r.Context()); err == nil {
+			resp.EmbedderHealthy, resp.EmbedderError, resp.MemoriesWithoutVector = st.Healthy, st.LastError, st.MemoriesWithoutVector
+		}
+		writeJSON(w, http.StatusOK, resp)
 	}
 }

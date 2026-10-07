@@ -10,6 +10,12 @@ message InfoResponse {
   string version = 1;
   string db_path = 2;
   bool has_embedder = 3;
+  // embedder_healthy is false while calls to the embedder fail; memories saved
+  // meanwhile are stored without a vector and embedded once it answers again.
+  bool embedder_healthy = 4;
+  string embedder_error = 5;
+  // memories_without_vector are found by keyword search only until embedded.
+  int64 memories_without_vector = 6;
 }
 
 // BackupRequest names the destination *relative to the server's backup

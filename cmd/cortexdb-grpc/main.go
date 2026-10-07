@@ -100,6 +100,15 @@ func main() {
 	} else {
 		log.Printf("embedder: none (lexical mode)")
 	}
+	// Model-specific: the default is calibrated on embeddinggemma.
+	if v := os.Getenv("CORTEXDB_MEMORY_SEMANTIC_FLOOR"); v != "" {
+		floor, err := strconv.ParseFloat(v, 64)
+		if err != nil || floor <= 0 || floor >= 1 {
+			log.Fatalf("invalid CORTEXDB_MEMORY_SEMANTIC_FLOOR %q: want a cosine between 0 and 1", v)
+		}
+		opts = append(opts, cortexdb.WithMemorySemanticFloor(floor))
+		log.Printf("memory semantic floor: %.3f", floor)
+	}
 
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(*dbPath), opts...)
 	if err != nil {

@@ -52,6 +52,13 @@ func probeHealth(ctx context.Context, addr, token string) (string, error) {
 	embedder := "none"
 	if info.GetHasEmbedder() {
 		embedder = "on"
+		// Degraded, not down: the brain still saves and recalls by keyword.
+		if !info.GetEmbedderHealthy() {
+			embedder = fmt.Sprintf("failing (%s)", info.GetEmbedderError())
+		}
+		if n := info.GetMemoriesWithoutVector(); n > 0 {
+			embedder += fmt.Sprintf(" memories_without_vector=%d", n)
+		}
 	}
 	return fmt.Sprintf("ok %s v%s db=%s embedder=%s", addr, info.GetVersion(), info.GetDbPath(), embedder), nil
 }
