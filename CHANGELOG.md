@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.123.0] - 2026-10-07
+
+### Fixed
+
+- Memories saved while the embedder is down get their vectors once it answers.
+  A save that could not embed used to fall back to keyword search silently and
+  keep its row without a vector for good; now a background pass embeds every
+  memory that lacks a vector (or has one of the wrong size) when the store
+  opens and again after any save that had to go without one, backing off from
+  30s to 30m while the embedder stays unreachable. Tune or disable it with
+  `WithVectorHealing`.
+- An embedder outage is visible: recall's decision says it answered by keyword
+  search only and how many memories still lack vectors, `graph_health` raises an
+  `embedder` alert, and gRPC `Info`, HTTP `/info` and `cortexdb-grpc -health`
+  report `embedder_healthy`, `embedder_error` and `memories_without_vector`
+  (the health probe still exits 0). `db.EmbedderStatus` returns the same.
+- Semantic memory recall drops the 0.28–0.31 noise band: the floor is now 0.31
+  (`DefaultMemorySemanticFloor`), configurable with `WithMemorySemanticFloor` or
+  `CORTEXDB_MEMORY_SEMANTIC_FLOOR`. Keyword matches are never floored.
+
 ## [2.122.1] - 2026-10-06
 
 ### Added
