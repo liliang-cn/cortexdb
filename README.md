@@ -65,6 +65,7 @@ Haiku runs on Claude Code's own model access, so no API key is needed. Language:
 ## What's inside
 
 - Vectors (HNSW, IVF, flat, binary codes), FTS5 full-text search, hybrid and graph retrieval
+- `EmbeddedConfig` for small devices: an SQ8 index, bounded SQLite caches, snapshots that survive a power cut — 100k 768-d vectors open in 0.28 s with a 193 MB heap
 - RAG knowledge, scoped agent memory, context packs with sources
 - RDF 1.2 knowledge graph: SPARQL 1.1/1.2, RDFS + OWL 2 RL inference, SHACL Core + SHACL-SPARQL, RDF/XML import — passing the W3C test suites — and read-only Cypher
 - Palantir-style ontology with governed actions

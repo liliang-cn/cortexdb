@@ -9,7 +9,9 @@ import (
 	"io"
 	"math"
 	"math/rand"
+	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -18,6 +20,19 @@ type Quantizer interface {
 	Encode(vec []float32) ([]byte, error)
 	Decode(encoded []byte) ([]float32, error)
 }
+
+// cosineCoder is a Quantizer that measures cosine distance on a code directly.
+type cosineCoder interface {
+	CosineDistanceTo(query []float32, encoded []byte) (float32, bool)
+}
+
+// decoderInto is a Quantizer that can decode into a caller's buffer.
+type decoderInto interface {
+	DecodeInto(dst []float32, encoded []byte) error
+}
+
+// decodeBufs holds the scratch vectors quantized distances decode into.
+var decodeBufs = sync.Pool{New: func() any { b := make([]float32, 0, 1024); return &b }}
 
 // HNSWNode represents a node in the HNSW graph
 type HNSWNode struct {
@@ -54,7 +69,19 @@ type HNSW struct {
 	// Thread safety
 	mu  sync.RWMutex
 	rng *rand.Rand
+
+	// mutations counts every change to the graph, so an owner that persists
+	// snapshots can tell whether the one it holds is current.
+	mutations atomic.Uint64
+
+	// cosineCodes is the quantizer, when it can measure this graph's
+	// distance on codes directly: set only when DistFunc is CosineDistance.
+	cosineCodes cosineCoder
 }
+
+// Mutations reports how many times the graph has been changed since it was
+// created. It only ever grows; Load does not reset it.
+func (h *HNSW) Mutations() uint64 { return h.mutations.Load() }
 
 // NewHNSW creates a new HNSW index
 func NewHNSW(M, efConstruction int, distFunc func(a, b []float32) float32) *HNSW {
@@ -76,6 +103,11 @@ func (h *HNSW) SetQuantizer(q Quantizer) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.Quantizer = q
+	h.cosineCodes = nil
+	if cc, ok := q.(cosineCoder); ok && h.DistFunc != nil &&
+		reflect.ValueOf(h.DistFunc).Pointer() == reflect.ValueOf(CosineDistance).Pointer() {
+		h.cosineCodes = cc
+	}
 }
 
 // calculateDistance computes distance between query and node, handling quantization
@@ -85,10 +117,28 @@ func (h *HNSW) calculateDistance(query []float32, node *HNSWNode) float32 {
 	}
 
 	if node.Quantized != nil && h.Quantizer != nil {
-		// Dequantize on the fly
-		// Note: For better performance, we should implement distance in compressed domain,
-		// but that requires changing the Quantizer interface to support distance calc.
-		// For now, this saves memory at the cost of CPU.
+		// Dequantize on the fly: this saves memory at the cost of CPU. A
+		// quantizer that can decode into a buffer gets a pooled one, so a
+		// distance costs no allocation; building or searching a quantized
+		// graph computes hundreds of millions of them.
+		if h.cosineCodes != nil {
+			if d, ok := h.cosineCodes.CosineDistanceTo(query, node.Quantized); ok {
+				return d
+			}
+		}
+		if into, ok := h.Quantizer.(decoderInto); ok {
+			buf := decodeBufs.Get().(*[]float32)
+			if cap(*buf) < len(query) {
+				*buf = make([]float32, len(query))
+			}
+			vec := (*buf)[:len(query)]
+			var dist float32 = math.MaxFloat32
+			if into.DecodeInto(vec, node.Quantized) == nil {
+				dist = h.DistFunc(query, vec)
+			}
+			decodeBufs.Put(buf)
+			return dist
+		}
 		vec, err := h.Quantizer.Decode(node.Quantized)
 		if err == nil {
 			return h.DistFunc(query, vec)
@@ -216,6 +266,7 @@ func (h *HNSW) selectLevel() int {
 func (h *HNSW) Insert(id string, vector []float32) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.mutations.Add(1)
 
 	if _, exists := h.Nodes[id]; exists {
 		return fmt.Errorf("node %s already exists", id)
@@ -290,43 +341,12 @@ func (h *HNSW) Insert(id string, vector []float32) error {
 		}
 
 		candidates := h.searchLayer(vector, currNearest, h.EfConstruction, lc)
-		neighbors := h.selectNeighborsHeuristic(vector, candidates, m, lc)
+		neighbors := closestOf(candidates, m)
 
 		// Add bidirectional links
 		node.Neighbors[lc] = neighbors
 		for _, neighbor := range neighbors {
-			h.addConnection(neighbor, id, lc)
-
-			// Prune connections of neighbors if needed
-			neighborNode := h.Nodes[neighbor]
-			maxConn := h.M
-			if lc == 0 {
-				maxConn = h.MaxM
-			}
-
-			// Check if neighbor has this layer
-			if lc < len(neighborNode.Neighbors) && len(neighborNode.Neighbors[lc]) > maxConn {
-				// To prune, we need the neighbor's vector.
-				// If neighbor is quantized, we need to decode it or use stored vector.
-				// This implies expensive decoding during pruning if we only store quantized.
-
-				// Fetch neighbor vector (might involve decoding)
-				neighborVec := neighborNode.Vector
-				if neighborVec == nil && neighborNode.Quantized != nil && h.Quantizer != nil {
-					neighborVec, _ = h.Quantizer.Decode(neighborNode.Quantized)
-				}
-
-				if neighborVec != nil {
-					// Prune the connections
-					newNeighbors := h.selectNeighborsHeuristic(
-						neighborVec,
-						neighborNode.Neighbors[lc],
-						maxConn,
-						lc,
-					)
-					neighborNode.Neighbors[lc] = newNeighbors
-				}
-			}
+			h.linkBack(neighbor, id, lc)
 		}
 
 		currNearest = neighbors
@@ -456,6 +476,41 @@ func (h *HNSW) selectNeighborsHeuristic(query []float32, candidates []string, m 
 	return result
 }
 
+// closestOf is the first m of candidates. searchLayer returns its result
+// nearest first, so there is nothing to measure again: re-measuring every
+// candidate to sort them was most of an insert's distance computations.
+func closestOf(candidates []string, m int) []string {
+	if len(candidates) <= m {
+		return candidates
+	}
+	return append([]string(nil), candidates[:m]...)
+}
+
+// linkBack adds the edge neighbor→id and keeps the neighbor's list bounded.
+// A full list is pruned back to its limit only after it has grown a quarter
+// past it: pruning measures the neighbor against every one of its links, and
+// doing that on every new link — which a full node in a dense region gets on
+// nearly every insert — was the bulk of building a graph.
+func (h *HNSW) linkBack(neighbor, id string, layer int) {
+	h.addConnection(neighbor, id, layer)
+
+	neighborNode := h.Nodes[neighbor]
+	maxConn := h.M
+	if layer == 0 {
+		maxConn = h.MaxM
+	}
+	if layer >= len(neighborNode.Neighbors) || len(neighborNode.Neighbors[layer]) <= maxConn+maxConn/4 {
+		return
+	}
+	neighborVec := neighborNode.Vector
+	if neighborVec == nil && neighborNode.Quantized != nil && h.Quantizer != nil {
+		neighborVec, _ = h.Quantizer.Decode(neighborNode.Quantized)
+	}
+	if neighborVec != nil {
+		neighborNode.Neighbors[layer] = h.selectNeighborsHeuristic(neighborVec, neighborNode.Neighbors[layer], maxConn, layer)
+	}
+}
+
 // addConnection adds a connection between two nodes
 func (h *HNSW) addConnection(from, to string, layer int) {
 	fromNode, exists := h.Nodes[from]
@@ -538,6 +593,7 @@ func (h *HNSW) Search(query []float32, k int, ef int) ([]string, []float32) {
 func (h *HNSW) Delete(id string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.mutations.Add(1)
 
 	node, exists := h.Nodes[id]
 	if !exists {
@@ -711,6 +767,7 @@ func (h *HNSW) InsertBatch(vectors []struct {
 }) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.mutations.Add(1)
 
 	for _, v := range vectors {
 		if _, exists := h.Nodes[v.ID]; exists {
@@ -769,36 +826,12 @@ func (h *HNSW) InsertBatch(vectors []struct {
 			}
 
 			candidates := h.searchLayer(v.Vector, currNearest, h.EfConstruction, lc)
-			neighbors := h.selectNeighborsHeuristic(v.Vector, candidates, m, lc)
+			neighbors := closestOf(candidates, m)
 
 			// Add bidirectional links
 			node.Neighbors[lc] = neighbors
 			for _, neighbor := range neighbors {
-				h.addConnection(neighbor, v.ID, lc)
-
-				// Prune connections
-				neighborNode := h.Nodes[neighbor]
-				maxConn := h.M
-				if lc == 0 {
-					maxConn = h.MaxM
-				}
-
-				if lc < len(neighborNode.Neighbors) && len(neighborNode.Neighbors[lc]) > maxConn {
-					neighborVec := neighborNode.Vector
-					if neighborVec == nil && neighborNode.Quantized != nil && h.Quantizer != nil {
-						neighborVec, _ = h.Quantizer.Decode(neighborNode.Quantized)
-					}
-
-					if neighborVec != nil {
-						newNeighbors := h.selectNeighborsHeuristic(
-							neighborVec,
-							neighborNode.Neighbors[lc],
-							maxConn,
-							lc,
-						)
-						neighborNode.Neighbors[lc] = newNeighbors
-					}
-				}
+				h.linkBack(neighbor, v.ID, lc)
 			}
 
 			currNearest = neighbors
@@ -825,176 +858,15 @@ func (h *HNSW) SearchVectorIndex(query []float32, k int) ([]string, []float32) {
 	return h.Search(query, k, ef)
 }
 
-// InsertBatchParallel inserts vectors in parallel using multiple goroutines
+// InsertBatchParallel inserts vectors as InsertBatch does; numWorkers is
+// ignored. It used to split the vectors among numWorkers goroutines, build a
+// graph from each and merge them — four graphs that hardly linked to each
+// other, with recall@10 of 0.24 on 20,000 clustered 768-d vectors against
+// 0.73 inserted in order. Building one graph concurrently needs locking per
+// node, which this index does not have.
 func (h *HNSW) InsertBatchParallel(vectors []struct {
 	ID     string
 	Vector []float32
 }, numWorkers int) error {
-	if numWorkers <= 1 {
-		return h.InsertBatch(vectors)
-	}
-
-	// For parallel construction, we use a simplified approach:
-	// Split vectors into chunks, build sub-graphs in parallel, then merge
-	chunkSize := len(vectors) / numWorkers
-	if chunkSize < 10 {
-		return h.InsertBatch(vectors) // Too few vectors, use single-threaded
-	}
-
-	type partialGraph struct {
-		nodes      map[string]*HNSWNode
-		entryPoint string
-		maxLevel   int
-	}
-
-	var wg sync.WaitGroup
-	graphs := make([]partialGraph, numWorkers)
-	errors := make([]error, numWorkers)
-
-	// Build sub-graphs in parallel
-	for w := 0; w < numWorkers; w++ {
-		start := w * chunkSize
-		end := start + chunkSize
-		if w == numWorkers-1 {
-			end = len(vectors) // Last worker gets remaining
-		}
-
-		wg.Add(1)
-		go func(chunk []struct {
-			ID     string
-			Vector []float32
-		}, idx int) {
-			defer wg.Done()
-
-			// Create a temporary HNSW for this chunk
-			tempHNSW := &HNSW{
-				M:              h.M,
-				MaxM:           h.MaxM,
-				EfConstruction: h.EfConstruction,
-				ML:             h.ML,
-				Seed:           h.Seed + int64(idx),
-				Nodes:          make(map[string]*HNSWNode),
-				DistFunc:       h.DistFunc,
-				Quantizer:      h.Quantizer,
-				rng:            rand.New(rand.NewSource(h.Seed + int64(idx))),
-			}
-
-			for _, v := range chunk {
-				if _, exists := tempHNSW.Nodes[v.ID]; exists {
-					continue
-				}
-
-				// Prepare node data
-				var quantized []byte
-				var storedVector []float32 = v.Vector
-
-				if tempHNSW.Quantizer != nil {
-					var err error
-					quantized, err = tempHNSW.Quantizer.Encode(v.Vector)
-					if err == nil {
-						storedVector = nil
-					}
-				}
-
-				level := tempHNSW.selectLevel()
-				node := &HNSWNode{
-					ID:        v.ID,
-					Vector:    storedVector,
-					Quantized: quantized,
-					Level:     level,
-					Neighbors: make([][]string, level+1),
-				}
-
-				for i := 0; i <= level; i++ {
-					node.Neighbors[i] = make([]string, 0)
-				}
-
-				tempHNSW.Nodes[v.ID] = node
-
-				if tempHNSW.EntryPoint == "" {
-					tempHNSW.EntryPoint = v.ID
-					continue
-				}
-
-				// Build connections within this chunk
-				currNearest := []string{tempHNSW.EntryPoint}
-				entryNode := tempHNSW.Nodes[tempHNSW.EntryPoint]
-				for lc := entryNode.Level; lc > level; lc-- {
-					currNearest = tempHNSW.searchLayerClosest(v.Vector, currNearest, 1, lc)
-				}
-
-				for lc := level; lc >= 0; lc-- {
-					m := tempHNSW.M
-					if lc == 0 {
-						m = tempHNSW.MaxM
-					}
-
-					candidates := tempHNSW.searchLayer(v.Vector, currNearest, tempHNSW.EfConstruction, lc)
-					neighbors := tempHNSW.selectNeighborsHeuristic(v.Vector, candidates, m, lc)
-
-					node.Neighbors[lc] = neighbors
-					for _, neighbor := range neighbors {
-						tempHNSW.addConnection(neighbor, v.ID, lc)
-					}
-
-					currNearest = neighbors
-				}
-
-				if level > tempHNSW.Nodes[tempHNSW.EntryPoint].Level {
-					tempHNSW.EntryPoint = v.ID
-				}
-			}
-
-			graphs[idx] = partialGraph{
-				nodes:      tempHNSW.Nodes,
-				entryPoint: tempHNSW.EntryPoint,
-			}
-
-			// Find max level
-			for _, node := range tempHNSW.Nodes {
-				if node.Level > graphs[idx].maxLevel {
-					graphs[idx].maxLevel = node.Level
-				}
-			}
-		}(vectors[start:end], w)
-	}
-
-	wg.Wait()
-
-	// Check for errors
-	for _, err := range errors {
-		if err != nil {
-			return err
-		}
-	}
-
-	// Merge graphs into main index
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	for _, pg := range graphs {
-		for id, node := range pg.nodes {
-			if _, exists := h.Nodes[id]; !exists {
-				h.Nodes[id] = node
-			}
-		}
-	}
-
-	// Update entry point
-	for _, pg := range graphs {
-		if pg.entryPoint == "" {
-			continue
-		}
-		if h.EntryPoint == "" {
-			h.EntryPoint = pg.entryPoint
-		} else {
-			entryNode := h.Nodes[h.EntryPoint]
-			pgEntryNode := h.Nodes[pg.entryPoint]
-			if pgEntryNode != nil && entryNode != nil && pgEntryNode.Level > entryNode.Level {
-				h.EntryPoint = pg.entryPoint
-			}
-		}
-	}
-
-	return nil
+	return h.InsertBatch(vectors)
 }

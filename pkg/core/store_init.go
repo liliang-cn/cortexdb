@@ -46,7 +46,7 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 	}
 
 	pinAllocatorSlabs()
-	dsn := fmt.Sprintf("%s?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)&_pragma=cache_size(-2000)&_pragma=foreign_keys(ON)&_pragma=temp_store(MEMORY)", s.config.Path)
+	dsn := sqliteDSN(s.config.Path, s.config.Resources)
 	// Writers take turns: see sqlite_writelock.go.
 	db, err := openQueuedSQLite(dsn, s.config.Path)
 	if err != nil {
@@ -55,9 +55,13 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 
 	// Configure connection pool with sensible defaults
 	// Allow more open connections for read concurrency
-	db.SetMaxOpenConns(25)
+	maxConns := s.config.Resources.MaxOpenConns
+	if maxConns <= 0 {
+		maxConns = 25
+	}
+	db.SetMaxOpenConns(maxConns)
 	// Keep enough idle connections to avoid reconnection overhead
-	db.SetMaxIdleConns(10)
+	db.SetMaxIdleConns(min(10, maxConns))
 	db.SetConnMaxLifetime(2 * time.Hour)
 
 	s.db = db
@@ -306,4 +310,22 @@ func (s *SQLiteStore) backfillCJKIndexes(ctx context.Context) error {
 		return fmt.Errorf("failed to record schema version: %w", err)
 	}
 	return nil
+}
+
+// sqliteDSN is the connection string with the pragmas every pooled connection
+// gets; see Init for why each default is what it is.
+func sqliteDSN(path string, r ResourceConfig) string {
+	cacheKiB := r.CacheSizeKiB
+	if cacheKiB <= 0 {
+		cacheKiB = 2000
+	}
+	tempStore := "MEMORY"
+	if r.TempStoreFile {
+		tempStore = "FILE"
+	}
+	dsn := fmt.Sprintf("%s?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)&_pragma=cache_size(-%d)&_pragma=foreign_keys(ON)&_pragma=temp_store(%s)", path, cacheKiB, tempStore)
+	if r.MmapSizeMiB > 0 {
+		dsn += fmt.Sprintf("&_pragma=mmap_size(%d)", int64(r.MmapSizeMiB)<<20)
+	}
+	return dsn
 }

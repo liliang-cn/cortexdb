@@ -32,7 +32,18 @@ func (s *SQLiteStore) newBinaryIndex(dim int) *index.BinaryIndex {
 // initBinaryIndex builds the index at Init when the dimension is known.
 // With the dimension still to be detected, the first insert creates it.
 func (s *SQLiteStore) initBinaryIndex(ctx context.Context) error {
-	if !s.binaryEnabled() || s.config.VectorDim <= 0 {
+	if !s.binaryEnabled() {
+		return nil
+	}
+	// As for a quantized HNSW: a store reopened with its dimension left to
+	// auto-detection has vectors to index, and without this would search
+	// them by scanning the table until the first insert told it the width.
+	if s.config.VectorDim == 0 {
+		if dim := s.storedVectorDim(ctx); dim > 0 {
+			s.config.VectorDim = dim
+		}
+	}
+	if s.config.VectorDim <= 0 {
 		return nil
 	}
 	s.binaryMu.Lock()
@@ -43,30 +54,32 @@ func (s *SQLiteStore) initBinaryIndex(ctx context.Context) error {
 }
 
 // reloadBinaryIndex replaces the index content with every vector of its
-// dimension in the embeddings table, retraining the center.
+// dimension in the embeddings table, retraining the center. It streams the
+// table (twice, when centering), so the vectors are never all in memory: the
+// index keeps a 32nd of their size, and collecting them first made the
+// float32 copy the whole of its peak.
 func (s *SQLiteStore) reloadBinaryIndex(ctx context.Context, idx *index.BinaryIndex) error {
-	return idx.RebuildFrom(func() ([]string, [][]float32, error) {
+	return idx.RebuildStreaming(func(yield func(string, []float32) error) error {
 		rows, err := s.db.QueryContext(ctx, "SELECT id, vector FROM embeddings")
 		if err != nil {
-			return nil, nil, fmt.Errorf("binary index: load vectors: %w", err)
+			return fmt.Errorf("binary index: load vectors: %w", err)
 		}
 		defer rows.Close()
-		var ids []string
-		var vectors [][]float32
 		for rows.Next() {
 			var id string
 			var raw []byte
 			if err := rows.Scan(&id, &raw); err != nil {
-				return nil, nil, err
+				return err
 			}
 			v, err := encoding.DecodeVector(raw)
 			if err != nil || len(v) != idx.Dim() {
 				continue // another width is not searchable by this index
 			}
-			ids = append(ids, id)
-			vectors = append(vectors, v)
+			if err := yield(id, v); err != nil {
+				return err
+			}
 		}
-		return ids, vectors, rows.Err()
+		return rows.Err()
 	})
 }
 

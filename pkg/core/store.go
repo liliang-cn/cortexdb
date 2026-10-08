@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/index"
@@ -14,8 +15,11 @@ import (
 
 // SQLiteStore implements the Store interface using SQLite as backend
 type SQLiteStore struct {
-	changesCounter int32       // Counter for tracking changes
-	saveMu         sync.Mutex  // Mutex for save operations
+	changesCounter int32      // Counter for tracking changes
+	saveMu         sync.Mutex // Mutex for save operations
+	// savedMutations is the index's mutation count when its snapshot was last
+	// written or read; see snapshotStale.
+	savedMutations atomic.Uint64
 	saveTimer      *time.Timer // Timer for periodic saves
 	db             *sql.DB
 	config         Config

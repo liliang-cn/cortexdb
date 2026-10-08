@@ -54,7 +54,7 @@ type HNSWConfig struct {
 	M              int  `json:"m"`              // Maximum connections per node (default: 16)
 	EfConstruction int  `json:"efConstruction"` // Candidates during construction (default: 64)
 	EfSearch       int  `json:"efSearch"`       // Candidates during search (default: 50)
-	NumWorkers     int  `json:"numWorkers"`     // Number of parallel workers for index building (default: 4)
+	NumWorkers     int  `json:"numWorkers"`     // Unused: a rebuild builds one connected graph on one goroutine (see rebuildHNSWIndex)
 	Incremental    bool `json:"incremental"`    // Enable incremental indexing (default: true)
 }
 
@@ -183,6 +183,28 @@ type Config struct {
 	Binary         BinaryConfig         `json:"binary,omitempty"`         // IndexTypeBinary configuration
 	Logger         Logger               `json:"-"`                        // Logger instance (defaults to nop logger)
 	AutoSave       AutoSaveConfig       `json:"autoSave,omitempty"`       // Auto-save configuration
+	Resources      ResourceConfig       `json:"resources,omitempty"`      // Memory and I/O limits; zero keeps the defaults
+}
+
+// ResourceConfig bounds what a store holds in memory and how much it writes,
+// for small devices: a Raspberry Pi, an industrial gateway, a router-class
+// ARM board. The zero value is the desktop/server behaviour.
+type ResourceConfig struct {
+	// CacheSizeKiB is SQLite's page cache per connection (default 2000).
+	// Every pooled connection has its own, so the total is this times
+	// MaxOpenConns at worst.
+	CacheSizeKiB int `json:"cacheSizeKiB,omitempty"`
+	// MmapSizeMiB maps this much of the database file instead of reading it
+	// through the page cache (default 0, off). Pages read through a mapping
+	// cost the kernel's page cache, which it can reclaim, rather than the
+	// process's heap.
+	MmapSizeMiB int `json:"mmapSizeMiB,omitempty"`
+	// TempStoreFile keeps SQLite's temporary b-trees and statement journals
+	// in files rather than memory, so a large sort or a long transaction
+	// cannot grow the heap without bound.
+	TempStoreFile bool `json:"tempStoreFile,omitempty"`
+	// MaxOpenConns caps the connection pool (default 25).
+	MaxOpenConns int `json:"maxOpenConns,omitempty"`
 }
 
 // AutoSaveConfig defines configuration for automatic index snapshot saving

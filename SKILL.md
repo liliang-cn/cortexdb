@@ -114,6 +114,10 @@ hits, _ := quick.Search(ctx, []float32{0.1, 0.2, 0.8}, 3)
 _ = hits
 ```
 
+### Small devices
+
+`cortexdb.EmbeddedConfig(path)` is the configuration for a Raspberry Pi, an industrial gateway or a router-class ARM board — Linux with an MMU and a few hundred megabytes. It holds the HNSW index as SQ8 codes, keeps SQLite to a 1 MiB page cache on each of at most 4 connections with up to 64 MiB of the file memory-mapped and temporary b-trees in files, and saves the index snapshot every 10 minutes when it has changed, so a power cut costs at most that much rebuilding. On 100,000 768-d vectors a store opens from its snapshot in 0.28 s with a 193 MB heap and a 297 MB peak RSS. The same settings are fields on `Config` (`Quantization`, `Binary`, `Resources`, `SnapshotInterval`) for a mix of your own. `IndexTypeBinary` is the smallest index — 27.5 MB of heap at 100,000 vectors — but has no snapshot (each open scans the table twice) and needs `Binary.Oversample` raised for tightly clustered vectors. Without an embedder none of the vector settings matter; the SQLite limits are what bound memory. Run with `GOMEMLIMIT` set below the device's memory so the garbage collector works before the kernel does.
+
 ## Storage Backend (SQLite or PostgreSQL)
 
 The DSN chooses the backend. Nothing else changes:

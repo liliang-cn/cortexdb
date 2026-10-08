@@ -356,3 +356,62 @@ func BenchmarkHammingDistance(b *testing.B) {
 		bq.HammingDistance(a, c)
 	}
 }
+
+// The fused distance and the buffer decode are the hot path of a quantized
+// index; both must agree with decoding into a fresh vector.
+func TestScalarFastPathsMatchDecode(t *testing.T) {
+	r := rand.New(rand.NewSource(11))
+	const dim = 96
+	train := make([][]float32, 300)
+	for i := range train {
+		v := make([]float32, dim)
+		for d := range v {
+			v[d] = float32(r.NormFloat64())
+		}
+		train[i] = v
+	}
+	sq, err := NewScalarQuantizer(dim, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sq.Train(train); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]float32, dim)
+	for i := 0; i < 50; i++ {
+		code, err := sq.Encode(train[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := sq.Decode(code)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := sq.DecodeInto(buf, code); err != nil {
+			t.Fatal(err)
+		}
+		for d := range want {
+			if buf[d] != want[d] {
+				t.Fatalf("DecodeInto[%d] = %v, Decode = %v", d, buf[d], want[d])
+			}
+		}
+		q := train[(i+7)%len(train)]
+		var dot, nq, nc float64
+		for d := range q {
+			dot += float64(q[d]) * float64(want[d])
+			nq += float64(q[d]) * float64(q[d])
+			nc += float64(want[d]) * float64(want[d])
+		}
+		ref := 1 - dot/(math.Sqrt(nq)*math.Sqrt(nc))
+		got, ok := sq.CosineDistanceTo(q, code)
+		if !ok || math.Abs(float64(got)-ref) > 1e-4 {
+			t.Fatalf("CosineDistanceTo = %v (ok=%v), want %v", got, ok, ref)
+		}
+	}
+	sq4, _ := NewScalarQuantizer(dim, 4)
+	_ = sq4.Train(train)
+	code4, _ := sq4.Encode(train[0])
+	if _, ok := sq4.CosineDistanceTo(train[1], code4); ok {
+		t.Fatal("the fused path is for 8-bit codes only")
+	}
+}

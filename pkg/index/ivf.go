@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"sort"
 	"sync"
+	"sync/atomic"
 )
 
 // IVFIndex implements Inverted File Index for partitioned vector search
@@ -23,7 +24,14 @@ type IVFIndex struct {
 	Trained    bool
 	NProbe     int // Number of clusters to search
 	mu         sync.RWMutex
+
+	// mutations counts every change, as HNSW's does.
+	mutations atomic.Uint64
 }
+
+// Mutations reports how many times the index has been changed since it was
+// created. It only ever grows; Load does not reset it.
+func (ivf *IVFIndex) Mutations() uint64 { return ivf.mutations.Load() }
 
 // NewIVFIndex creates a new IVF index
 func NewIVFIndex(dimension, nCentroids int) *IVFIndex {
@@ -117,6 +125,7 @@ func (ivf *IVFIndex) Load(r io.Reader) error {
 
 // Train learns cluster centroids from training data
 func (ivf *IVFIndex) Train(vectors [][]float32) error {
+	ivf.mutations.Add(1)
 	if len(vectors) < ivf.NCentroids {
 		return fmt.Errorf("need at least %d vectors for training, got %d", ivf.NCentroids, len(vectors))
 	}
@@ -140,6 +149,7 @@ func (ivf *IVFIndex) Train(vectors [][]float32) error {
 
 // Add adds a vector to the index
 func (ivf *IVFIndex) Add(id string, vector []float32) error {
+	ivf.mutations.Add(1)
 	ivf.mu.Lock()
 	defer ivf.mu.Unlock()
 
@@ -299,6 +309,7 @@ func (ivf *IVFIndex) Stats() map[string]interface{} {
 
 // Clear removes all vectors from the index
 func (ivf *IVFIndex) Clear() {
+	ivf.mutations.Add(1)
 	ivf.mu.Lock()
 	defer ivf.mu.Unlock()
 
@@ -428,6 +439,7 @@ func min(a, b int) int {
 
 // Delete removes a vector from the index
 func (ivf *IVFIndex) Delete(id string) error {
+	ivf.mutations.Add(1)
 	if !ivf.Trained {
 		return errors.New("index not trained")
 	}

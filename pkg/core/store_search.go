@@ -1,6 +1,7 @@
 package core
 
 import (
+	"container/heap"
 	"context"
 	"database/sql"
 	"fmt"
@@ -55,13 +56,73 @@ func (s *SQLiteStore) Search(ctx context.Context, query []float32, opts SearchOp
 	}
 
 	// Fallback to linear search
-	candidates, err := s.fetchCandidates(ctx, opts)
+	results, err := s.searchLinearTopK(ctx, query, opts)
 	if err != nil {
 		return nil, wrapError("search", err)
 	}
-
-	results := s.scoreCandidates(query, candidates, opts)
 	return results, nil
+}
+
+// searchLinearTopK scores every stored row against the query and keeps the
+// best TopK as it goes. Collecting all rows first and sorting them, as
+// fetchCandidates + scoreCandidates do, holds the whole table — vectors,
+// content and metadata — in memory for the length of one query.
+func (s *SQLiteStore) searchLinearTopK(ctx context.Context, query []float32, opts SearchOptions) ([]ScoredEmbedding, error) {
+	if opts.TopK <= 0 {
+		opts.TopK = 10
+	}
+	querySQL, args := s.buildSearchQuery(opts)
+	rows, err := s.db.QueryContext(ctx, querySQL, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query embeddings: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	textWeight := s.getTextWeight(opts)
+	best := make(scoredMinHeap, 0, opts.TopK)
+	for rows.Next() {
+		c, err := s.scanEmbedding(rows)
+		if err != nil {
+			s.logger.Warn("failed to scan embedding during linear search", "error", err)
+			continue
+		}
+		if !s.matchesFilter(c.Embedding, opts.Filter) {
+			continue
+		}
+		s.scoreOne(query, &c, opts, textWeight)
+		if opts.Threshold > 0 && c.Score < opts.Threshold {
+			continue
+		}
+		if len(best) < opts.TopK {
+			heap.Push(&best, c)
+		} else if c.Score > best[0].Score {
+			best[0] = c
+			heap.Fix(&best, 0)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+	out := make([]ScoredEmbedding, len(best))
+	for i := len(out) - 1; i >= 0; i-- {
+		out[i] = heap.Pop(&best).(ScoredEmbedding)
+	}
+	return out, nil
+}
+
+// scoredMinHeap keeps the lowest score on top, so the weakest of the best
+// TopK is the one a better row replaces.
+type scoredMinHeap []ScoredEmbedding
+
+func (h scoredMinHeap) Len() int           { return len(h) }
+func (h scoredMinHeap) Less(i, j int) bool { return h[i].Score < h[j].Score }
+func (h scoredMinHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *scoredMinHeap) Push(x any)        { *h = append(*h, x.(ScoredEmbedding)) }
+func (h *scoredMinHeap) Pop() any {
+	old := *h
+	x := old[len(old)-1]
+	*h = old[:len(old)-1]
+	return x
 }
 
 // SearchWithFilter performs vector similarity search with advanced metadata filtering
@@ -471,24 +532,8 @@ func (s *SQLiteStore) scoreCandidates(query []float32, candidates []ScoredEmbedd
 
 	// Calculate similarity scores - hybrid approach
 	textWeight := s.getTextWeight(opts)
-	vectorWeight := 1.0 - textWeight
-
 	for i := range candidates {
-		// Vector similarity score
-		vectorScore := s.similarityFn(query, candidates[i].Vector)
-
-		// Text similarity score (if enabled and query text provided)
-		textScore := 0.0
-		if s.textSimilarity != nil && opts.QueryText != "" {
-			textScore = s.textSimilarity.CalculateSimilarity(opts.QueryText, candidates[i].Content)
-		}
-
-		// Combine scores
-		if textWeight > 0 && textScore > 0 {
-			candidates[i].Score = vectorScore*vectorWeight + textScore*textWeight
-		} else {
-			candidates[i].Score = vectorScore // Fall back to vector-only scoring
-		}
+		s.scoreOne(query, &candidates[i], opts, textWeight)
 	}
 
 	// Filter by threshold
@@ -511,6 +556,21 @@ func (s *SQLiteStore) scoreCandidates(query []float32, candidates []ScoredEmbedd
 	}
 
 	return candidates
+}
+
+// scoreOne sets a candidate's score: vector similarity, blended with text
+// similarity when there is a query text and a weight for it.
+func (s *SQLiteStore) scoreOne(query []float32, c *ScoredEmbedding, opts SearchOptions, textWeight float64) {
+	vectorScore := s.similarityFn(query, c.Vector)
+	textScore := 0.0
+	if s.textSimilarity != nil && opts.QueryText != "" {
+		textScore = s.textSimilarity.CalculateSimilarity(opts.QueryText, c.Content)
+	}
+	if textWeight > 0 && textScore > 0 {
+		c.Score = vectorScore*(1.0-textWeight) + textScore*textWeight
+	} else {
+		c.Score = vectorScore // Fall back to vector-only scoring
+	}
 }
 
 // getTextWeight determines the text similarity weight from options or config

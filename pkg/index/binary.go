@@ -150,6 +150,53 @@ func (b *BinaryIndex) RebuildFrom(load func() ([]string, [][]float32, error)) er
 	return nil
 }
 
+// RebuildStreaming is RebuildFrom without the vectors in memory: scan yields
+// every vector once per pass, and only the codes are kept. With centering on
+// it is called twice — once to learn the mean, once to encode against it —
+// which costs a second read of the store and saves holding a float32 copy of
+// all of it, the whole peak of an index that otherwise keeps a 32nd of that.
+func (b *BinaryIndex) RebuildStreaming(scan func(yield func(id string, vector []float32) error) error) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.center = nil
+	b.trainedAt = 0
+	if b.centerOn {
+		sum := make([]float64, b.dim)
+		n := 0
+		err := scan(func(id string, v []float32) error {
+			if len(v) != b.dim {
+				return fmt.Errorf("binary index: %s has %d dimensions, index has %d", id, len(v), b.dim)
+			}
+			for d, x := range v {
+				sum[d] += float64(x)
+			}
+			n++
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			b.center = make([]float32, b.dim)
+			for d := range sum {
+				b.center[d] = float32(sum[d] / float64(n))
+			}
+			b.trainedAt = n
+		}
+	}
+	b.ids = b.ids[:0]
+	b.pos = make(map[string]int)
+	b.codes = b.codes[:0]
+	b.vectors = b.vectors[:0]
+	return scan(func(id string, v []float32) error {
+		if len(v) != b.dim {
+			return fmt.Errorf("binary index: %s has %d dimensions, index has %d", id, len(v), b.dim)
+		}
+		b.insertLocked(id, v)
+		return nil
+	})
+}
+
 // Dim is the dimensionality the index was created for.
 func (b *BinaryIndex) Dim() int { return b.dim }
 

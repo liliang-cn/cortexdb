@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
@@ -68,6 +69,23 @@ type Config struct {
 	Dimensions   int                 // Vector dimensions (0 for auto-detect)
 	SimilarityFn core.SimilarityFunc // Similarity function (default: cosine)
 	IndexType    core.IndexType      // Index type (HNSW, IVF, Flat)
+
+	// Quantization keeps the HNSW index as compact codes instead of float32
+	// vectors: scalar (SQ8) is a quarter of the memory. The stored vectors
+	// are untouched; only the in-memory index is compressed.
+	Quantization core.QuantizationConfig
+	// Binary tunes IndexTypeBinary: Oversample is how many Hamming
+	// candidates are rescored per result wanted (default 8). Raise it for
+	// tightly clustered vectors; see index.DefaultBinaryOversample.
+	Binary core.BinaryConfig
+	// Resources bounds memory and writes for small devices; see
+	// EmbeddedConfig. The zero value keeps the defaults.
+	Resources core.ResourceConfig
+	// SnapshotInterval saves the vector index snapshot this often, when it
+	// has changed (0: only at Close). A device that loses power without
+	// closing otherwise rebuilds its index from every stored vector on the
+	// next boot.
+	SnapshotInterval time.Duration
 }
 
 // DefaultConfig returns default configuration
@@ -78,6 +96,32 @@ func DefaultConfig(path string) Config {
 		SimilarityFn: core.CosineSimilarity,
 		IndexType:    core.IndexTypeHNSW, // Default to HNSW
 	}
+}
+
+// EmbeddedConfig returns a configuration for small devices: a Raspberry Pi,
+// an industrial gateway, a router-class ARM board — Linux with an MMU and a
+// few hundred megabytes of memory.
+//
+//   - The HNSW index is held as SQ8 codes, a quarter of float32.
+//   - SQLite keeps a 1 MiB page cache on each of at most 4 connections, maps
+//     up to 64 MiB of the file rather than copying it into the heap, and puts
+//     temporary b-trees in files.
+//   - The index snapshot is saved every 10 minutes when it has changed, so a
+//     power cut costs at most that much rebuilding.
+//
+// Without an embedder none of the vector settings matter: retrieval is
+// lexical, and the SQLite limits are what bound memory.
+func EmbeddedConfig(path string) Config {
+	c := DefaultConfig(path)
+	c.Quantization = core.QuantizationConfig{Enabled: true, Type: "scalar", NBits: 8}
+	c.Resources = core.ResourceConfig{
+		CacheSizeKiB:  1024,
+		MmapSizeMiB:   64,
+		TempStoreFile: true,
+		MaxOpenConns:  4,
+	}
+	c.SnapshotInterval = 10 * time.Minute
+	return c
 }
 
 // DefaultDBPath returns the default database path for the CortexDB tools and
@@ -164,6 +208,12 @@ func Open(config Config, opts ...Option) (*DB, error) {
 		HNSW:           hnswConfig,
 		IVF:            ivfConfig,
 		TextSimilarity: core.DefaultTextSimilarityConfig(),
+		Quantization:   config.Quantization,
+		Binary:         config.Binary,
+		Resources:      config.Resources,
+	}
+	if config.SnapshotInterval > 0 {
+		coreConfig.AutoSave = core.AutoSaveConfig{Enabled: true, Interval: config.SnapshotInterval, SaveOnClose: true, MinChanges: 1}
 	}
 
 	// The DSN decides the backend: a bare path is the SQLite file it has

@@ -2,6 +2,58 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.124.0] - 2026-10-08
+
+### Added
+
+- `cortexdb.EmbeddedConfig(path)`, a configuration for small devices — a
+  Raspberry Pi, an industrial gateway, a router-class ARM board. The HNSW
+  index is held as SQ8 codes; SQLite keeps a 1 MiB page cache on each of at
+  most 4 connections, maps up to 64 MiB of the file and puts temporary
+  b-trees in files; the index snapshot is saved every 10 minutes when it has
+  changed. On 100,000 768-d vectors a store opened from its snapshot in
+  0.28 s with a 193 MB heap and a 297 MB peak RSS, against 1.7 s, 485 MB and
+  1,982 MB for the default configuration before this release.
+- `Config.Quantization`, `Config.Binary`, `Config.Resources` and
+  `Config.SnapshotInterval` on the facade, which offered none of them: the
+  store could quantize its index, but nothing opened through `cortexdb.Open`
+  could ask it to. `core.ResourceConfig` sets SQLite's per-connection page
+  cache, memory mapping, temporary storage and pool size.
+
+### Fixed
+
+- Rebuilding the HNSW index from stored vectors split them among four
+  goroutines, built a graph from each and merged them — four graphs that
+  hardly linked to each other. Recall@10 was 0.24 on 100,000 clustered 768-d
+  vectors; it is 0.65–0.72 now that the rebuild builds one graph. Every open
+  without a usable snapshot took this path. `index.HNSW.InsertBatchParallel`
+  now inserts on one goroutine for the same reason.
+- The rebuild decoded every stored vector into one slice before inserting
+  any, doubling its peak; it streams now. Peak RSS for that open fell from
+  2,359 MB to 786 MB at 100,000 vectors (435 MB with `EmbeddedConfig`).
+- Index snapshots were one blob, built whole in memory to save and read whole
+  to load. They are written and read in 4 MiB chunks; a snapshot written
+  before this release still loads.
+- A snapshot was rewritten on every close and every auto-save tick, changed
+  or not (`AutoSave.MinChanges` was never consulted). It is written only when
+  the index has changed.
+- Closing allowed five seconds to save the snapshot, which a large index
+  overran; the write was abandoned and the next open rebuilt everything.
+- A quantized HNSW or binary index reopened with its dimension left to
+  auto-detection was built without its codes — float32 vectors, or no binary
+  index at all and a table scan per search — and a float32 snapshot was
+  loaded as it was under a quantized configuration. Both now learn the
+  dimension from the stored vectors, and a float32 snapshot is rebuilt.
+- The binary index decoded every vector into memory to learn its center; it
+  streams the table twice instead and keeps only the codes.
+- A search with no vector index held the whole table in memory to sort it;
+  it keeps the best TopK as it scans.
+- SQ8 distances decoded each code bit by bit into a fresh vector. 8-bit codes
+  are measured in one pass with no allocation, and building a graph no longer
+  re-measures candidates it has just ranked or prunes a full neighbour list
+  on every new link: a 20,000-vector quantized rebuild went from 1 m 45 s to
+  15 s.
+
 ## [2.123.0] - 2026-10-07
 
 ### Fixed

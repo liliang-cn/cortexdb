@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"time"
 )
 
 // Close closes the database connection and releases resources
@@ -18,9 +17,13 @@ func (s *SQLiteStore) Close() error {
 		return nil
 	}
 
-	// Try to save index snapshot before closing
-	// Use a new context with timeout since the original context might be cancelled
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Save the index snapshot before closing, on a context of its own since
+	// the caller's may be cancelled. The bound is generous on purpose: a
+	// snapshot is written in chunks, each statement honours the deadline, and
+	// a deadline that falls mid-write rolls the whole snapshot back. Five
+	// seconds did, at 100,000 768-d vectors, and the next open rebuilt the
+	// index from every row.
+	ctx, cancel := context.WithTimeout(context.Background(), snapshotWriteTimeout)
 	defer cancel()
 
 	if err := s.saveIndexSnapshot(ctx); err != nil {

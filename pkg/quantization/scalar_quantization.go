@@ -18,6 +18,29 @@ type ScalarQuantizer struct {
 	Max       []float32 // Max value per dimension
 	NBits     int       // Bits per component (1-8)
 	Trained   bool
+
+	// step is (Max-Min)/(2^NBits-1) per dimension: a code times its step
+	// plus Min is the component. Derived from Min and Max, so not saved.
+	step []float32
+}
+
+// steps returns the per-dimension step. Train and Load derive it; a
+// quantizer filled in by hand derives it on each call rather than writing
+// shared state from a reader.
+func (sq *ScalarQuantizer) steps() []float32 {
+	if len(sq.step) == sq.Dimension {
+		return sq.step
+	}
+	return sq.computeSteps()
+}
+
+func (sq *ScalarQuantizer) computeSteps() []float32 {
+	maxVal := float32((int(1) << uint(sq.NBits)) - 1)
+	step := make([]float32, sq.Dimension)
+	for d := range step {
+		step[d] = (sq.Max[d] - sq.Min[d]) / maxVal
+	}
+	return step
 }
 
 // NewScalarQuantizer creates a new scalar quantizer
@@ -43,7 +66,11 @@ func (sq *ScalarQuantizer) Save(w io.Writer) error {
 // Load deserializes the quantizer
 func (sq *ScalarQuantizer) Load(r io.Reader) error {
 	dec := gob.NewDecoder(r)
-	return dec.Decode(sq)
+	if err := dec.Decode(sq); err != nil {
+		return err
+	}
+	sq.step = sq.computeSteps()
+	return nil
 }
 
 // Train learns the value ranges from training data
@@ -82,6 +109,7 @@ func (sq *ScalarQuantizer) Train(vectors [][]float32) error {
 	}
 
 	sq.Trained = true
+	sq.step = sq.computeSteps()
 	return nil
 }
 
@@ -133,12 +161,37 @@ func (sq *ScalarQuantizer) Encode(vector []float32) ([]byte, error) {
 
 // Decode reconstructs a vector from quantized bytes
 func (sq *ScalarQuantizer) Decode(encoded []byte) ([]float32, error) {
-	if !sq.Trained {
-		return nil, errors.New("quantizer not trained")
-	}
-
-	maxVal := float32((int(1) << uint(sq.NBits)) - 1)
 	vector := make([]float32, sq.Dimension)
+	if err := sq.DecodeInto(vector, encoded); err != nil {
+		return nil, err
+	}
+	return vector, nil
+}
+
+// DecodeInto reconstructs a vector into dst, which must hold Dimension
+// values. An index that keeps only codes decodes one for every distance it
+// computes, so this is the hot path of a quantized search: it allocates
+// nothing, and at 8 bits, where every byte is one component, it does not
+// unpack bits at all.
+func (sq *ScalarQuantizer) DecodeInto(dst []float32, encoded []byte) error {
+	if !sq.Trained {
+		return errors.New("quantizer not trained")
+	}
+	if len(dst) < sq.Dimension {
+		return fmt.Errorf("destination holds %d values, need %d", len(dst), sq.Dimension)
+	}
+	maxVal := float32((int(1) << uint(sq.NBits)) - 1)
+
+	if sq.NBits == 8 {
+		if len(encoded) < sq.Dimension {
+			return errors.New("encoded data too short")
+		}
+		step := sq.steps()
+		for d := 0; d < sq.Dimension; d++ {
+			dst[d] = float32(encoded[d])*step[d] + sq.Min[d]
+		}
+		return nil
+	}
 
 	bitOffset := 0
 	for d := 0; d < sq.Dimension; d++ {
@@ -149,7 +202,7 @@ func (sq *ScalarQuantizer) Decode(encoded []byte) ([]float32, error) {
 			bitIdx := bitOffset % 8
 
 			if byteIdx >= len(encoded) {
-				return nil, errors.New("encoded data too short")
+				return errors.New("encoded data too short")
 			}
 
 			if (encoded[byteIdx] & (1 << bitIdx)) != 0 {
@@ -161,10 +214,32 @@ func (sq *ScalarQuantizer) Decode(encoded []byte) ([]float32, error) {
 
 		// Dequantize
 		normalized := float32(quantized) / maxVal
-		vector[d] = normalized*(sq.Max[d]-sq.Min[d]) + sq.Min[d]
+		dst[d] = normalized*(sq.Max[d]-sq.Min[d]) + sq.Min[d]
 	}
+	return nil
+}
 
-	return vector, nil
+// CosineDistanceTo is 1 - cosine(query, decoded code), computed on the code in
+// one pass without materialising the decoded vector — the distance a graph
+// of 8-bit codes computes for every edge it weighs. ok is false where the
+// fast path does not apply (other bit widths, a short code, an untrained
+// quantizer); the caller decodes and measures instead.
+func (sq *ScalarQuantizer) CosineDistanceTo(query []float32, encoded []byte) (dist float32, ok bool) {
+	if !sq.Trained || sq.NBits != 8 || len(encoded) < sq.Dimension || len(query) != sq.Dimension {
+		return 0, false
+	}
+	step, lo := sq.steps(), sq.Min
+	var dot, nq, nc float32
+	for d, q := range query {
+		c := float32(encoded[d])*step[d] + lo[d]
+		dot += q * c
+		nq += q * q
+		nc += c * c
+	}
+	if nq == 0 || nc == 0 {
+		return 1, true
+	}
+	return 1 - dot/(float32(math.Sqrt(float64(nq)))*float32(math.Sqrt(float64(nc)))), true
 }
 
 // CompressionRatio returns the compression ratio

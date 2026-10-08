@@ -3,8 +3,8 @@ package core
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"fmt"
+	"io"
 	"sync/atomic"
 	"time"
 
@@ -17,6 +17,16 @@ import (
 func (s *SQLiteStore) initHNSWIndex(ctx context.Context) error {
 	if !s.config.HNSW.Enabled {
 		return nil
+	}
+
+	// A quantized index needs its dimension before the first vector goes in.
+	// Reopening a store whose caller left the dimension to auto-detection
+	// would otherwise build the index from float32 vectors, the very memory
+	// quantization was turned on to save.
+	if s.config.Quantization.Enabled && s.config.VectorDim == 0 {
+		if dim := s.storedVectorDim(ctx); dim > 0 {
+			s.config.VectorDim = dim
+		}
 	}
 
 	// Initialize Quantizer if enabled
@@ -71,101 +81,86 @@ func (s *SQLiteStore) initHNSWIndex(ctx context.Context) error {
 	return s.rebuildHNSWIndex(ctx)
 }
 
-// rebuildHNSWIndex rebuilds the HNSW index from existing vectors in the database
+// storedVectorDim is the dimension of a vector already stored, or 0.
+func (s *SQLiteStore) storedVectorDim(ctx context.Context) int {
+	var vectorBytes []byte
+	if err := s.db.QueryRowContext(ctx, "SELECT vector FROM embeddings LIMIT 1").Scan(&vectorBytes); err != nil {
+		return 0
+	}
+	vec, err := encoding.DecodeVector(vectorBytes)
+	if err != nil {
+		return 0
+	}
+	return len(vec)
+}
+
+// rebuildHNSWIndex rebuilds the HNSW index from the stored vectors.
+//
+// It streams: rows are inserted a chunk at a time as they arrive, so one
+// chunk of float32 vectors is alive at once rather than a decoded copy of
+// every stored vector beside the index being built. And it builds one graph
+// on one goroutine. It used to split the vectors among four workers, build
+// a graph from each and merge them, which left four graphs that hardly
+// linked to each other: on 20,000 clustered 768-d vectors recall@10 was 0.24,
+// against 0.73 for the same vectors inserted one after another.
 func (s *SQLiteStore) rebuildHNSWIndex(ctx context.Context) error {
 	if s.hnswIndex == nil {
 		return nil
 	}
-
 	s.logger.Info("rebuilding HNSW index from database")
 
-	// Query all vectors from database
 	rows, err := s.db.QueryContext(ctx, "SELECT id, vector FROM embeddings")
 	if err != nil {
 		return fmt.Errorf("failed to query existing vectors: %w", err)
 	}
-	defer func() {
-		if closeErr := rows.Close(); closeErr != nil {
-			s.logger.Warn("failed to close rows during HNSW rebuild", "error", closeErr)
+	defer func() { _ = rows.Close() }()
+
+	const chunk = 256
+	batch := make([]struct {
+		ID     string
+		Vector []float32
+	}, 0, chunk)
+	inserted := 0
+	flush := func() {
+		if len(batch) == 0 {
+			return
 		}
-	}()
-
-	// Collect vectors first for batch insert
-	type vecData struct {
-		id     string
-		vector []float32
+		if err := s.hnswIndex.InsertBatch(batch); err != nil {
+			for _, v := range batch {
+				if err := s.hnswIndex.Insert(v.ID, v.Vector); err != nil {
+					s.logger.Warn("failed to insert vector", "id", v.ID, "error", err)
+				}
+			}
+		}
+		inserted += len(batch)
+		clear(batch)
+		batch = batch[:0]
 	}
-	var vectors []vecData
-
 	for rows.Next() {
 		var id string
 		var vectorBytes []byte
-
 		if err := rows.Scan(&id, &vectorBytes); err != nil {
 			s.logger.Warn("failed to scan row during HNSW rebuild", "error", err)
 			continue
 		}
-
 		vec, err := encoding.DecodeVector(vectorBytes)
 		if err != nil {
 			s.logger.Warn("failed to decode vector during HNSW rebuild", "id", id, "error", err)
 			continue
 		}
-
-		vectors = append(vectors, vecData{id: id, vector: vec})
+		batch = append(batch, struct {
+			ID     string
+			Vector []float32
+		}{ID: id, Vector: vec})
+		if len(batch) == chunk {
+			flush()
+		}
 	}
-
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("error iterating rows: %w", err)
 	}
-
-	// Use parallel batch insert for faster indexing
-	if len(vectors) > 0 {
-		batch := make([]struct {
-			ID     string
-			Vector []float32
-		}, len(vectors))
-		for i, v := range vectors {
-			batch[i] = struct {
-				ID     string
-				Vector []float32
-			}{ID: v.id, Vector: v.vector}
-		}
-
-		// Use parallel construction if configured and enough vectors
-		numWorkers := s.config.HNSW.NumWorkers
-		if numWorkers <= 0 {
-			numWorkers = 4
-		}
-
-		if len(vectors) >= 100 && numWorkers > 1 {
-			s.logger.Info("using parallel index construction", "vectors", len(vectors), "workers", numWorkers)
-			if err := s.hnswIndex.InsertBatchParallel(batch, numWorkers); err != nil {
-				s.logger.Warn("parallel insert failed, using batch insert", "error", err)
-				if err := s.hnswIndex.InsertBatch(batch); err != nil {
-					s.logger.Warn("batch insert failed, using single inserts", "error", err)
-					for _, v := range vectors {
-						if err := s.hnswIndex.Insert(v.id, v.vector); err != nil {
-							s.logger.Warn("failed to insert vector", "id", v.id, "error", err)
-						}
-					}
-				}
-			}
-		} else {
-			if err := s.hnswIndex.InsertBatch(batch); err != nil {
-				s.logger.Warn("batch insert failed, using single inserts", "error", err)
-				// Fallback to single inserts
-				for _, v := range vectors {
-					if err := s.hnswIndex.Insert(v.id, v.vector); err != nil {
-						s.logger.Warn("failed to insert vector", "id", v.id, "error", err)
-					}
-				}
-			}
-		}
-	}
-
-	s.logger.Info("HNSW index rebuild complete", "inserted", len(vectors))
-
+	flush()
+	s.logger.Info("HNSW index rebuild complete", "inserted", inserted)
 	return nil
 }
 
@@ -357,36 +352,52 @@ func (s *SQLiteStore) TrainQuantizer(ctx context.Context) error {
 	return nil
 }
 
-// saveIndexSnapshot saves the current index to the database
+// indexMutations is the persisted indexes' combined change count.
+func (s *SQLiteStore) indexMutations() uint64 {
+	var n uint64
+	if s.hnswIndex != nil {
+		n += s.hnswIndex.Mutations()
+	}
+	if s.ivfIndex != nil {
+		n += s.ivfIndex.Mutations()
+	}
+	return n
+}
+
+// snapshotChanges is how many changes the index has had since its snapshot
+// was last written or read. A snapshot is the whole index serialized into one
+// blob, so rewriting it when nothing changed is a full copy of the index in
+// memory and a full write to disk for nothing — on an SD card, wear.
+func (s *SQLiteStore) snapshotChanges() uint64 {
+	return s.indexMutations() - s.savedMutations.Load()
+}
+
+// saveIndexSnapshot saves the current index to the database, when it has
+// changed since the snapshot already there.
 func (s *SQLiteStore) saveIndexSnapshot(ctx context.Context) error {
-	var buf bytes.Buffer
+	if s.snapshotChanges() == 0 {
+		return nil
+	}
+	// Read before serializing: a change made while the snapshot is written
+	// leaves it stale, and the next save picks it up.
+	version := s.indexMutations()
 	var indexType string
+	var encode func(io.Writer) error
 
 	if s.config.IndexType == IndexTypeHNSW && s.hnswIndex != nil {
-		indexType = "HNSW"
-		if err := s.hnswIndex.Save(&buf); err != nil {
-			return fmt.Errorf("failed to serialize HNSW index: %w", err)
-		}
+		indexType, encode = "HNSW", s.hnswIndex.Save
 	} else if s.config.IndexType == IndexTypeIVF && s.ivfIndex != nil && s.ivfIndex.Trained {
-		indexType = "IVF"
-		if err := s.ivfIndex.Save(&buf); err != nil {
-			return fmt.Errorf("failed to serialize IVF index: %w", err)
-		}
+		indexType, encode = "IVF", s.ivfIndex.Save
 	} else {
 		return nil // No index to save
 	}
 
-	// Save to database
-	query := `
-		INSERT OR REPLACE INTO index_snapshots (type, data, created_at)
-		VALUES (?, ?, CURRENT_TIMESTAMP)
-	`
-	_, err := s.db.ExecContext(ctx, query, indexType, buf.Bytes())
-	if err != nil {
-		return fmt.Errorf("failed to save index snapshot: %w", err)
+	if err := s.writeSnapshotChunks(ctx, indexType, encode); err != nil {
+		return fmt.Errorf("failed to save %s index snapshot: %w", indexType, err)
 	}
 
 	s.logger.Info("index snapshot saved", "type", indexType)
+	s.savedMutations.Store(version)
 
 	// Also save quantizer if available
 	if s.quantizer != nil {
@@ -399,8 +410,7 @@ func (s *SQLiteStore) saveIndexSnapshot(ctx context.Context) error {
 		}
 
 		if saveErr == nil && qBuf.Len() > 0 {
-			_, err = s.db.ExecContext(ctx, "INSERT OR REPLACE INTO index_snapshots (type, data, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)", "QUANTIZER", qBuf.Bytes())
-			if err != nil {
+			if _, err := s.db.ExecContext(ctx, "INSERT OR REPLACE INTO index_snapshots (type, data, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)", "QUANTIZER", qBuf.Bytes()); err != nil {
 				s.logger.Warn("failed to save quantizer snapshot", "error", err)
 			} else {
 				s.logger.Info("quantizer snapshot saved")
@@ -436,26 +446,34 @@ func (s *SQLiteStore) loadIndexSnapshot(ctx context.Context, indexType string) (
 		}
 	}
 
-	var data []byte
-	err = s.db.QueryRowContext(ctx, "SELECT data FROM index_snapshots WHERE type = ?", indexType).Scan(&data)
-	if err == sql.ErrNoRows {
+	// An HNSW snapshot written without quantization holds float32 vectors.
+	// Loading it under a quantized configuration would keep them all, so the
+	// index is rebuilt instead, as codes.
+	if indexType == "HNSW" && s.config.Quantization.Enabled && qData == nil {
+		s.logger.Info("HNSW snapshot is not quantized, rebuilding")
 		return false, nil
 	}
+
+	buf, closeSnapshot, found, err := s.openSnapshot(ctx, indexType)
 	if err != nil {
 		return false, fmt.Errorf("failed to query index snapshot: %w", err)
 	}
-
-	buf := bytes.NewReader(data)
+	if !found {
+		return false, nil
+	}
+	defer closeSnapshot()
 
 	if indexType == "HNSW" && s.hnswIndex != nil {
 		if err := s.hnswIndex.Load(buf); err != nil {
 			return false, fmt.Errorf("failed to deserialize HNSW index: %w", err)
 		}
+		s.savedMutations.Store(s.indexMutations())
 		return true, nil
 	} else if indexType == "IVF" && s.ivfIndex != nil {
 		if err := s.ivfIndex.Load(buf); err != nil {
 			return false, fmt.Errorf("failed to deserialize IVF index: %w", err)
 		}
+		s.savedMutations.Store(s.indexMutations())
 		return true, nil
 	}
 
@@ -485,14 +503,17 @@ func (s *SQLiteStore) autoSaveLoop() {
 		return
 	}
 
-	// Try to save snapshot
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	if err := s.saveIndexSnapshot(ctx); err != nil {
-		s.logger.Warn("auto-save failed", "error", err)
-	} else {
-		s.logger.Debug("auto-save completed")
+	// Save only once enough has changed; Close saves whatever is left.
+	minChanges := uint64(max(s.config.AutoSave.MinChanges, 1))
+	if s.snapshotChanges() >= minChanges {
+		ctx, cancel := context.WithTimeout(context.Background(), snapshotWriteTimeout)
+		if err := s.saveIndexSnapshot(ctx); err != nil {
+			s.logger.Warn("auto-save failed", "error", err)
+		} else {
+			s.logger.Debug("auto-save completed")
+		}
+		cancel()
 	}
-	cancel()
 
 	// Schedule next save
 	s.saveMu.Lock()
