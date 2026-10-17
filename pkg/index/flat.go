@@ -187,14 +187,18 @@ func (f *FlatIndex) BatchInsert(ids []string, vectors [][]float32) error {
 		return fmt.Errorf("ids and vectors length mismatch: %d != %d", len(ids), len(vectors))
 	}
 
+	// Validate the whole batch first so a bad vector leaves the index
+	// unchanged instead of keeping the ones before it.
+	for i := range vectors {
+		if len(vectors[i]) != f.dimension {
+			return fmt.Errorf("dimension mismatch at index %d: expected %d, got %d", i, f.dimension, len(vectors[i]))
+		}
+	}
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	for i, id := range ids {
-		if len(vectors[i]) != f.dimension {
-			return fmt.Errorf("dimension mismatch at index %d: expected %d, got %d", i, f.dimension, len(vectors[i]))
-		}
-
 		v := make([]float32, f.dimension)
 		copy(v, vectors[i])
 
