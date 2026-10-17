@@ -205,22 +205,31 @@ func (m *MultiIndex) searchWithRerank(query []float32, k int) ([]string, []float
 	if m.config.RerankTopK > 0 {
 		candidateK = m.config.RerankTopK
 	}
-	candidateIDs, _ := primary.Search(query, candidateK)
+	candidateIDs, candidateDists := primary.Search(query, candidateK)
 
 	if len(candidateIDs) == 0 {
 		return []string{}, []float32{}
 	}
 
-	// Rerank using secondary indices
+	// The primary index's own distance is the first vote, so a candidate that
+	// no secondary index returns keeps a real distance instead of a score of
+	// zero (which would rank it ahead of everything the secondaries confirmed),
+	// and with no secondary indices the primary order is kept.
 	type result struct {
 		id        string
 		score     float32
 		voteCount int
 	}
 
-	resultMap := make(map[string]*result)
-	for _, id := range candidateIDs {
-		resultMap[id] = &result{id: id, score: 0, voteCount: 0}
+	results := make([]*result, 0, len(candidateIDs))
+	resultMap := make(map[string]*result, len(candidateIDs))
+	for i, id := range candidateIDs {
+		if _, dup := resultMap[id]; dup {
+			continue
+		}
+		r := &result{id: id, score: candidateDists[i], voteCount: 1}
+		resultMap[id] = r
+		results = append(results, r)
 	}
 
 	// Get refined distances from secondary indices
@@ -236,16 +245,12 @@ func (m *MultiIndex) searchWithRerank(query []float32, k int) ([]string, []float
 		}
 	}
 
-	// Average scores and sort
-	results := make([]result, 0, len(resultMap))
-	for _, r := range resultMap {
-		if r.voteCount > 0 {
-			r.score /= float32(r.voteCount)
-		}
-		results = append(results, *r)
+	// Average scores and sort; the stable sort keeps primary order on ties.
+	for _, r := range results {
+		r.score /= float32(r.voteCount)
 	}
 
-	sort.Slice(results, func(i, j int) bool {
+	sort.SliceStable(results, func(i, j int) bool {
 		return results[i].score < results[j].score
 	})
 
