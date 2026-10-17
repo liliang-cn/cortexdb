@@ -382,6 +382,8 @@ func haversineDistance(p1, p2 Coordinate) float64 {
 	a := math.Sin(deltaLat/2)*math.Sin(deltaLat/2) +
 		math.Cos(lat1Rad)*math.Cos(lat2Rad)*
 			math.Sin(deltaLng/2)*math.Sin(deltaLng/2)
+	// Roundoff at antipodes can push the haversine above one.
+	a = math.Max(0, math.Min(1, a))
 	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 
 	return EarthRadiusKM * c
