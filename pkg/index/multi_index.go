@@ -122,6 +122,9 @@ func (m *MultiIndex) Insert(id string, vector []float32) error {
 
 // Search performs multi-index search based on strategy
 func (m *MultiIndex) Search(query []float32, k int) ([]string, []float32) {
+	if k <= 0 {
+		return []string{}, []float32{}
+	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -409,6 +412,9 @@ func (h *HybridIndex) Insert(id string, vector []float32) error {
 
 // Search performs hybrid search
 func (h *HybridIndex) Search(query []float32, k int) ([]string, []float32) {
+	if k <= 0 {
+		return []string{}, []float32{}
+	}
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
