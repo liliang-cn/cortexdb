@@ -833,6 +833,20 @@ func (h *HNSW) InsertBatch(vectors []struct {
 }) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	// Validate before changing the graph: rebuild callers retry entries one at
+	// a time when a batch fails, so no partial batch should precede that fallback.
+	dim := h.Dim
+	for _, v := range vectors {
+		if len(v.Vector) == 0 {
+			return fmt.Errorf("vector for node %s is empty", v.ID)
+		}
+		if dim == 0 {
+			dim = len(v.Vector)
+		} else if len(v.Vector) != dim {
+			return fmt.Errorf("vector for node %s has %d dimensions, index holds %d", v.ID, len(v.Vector), dim)
+		}
+	}
+	h.Dim = dim
 	h.mutations.Add(1)
 
 	for _, v := range vectors {
