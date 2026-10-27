@@ -73,6 +73,8 @@ type DB struct {
 	// memorySearches shares one run among identical concurrent memory
 	// searches; see memory_search_coalesce.go.
 	memorySearches memorySearchFlights
+	// recallLog, when set, records every recall; see recall_log.go.
+	recallLog *recallLogRuntime
 }
 
 // Config represents database configuration

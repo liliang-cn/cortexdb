@@ -97,6 +97,8 @@ func KnowledgeMemoryFacadeToolDefinitions() []ToolDefinition {
 					"max_traversal_nodes":    toolIntegerSchema("Optional cap on graph nodes inspected during expansion."),
 					"max_entities_per_chunk": toolIntegerSchema("Optional cap on graph-derived entities attached to each chunk."),
 					"ppr":                    toolPPROptionsSchema(),
+					"explain":                toolBooleanSchema("Also return explain: the plan searched with, each retriever's top candidates with raw scores, what each relevance floor or filter dropped, and the final hits."),
+					"planner":                toolStringSchema("How the plan was made, kept in the explain record and the recall log: e.g. model, or fallback: timeout."),
 					"plan":                   toolRetrievalPlanSchema("Optional structured retrieval plan."),
 				},
 			),

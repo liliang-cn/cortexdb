@@ -72,6 +72,11 @@ func openBrainDB(dbPath string) (*cortexdb.DB, error) {
 		return nil, err
 	}
 	opts = append(opts, floors...)
+	recallLog, err := cortexdb.RecallLogOptionsFromEnv()
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, recallLog...)
 	if qt := newQueryTransformer(); qt != nil {
 		opts = append(opts, cortexdb.WithQueryTransformer(qt))
 	}

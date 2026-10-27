@@ -286,9 +286,21 @@ var confinedTools = map[string]toolRule{
 	// Both stores, each behind its gate. Recall adds no graph facts for a
 	// caller with a scope (cortexdb.KnowledgeMemory.Recall).
 	"knowledge_memory_recall": {scope: bothScopes, stores: storeKnowledge | storeMemory,
-		args: paths(queryArgs, walkArgs, planArgs, pprArgs, recallArgs, []string{"detail"}), gates: recallGates},
+		args: paths(queryArgs, walkArgs, planArgs, pprArgs, recallArgs, []string{"detail", "explain", "planner"}), gates: recallGates},
 	"knowledge_memory_build_context_pack": {scope: bothScopes, stores: storeKnowledge | storeMemory,
-		args: paths(queryArgs, walkArgs, planArgs, pprArgs, recallArgs), gates: recallGates},
+		args: paths(queryArgs, walkArgs, planArgs, pprArgs, recallArgs, []string{"explain", "planner"}), gates: recallGates},
+
+	// The recall log, which the facade holds to the calling key: a confined
+	// key reads and marks the recalls it made and no other, whatever key it
+	// names, and its hits were held to its scope when the recall ran. The
+	// memories no recall returned are left out of its stats.
+	"recall_log_list": {stores: storeKnowledge | storeMemory, facade: true,
+		args: []string{"limit", "before", "record_id", "contains", "key", "project", "empty"}},
+	"recall_log_get":   {stores: storeKnowledge | storeMemory, facade: true, args: []string{"recall_id"}},
+	"recall_log_stats": {stores: storeKnowledge | storeMemory, facade: true, args: []string{"limit", "record_id", "key"}},
+	"recall_feedback": {stores: storeKnowledge | storeMemory, facade: true,
+		args: []string{"recall_id", "record_id", "verdict", "note"}},
+	"recall_feedback_export": {stores: storeKnowledge | storeMemory, facade: true, args: []string{"since_ms"}},
 }
 
 // refusedTools are the tools a confined key may not call, with why. Every
@@ -702,6 +714,9 @@ var rowData = []string{
 	"memory_ids", "knowledge_ids", "plan.filters.document_ids",
 	"node_id", "node_ids", "entity_ids", "from_node_id", "to_node_id",
 	"sentences[].sources",
+	// The recall log's: a logged recall, and the memory or document a
+	// recall returned.
+	"recall_id", "record_id",
 }
 
 // rowPaths are the argument paths of the tool that name rows: its ids, and

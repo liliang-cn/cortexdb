@@ -39,6 +39,13 @@ var readToolsAndTheExpiry = map[string]string{
 	"knowledge_get": "by id: the record, until the sweep",
 	"changes_since": "the change feed: an insert happened",
 
+	// The recall log keeps what a recall returned when it ran, titles
+	// included, for its retention; a record that expired since is history.
+	"recall_log_list":        "the recall log: what a recall returned then",
+	"recall_log_get":         "the recall log: what a recall returned then",
+	"recall_log_stats":       "the recall log: what recalls returned then",
+	"recall_feedback_export": "the recall log: feedback on what a recall returned then",
+
 	"graph_cypher_query":                  "the whole graph",
 	"graph_diff":                          "the whole graph",
 	"graph_health":                        "the whole graph",

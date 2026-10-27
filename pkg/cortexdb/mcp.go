@@ -59,6 +59,7 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 	addExpiryMCPTools(server, definitions, db)
 	// --- end point-in-time reads ---
 	addChangeMCPTools(server, definitions, db)
+	addRecallLogMCPTools(server, definitions, db)
 
 	addGraphRAGMCPTool(server, definitions["ingest_document"], func(ctx context.Context, req ToolIngestDocumentRequest) (ToolIngestDocumentResponse, error) {
 		resp, err := toolbox.IngestDocument(ctx, req)

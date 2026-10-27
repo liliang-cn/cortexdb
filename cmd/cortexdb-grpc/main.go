@@ -13,6 +13,7 @@
 //	CORTEXDB_BACKUP_DIR  where AdminService.Backup may write
 //	CORTEXDB_HTTP_ADDR   also serve REST + /metrics + /healthz + /debug/vars here
 //	CORTEXDB_EMBED_PROBE_SECONDS  probe the embedder this often (default 60, 0 off)
+//	CORTEXDB_RECALL_LOG  1 keeps a log of recalls (queries included; off by default)
 //	CORTEXDB_LOG_FORMAT  text (logfmt, default) or json
 //	CORTEXDB_LOG_LEVEL   debug, info (default), warn or error
 //
@@ -137,6 +138,14 @@ func main() {
 		log.Fatalf("%v", err)
 	}
 	opts = append(opts, floors...)
+	recallLog, err := cortexdb.RecallLogOptionsFromEnv()
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	if len(recallLog) > 0 {
+		log.Printf("recall log: on (CORTEXDB_RECALL_LOG); queries are stored for CORTEXDB_RECALL_LOG_DAYS")
+	}
+	opts = append(opts, recallLog...)
 
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(*dbPath), opts...)
 	if err != nil {

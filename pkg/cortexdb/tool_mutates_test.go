@@ -157,8 +157,14 @@ var toolWrites = map[string]bool{
 	"graph_snapshot": false,
 	"graph_diff":     false,
 	"changes_since":  false,
-	"vacuum_graph":   true,
-	"sweep_expired":  true,
+	// The recall log reads its own table; feedback writes a mark into it.
+	"recall_log_list":        false,
+	"recall_log_get":         false,
+	"recall_log_stats":       false,
+	"recall_feedback_export": false,
+	"recall_feedback":        true,
+	"vacuum_graph":           true,
+	"sweep_expired":          true,
 
 	// KnowledgeMemory facade.
 	"knowledge_memory_remember":             true,
@@ -179,7 +185,7 @@ var toolWrites = map[string]bool{
 // table so that a tool added without a decision cannot slip through by sharing
 // a name with one already listed, and so that a tool quietly disappearing is
 // noticed too. Change it in the same commit that adds the tool and its row.
-const toolCount = 101
+const toolCount = 106
 
 // TestEveryToolDeclaresWhetherItWrites is the test the Mutates doc comment
 // promises: it makes forgetting impossible rather than merely unlikely.

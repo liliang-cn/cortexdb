@@ -42,6 +42,11 @@ var loggedPaths = map[string][]string{
 	"get_nodes":                              {"node_ids"},
 	"knowledge_memory_neighbors":             {"node_id"},
 	"knowledge_memory_shortest_path":         {"from_node_id", "to_node_id"},
+	"recall_log_list":                        {"record_id"},
+	"recall_log_get":                         {"recall_id"},
+	"recall_log_stats":                       {"record_id"},
+	"recall_feedback":                        {"recall_id", "record_id"},
+	"recall_feedback_export":                 nil,
 }
 
 // argsAt builds tool arguments with a value at each path: two ids in an
