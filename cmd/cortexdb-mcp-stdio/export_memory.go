@@ -18,9 +18,29 @@ import (
 // Claude Code's file-based memory layout. One-shot mode behind
 // `--export-memory [outdir]` (default ~/.cortexdb/memory-export).
 func runExportMemory(args []string) {
-	outDir := ""
-	if len(args) > 0 && strings.TrimSpace(args[0]) != "" {
-		outDir = args[0]
+	// --min-grade G writes only the memories known at least that well — the
+	// lessons worth handing to someone else, without the guesses.
+	outDir, minGrade := "", ""
+	for i := 0; i < len(args); i++ {
+		switch a := strings.TrimSpace(args[i]); {
+		case a == "--min-grade" && i+1 < len(args):
+			minGrade = strings.ToLower(strings.TrimSpace(args[i+1]))
+			i++
+		case strings.HasPrefix(a, "--min-grade="):
+			minGrade = strings.ToLower(strings.TrimPrefix(a, "--min-grade="))
+		case a != "" && outDir == "":
+			outDir = a
+		}
+	}
+	if minGrade != "" && !cortexdb.IsGrade(minGrade) {
+		fmt.Fprintf(os.Stderr, "cortexdb: --min-grade %q is not one of verified, self_consistent, asserted, held, refused\n", minGrade)
+		os.Exit(2)
+	}
+	// A filtered export into the directory --sync-memory reads back would read
+	// every memory it left out as deleted.
+	if minGrade != "" && outDir == "" {
+		fmt.Fprintln(os.Stderr, "cortexdb: --min-grade writes part of the brain: name an output directory other than the one you sync back")
+		os.Exit(2)
 	}
 
 	dbPath := os.Getenv("CORTEXDB_PATH")
@@ -36,6 +56,15 @@ func runExportMemory(args []string) {
 	}
 
 	memories, source := loadAllMemories(context.Background())
+	if minGrade != "" {
+		kept := memories[:0]
+		for _, m := range memories {
+			if cortexdb.GradeAtLeast(m.Grade, minGrade) {
+				kept = append(kept, m)
+			}
+		}
+		memories = kept
+	}
 	if len(memories) == 0 {
 		fmt.Printf("no memories to export in %s\n", source)
 		return
@@ -52,7 +81,7 @@ func runExportMemory(args []string) {
 	// that, so writing the index destroyed it — silently, and the memory then
 	// looked deleted to anything reading the directory back.
 	usedSlugs[strings.ToLower(memoryIndexSlug)] = 1
-	type indexEntry struct{ file, title, hook string }
+	type indexEntry struct{ file, title, hook, mark string }
 	index := make([]indexEntry, 0, len(memories))
 
 	for _, m := range memories {
@@ -65,7 +94,7 @@ func runExportMemory(args []string) {
 			fmt.Fprintf(os.Stderr, "cortexdb: write %s: %v\n", fileName, err)
 			os.Exit(1)
 		}
-		index = append(index, indexEntry{file: fileName, title: title, hook: memoryHook(m)})
+		index = append(index, indexEntry{file: fileName, title: title, hook: memoryHook(m), mark: gradeMark(m.Grade, "")})
 	}
 
 	// MEMORY.md index — one line per memory, mirroring Claude Code's index.
@@ -76,6 +105,9 @@ func runExportMemory(args []string) {
 		b.WriteString(fmt.Sprintf("- [%s](%s)", e.title, e.file))
 		if e.hook != "" {
 			b.WriteString(" — " + e.hook)
+		}
+		if e.mark != "" {
+			b.WriteString(" [" + e.mark + "]")
 		}
 		b.WriteString("\n")
 	}
@@ -135,6 +167,14 @@ func renderMemoryMarkdown(m cortexdb.MemoryRecord, title, slug string) string {
 	}
 	if m.ExpiresAt != nil && !m.ExpiresAt.IsZero() {
 		b.WriteString("  expires_at: " + m.ExpiresAt.UTC().Format(time.RFC3339) + "\n")
+	}
+	// How it is known, so a lesson shared as a file keeps saying whether it
+	// was checked; --sync-memory reads both back.
+	if m.Grade != "" {
+		b.WriteString("  grade: " + yamlInline(m.Grade) + "\n")
+		if why := strings.TrimSpace(m.GradeWhy); why != "" {
+			b.WriteString("  grade_why: " + yamlInline(why) + "\n")
+		}
 	}
 	b.WriteString("---\n\n")
 	b.WriteString(strings.TrimSpace(m.Content))

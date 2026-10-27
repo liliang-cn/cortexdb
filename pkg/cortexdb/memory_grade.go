@@ -41,6 +41,15 @@ func memoryGradeRank(grade string) int {
 	return 0
 }
 
+// IsGrade reports whether grade is one of the contract's five.
+func IsGrade(grade string) bool { return contractGrades[normalizeGrade(grade)] }
+
+// GradeAtLeast reports whether a record graded grade ("" is untagged) is
+// known at least as well as min.
+func GradeAtLeast(grade, min string) bool {
+	return memoryGradeRank(normalizeGrade(grade)) >= memoryGradeRank(normalizeGrade(min))
+}
+
 // normalizeGrade trims and lowercases a grade a caller sent.
 func normalizeGrade(grade string) string {
 	return strings.ToLower(strings.TrimSpace(grade))
@@ -114,7 +123,7 @@ func withMinMemoryGrade(ctx context.Context, grade string) (context.Context, err
 // belowMinGrade reports whether grade ranks under the minimum in ctx.
 func belowMinGrade(ctx context.Context, grade string) bool {
 	minGrade, _ := ctx.Value(minGradeKey{}).(string)
-	return minGrade != "" && memoryGradeRank(grade) < memoryGradeRank(minGrade)
+	return minGrade != "" && !GradeAtLeast(grade, minGrade)
 }
 
 // isUnverifiedGrade reports whether a memory says it was not checked: graded
