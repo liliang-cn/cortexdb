@@ -93,9 +93,12 @@ const (
 // errNotExplorable is the answer of a source that cannot be asked.
 var errNotExplorable = errors.New("this source cannot be explored")
 
-func exploreAllowed(tool string) bool { return slices.Contains(ExploreTools, tool) }
+func exploreAllowed(tool string) bool {
+	return slices.Contains(ExploreTools, tool) || slices.Contains(RecallTools, tool)
+}
 
-// guardCaller refuses any tool not on ExploreTools before call runs.
+// guardCaller refuses any tool not on ExploreTools or RecallTools before
+// call runs.
 func guardCaller(call Caller) Caller {
 	return func(ctx context.Context, tool string, args json.RawMessage) (json.RawMessage, error) {
 		if !exploreAllowed(tool) {

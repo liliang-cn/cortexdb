@@ -563,7 +563,7 @@ const pageTemplate = `<!DOCTYPE html>
   <button class="fold" type="button" title="Collapse"></button>
   <button id="themebtn" type="button" title="Light / dark" aria-label="Switch light and dark">☾</button>
   <div class="bd">
-    <h1>CortexDB — live brain &nbsp;<a href="library" title="The same brain as a reading room: a memory is a book on its project's shelf">library →</a> <a href="ontology" title="The ontology: what this brain is allowed to talk about">ontology →</a></h1>
+    <h1>CortexDB — live brain &nbsp;<a href="library" title="The same brain as a reading room: a memory is a book on its project's shelf">library →</a> <a href="ontology" title="The ontology: what this brain is allowed to talk about">ontology →</a> <a href="recalls" title="Past recalls: what was asked, what came back and why">recalls →</a></h1>
     <div id="counts"><b id="n">0</b> nodes · <b id="e">0</b> edges</div>
     <div class="badge" id="live"><span class="led"></span><span id="livetext">connecting</span></div>
   </div>
@@ -579,7 +579,7 @@ const pageTemplate = `<!DOCTYPE html>
     <h3>Relation</h3>
     <select id="etype"><option value="">All relations</option></select>
     <h3>Colour by</h3>
-    <div class="row"><button id="cbytype" class="on">Type</button><button id="cbygrade">Grade</button></div>
+    <div class="row"><button id="cbytype" class="on">Type</button><button id="cbygrade">Grade</button><button id="cbyrecall" title="Shade nodes by how often recalls reached them (needs the recall log)">Recalls</button></div>
     <div id="cnote"></div>
     <h3>As of</h3>
     <input id="asof" type="datetime-local" step="1">
@@ -814,7 +814,10 @@ var GRADE_UNKNOWN = __GRADE_UNKNOWN__;
 /* Colour mode. Type is the default and stays the default: a caller who
    upgrades and touches nothing gets the page they had. ?color=grade is the
    embedder's way in, the same bargain every other switch on this page makes. */
-var colorMode = OPTS.color === "grade" ? "grade" : "type";
+var colorMode = OPTS.color === "grade" || OPTS.color === "recalls" ? OPTS.color : "type";
+// How often recalls reached each node, from the recall log (?color=recalls):
+// null until asked for, {} when the brain keeps no log.
+var recallHeat = null, recallHeatMax = 0, recallHeatError = "";
 // The instant the view is pinned to, unix milliseconds, 0 for now. Declared up
 // here with the other switches because the contract panel below reads it — a
 // tally of the present under a picture of the past is exactly the quiet
@@ -914,7 +917,25 @@ function nodeVal(n){
 // the flash, the traced path, the search dimming — is a temporary state that
 // outranks both modes, and folding the mode in here rather than at each of
 // those keeps the precedence in one readable order.
-function baseColor(n){ return gradingOn() ? gradeTint(n.grade) : colorOf(n.type); }
+function baseColor(n){
+  if(colorMode === "recalls") return heatTint(recallHeat && recallHeat[n.id]);
+  return gradingOn() ? gradeTint(n.grade) : colorOf(n.type);
+}
+// heatTint ramps from a cool blue (reached once) to a hot orange (reached
+// most), on a log scale so one record recalled every time does not wash the
+// rest out. A node no recall reached is the ground's grey: never recalled is
+// the finding, not a colour.
+function heatTint(c){
+  if(!c) return T.light ? "#cbd5e1" : "#334155";
+  var k = recallHeatMax > 1 ? Math.log(c) / Math.log(recallHeatMax) : 1;
+  var h = 210 - 185 * k;
+  return "hsl(" + h.toFixed(0) + "," + (T.light ? 78 : 85) + "%," + (T.light ? 46 : 60) + "%)";
+}
+function loadRecallHeat(){
+  return getJSON("api/recalls/heat").then(function(r){
+    recallHeat = r.nodes || {}; recallHeatMax = r.max || 0; recallHeatError = "";
+  }).catch(function(err){ recallHeat = {}; recallHeatMax = 0; recallHeatError = String(err.message || err); });
+}
 // dimColor keeps a node's hue when something else is in focus: the rest of
 // the brain recedes like distant stars instead of turning into grey beads.
 var dimCache = {}, dimCtx = null;
@@ -1228,11 +1249,23 @@ function drawLegend(types){
 /* The colour switch. Type is pressed on load, because type is what this page
    has always drawn and an upgrade must not change what a reader sees. */
 function setColorMode(mode){
-  colorMode = mode === "grade" ? "grade" : "type";
+  colorMode = mode === "grade" || mode === "recalls" ? mode : "type";
   document.getElementById("cbytype").classList.toggle("on", colorMode === "type");
   document.getElementById("cbygrade").classList.toggle("on", colorMode === "grade");
+  document.getElementById("cbyrecall").classList.toggle("on", colorMode === "recalls");
   var note = document.getElementById("cnote");
-  if(colorMode === "grade" && !sourceGrades){
+  if(colorMode === "recalls" && recallHeat === null){
+    note.className = "";
+    note.textContent = "reading the recall log…";
+    loadRecallHeat().then(function(){ if(colorMode === "recalls") setColorMode("recalls"); });
+    return;
+  }
+  if(colorMode === "recalls"){
+    var reached = Object.keys(recallHeat).length;
+    note.className = recallHeatError ? "bad" : "";
+    note.textContent = recallHeatError ? (/recall log is off/i.test(recallHeatError) ? "the recall log is off on this brain (CORTEXDB_RECALL_LOG=1)" : recallHeatError)
+      : reached + " nodes reached by recalls; grey = never";
+  } else if(colorMode === "grade" && !sourceGrades){
     note.className = "bad";
     note.textContent = "this source does not report grades";
   } else if(colorMode === "grade"){
@@ -1253,6 +1286,7 @@ function legendTypes(){
 }
 document.getElementById("cbytype").addEventListener("click", function(){ setColorMode("type"); });
 document.getElementById("cbygrade").addEventListener("click", function(){ setColorMode("grade"); });
+document.getElementById("cbyrecall").addEventListener("click", function(){ setColorMode("recalls"); });
 
 /* ---------- activity ---------- */
 // strike lights one node for a while. Colour carries the kind: a query is cyan,
@@ -2583,6 +2617,17 @@ function runOpeningActions(){
   openingDone = true;
   openingActions();
 }
+// replayRecall lights the nodes one logged recall returned and flies to
+// them, so a recall can be seen where its answers sit in the brain.
+function replayRecall(id){
+  getJSON("api/recalls/get?id=" + encodeURIComponent(id)).then(function(r){
+    var ids = (r.hits || []).map(function(h){ return h.node_id; }).filter(Boolean);
+    var shown = ids.filter(function(x){ return byId[x]; });
+    setHighlight(shown, true);
+    shown.forEach(function(x){ strike(x, KIND_COLOR.query, 6000); });
+    toast("Recall “" + r.query + "”: " + ids.length + " hits, " + shown.length + " in this scene");
+  }).catch(function(err){ toast(String(err.message || err)); });
+}
 function openingActions(){
   if(OPTS.q){ document.getElementById("q").value = OPTS.q; query = OPTS.q.trim().toLowerCase(); repaint(); }
   if(OPTS.type){
@@ -2596,6 +2641,7 @@ function openingActions(){
     if(esel.value === OPTS.edge) esel.dispatchEvent(new Event("change"));
   }
   if(!sourceExplore) return;
+  if(OPTS.replay) replayRecall(OPTS.replay);
   if(OPTS.cypher) runExplore("cypher", OPTS.cypher);
   else if(OPTS.ask) runExplore("ask", OPTS.ask);
   else if(OPTS.find) runExplore("find", OPTS.find);

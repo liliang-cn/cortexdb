@@ -111,10 +111,18 @@
 // core drew them. Each runs one of the brain's own tools through
 // [Source.Call] — the toolbox for a local file, the ToolsService for a shared
 // brain — so a shared brain also gets the inspector it lacked. Only tools on
-// [ExploreTools] can be run that way, every one a read. Every starting point is
+// [ExploreTools] can be run that way, every one a read, beside the recall-log
+// tools of [RecallTools] (recalls.go). Every starting point is
 // a URL parameter too (?focus, ?ask, ?cypher, ...), so a view is a link that
 // can be shared, and on a phone the inspector is a bottom sheet and the corner
 // panels start folded.
+//
+// A page at /recalls reads the brain's recall log, when it keeps one: each
+// recall's query, who asked, its hits and how each was found, its explain
+// record, which records recalls reach and which they never do, and a mark per
+// hit (useful or noise) that downloads as recall-eval golden cases. The graph
+// page shades nodes by how often recalls reached them (?color=recalls) and
+// replays one recall (?replay=<id>). See recalls.go.
 //
 // A caller supplies a [Source], which is anything that can read nodes and
 // edges. [OpenSource] builds one from the ambient CortexDB configuration

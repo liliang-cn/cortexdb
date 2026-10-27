@@ -165,7 +165,7 @@ func TestThePageDrawsTheGoPaletteAndNotItsOwn(t *testing.T) {
 // nothing must get the page they had, so grade is a mode and type is where the
 // page starts — in the JavaScript and in the button that is pressed.
 func TestThePageStillColoursByTypeByDefault(t *testing.T) {
-	if !strings.Contains(pageHTML, `var colorMode = OPTS.color === "grade" ? "grade" : "type";`) {
+	if !strings.Contains(pageHTML, `var colorMode = OPTS.color === "grade" || OPTS.color === "recalls" ? OPTS.color : "type";`) {
 		t.Error("the page's default colour mode is no longer type")
 	}
 	if !strings.Contains(pageHTML, `<button id="cbytype" class="on">Type</button>`) {
@@ -176,7 +176,8 @@ func TestThePageStillColoursByTypeByDefault(t *testing.T) {
 	}
 	// And the accessor must fall back to type whenever grade mode is not on —
 	// including when it is asked for and the source cannot answer.
-	if !strings.Contains(pageHTML, `function baseColor(n){ return gradingOn() ? gradeTint(n.grade) : colorOf(n.type); }`) {
+	if !strings.Contains(pageHTML, `  if(colorMode === "recalls") return heatTint(recallHeat && recallHeat[n.id]);
+  return gradingOn() ? gradeTint(n.grade) : colorOf(n.type);`) {
 		t.Error("the colour accessor no longer falls back to node type")
 	}
 	if !strings.Contains(pageHTML, `function gradingOn(){ return colorMode === "grade" && sourceGrades; }`) {

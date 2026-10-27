@@ -126,7 +126,8 @@ type Source struct {
 	Draft func(ctx context.Context, q OntologyDraftQuery) (OntologyDraftView, error)
 	// Call runs one of the brain's read-only tools for the page — find,
 	// expand, ask, Cypher; see explore.go. Nil hides those controls. The
-	// callers this package builds refuse every tool not on [ExploreTools].
+	// callers this package builds refuse every tool not on [ExploreTools] or
+	// [RecallTools].
 	Call  Caller
 	Close func() error
 }
@@ -264,6 +265,13 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 	mux.HandleFunc("/api/expand", s.handleExpand)
 	mux.HandleFunc("/api/ask", s.handleAsk)
 	mux.HandleFunc("/api/cypher", s.handleCypher)
+	mux.HandleFunc("/recalls", s.handleRecallsPage)
+	mux.HandleFunc("/api/recalls", s.handleRecalls)
+	mux.HandleFunc("/api/recalls/get", s.handleRecall)
+	mux.HandleFunc("/api/recalls/stats", s.handleRecallStats)
+	mux.HandleFunc("/api/recalls/heat", s.handleRecallHeat)
+	mux.HandleFunc("/api/recalls/feedback", s.handleRecallFeedback)
+	mux.HandleFunc("/api/recalls/golden", s.handleRecallGolden)
 	mux.HandleFunc("/"+graph3dPath, handleGraph3D)
 	s.mux = mux
 
