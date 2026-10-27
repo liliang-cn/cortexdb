@@ -348,6 +348,29 @@ func (db *DB) pruneRecallLog(ctx context.Context) error {
 	return nil
 }
 
+// recallLogReadable reports whether the log can be read here: this DB keeps
+// one, or another process sharing the file does — a live view opened on the
+// file the MCP server writes reads the log the server keeps.
+func (db *DB) recallLogReadable(ctx context.Context) error {
+	if db.recallLogOn() {
+		return db.ensureRecallLog(ctx)
+	}
+	var n int
+	if err := db.queryRow(ctx, `SELECT COUNT(*) FROM recall_log WHERE 1 = 0`).Scan(&n); err != nil {
+		return errRecallLogOff
+	}
+	return nil
+}
+
+// recallLogRetention is the retention the log is kept to, or the default
+// when another process keeps it.
+func (db *DB) recallLogRetention() time.Duration {
+	if db.recallLogOn() {
+		return db.recallLog.opts.Retention
+	}
+	return defaultRecallLogRetention
+}
+
 // errRecallLogOff is what the recall-log tools answer on a brain that does
 // not keep one.
 var errRecallLogOff = errors.New("the recall log is off on this brain: start it with CORTEXDB_RECALL_LOG=1 (it stores queries; see CORTEXDB_RECALL_LOG_DAYS)")
@@ -417,10 +440,7 @@ func scanRecallLogEntry(scan func(...any) error, withExplain bool) (RecallLogEnt
 
 // ListRecalls returns logged recalls, newest first.
 func (db *DB) ListRecalls(ctx context.Context, req RecallLogListRequest) (*RecallLogListResponse, error) {
-	if !db.recallLogOn() {
-		return nil, errRecallLogOff
-	}
-	if err := db.ensureRecallLog(ctx); err != nil {
+	if err := db.recallLogReadable(ctx); err != nil {
 		return nil, err
 	}
 	limit := req.Limit
@@ -488,10 +508,7 @@ type RecallLogGetRequest struct {
 
 // GetRecall returns one logged recall with its explain record.
 func (db *DB) GetRecall(ctx context.Context, req RecallLogGetRequest) (*RecallLogEntry, error) {
-	if !db.recallLogOn() {
-		return nil, errRecallLogOff
-	}
-	if err := db.ensureRecallLog(ctx); err != nil {
+	if err := db.recallLogReadable(ctx); err != nil {
 		return nil, err
 	}
 	q := `SELECT ` + recallLogColumns + `, explain_json FROM recall_log WHERE id = ?`
@@ -587,10 +604,7 @@ type RecallStatsResponse struct {
 
 // RecallStats reports which records recalls reach, and which they never do.
 func (db *DB) RecallStats(ctx context.Context, req RecallStatsRequest) (*RecallStatsResponse, error) {
-	if !db.recallLogOn() {
-		return nil, errRecallLogOff
-	}
-	if err := db.ensureRecallLog(ctx); err != nil {
+	if err := db.recallLogReadable(ctx); err != nil {
 		return nil, err
 	}
 	limit := req.Limit
@@ -602,7 +616,7 @@ func (db *DB) RecallStats(ctx context.Context, req RecallStatsRequest) (*RecallS
 	if scoped {
 		keyClause, keyArgs = " AND key_id = ?", []any{key}
 	}
-	resp := &RecallStatsResponse{Since: time.Now().Add(-db.recallLog.opts.Retention).UTC(), MostRecalled: []RecordRecallStat{}}
+	resp := &RecallStatsResponse{Since: time.Now().Add(-db.recallLogRetention()).UTC(), MostRecalled: []RecordRecallStat{}}
 	if err := db.queryRow(ctx, `SELECT COUNT(*),
 		COALESCE(SUM(CASE WHEN hit_count = 0 THEN 1 ELSE 0 END), 0),
 		COALESCE(SUM(CASE WHEN degraded <> '' THEN 1 ELSE 0 END), 0)
@@ -833,10 +847,7 @@ type RecallFeedbackExportResponse struct {
 // ExportRecallFeedback turns the marks people gave on the recalls page into
 // golden-set cases. A confined key exports only its own.
 func (db *DB) ExportRecallFeedback(ctx context.Context, req RecallFeedbackExportRequest) (*RecallFeedbackExportResponse, error) {
-	if !db.recallLogOn() {
-		return nil, errRecallLogOff
-	}
-	if err := db.ensureRecallLog(ctx); err != nil {
+	if err := db.recallLogReadable(ctx); err != nil {
 		return nil, err
 	}
 	q := `SELECT recall_id, record_id, verdict, note, query, plan FROM recall_feedback WHERE ts_ms >= ?`

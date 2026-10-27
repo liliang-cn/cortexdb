@@ -226,3 +226,34 @@ func TestTheRecallLogKeepsItsBounds(t *testing.T) {
 		t.Fatalf("kept %d recalls past the retention", len(list.Recalls))
 	}
 }
+
+// A process that does not keep the log reads the one another process
+// sharing the file keeps: the live view opened on the MCP server's file.
+func TestAReaderOfTheFileReadsTheLogAnotherProcessKeeps(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "shared.db")
+	writer, err := Open(DefaultConfig(path), WithRecallLog(RecallLogOptions{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	ctx := context.Background()
+	saveRecallLogMemories(t, writer, ctx, map[string]string{"m1": "zfs pool on dell is tank"})
+	if _, err := writer.KnowledgeMemory().Recall(ctx, KnowledgeMemoryRecallRequest{Query: "zfs pool"}); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := Open(DefaultConfig(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	list, err := reader.ListRecalls(ctx, RecallLogListRequest{})
+	if err != nil || len(list.Recalls) != 1 {
+		t.Fatalf("reader: %v %+v", err, list)
+	}
+	if _, err := reader.KnowledgeMemory().Recall(ctx, KnowledgeMemoryRecallRequest{Query: "zfs tank"}); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := reader.ListRecalls(ctx, RecallLogListRequest{}); len(list.Recalls) != 1 {
+		t.Fatalf("a process with the log off wrote to it: %d", len(list.Recalls))
+	}
+}
