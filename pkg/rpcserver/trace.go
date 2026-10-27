@@ -168,17 +168,6 @@ func incomingCall(ctx context.Context) (context.Context, *observability.Call) {
 	return ctx, call
 }
 
-// RequestIDInterceptor gives every call a request id and returns it in the
-// response header. RequestLogInterceptor does the same; this is for a server
-// that logs nothing but should still answer with ids.
-func RequestIDInterceptor() grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		ctx, call := incomingCall(ctx)
-		_ = grpc.SetHeader(ctx, metadata.Pairs(observability.RequestIDHeader, call.ID()))
-		return handler(ctx, req)
-	}
-}
-
 // RequestLogInterceptor gives every call a request id and a stage collector,
 // and logs the call when the options say to.
 func RequestLogInterceptor(o TraceOptions) grpc.UnaryServerInterceptor {
