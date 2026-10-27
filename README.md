@@ -75,6 +75,7 @@ Haiku runs on Claude Code's own model access, so no API key is needed. Language:
 - `serve_graph_3d`: a live 3D view to find, ask, query and expand, on desktop or phone — or the same brain as a library, each memory a book on its project's shelf
 - `import_agent_memory`: bring in what Claude Code, Codex and DeepSeek Harness already remember — memory notes, `CLAUDE.md` / `AGENTS.md`, Codex's memories, and optionally past sessions distilled into memories — into a local or shared brain
 - Change feed: every committed write, in order, exactly once
+- Observability: a request id from MCP through gRPC to the trace, recalls that explain themselves and say when they were degraded, embedder health in `/metrics` and `/healthz`, and an opt-in recall log with a `/recalls` page
 - SQLite by default, PostgreSQL + pgvector with a `postgres://` DSN
 
 ## Environment
@@ -91,6 +92,11 @@ Haiku runs on Claude Code's own model access, so no API key is needed. Language:
 | `CORTEXDB_REVIEW_GATE` | Server and `cortexdb-mcp-stdio`: `1` leaves proposed and rejected documents and memories out of search and recall (default off; a curation filter, not access control) |
 | `CORTEXDB_SLOW_MS` | Server: log calls slower than this, with the time each stage took (default `1000`, `0` = none) |
 | `CORTEXDB_TRACE` / `CORTEXDB_TRACE_FILE` | Server: log every call; also append the records to a JSON-lines file |
+| `CORTEXDB_LOG_FORMAT` / `CORTEXDB_LOG_LEVEL` | Server: `text` (logfmt, default) or `json`; `debug`, `info` (default), `warn`, `error` |
+| `CORTEXDB_TRACE_MAX_MB` / `CORTEXDB_TRACE_KEEP` / `CORTEXDB_TRACE_MAX_AGE_DAYS` | Server: rotate the trace file at this size (`100`), keep this many old files (`5`) for at most this many days (`30`) |
+| `CORTEXDB_EMBED_PROBE_SECONDS` | Server: probe the embedder this often, for `/healthz` and `/metrics` (default `60`, `0` = off) |
+| `CORTEXDB_RECALL_LOG` | Server and `cortexdb-mcp-stdio`: `1` keeps a log of recalls — queries included — for the `/recalls` page and the `recall_log_*` tools (default off) |
+| `CORTEXDB_RECALL_LOG_DAYS` / `CORTEXDB_RECALL_LOG_MAX_ROWS` | How long (`30` days) and how many (`100000`) recalls the log keeps |
 
 ## Docs
 

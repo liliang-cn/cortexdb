@@ -74,6 +74,7 @@ haiku 用的是 Claude Code 自己的模型额度，不需要 API key。语言�
 - `serve_graph_3d`：实时 3D 视图，可查找、提问、查询、展开，桌面和手机都能用；也可以切成图书馆，每条记忆是它所属项目书架上的一本书
 - `import_agent_memory`：把 Claude Code、Codex 和 DeepSeek Harness 已有的记忆导进来——记忆笔记、`CLAUDE.md` / `AGENTS.md`、Codex 的记忆库，也可以把历史会话提炼成记忆——本地大脑和共享大脑都行
 - 变更事件流：每次已提交的写入，按顺序、恰好一次
+- 可观测性：request id 从 MCP 经 gRPC 贯穿到 trace，召回能解释自己、降级时直说，`/metrics` 和 `/healthz` 里有向量服务的健康状况，可选开启的召回日志带 `/recalls` 页面
 - 默认 SQLite，换成 `postgres://` DSN 就跑在 PostgreSQL + pgvector 上
 
 ## 环境变量
@@ -90,6 +91,11 @@ haiku 用的是 Claude Code 自己的模型额度，不需要 API key。语言�
 | `CORTEXDB_REVIEW_GATE` | 服务端和 `cortexdb-mcp-stdio`：`1` 时待审和被拒的文档、记忆不进搜索和召回（默认关；这是整理用的过滤，不是权限控制） |
 | `CORTEXDB_SLOW_MS` | 服务端：超过这个毫秒数的请求记日志，带各阶段耗时（默认 `1000`，`0` 不记） |
 | `CORTEXDB_TRACE` / `CORTEXDB_TRACE_FILE` | 服务端：每个请求都记；同时把记录追加到 JSON lines 文件 |
+| `CORTEXDB_LOG_FORMAT` / `CORTEXDB_LOG_LEVEL` | 服务端：`text`（logfmt，默认）或 `json`；`debug`、`info`（默认）、`warn`、`error` |
+| `CORTEXDB_TRACE_MAX_MB` / `CORTEXDB_TRACE_KEEP` / `CORTEXDB_TRACE_MAX_AGE_DAYS` | 服务端：trace 文件到这个大小切分（`100`），保留这么多个旧文件（`5`），最长这么多天（`30`） |
+| `CORTEXDB_EMBED_PROBE_SECONDS` | 服务端：每隔多少秒探测向量服务，供 `/healthz` 和 `/metrics`（默认 `60`，`0` 关闭） |
+| `CORTEXDB_RECALL_LOG` | 服务端和 `cortexdb-mcp-stdio`：`1` 记录召回日志（含查询文本），供 `/recalls` 页面和 `recall_log_*` 工具（默认关闭） |
+| `CORTEXDB_RECALL_LOG_DAYS` / `CORTEXDB_RECALL_LOG_MAX_ROWS` | 召回日志保留多久（`30` 天）、最多多少条（`100000`） |
 
 ## 文档
 

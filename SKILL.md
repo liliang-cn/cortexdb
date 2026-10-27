@@ -1207,6 +1207,33 @@ All adapters call the existing gRPC `ToolsService` and prefer
 inside an agent plugin. The `skills/cortexdb-memory-*` directories remain the
 lighter explicit-tool integration.
 
+## Observability
+
+- Request ids: every call carries `x-request-id` (gRPC metadata / REST header;
+  MCP results carry it in `_meta` as `cortexdb/request_id`), from the MCP server
+  through gRPC to the trace record. `pkg/observability.Call` holds it with the
+  key, the client's host/project/agent and what a recall reported; clients send
+  one (`rpc.CallInterceptor`, the Node/Python clients) or the server mints it.
+- Logs: `log/slog` (`CORTEXDB_LOG_FORMAT=text|json`, `CORTEXDB_LOG_LEVEL`). The
+  trace record (`CORTEXDB_TRACE`, `CORTEXDB_SLOW_MS`, `CORTEXDB_TRACE_FILE`)
+  carries the request id, reply bytes and a recall's explain record; the file
+  rotates (`CORTEXDB_TRACE_MAX_MB`, `CORTEXDB_TRACE_KEEP`, `CORTEXDB_TRACE_MAX_AGE_DAYS`).
+- Recall explain: `knowledge_memory_recall` with `explain: true` returns
+  `RecallExplain` — plan (with the caller's `planner`), per-retriever candidates
+  with raw scores, fused list, floor/filter drops, final hits. `degraded` is on
+  every recall, memory search and knowledge search response
+  (`embedder_unreachable`, `vector_search_failed`, `keyword_search_failed`).
+- Metrics and health: embedder reachability/latency/probe
+  (`CORTEXDB_EMBED_PROBE_SECONDS`), recalls per tool and key, empty and degraded
+  recalls, floor drops, reply-size histogram; `/healthz` is `ok` or `degraded`
+  (503 only with `?strict=1`).
+- Recall log (opt-in, `CORTEXDB_RECALL_LOG=1`, `CORTEXDB_RECALL_LOG_DAYS`,
+  `CORTEXDB_RECALL_LOG_MAX_ROWS`): tables `recall_log`, `recall_log_hits`,
+  `recall_feedback`; tools `recall_log_list`, `recall_log_get`,
+  `recall_log_stats`, `recall_feedback`, `recall_feedback_export` (golden-set
+  JSONL), held to the calling key. The live view's `/recalls` page reads it;
+  the graph page shades by it (`?color=recalls`) and replays one (`?replay=<id>`).
+
 ## gRPC Sidecar + Rust / Python / Node clients
 
 The full facade is also served over gRPC for non-Go callers:
@@ -1216,7 +1243,7 @@ The full facade is also served over gRPC for non-Go callers:
   `-token` enables bearer auth, `CORTEXDB_KEY_FILE` / `-keys` a JSON file of scoped
   API keys that replaces the single token, `CORTEXDB_BACKUP_DIR` / `-backup-dir`
   where `AdminService.Backup` may write, `CORTEXDB_HTTP_ADDR` / `-http-addr` also
-  serves REST + `/metrics` + `/debug/vars`, `OPENAI_BASE_URL`/`OPENAI_API_KEY`/`CORTEXDB_EMBED_MODEL`/
+  serves REST + `/metrics` + `/healthz` + `/debug/vars`, `OPENAI_BASE_URL`/`OPENAI_API_KEY`/`CORTEXDB_EMBED_MODEL`/
   `CORTEXDB_EMBED_DIM` wire an OpenAI-compatible embedder; unset → lexical mode).
   Flags override the environment, which overrides the defaults. `-health`
   probes a server already running at `-addr` and exits non-zero when it is not

@@ -590,6 +590,72 @@ file on its own filesystem to open or attach it — a server-side render would
 land it on the brain's host, out of reach of whatever asked. Set
 `CORTEXDB_VIEW_DIR` to choose where renders go.
 
+### Observability — what the brain did, and why
+
+Every call carries a **request id**, from the MCP server through gRPC to the
+server's trace record, and back: in `x-request-id` (gRPC metadata and the REST
+header), in an MCP tool result's `_meta` as `cortexdb/request_id`, and in the
+text of a failed tool result. A client may send its own (`x-request-id`, up to
+64 letters, digits, `.`, `_`, `:`, `-`); otherwise the first server to see the
+call mints one. The Node and Python clients send one per call and put it on
+errors (`err.requestId`, `e.request_id`); the Rust crate reads it from the
+response or status metadata. When a reply is not JSON, the plugins and the
+`cortexdb-live` mod report what arrived — its size and first bytes, and the
+request id — instead of the parser's message.
+
+The trace (`CORTEXDB_TRACE=1`, or slow calls past `CORTEXDB_SLOW_MS`) is
+structured: `log/slog`, logfmt by default or JSON with `CORTEXDB_LOG_FORMAT=json`,
+`CORTEXDB_LOG_LEVEL` for the level. Each record has the request id, key, tool,
+the client's host and project, the time per stage and the reply size in bytes.
+`CORTEXDB_TRACE_FILE` keeps the same records as JSON lines, cut at
+`CORTEXDB_TRACE_MAX_MB` (100) with `CORTEXDB_TRACE_KEEP` (5) old files kept for
+at most `CORTEXDB_TRACE_MAX_AGE_DAYS` (30).
+
+A recall explains itself. Its trace record — and its response, when it is
+asked with `explain: true` — carries the plan (query, keywords, entities, mode,
+and `planner`: how the caller made the plan, e.g. `fallback: no answer from the
+planner`), each retriever's top candidates with their raw scores (vector,
+keyword, graph), the fused list, what each floor or filter dropped and why
+(`memory_semantic_floor`, `memory_keyword_floor`, `keyword_one_word`,
+`knowledge_vector_floor`, `knowledge_keyword_floor`, `expired`, `superseded`,
+`unreviewed`), and the final hits. A degraded answer says so in the response:
+`degraded: ["embedder_unreachable"]` when the query could not be embedded and
+the answer is keyword-only (also `vector_search_failed`, `keyword_search_failed`).
+
+With `CORTEXDB_HTTP_ADDR`, `/metrics` adds:
+
+| Metric | What it answers |
+| --- | --- |
+| `cortexdb_embedder_up`, `cortexdb_embedder_requests_total{outcome,kind}`, `cortexdb_embedder_request_duration_seconds`, `cortexdb_embedder_probe_duration_seconds` | Is the embedder reachable, and how fast |
+| `cortexdb_recall_degraded_total{reason}` | Fallbacks to keyword search (`embedder_unreachable`) and other partial answers |
+| `cortexdb_recalls_total{tool,key}`, `cortexdb_recalls_empty_total{tool,key}` | Recalls per tool and key, and the ones that returned nothing |
+| `cortexdb_recall_floor_dropped_total{floor}` | Candidates each relevance floor removed |
+| `cortexdb_grpc_response_bytes{grpc_method}` | Reply sizes, before an MCP host starts truncating them |
+
+`/healthz` reports the process and the embedder: `ok`, or `degraded` while the
+embedder fails (200 either way — the brain still answers by keyword — or 503
+with `?strict=1`). The server probes the embedder every
+`CORTEXDB_EMBED_PROBE_SECONDS` (60; `0` off), so an embedding host that went to
+sleep shows up without anybody recalling.
+
+**The recall log** is opt-in, because it stores queries:
+`CORTEXDB_RECALL_LOG=1` on the server (or on `cortexdb-mcp-stdio` for a local
+brain), kept `CORTEXDB_RECALL_LOG_DAYS` (30) and at most
+`CORTEXDB_RECALL_LOG_MAX_ROWS` (100000) recalls. It is a table in the database
+file. Each recall is kept with who asked (key, host, project, agent), latency,
+its hits with how each was found, score, writer and source, and its explain
+record. The tools `recall_log_list`, `recall_log_get`, `recall_log_stats`,
+`recall_feedback` and `recall_feedback_export` read it, mark a hit as useful or
+noise, and export the marks as recall-eval golden cases (the JSONL format of
+`--recall-eval`). A key with a scope sees and marks only its own recalls.
+
+The live view reads it at `/recalls`: a timeline of recalls with their explain
+records and a useful/noise mark per hit, a per-record view (most recalled,
+never recalled, the queries that reached a record), and a `golden.jsonl`
+download. On the graph page, **Colour by → Recalls** (`?color=recalls`) shades
+nodes by how often recalls reached them, and `?replay=<recall id>` lights the
+nodes one recall returned.
+
 ## OpenClaw and Hermes memory plugins
 
 CortexDB also ships native memory-layer adapters for agents that expose a memory

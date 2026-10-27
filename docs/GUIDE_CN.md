@@ -507,6 +507,57 @@ compose 文件，以及配套的备份、升级和端口覆盖说明。**所有�
 文件在自己的文件系统上才能打开或作为附件发出，服务端渲染会把文件留在大脑主机上，
 请求它的一方根本够不到。用 `CORTEXDB_VIEW_DIR` 指定输出目录。
 
+### 可观测性 —— 大脑做了什么、为什么
+
+每次调用都带一个 **request id**，从 MCP server 经 gRPC 一直到服务端的 trace 记录，并原路返回：
+gRPC metadata 和 REST header 里的 `x-request-id`，MCP 工具结果 `_meta` 里的
+`cortexdb/request_id`，以及失败的工具结果文本里。客户端可以自带（`x-request-id`，最多 64 个字母、
+数字、`.`、`_`、`:`、`-`），否则由第一个看到这次调用的服务端生成。Node 和 Python 客户端每次调用都会
+发一个，并挂在错误上（`err.requestId`、`e.request_id`）；Rust crate 从响应或 status 的 metadata 里读。
+回复不是 JSON 时，各插件和 `cortexdb-live` mod 报告实际收到了什么——大小、开头几个字节、request id——
+而不是解析器的报错。
+
+trace（`CORTEXDB_TRACE=1`，或超过 `CORTEXDB_SLOW_MS` 的慢请求）是结构化日志：`log/slog`，默认 logfmt，
+`CORTEXDB_LOG_FORMAT=json` 输出 JSON，`CORTEXDB_LOG_LEVEL` 设级别。每条记录有 request id、key、工具、
+客户端的 host 和 project、各阶段耗时、回复字节数。`CORTEXDB_TRACE_FILE` 把同样的记录写成 JSON lines，
+超过 `CORTEXDB_TRACE_MAX_MB`（100）切分，保留 `CORTEXDB_TRACE_KEEP`（5）个旧文件，最长
+`CORTEXDB_TRACE_MAX_AGE_DAYS`（30）天。
+
+召回会解释自己。它的 trace 记录——以及请求带 `explain: true` 时的响应——包含检索计划（query、关键词、
+实体、模式，以及 `planner`：调用方怎么做出的计划，如 `fallback: no answer from the planner`）、每个检索器
+的前几名候选及原始分数（向量、关键词、图谱）、融合后的列表、每个阈值或过滤丢掉了什么及原因
+（`memory_semantic_floor`、`memory_keyword_floor`、`keyword_one_word`、`knowledge_vector_floor`、
+`knowledge_keyword_floor`、`expired`、`superseded`、`unreviewed`），以及最终命中。降级的回答会在响应里
+说明：查询向量化失败、只用了关键词时是 `degraded: ["embedder_unreachable"]`（另有
+`vector_search_failed`、`keyword_search_failed`）。
+
+开启 `CORTEXDB_HTTP_ADDR` 后，`/metrics` 新增：
+
+| 指标 | 回答的问题 |
+| --- | --- |
+| `cortexdb_embedder_up`、`cortexdb_embedder_requests_total{outcome,kind}`、`cortexdb_embedder_request_duration_seconds`、`cortexdb_embedder_probe_duration_seconds` | 向量服务连得上吗、多快 |
+| `cortexdb_recall_degraded_total{reason}` | 退回关键词检索（`embedder_unreachable`）等不完整的回答 |
+| `cortexdb_recalls_total{tool,key}`、`cortexdb_recalls_empty_total{tool,key}` | 按工具和 key 的召回次数，以及空结果的次数 |
+| `cortexdb_recall_floor_dropped_total{floor}` | 每个相关性阈值去掉的候选数 |
+| `cortexdb_grpc_response_bytes{grpc_method}` | 回复大小，在 MCP host 开始截断之前就能看到 |
+
+`/healthz` 报告进程和向量服务：`ok`，或向量服务失败时的 `degraded`（都返回 200——大脑仍能按关键词回答；
+加 `?strict=1` 则返回 503）。服务端每 `CORTEXDB_EMBED_PROBE_SECONDS`（60；`0` 关闭）探测一次向量服务，
+所以向量主机睡眠了，不用等有人召回也能看到。
+
+**召回日志**需要显式开启，因为它会保存查询文本：服务端（或本地大脑的 `cortexdb-mcp-stdio`）设
+`CORTEXDB_RECALL_LOG=1`，保留 `CORTEXDB_RECALL_LOG_DAYS`（30）天、最多
+`CORTEXDB_RECALL_LOG_MAX_ROWS`（100000）条。它是数据库文件里的一张表。每次召回记录提问方（key、host、
+project、agent）、延迟、命中及每条的检索方式、分数、写入者和来源，以及解释记录。工具
+`recall_log_list`、`recall_log_get`、`recall_log_stats`、`recall_feedback`、`recall_feedback_export`
+用来读取、把命中标为有用或噪音，并把标记导出为 recall eval 的 golden 用例（`--recall-eval` 的 JSONL 格式）。
+限定范围的 key 只能看到和标记自己的召回。
+
+live view 在 `/recalls` 读取它：召回时间线（带解释记录，每条命中可标有用/噪音）、按记录的视图
+（最常被召回、从未被召回、到达某条记录的查询），以及 `golden.jsonl` 下载。图谱页的
+**Colour by → Recalls**（`?color=recalls`）按被召回次数给节点着色，`?replay=<recall id>` 点亮某一次召回
+返回的节点。
+
 ## OpenClaw 与 Hermes 原生记忆插件
 
 CortexDB 还提供两个会进入宿主记忆生命周期的原生适配器。它们都复用现有

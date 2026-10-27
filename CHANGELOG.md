@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Request ids from MCP through gRPC to the trace record and back (`x-request-id`,
+  MCP `_meta` `cortexdb/request_id`); the Node and Python clients send one per
+  call and put it on errors (#104).
+- Plugins and the `cortexdb-live` mod report a reply that is not JSON by its
+  size, first bytes and request id, not by the parser's message (#104).
+- Recalls explain themselves (`explain: true`, and always in the trace): plan,
+  candidates per retriever with raw scores, fused list, what each floor dropped,
+  final hits. A `degraded` field says when the answer was keyword-only because
+  the embedder was unreachable (#104).
+- Metrics: embedder reachability, latency and a periodic probe; recalls per tool
+  and key; empty and degraded recalls; floor drops; reply sizes. `/healthz`
+  includes the embedder (#104).
+- Structured logs (`log/slog`, `CORTEXDB_LOG_FORMAT`, `CORTEXDB_LOG_LEVEL`) and a
+  rotating trace file (#104).
+- An opt-in recall log (`CORTEXDB_RECALL_LOG=1`) with `recall_log_*` tools,
+  feedback that exports as recall-eval golden cases, a `/recalls` page in the
+  live view, and graph shading and replay by recall (#104).
+
 ## [2.139.1] - 2026-10-27
 
 ### Security
