@@ -157,6 +157,7 @@ func (s *knowledgeService) SearchKnowledge(ctx context.Context, req *rpcv1.Searc
 		Chunks:   chunksToProto(resp.Chunks),
 		Entities: resp.Entities,
 		Context:  resp.Context,
+		Degraded: resp.Degraded,
 	}, nil
 }
 

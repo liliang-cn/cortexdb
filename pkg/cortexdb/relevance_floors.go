@@ -126,6 +126,8 @@ func (db *DB) applyKnowledgeFloors(ctx context.Context, result *GraphRAGQueryRes
 		}
 		if keep {
 			kept = append(kept, chunk)
+		} else {
+			recallExplainerOf(ctx).dropped(explainKnowledge, dropKnowledgeFloor, chunk.ID, chunk.VectorScore, vectorFloor)
 		}
 	}
 	if len(kept) == len(result.Chunks) {

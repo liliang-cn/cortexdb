@@ -44,6 +44,11 @@ class AdminServiceStub:
                 request_serializer=cortexdb_dot_v1_dot_admin__pb2.InfoRequest.SerializeToString,
                 response_deserializer=cortexdb_dot_v1_dot_admin__pb2.InfoResponse.FromString,
                 _registered_method=True)
+        self.Backup = channel.unary_unary(
+                '/cortexdb.v1.AdminService/Backup',
+                request_serializer=cortexdb_dot_v1_dot_admin__pb2.BackupRequest.SerializeToString,
+                response_deserializer=cortexdb_dot_v1_dot_admin__pb2.BackupResponse.FromString,
+                _registered_method=True)
 
 
 class AdminServiceServicer:
@@ -61,6 +66,14 @@ class AdminServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Backup(self, request, context):
+        """Backup snapshots the whole brain without stopping the server. Backends that
+        are backed up by their own tooling (PostgreSQL) fail it with UNIMPLEMENTED.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AdminServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -73,6 +86,11 @@ def add_AdminServiceServicer_to_server(servicer, server):
                     servicer.Info,
                     request_deserializer=cortexdb_dot_v1_dot_admin__pb2.InfoRequest.FromString,
                     response_serializer=cortexdb_dot_v1_dot_admin__pb2.InfoResponse.SerializeToString,
+            ),
+            'Backup': grpc.unary_unary_rpc_method_handler(
+                    servicer.Backup,
+                    request_deserializer=cortexdb_dot_v1_dot_admin__pb2.BackupRequest.FromString,
+                    response_serializer=cortexdb_dot_v1_dot_admin__pb2.BackupResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -129,6 +147,33 @@ class AdminService:
             '/cortexdb.v1.AdminService/Info',
             cortexdb_dot_v1_dot_admin__pb2.InfoRequest.SerializeToString,
             cortexdb_dot_v1_dot_admin__pb2.InfoResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Backup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/cortexdb.v1.AdminService/Backup',
+            cortexdb_dot_v1_dot_admin__pb2.BackupRequest.SerializeToString,
+            cortexdb_dot_v1_dot_admin__pb2.BackupResponse.FromString,
             options,
             channel_credentials,
             insecure,

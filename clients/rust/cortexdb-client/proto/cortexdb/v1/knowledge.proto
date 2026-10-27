@@ -106,6 +106,9 @@ message SearchKnowledgeResponse {
   repeated GraphRagChunkResult chunks = 5;
   repeated string entities = 6;
   string context = 7;
+  // What did not run as it should have: "embedder_unreachable",
+  // "vector_search_failed", "keyword_search_failed". Empty when nothing.
+  repeated string degraded = 8;
 }
 
 service KnowledgeService {

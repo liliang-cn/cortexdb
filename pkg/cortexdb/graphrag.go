@@ -160,6 +160,9 @@ type GraphRAGQueryResult struct {
 	// it: chains of facts among the query's entities, each edge citing its
 	// source chunks.
 	Paths []RetrievedPath `json:",omitempty"`
+	// Degraded names what did not run as it should have (see
+	// DegradedEmbedderUnreachable).
+	Degraded []string `json:",omitempty"`
 }
 
 // InsertGraphDocument ingests a document into the vector store and graph store for GraphRAG retrieval.

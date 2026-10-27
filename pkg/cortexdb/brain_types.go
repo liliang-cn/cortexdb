@@ -48,6 +48,13 @@ type KnowledgeMemoryRecallRequest struct {
 	// PPR tunes retrieval_mode "ppr" for both the memory and the knowledge
 	// half of the recall; ignored by every other mode.
 	PPR *PPRRetrievalOptions `json:"ppr,omitempty"`
+	// Explain asks for the account of the recall in the response: the plan,
+	// each retriever's candidates with raw scores, what each floor dropped,
+	// and the hits (RecallExplain).
+	Explain bool `json:"explain,omitempty"`
+	// Planner is how the caller made the plan — "model", "fallback: timeout"
+	// — kept in the account so a poor plan can be told from a poor search.
+	Planner string `json:"planner,omitempty"`
 }
 
 // KnowledgeMemoryContextSection is one debug-friendly part of a built context pack.
@@ -84,6 +91,12 @@ type KnowledgeMemoryRecallResponse struct {
 	ContextPack       KnowledgeMemoryContextPack `json:"context_pack"`
 	// Detail is "index" when the hits were cut to their first lines.
 	Detail string `json:"detail,omitempty"`
+	// Degraded names what did not run as it should have, from either half:
+	// "embedder_unreachable" means the answer came from keyword search only
+	// because the query could not be embedded. Empty when nothing was.
+	Degraded []string `json:"degraded,omitempty"`
+	// Explain is the account of the recall, when the request asked for it.
+	Explain *RecallExplain `json:"explain,omitempty"`
 }
 
 // KnowledgeMemoryGraphFact is a single entity↔entity relation surfaced from the

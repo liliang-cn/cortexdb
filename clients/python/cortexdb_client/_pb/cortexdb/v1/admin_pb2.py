@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17\x63ortexdb/v1/admin.proto\x12\x0b\x63ortexdb.v1\"\x0f\n\rHealthRequest\"\x1c\n\x0eHealthResponse\x12\n\n\x02ok\x18\x01 \x01(\x08\"\r\n\x0bInfoRequest\"F\n\x0cInfoResponse\x12\x0f\n\x07version\x18\x01 \x01(\t\x12\x0f\n\x07\x64\x62_path\x18\x02 \x01(\t\x12\x14\n\x0chas_embedder\x18\x03 \x01(\x08\x32\x8e\x01\n\x0c\x41\x64minService\x12\x41\n\x06Health\x12\x1a.cortexdb.v1.HealthRequest\x1a\x1b.cortexdb.v1.HealthResponse\x12;\n\x04Info\x12\x18.cortexdb.v1.InfoRequest\x1a\x19.cortexdb.v1.InfoResponseB4Z2github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1;rpcv1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17\x63ortexdb/v1/admin.proto\x12\x0b\x63ortexdb.v1\"\x0f\n\rHealthRequest\"\x1c\n\x0eHealthResponse\x12\n\n\x02ok\x18\x01 \x01(\x08\"\r\n\x0bInfoRequest\"\x99\x01\n\x0cInfoResponse\x12\x0f\n\x07version\x18\x01 \x01(\t\x12\x0f\n\x07\x64\x62_path\x18\x02 \x01(\t\x12\x14\n\x0chas_embedder\x18\x03 \x01(\x08\x12\x18\n\x10\x65mbedder_healthy\x18\x04 \x01(\x08\x12\x16\n\x0e\x65mbedder_error\x18\x05 \x01(\t\x12\x1f\n\x17memories_without_vector\x18\x06 \x01(\x03\"\x1d\n\rBackupRequest\x12\x0c\n\x04path\x18\x01 \x01(\t\"2\n\x0e\x42\x61\x63kupResponse\x12\x0c\n\x04path\x18\x01 \x01(\t\x12\x12\n\nsize_bytes\x18\x02 \x01(\x03\x32\xd1\x01\n\x0c\x41\x64minService\x12\x41\n\x06Health\x12\x1a.cortexdb.v1.HealthRequest\x1a\x1b.cortexdb.v1.HealthResponse\x12;\n\x04Info\x12\x18.cortexdb.v1.InfoRequest\x1a\x19.cortexdb.v1.InfoResponse\x12\x41\n\x06\x42\x61\x63kup\x12\x1a.cortexdb.v1.BackupRequest\x1a\x1b.cortexdb.v1.BackupResponseB4Z2github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1;rpcv1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -38,8 +38,12 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_HEALTHRESPONSE']._serialized_end=85
   _globals['_INFOREQUEST']._serialized_start=87
   _globals['_INFOREQUEST']._serialized_end=100
-  _globals['_INFORESPONSE']._serialized_start=102
-  _globals['_INFORESPONSE']._serialized_end=172
-  _globals['_ADMINSERVICE']._serialized_start=175
-  _globals['_ADMINSERVICE']._serialized_end=317
+  _globals['_INFORESPONSE']._serialized_start=103
+  _globals['_INFORESPONSE']._serialized_end=256
+  _globals['_BACKUPREQUEST']._serialized_start=258
+  _globals['_BACKUPREQUEST']._serialized_end=287
+  _globals['_BACKUPRESPONSE']._serialized_start=289
+  _globals['_BACKUPRESPONSE']._serialized_end=339
+  _globals['_ADMINSERVICE']._serialized_start=342
+  _globals['_ADMINSERVICE']._serialized_end=551
 # @@protoc_insertion_point(module_scope)

@@ -362,12 +362,15 @@ func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordR
 	if req.TopK <= 0 {
 		req.TopK = 5
 	}
+	ex := recallExplainerOf(ctx)
+	var degraded []string
 
 	if resolution.Decision.EffectiveMode == RetrievalModePPR {
 		hits, reason, err := db.searchMemoryPPR(ctx, req, resolution, bucketID)
 		if err != nil {
 			return nil, err
 		}
+		ex.candidates(explainMemory, explainPPR, memoryCandidates(hits, func(h MemorySearchHit) float64 { return h.Score }))
 		if recordRecalls {
 			db.recordMemoryRecalls(ctx, hits)
 		}
@@ -417,6 +420,7 @@ func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordR
 		cancelEmbed()
 		if err != nil {
 			log.Printf("cortexdb: memory semantic embed fallback to lexical: %v", err)
+			degraded = addDegraded(degraded, DegradedEmbedderUnreachable)
 			// Said in the answer too, not only the log: the decision used to
 			// keep claiming a vector search had run, so a caller could not tell
 			// a store with nothing semantically close from one whose embedder
@@ -435,15 +439,28 @@ func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordR
 			doneVector()
 			if searchErr != nil {
 				log.Printf("cortexdb: memory semantic search fallback to lexical: %v", searchErr)
+				degraded = addDegraded(degraded, DegradedVectorSearchFailed)
 			} else {
 				now := time.Now().UTC()
 				floor := db.memoryFloorFor(resolution.Plan.Query)
+				if ex != nil {
+					raw := make([]RecallCandidate, 0, min(len(scored), maxExplainCandidates))
+					for i, sm := range scored {
+						if i == maxExplainCandidates {
+							break
+						}
+						raw = append(raw, RecallCandidate{ID: sm.Message.ID, Score: sm.Score, Rank: i + 1})
+					}
+					ex.candidates(explainMemory, explainVector, raw)
+				}
 				for _, sm := range scored {
 					if sm.Score < floor {
+						ex.dropped(explainMemory, dropMemorySemanticFloor, sm.Message.ID, sm.Score, floor)
 						continue
 					}
 					record := memoryRecordFromMessage(bucketID, "", sm.Message)
-					if memoryExpired(record) || memorySuperseded(record) || db.memoryUnreviewed(record) {
+					if by := db.memoryFilteredBy(record); by != "" {
+						ex.dropped(explainMemory, by, record.ID, sm.Score, 0)
 						continue
 					}
 					semanticHits = append(semanticHits, MemorySearchHit{
@@ -474,6 +491,7 @@ func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordR
 			return nil, err
 		}
 		tagMemoryHits(graphHits, memoryViaGraph)
+		ex.candidates(explainMemory, explainGraph, memoryCandidates(graphHits, func(h MemorySearchHit) float64 { return h.Score }))
 		if len(graphHits) >= req.TopK {
 			graphHits = graphHits[:req.TopK]
 			if recordRecalls {
@@ -484,6 +502,7 @@ func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordR
 				Plan:     resolution.Plan,
 				Decision: resolution.Decision,
 				Results:  graphHits,
+				Degraded: degraded,
 			}, nil
 		}
 	}
@@ -495,8 +514,10 @@ func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordR
 			return nil, err
 		}
 		hits = nil // semantic already answered; lexical failing must not erase it
+		degraded = addDegraded(degraded, DegradedKeywordSearchFailed)
 	}
 	tagMemoryHits(hits, memoryViaKeyword)
+	ex.candidates(explainMemory, explainKeyword, memoryCandidates(hits, func(h MemorySearchHit) float64 { return h.Coverage }))
 	if len(semanticHits) > 0 {
 		if isBareKeyword(resolution.Plan.Query) && len(hits) > 0 {
 			hits = mergeMemoryHits(hits, semanticHits, req.TopK)
@@ -515,7 +536,22 @@ func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordR
 		Plan:     resolution.Plan,
 		Decision: resolution.Decision,
 		Results:  hits,
+		Degraded: degraded,
 	}, nil
+}
+
+// memoryFilteredBy names the filter that keeps record out of a recall —
+// expired, superseded, unreviewed — or "" when none does.
+func (db *DB) memoryFilteredBy(record MemoryRecord) string {
+	switch {
+	case memoryExpired(record):
+		return dropExpired
+	case memorySuperseded(record):
+		return dropSuperseded
+	case db.memoryUnreviewed(record):
+		return dropUnreviewed
+	}
+	return ""
 }
 
 // ListAllMemories returns every stored memory record across all scopes,
@@ -850,6 +886,7 @@ func (db *DB) searchMemoryLexical(ctx context.Context, bucketID, query string, k
 	for _, c := range candidates {
 		match := scorer.coverage(c.record.Content)
 		if !scorer.answers(match, floor) {
+			recallExplainerOf(ctx).dropped(explainMemory, dropMemoryKeywordFloor, c.record.ID, match.share, floor)
 			continue
 		}
 		results = append(results, MemorySearchHit{

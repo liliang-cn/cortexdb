@@ -76,6 +76,9 @@ message SearchMemoryResponse {
   RetrievalPlan plan = 2;
   RetrievalDecision decision = 3;
   repeated MemorySearchHit results = 4;
+  // What did not run as it should have: "embedder_unreachable",
+  // "vector_search_failed", "keyword_search_failed". Empty when nothing.
+  repeated string degraded = 5;
 }
 
 service MemoryService {

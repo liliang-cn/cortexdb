@@ -58,6 +58,8 @@ func KnowledgeMemoryFacadeToolDefinitions() []ToolDefinition {
 					"ppr":                    toolPPROptionsSchema(),
 					"plan":                   toolRetrievalPlanSchema("Optional structured retrieval plan."),
 					"detail":                 toolEnumSchema("full (default) returns every hit whole. index returns the same hits cut to their first line, with ids: pick the ones you need, then fetch them with memory_get memory_ids or knowledge_get knowledge_ids. Use index for broad questions where most hits will not be read.", RecallDetailFull, RecallDetailIndex),
+					"explain":                toolBooleanSchema("Also return explain: the plan searched with, each retriever's top candidates with raw scores (vector, keyword, graph), the fused list, what each relevance floor or filter dropped, and the final hits. For finding out why a hit is there or a relevant one is missing."),
+					"planner":                toolStringSchema("How the plan was made, kept in the explain record and the recall log: e.g. model, or fallback: timeout when the planner gave up and the raw prompt was searched."),
 				},
 			),
 		},

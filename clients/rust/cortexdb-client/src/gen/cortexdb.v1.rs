@@ -301,6 +301,10 @@ pub struct SearchKnowledgeResponse {
     pub entities: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(string, tag = "7")]
     pub context: ::prost::alloc::string::String,
+    /// What did not run as it should have: "embedder_unreachable",
+    /// "vector_search_failed", "keyword_search_failed". Empty when nothing.
+    #[prost(string, repeated, tag = "8")]
+    pub degraded: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 /// Generated client implementations.
 pub mod knowledge_service_client {
@@ -653,6 +657,10 @@ pub struct SearchMemoryResponse {
     pub decision: ::core::option::Option<RetrievalDecision>,
     #[prost(message, repeated, tag = "4")]
     pub results: ::prost::alloc::vec::Vec<MemorySearchHit>,
+    /// What did not run as it should have: "embedder_unreachable",
+    /// "vector_search_failed", "keyword_search_failed". Empty when nothing.
+    #[prost(string, repeated, tag = "5")]
+    pub degraded: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 /// Generated client implementations.
 pub mod memory_service_client {

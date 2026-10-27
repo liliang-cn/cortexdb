@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -45,6 +46,13 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 	}
 
 	resp := &KnowledgeMemoryRecallResponse{Query: query}
+	// The account is kept whenever somebody will read it: the caller asked,
+	// or the call is being recorded (a trace, the recall log).
+	var ex *recallExplainer
+	if req.Explain || observability.CallFrom(ctx) != nil || b.db.recallLogOn() {
+		ctx, ex = withRecallExplainer(ctx)
+	}
+	start := time.Now()
 
 	var memoryResp *MemorySearchResponse
 	if !req.DisableMemory {
@@ -70,6 +78,7 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 		resp.MemoryPlan = memoryResp.Plan
 		resp.MemoryDecision = memoryResp.Decision
 		resp.Memories = memoryResp.Results
+		resp.Degraded = addDegraded(resp.Degraded, memoryResp.Degraded...)
 	}
 
 	var knowledgeResp *KnowledgeSearchResponse
@@ -106,6 +115,7 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 		resp.KnowledgeDecision = knowledgeResp.Decision
 		resp.Knowledge = knowledgeResp.Results
 		resp.Chunks = knowledgeResp.Chunks
+		resp.Degraded = addDegraded(resp.Degraded, knowledgeResp.Degraded...)
 	}
 
 	resp.Entities = KnowledgeMemoryCollectEntities(req.EntityNames, resp.Memories, resp.Knowledge, resp.Chunks)
@@ -124,6 +134,21 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 	if len(resp.Entities) == 0 {
 		resp.Entities = resp.ContextPack.Entities
 	}
+	var explain *RecallExplain
+	if ex != nil {
+		explain = ex.build(req, resp)
+		if req.Explain {
+			resp.Explain = explain
+		}
+	}
+	observability.NoteRecall(ctx, observability.RecallNote{
+		Tool:         "knowledge_memory_recall",
+		Hits:         len(resp.Memories) + len(resp.Knowledge),
+		Degraded:     resp.Degraded,
+		FloorDropped: ex.floorDrops(),
+		Explain:      explain,
+	})
+	b.db.logRecall(ctx, req, resp, explain, time.Since(start))
 	if strings.EqualFold(strings.TrimSpace(req.Detail), RecallDetailIndex) {
 		indexRecall(resp)
 	}

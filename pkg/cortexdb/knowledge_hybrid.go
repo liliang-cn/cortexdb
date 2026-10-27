@@ -2,6 +2,9 @@ package cortexdb
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"log"
 	"sort"
 )
 
@@ -30,19 +33,34 @@ func (db *DB) searchKnowledgeHybrid(ctx context.Context, query string, opts Grap
 	if verr != nil && lerr != nil {
 		return nil, verr
 	}
+	ex := recallExplainerOf(ctx)
 
 	// A single successful path needs no fusion.
 	if verr != nil {
+		// Said in the answer, not only the log: the caller gets a keyword
+		// answer and must be able to tell it from a semantic one.
+		reason := DegradedVectorSearchFailed
+		if errors.Is(verr, ErrEmbeddingFailed) {
+			reason = DegradedEmbedderUnreachable
+		}
+		log.Printf("cortexdb: knowledge semantic search fallback to lexical: %v", verr)
+		ex.candidates(explainKnowledge, explainKeyword, chunkCandidates(lres.Chunks, func(c GraphRAGChunkResult) float64 { return c.Score }))
+		lres.Degraded = addDegraded(lres.Degraded, reason)
+		lres.Decision.EffectiveMode = RetrievalModeLexical
+		lres.Decision.Reason = fmt.Sprintf("vector search failed (%v); answered by keyword search only", verr)
 		return lres, nil
 	}
+	ex.candidates(explainKnowledge, explainVector, chunkCandidates(vres.Chunks, func(c GraphRAGChunkResult) float64 { return c.Score }))
 	if lerr != nil {
 		// Marked as the vector search's own, as fusion would have, so the
 		// knowledge floor reads their cosine.
 		for i := range vres.Chunks {
 			vres.Chunks[i].VectorScore, vres.Chunks[i].VectorRank = vres.Chunks[i].Score, i+1
 		}
+		vres.Degraded = addDegraded(vres.Degraded, DegradedKeywordSearchFailed)
 		return vres, nil
 	}
+	ex.candidates(explainKnowledge, explainKeyword, chunkCandidates(lres.Chunks, func(c GraphRAGChunkResult) float64 { return c.Score }))
 	base := vres
 
 	var fused []GraphRAGChunkResult
@@ -52,6 +70,7 @@ func (db *DB) searchKnowledgeHybrid(ctx context.Context, query string, opts Grap
 		fused = fuseHybridChunks(vres.Chunks, lres.Chunks, opts.TopK)
 	}
 	fused = packGraphRAGContext(fused, opts)
+	ex.fused(explainKnowledge, chunkCandidates(fused, func(c GraphRAGChunkResult) float64 { return c.Score }))
 	out := &GraphRAGQueryResult{
 		Query:    base.Query,
 		Plan:     base.Plan,

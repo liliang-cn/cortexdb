@@ -951,14 +951,17 @@ func (x *KnowledgeSearchHit) GetMetadata() map[string]string {
 }
 
 type SearchKnowledgeResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Query         string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
-	Plan          *RetrievalPlan         `protobuf:"bytes,2,opt,name=plan,proto3" json:"plan,omitempty"`
-	Decision      *RetrievalDecision     `protobuf:"bytes,3,opt,name=decision,proto3" json:"decision,omitempty"`
-	Results       []*KnowledgeSearchHit  `protobuf:"bytes,4,rep,name=results,proto3" json:"results,omitempty"`
-	Chunks        []*GraphRagChunkResult `protobuf:"bytes,5,rep,name=chunks,proto3" json:"chunks,omitempty"`
-	Entities      []string               `protobuf:"bytes,6,rep,name=entities,proto3" json:"entities,omitempty"`
-	Context       string                 `protobuf:"bytes,7,opt,name=context,proto3" json:"context,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Query    string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	Plan     *RetrievalPlan         `protobuf:"bytes,2,opt,name=plan,proto3" json:"plan,omitempty"`
+	Decision *RetrievalDecision     `protobuf:"bytes,3,opt,name=decision,proto3" json:"decision,omitempty"`
+	Results  []*KnowledgeSearchHit  `protobuf:"bytes,4,rep,name=results,proto3" json:"results,omitempty"`
+	Chunks   []*GraphRagChunkResult `protobuf:"bytes,5,rep,name=chunks,proto3" json:"chunks,omitempty"`
+	Entities []string               `protobuf:"bytes,6,rep,name=entities,proto3" json:"entities,omitempty"`
+	Context  string                 `protobuf:"bytes,7,opt,name=context,proto3" json:"context,omitempty"`
+	// What did not run as it should have: "embedder_unreachable",
+	// "vector_search_failed", "keyword_search_failed". Empty when nothing.
+	Degraded      []string `protobuf:"bytes,8,rep,name=degraded,proto3" json:"degraded,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1040,6 +1043,13 @@ func (x *SearchKnowledgeResponse) GetContext() string {
 		return x.Context
 	}
 	return ""
+}
+
+func (x *SearchKnowledgeResponse) GetDegraded() []string {
+	if x != nil {
+		return x.Degraded
+	}
+	return nil
 }
 
 var File_cortexdb_v1_knowledge_proto protoreflect.FileDescriptor
@@ -1169,7 +1179,7 @@ const file_cortexdb_v1_knowledge_proto_rawDesc = "" +
 	"\bmetadata\x18\t \x03(\v2-.cortexdb.v1.KnowledgeSearchHit.MetadataEntryR\bmetadata\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc6\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe2\x02\n" +
 	"\x17SearchKnowledgeResponse\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12.\n" +
 	"\x04plan\x18\x02 \x01(\v2\x1a.cortexdb.v1.RetrievalPlanR\x04plan\x12:\n" +
@@ -1177,7 +1187,8 @@ const file_cortexdb_v1_knowledge_proto_rawDesc = "" +
 	"\aresults\x18\x04 \x03(\v2\x1f.cortexdb.v1.KnowledgeSearchHitR\aresults\x128\n" +
 	"\x06chunks\x18\x05 \x03(\v2 .cortexdb.v1.GraphRagChunkResultR\x06chunks\x12\x1a\n" +
 	"\bentities\x18\x06 \x03(\tR\bentities\x12\x18\n" +
-	"\acontext\x18\a \x01(\tR\acontext2\xd7\x03\n" +
+	"\acontext\x18\a \x01(\tR\acontext\x12\x1a\n" +
+	"\bdegraded\x18\b \x03(\tR\bdegraded2\xd7\x03\n" +
 	"\x10KnowledgeService\x12V\n" +
 	"\rSaveKnowledge\x12!.cortexdb.v1.SaveKnowledgeRequest\x1a\".cortexdb.v1.SaveKnowledgeResponse\x12Z\n" +
 	"\x0fUpdateKnowledge\x12#.cortexdb.v1.UpdateKnowledgeRequest\x1a\".cortexdb.v1.SaveKnowledgeResponse\x12S\n" +

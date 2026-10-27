@@ -184,6 +184,9 @@ type KnowledgeSearchResponse struct {
 	Chunks   []GraphRAGChunkResult `json:"chunks,omitempty"`
 	Entities []string              `json:"entities,omitempty"`
 	Context  string                `json:"context,omitempty"`
+	// Degraded names what did not run as it should have (see
+	// DegradedEmbedderUnreachable); empty when the search ran whole.
+	Degraded []string `json:"degraded,omitempty"`
 }
 
 // MemoryRecord is a high-level memory object stored in a dedicated memory bucket.
@@ -346,4 +349,7 @@ type MemorySearchResponse struct {
 	Plan     RetrievalPlan     `json:"plan"`
 	Decision RetrievalDecision `json:"decision"`
 	Results  []MemorySearchHit `json:"results"`
+	// Degraded names what did not run as it should have (see
+	// DegradedEmbedderUnreachable); empty when the search ran whole.
+	Degraded []string `json:"degraded,omitempty"`
 }

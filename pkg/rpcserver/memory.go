@@ -125,6 +125,7 @@ func (s *memoryService) SearchMemory(ctx context.Context, req *rpcv1.SearchMemor
 		Plan:     planToProto(resp.Plan),
 		Decision: decisionToProto(resp.Decision),
 		Results:  hits,
+		Degraded: resp.Degraded,
 	}, nil
 }
 

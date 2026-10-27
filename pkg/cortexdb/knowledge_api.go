@@ -383,9 +383,15 @@ func (db *DB) SearchKnowledge(ctx context.Context, req KnowledgeSearchRequest) (
 		result, err = db.searchKnowledgeHybrid(ctx, resolution.Plan.Query, opts, lexReq)
 	} else {
 		result, err = db.GraphRAGTools().SearchGraphRAGLexical(ctx, lexReq)
+		if err == nil {
+			recallExplainerOf(ctx).candidates(explainKnowledge, explainKeyword, chunkCandidates(result.Chunks, func(c GraphRAGChunkResult) float64 { return c.Score }))
+		}
 	}
 	if err != nil {
 		return nil, err
+	}
+	if resolution.Decision.EffectiveMode == RetrievalModePPR {
+		recallExplainerOf(ctx).candidates(explainKnowledge, explainPPR, chunkCandidates(result.Chunks, func(c GraphRAGChunkResult) float64 { return c.Score }))
 	}
 	// PPR is left alone. A walk reaches passages that share no word with the
 	// question — the second hop of a multi-hop question is one — and the
@@ -410,6 +416,7 @@ func (db *DB) SearchKnowledge(ctx context.Context, req KnowledgeSearchRequest) (
 		Chunks:   result.Chunks,
 		Entities: result.Entities,
 		Context:  result.Context,
+		Degraded: result.Degraded,
 	}, nil
 }
 
