@@ -1207,6 +1207,22 @@ All adapters call the existing gRPC `ToolsService` and prefer
 inside an agent plugin. The `skills/cortexdb-memory-*` directories remain the
 lighter explicit-tool integration.
 
+## Memory grades
+
+- `memory_save` / `knowledge_memory_remember` / `memory_update` take `grade`
+  (`verified`, `self_consistent`, `asserted`, `held`, `refused`) and
+  `grade_why`, stored as the contract keys `_grade` / `_why`
+  (`pkg/cortexdb/memory_grade.go`). `verified`, `held` and `refused` need
+  `grade_why`. No grade is untagged, kept apart from `asserted`.
+- `MemoryRecord.Grade` / `GradeWhy` come back on every read. `min_grade` on
+  `memory_search` and `knowledge_memory_recall` filters every retriever
+  (`memoryFilteredBy`), and on recall documents by `_grade` too.
+- The context pack puts `asserted` / `held` memories in an
+  `unverified_memories` section; auto-recall blocks mark them
+  `UNVERIFIED (…)`; capture grades facts and lessons and leaves preferences and
+  decisions untagged; `--export-memory` writes the grade, `--sync-memory`
+  reads it back, `--min-grade` exports only what was checked.
+
 ## Observability
 
 - Request ids: every call carries `x-request-id` (gRPC metadata / REST header;

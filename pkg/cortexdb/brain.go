@@ -45,6 +45,9 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 		return nil, ErrEmptyText
 	}
 
+	if _, err := withMinMemoryGrade(ctx, req.MinGrade); err != nil {
+		return nil, err
+	}
 	resp := &KnowledgeMemoryRecallResponse{Query: query}
 	// The account is kept whenever somebody will read it: the caller asked,
 	// or the call is being recorded (a trace, the recall log).
@@ -70,6 +73,7 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 			RetrievalMode:    req.RetrievalMode,
 			Plan:             req.Plan,
 			PPR:              req.PPR,
+			MinGrade:         req.MinGrade,
 		})
 		done()
 		if err != nil {
@@ -110,6 +114,10 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 		done()
 		if err != nil {
 			return nil, err
+		}
+		if req.MinGrade != "" {
+			ctx, _ := withMinMemoryGrade(ctx, req.MinGrade)
+			keepKnowledgeAtGrade(ctx, knowledgeResp)
 		}
 		resp.KnowledgePlan = knowledgeResp.Plan
 		resp.KnowledgeDecision = knowledgeResp.Decision
@@ -573,17 +581,45 @@ func buildKnowledgeMemoryContextPack(query string, memories []MemorySearchHit, k
 		})
 	}
 
-	memoryText := buildKnowledgeMemoryMemoryContext(memories, maxMemoryItems, maxMemoryChars)
+	// A memory that says it was not checked — graded asserted or held — is
+	// set apart under its own heading, so a reader does not act on a guess
+	// as if it were measured. The two share one budget, the checked first.
+	var checked, unverified []MemorySearchHit
 	for _, hit := range memories {
 		memoryIDs = append(memoryIDs, hit.Memory.ID)
+		if isUnverifiedGrade(hit.Memory.Grade) {
+			unverified = append(unverified, hit)
+		} else {
+			checked = append(checked, hit)
+		}
 	}
+	memoryText, items, chars := renderMemoryContext(checked, maxMemoryItems, maxMemoryChars)
 	if memoryText != "" {
 		sections = append(sections, KnowledgeMemoryContextSection{
 			Kind:      "memories",
 			Title:     "Memories",
 			Text:      memoryText,
-			SourceIDs: orderedUniqueNonEmptyStrings(memoryIDs),
+			SourceIDs: memoryHitIDs(checked),
 		})
+	}
+	if len(unverified) > 0 {
+		leftItems, leftChars := 0, 0
+		if maxMemoryItems > 0 {
+			leftItems = max(maxMemoryItems-items, 0)
+		}
+		if maxMemoryChars > 0 {
+			leftChars = max(maxMemoryChars-chars, 0)
+		}
+		if (maxMemoryItems <= 0 || leftItems > 0) && (maxMemoryChars <= 0 || leftChars > 0) {
+			if text, _, _ := renderMemoryContext(unverified, leftItems, leftChars); text != "" {
+				sections = append(sections, KnowledgeMemoryContextSection{
+					Kind:      "unverified_memories",
+					Title:     "Unverified — said, not checked",
+					Text:      text,
+					SourceIDs: memoryHitIDs(unverified),
+				})
+			}
+		}
 	}
 
 	if knowledgeResp != nil {
@@ -629,9 +665,32 @@ func KnowledgeMemoryContextPackFromSections(query string, sections []KnowledgeMe
 	}
 }
 
-func buildKnowledgeMemoryMemoryContext(memories []MemorySearchHit, maxItems, maxChars int) string {
-	if len(memories) == 0 {
+func memoryHitIDs(hits []MemorySearchHit) []string {
+	ids := make([]string, 0, len(hits))
+	for _, h := range hits {
+		ids = append(ids, h.Memory.ID)
+	}
+	return orderedUniqueNonEmptyStrings(ids)
+}
+
+// memoryGradeNote is what a context line says about how its memory is
+// known: the grade, and the evidence when there is one. Nothing for an
+// untagged memory.
+func memoryGradeNote(m MemoryRecord) string {
+	if m.Grade == "" {
 		return ""
+	}
+	if why := strings.TrimSpace(m.GradeWhy); why != "" {
+		return fmt.Sprintf(" (%s: %s)", m.Grade, clipString(why, 160))
+	}
+	return " (" + m.Grade + ")"
+}
+
+// renderMemoryContext writes memories as context lines within the item and
+// character budget, and says how much of each it used.
+func renderMemoryContext(memories []MemorySearchHit, maxItems, maxChars int) (string, int, int) {
+	if len(memories) == 0 {
+		return "", 0, 0
 	}
 	if maxItems <= 0 || maxItems > len(memories) {
 		maxItems = len(memories)
@@ -639,7 +698,7 @@ func buildKnowledgeMemoryMemoryContext(memories []MemorySearchHit, maxItems, max
 	lines := make([]string, 0, maxItems)
 	charsUsed := 0
 	for _, hit := range memories[:maxItems] {
-		line := fmt.Sprintf("[%s] %s", hit.Memory.ID, strings.TrimSpace(hit.Memory.Content))
+		line := fmt.Sprintf("[%s] %s%s", hit.Memory.ID, strings.TrimSpace(hit.Memory.Content), memoryGradeNote(hit.Memory))
 		if maxChars > 0 && charsUsed+len(line) > maxChars {
 			remaining := maxChars - charsUsed
 			if remaining <= 0 {
@@ -653,7 +712,7 @@ func buildKnowledgeMemoryMemoryContext(memories []MemorySearchHit, maxItems, max
 			break
 		}
 	}
-	return strings.TrimSpace(strings.Join(lines, "\n"))
+	return strings.TrimSpace(strings.Join(lines, "\n")), len(lines), charsUsed
 }
 
 func (b *KnowledgeMemory) resolveEntityInputs(ctx context.Context, entityIDs, entityNames []string) ([]string, []string, error) {
@@ -826,4 +885,33 @@ func runeBoundary(text string, n int) int {
 		n--
 	}
 	return n
+}
+
+// keepKnowledgeAtGrade leaves out the documents of resp, and their chunks,
+// whose contract grade (_grade) ranks under the minimum in ctx. A document
+// with no grade ranks as asserted, as an untagged memory does.
+func keepKnowledgeAtGrade(ctx context.Context, resp *KnowledgeSearchResponse) {
+	dropped := map[string]bool{}
+	kept := resp.Results[:0:0]
+	for _, hit := range resp.Results {
+		if belowMinGrade(ctx, normalizeGrade(hit.Metadata[KeyGrade])) {
+			dropped[hit.KnowledgeID] = true
+			recallExplainerOf(ctx).dropped(explainKnowledge, dropBelowMinGrade, hit.KnowledgeID, hit.Score, 0)
+			continue
+		}
+		hit.Rank = len(kept) + 1
+		kept = append(kept, hit)
+	}
+	if len(dropped) == 0 {
+		return
+	}
+	resp.Results = kept
+	chunks := resp.Chunks[:0:0]
+	for _, c := range resp.Chunks {
+		if !dropped[c.DocumentID] {
+			chunks = append(chunks, c)
+		}
+	}
+	resp.Chunks = chunks
+	resp.Context = buildGraphRAGContext(chunks)
 }

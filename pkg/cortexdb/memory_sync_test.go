@@ -179,3 +179,36 @@ func TestPlanMemorySyncSkipsIndexFile(t *testing.T) {
 		t.Errorf("unexpected creates: %+v", plan.Create)
 	}
 }
+
+// A grade survives the round trip through files: a file that names none
+// keeps the stored one when its body is edited, and a file that names
+// another changes it.
+func TestPlanMemorySyncKeepsAndChangesTheGrade(t *testing.T) {
+	db := openSyncDB(t)
+	ctx := context.Background()
+	if _, err := db.SaveMemory(ctx, MemorySaveRequest{MemoryID: "m1", Scope: "global", Content: "original", Grade: GradeVerified, GradeWhy: "drill passed"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SaveMemory(ctx, MemorySaveRequest{MemoryID: "m2", Scope: "global", Content: "a guess", Grade: GradeAsserted}); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	write := func(name, doc string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(doc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("m1.md", "---\nname: m1\nmetadata:\n  id: m1\n---\n\nedited body\n")
+	write("m2.md", "---\nname: m2\nmetadata:\n  id: m2\n  grade: verified\n  grade_why: reproduced and fixed\n---\n\na guess\n")
+
+	report, err := SyncMemoryDir(ctx, db, MemorySyncOptions{Dir: dir})
+	if err != nil {
+		t.Fatalf("sync: %v %+v", err, report)
+	}
+	if m := gradeOf(t, db, "m1"); m.Content != "edited body" || m.Grade != GradeVerified || m.GradeWhy != "drill passed" {
+		t.Fatalf("edited body lost its grade: %+v", m)
+	}
+	if m := gradeOf(t, db, "m2"); m.Grade != GradeVerified || m.GradeWhy != "reproduced and fixed" {
+		t.Fatalf("a regraded file did not change the grade: %+v", m)
+	}
+}

@@ -113,6 +113,7 @@ type RecallExplainHit struct {
 	Similarity float64  `json:"similarity,omitempty"`
 	Coverage   float64  `json:"coverage,omitempty"`
 	Via        []string `json:"via,omitempty"`
+	Grade      string   `json:"grade,omitempty"`
 }
 
 // Floor and filter names in RecallDrop.By.
@@ -127,6 +128,7 @@ const (
 	dropExpired               = "expired"
 	dropSuperseded            = "superseded"
 	dropUnreviewed            = "unreviewed"
+	dropBelowMinGrade         = "below_min_grade"
 )
 
 // recallExplainer collects the account while the recall runs. Every method
@@ -328,10 +330,10 @@ func (e *recallExplainer) build(req KnowledgeMemoryRecallRequest, resp *Knowledg
 		out.Knowledge = e.sideCopy(explainKnowledge)
 	}
 	for _, h := range resp.Memories {
-		out.Final = append(out.Final, RecallExplainHit{Kind: "memory", ID: h.Memory.ID, Score: h.Score, Similarity: h.Similarity, Coverage: h.Coverage, Via: h.Via})
+		out.Final = append(out.Final, RecallExplainHit{Kind: "memory", ID: h.Memory.ID, Score: h.Score, Similarity: h.Similarity, Coverage: h.Coverage, Via: h.Via, Grade: h.Memory.Grade})
 	}
 	for _, h := range resp.Knowledge {
-		out.Final = append(out.Final, RecallExplainHit{Kind: "knowledge", ID: h.KnowledgeID, Score: h.Score})
+		out.Final = append(out.Final, RecallExplainHit{Kind: "knowledge", ID: h.KnowledgeID, Score: h.Score, Grade: normalizeGrade(h.Metadata[KeyGrade])})
 	}
 	return out
 }

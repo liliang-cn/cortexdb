@@ -102,6 +102,10 @@ func (db *DB) SaveMemory(ctx context.Context, req MemorySaveRequest) (*MemorySav
 	if strings.TrimSpace(req.Content) == "" {
 		return nil, ErrEmptyText
 	}
+	grade, gradeWhy := gradeOfSave(req)
+	if err := validateMemoryGrade(grade, gradeWhy); err != nil {
+		return nil, err
+	}
 
 	scope, bucketID, err := resolveMemoryBucket(req.Scope, req.UserID, req.SessionID, req.Namespace)
 	if err != nil {
@@ -128,6 +132,7 @@ func (db *DB) SaveMemory(ctx context.Context, req MemorySaveRequest) (*MemorySav
 	}
 
 	metadata := buildMemoryMetadata(scope, normalizeMemoryNamespace(req.Namespace), req.Metadata, req.Importance, req.TTLSeconds)
+	stampMemoryGrade(metadata, grade, gradeWhy)
 	stampWriter(ctx, metadata, anyString)
 	// A re-save over an existing id keeps its decision, as an update does:
 	// a proposed memory saved again is still proposed.
@@ -215,6 +220,24 @@ func (db *DB) UpdateMemory(ctx context.Context, req MemoryUpdateRequest) (*Memor
 		ttlSeconds = *req.TTLSeconds
 	}
 	metadata = buildMemoryMetadata(row.record.Scope, row.record.Namespace, metadata, importance, ttlSeconds)
+	// The grade after the update: the stored one, or what the metadata or
+	// the grade fields of the request set, checked as a save checks it.
+	grade, _ := stringFromAny(metadata[KeyGrade])
+	gradeWhy, _ := stringFromAny(metadata[KeyWhy])
+	if req.Grade != nil {
+		grade = *req.Grade
+		if req.GradeWhy == nil && normalizeGrade(grade) != row.record.Grade {
+			gradeWhy = ""
+		}
+	}
+	if req.GradeWhy != nil {
+		gradeWhy = *req.GradeWhy
+	}
+	grade = normalizeGrade(grade)
+	if err := validateMemoryGrade(grade, gradeWhy); err != nil {
+		return nil, err
+	}
+	stampMemoryGrade(metadata, grade, gradeWhy)
 	stampUpdater(ctx, metadata, row.record.Metadata, anyString)
 	if err := setReviewAny(ctx, metadata, row.record.Metadata, req.review()); err != nil {
 		return nil, err
@@ -235,6 +258,15 @@ func (db *DB) UpdateMemory(ctx context.Context, req MemoryUpdateRequest) (*Memor
 	updated, err := db.loadMemoryRow(ctx, req.MemoryID)
 	if err != nil {
 		return nil, err
+	}
+	// A memory with a graph node keeps the node's text and grade with it.
+	if updated.record.Content != row.record.Content || updated.record.Grade != row.record.Grade {
+		nodeID := memoryGraphNodeID(req.MemoryID)
+		if node, err := db.graph.GetNode(ctx, nodeID); err == nil && node != nil {
+			if err := db.upsertMemoryNode(ctx, db.GraphRAGTools(), nodeID, updated.record.Content, updated.record.Grade); err != nil {
+				return nil, err
+			}
+		}
 	}
 	return &MemorySaveResponse{Memory: updated.record}, nil
 }
@@ -311,6 +343,10 @@ func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*Memor
 // path runs it as a first stage over a wide pool, and a memory that was only
 // a candidate there was not recalled.
 func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordRecalls bool) (*MemorySearchResponse, error) {
+	ctx, err := withMinMemoryGrade(ctx, req.MinGrade)
+	if err != nil {
+		return nil, err
+	}
 	resolution := resolveRetrievalPlan(retrievalPlanInput{
 		Query:            req.Query,
 		Plan:             req.Plan,
@@ -459,7 +495,7 @@ func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordR
 						continue
 					}
 					record := memoryRecordFromMessage(bucketID, "", sm.Message)
-					if by := db.memoryFilteredBy(record); by != "" {
+					if by := db.memoryFilteredBy(ctx, record); by != "" {
 						ex.dropped(explainMemory, by, record.ID, sm.Score, 0)
 						continue
 					}
@@ -541,8 +577,10 @@ func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordR
 }
 
 // memoryFilteredBy names the filter that keeps record out of a recall —
-// expired, superseded, unreviewed — or "" when none does.
-func (db *DB) memoryFilteredBy(record MemoryRecord) string {
+// expired, superseded, unreviewed, under the request's min_grade — or ""
+// when none does. Every retriever asks it, so a memory is left out the same
+// way whichever one found it.
+func (db *DB) memoryFilteredBy(ctx context.Context, record MemoryRecord) string {
 	switch {
 	case memoryExpired(record):
 		return dropExpired
@@ -550,8 +588,20 @@ func (db *DB) memoryFilteredBy(record MemoryRecord) string {
 		return dropSuperseded
 	case db.memoryUnreviewed(record):
 		return dropUnreviewed
+	case belowMinGrade(ctx, record.Grade):
+		return dropBelowMinGrade
 	}
 	return ""
+}
+
+// memoryKept reports whether record may be recalled, and when it may not,
+// tells the explain record why.
+func (db *DB) memoryKept(ctx context.Context, record MemoryRecord) bool {
+	by := db.memoryFilteredBy(ctx, record)
+	if by != "" {
+		recallExplainerOf(ctx).dropped(explainMemory, by, record.ID, 0, 0)
+	}
+	return by == ""
 }
 
 // ListAllMemories returns every stored memory record across all scopes,
@@ -821,7 +871,7 @@ func (db *DB) searchMemoryLexical(ctx context.Context, bucketID, query string, k
 				}
 			}
 			applyMemoryMetadata(&record)
-			if memoryExpired(record) || memorySuperseded(record) || db.memoryUnreviewed(record) {
+			if !db.memoryKept(ctx, record) {
 				continue
 			}
 
@@ -992,6 +1042,9 @@ func applyMemoryMetadata(record *MemoryRecord) {
 	}
 	record.ReviewStatus, _ = stringFromAny(record.Metadata[reviewStatusKey])
 	record.ReviewedBy, _ = stringFromAny(record.Metadata[reviewedByKey])
+	grade, _ := stringFromAny(record.Metadata[KeyGrade])
+	record.Grade = normalizeGrade(grade)
+	record.GradeWhy, _ = stringFromAny(record.Metadata[KeyWhy])
 }
 
 func memoryRecordFromMessage(sessionID, userID string, message *core.Message) MemoryRecord {
@@ -1031,7 +1084,8 @@ func (db *DB) saveMemoryGraph(ctx context.Context, req MemorySaveRequest) error 
 		// to search. Giving the memory a node of its own and mentioning it from
 		// each entity puts memories on the same footing as knowledge chunks.
 		nodeID := memoryGraphNodeID(req.MemoryID)
-		if err := db.upsertMemoryNode(ctx, tools, nodeID, req.Content); err != nil {
+		grade, _ := gradeOfSave(req)
+		if err := db.upsertMemoryNode(ctx, tools, nodeID, req.Content, grade); err != nil {
 			return err
 		}
 		entities := make([]ToolEntityInput, 0, len(req.Entities))
@@ -1078,7 +1132,7 @@ func memoryIDFromGraphNode(nodeID string) (string, bool) {
 // Written explicitly rather than left to the mention-edge stub filler, which
 // would create it typed "chunk": a memory is not a chunk, and a graph view that
 // says otherwise is a graph view nobody can read.
-func (db *DB) upsertMemoryNode(ctx context.Context, tools *GraphRAGToolbox, nodeID, content string) error {
+func (db *DB) upsertMemoryNode(ctx context.Context, tools *GraphRAGToolbox, nodeID, content, grade string) error {
 	if err := db.graph.InitGraphSchema(ctx); err != nil {
 		return fmt.Errorf("save memory graph: init schema: %w", err)
 	}
@@ -1091,7 +1145,7 @@ func (db *DB) upsertMemoryNode(ctx context.Context, tools *GraphRAGToolbox, node
 		Vector:     lexicalVectorForText(content, vectorDim),
 		Content:    content,
 		NodeType:   "memory",
-		Properties: map[string]interface{}{"memory": true},
+		Properties: memoryNodeProperties(grade),
 	}})
 	if err != nil {
 		return fmt.Errorf("save memory node: %w", err)
@@ -1100,6 +1154,16 @@ func (db *DB) upsertMemoryNode(ctx context.Context, tools *GraphRAGToolbox, node
 		return fmt.Errorf("save memory node: %w", err)
 	}
 	return nil
+}
+
+// memoryNodeProperties are a memory node's properties: the mark, and its
+// grade under the contract key, which the live view colours by.
+func memoryNodeProperties(grade string) map[string]interface{} {
+	props := map[string]interface{}{"memory": true}
+	if grade != "" {
+		props[KeyGrade] = grade
+	}
+	return props
 }
 
 // searchMemoryGraph finds memories by walking mention edges back from entities.
@@ -1196,7 +1260,7 @@ func (db *DB) searchMemoryGraph(ctx context.Context, bucketID string, entityName
 			// still remembers it. Skip it rather than failing the whole recall.
 			continue
 		}
-		if row.record.SessionID != bucketID || memoryExpired(row.record) || memorySuperseded(row.record) || db.memoryUnreviewed(row.record) {
+		if row.record.SessionID != bucketID || !db.memoryKept(ctx, row.record) {
 			continue
 		}
 		// Normalised so a memory mentioning every named entity scores 1.

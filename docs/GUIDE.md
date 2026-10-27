@@ -324,6 +324,41 @@ each record from its provenance and the ontology's findings, and writing
 `_contradicts` from the conflicts a reviewer resolved. It is the one of its six
 sinks that does; the other five store the graph and lose the reason.
 
+### Memories say how they are known
+
+A lesson is worth sharing only when a reader can tell what was checked from
+what was a guess. A memory carries the contract's grade too: `memory_save`,
+`knowledge_memory_remember` and `memory_update` take `grade` and `grade_why`
+(stored as `_grade` / `_why`, so they can also arrive in `metadata`).
+
+- `verified` — something outside the writer checked it: a test that ran, a
+  measurement, a reproduced bug, a person. Needs `grade_why` naming the check.
+- `asserted` — said, not checked: a suspected root cause, an untested fix.
+- `self_consistent`, `held`, `refused` as for any record (`held` and
+  `refused` need `grade_why`).
+- No grade is **untagged**: nobody said. It is kept apart from `asserted`, so
+  a store written before grades existed reads as it always did.
+
+Recall returns each memory's `grade` and `grade_why`, and so do the explain
+record and the recall log. `min_grade` on `memory_search` and
+`knowledge_memory_recall` leaves out what is known less well (verified >
+self_consistent > asserted = untagged > held > refused; on recall it applies
+to documents' `_grade` too) — `min_grade: "verified"` when the answer will be
+acted on. The context pack sets guesses apart: memories graded `asserted` or
+`held` go to an `unverified_memories` section titled "Unverified — said, not
+checked", and a verified memory's line names its check. The auto-recall
+block marks a guess first in its bracket (`UNVERIFIED (asserted)`) and a
+checked one by its evidence (`verified: …`).
+
+Auto-capture grades what it writes: `verified` only when the transcript shows
+the check, `asserted` for a guess (and the content says so), nothing for a
+preference or a decision, which records what someone said or chose. A guess
+later confirmed is saved as a new verified memory that `supersedes` it, so the
+history keeps both. `--export-memory` writes `grade` and `grade_why` into each
+file, `--sync-memory` reads them back, and `--export-memory <dir> --min-grade
+verified` exports only what was checked, for sharing lessons without the
+guesses.
+
 ## Knowledge Graph
 
 Embedded RDF on the same file: triples/quads, namespaces, N-Triples/N-Quads/Turtle/TriG/JSON-LD I/O and RDF/XML import (`RDFFormatRDFXML`), SPARQL 1.1 and 1.2 (SELECT/ASK/CONSTRUCT/DESCRIBE, FROM/FROM NAMED, updates and graph management, OPTIONAL/UNION/MINUS/VALUES/BIND/FILTER, the function library and XSD casts, aggregates, subqueries, every property path `^p p/q p|q p+ p* p? !(p|^q)`, `SERVICE`), materialized RDFS + OWL 2 RL inference, and SHACL Core and SHACL-SPARQL validation.

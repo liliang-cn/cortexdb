@@ -117,18 +117,30 @@ func PlanMemorySync(current []MemoryRecord, opts MemorySyncOptions) (*MemorySync
 			Scope:      meta["scope"],
 			Namespace:  meta["namespace"],
 			Importance: parseFloatOrZero(meta["importance"]),
+			Grade:      normalizeGrade(meta["grade"]),
+			GradeWhy:   strings.TrimSpace(meta["grade_why"]),
 		}
 		existing, ok := byID[id]
+		// A file that names a grade other than the stored one changes it, as
+		// an edited body changes the text.
+		regraded := ok && req.Grade != "" && (req.Grade != existing.Grade || (req.GradeWhy != "" && req.GradeWhy != existing.GradeWhy))
 		switch {
 		case !ok:
 			plan.Create = append(plan.Create, req)
-		case strings.TrimSpace(existing.Content) != body:
+		case strings.TrimSpace(existing.Content) != body || regraded:
 			// Keep the record where it already lives unless the file overrides it,
 			// so editing a body cannot silently move a memory to another bucket.
 			req.Scope = firstNonEmpty(req.Scope, existing.Scope)
 			req.Namespace = firstNonEmpty(req.Namespace, existing.Namespace)
 			if req.Importance == 0 {
 				req.Importance = existing.Importance
+			}
+			// A save writes the grade it is given, so a file that names none
+			// keeps the stored one rather than clearing it.
+			if req.Grade == "" {
+				req.Grade, req.GradeWhy = existing.Grade, existing.GradeWhy
+			} else if req.GradeWhy == "" && req.Grade == existing.Grade {
+				req.GradeWhy = existing.GradeWhy
 			}
 			plan.Update = append(plan.Update, req)
 		default:

@@ -67,7 +67,7 @@ haiku 用的是 Claude Code 自己的模型额度，不需要 API key。语言�
 
 - 向量（HNSW、IVF、Flat、二值编码）、FTS5 全文检索、混合检索与图检索
 - `EmbeddedConfig`，给小设备用：SQ8 量化索引、有上限的 SQLite 缓存、断电也不丢的索引快照——10 万条 768 维向量 0.28 秒打开，堆内存 193 MB
-- RAG 知识、分作用域的 agent 记忆、带来源的上下文包
+- RAG 知识、分作用域的 agent 记忆、带来源的上下文包——记忆标明是验证过的还是猜测，召回时两者分开
 - RDF 1.2 知识图谱：SPARQL 1.1/1.2、RDFS + OWL 2 RL 推理、SHACL Core + SHACL-SPARQL、RDF/XML 导入——通过 W3C 的 SPARQL 1.1/1.2、RDF 1.2（Turtle、TriG、N-Triples、N-Quads、RDF/XML）和 SHACL 官方测试集，RDFS 和 OWL 2 RL 用的是仓库自己的测试——以及只读 Cypher
 - Palantir 风格的 ontology，带受治理的动作
 - 100+ 工具，进程内调用或走 MCP

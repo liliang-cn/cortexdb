@@ -52,6 +52,10 @@ type KnowledgeMemoryRecallRequest struct {
 	// each retriever's candidates with raw scores, what each floor dropped,
 	// and the hits (RecallExplain).
 	Explain bool `json:"explain,omitempty"`
+	// MinGrade leaves out memories and documents known less well than this
+	// grade (verified > self_consistent > asserted = untagged > held >
+	// refused) — "only what was checked" when the answer will be acted on.
+	MinGrade string `json:"min_grade,omitempty"`
 	// Planner is how the caller made the plan — "model", "fallback: timeout"
 	// — kept in the account so a poor plan can be told from a poor search.
 	Planner string `json:"planner,omitempty"`

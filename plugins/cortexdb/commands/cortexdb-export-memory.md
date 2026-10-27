@@ -10,6 +10,6 @@ bin=$(ls -t ~/.claude/plugins/data/cortexdb-cortexdb/bin/cortexdb-mcp-* 2>/dev/n
 "$bin" --export-memory        # writes to ~/.cortexdb/memory-export/ by default
 ```
 
-Pass a directory as an argument to export somewhere else (e.g. `--export-memory ./memory`). Then tell the user how many memories were exported and where `MEMORY.md` was written. It reads the memory buckets only (not arbitrary chat history), skips expired memories, and is safe to re-run (it overwrites the export directory).
+Pass a directory as an argument to export somewhere else (e.g. `--export-memory ./memory`). Each file keeps how the memory is known (`grade`, `grade_why`) in its frontmatter. To share lessons without the guesses, add `--min-grade verified` with a directory of its own (e.g. `--export-memory ./verified --min-grade verified`): it writes only what was checked, and refuses the default directory, which `--sync-memory` reads back and would read the left-out memories as deleted. Then tell the user how many memories were exported and where `MEMORY.md` was written. It reads the memory buckets only (not arbitrary chat history), skips expired memories, and is safe to re-run (it overwrites the export directory).
 
 $ARGUMENTS
