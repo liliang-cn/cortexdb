@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/authz"
 )
@@ -69,6 +71,7 @@ func authenticateFrom(src *authz.KeySource, next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "invalid or missing bearer token")
 			return
 		}
+		observability.CallFrom(r.Context()).SetKey(key.ID)
 		// The facade learns the caller the way it does over gRPC: it signs
 		// what this call writes and confines the memory buckets it may reach.
 		next.ServeHTTP(w, r.WithContext(key.CallerContext(context.WithValue(r.Context(), keyContext{}, key))))

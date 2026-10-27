@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 	"testing"
@@ -22,7 +22,7 @@ import (
 func runThrough(t *testing.T, o TraceOptions, work func(ctx context.Context)) string {
 	t.Helper()
 	var buf bytes.Buffer
-	o.Log = log.New(&buf, "", 0)
+	o.Log = slog.New(slog.NewTextHandler(&buf, nil))
 	ic := RequestLogInterceptor(o)
 	_, _ = ic(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: "/cortexdb.v1.MemoryService/SearchMemory"},
 		func(ctx context.Context, _ any) (any, error) { work(ctx); return nil, nil })
@@ -39,7 +39,7 @@ func TestASlowCallIsLoggedWithItsStages(t *testing.T) {
 		done()
 		observability.Time(ctx, "lexical")()
 	})
-	for _, want := range []string{"rpc=SearchMemory", "embed=0.0", "lexical=", "(slow)"} {
+	for _, want := range []string{"rpc=SearchMemory", "stages_ms.embed=3", "stages_ms.lexical=", "slow=true"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("log line lacks %q: %q", want, got)
 		}
@@ -57,7 +57,7 @@ func TestASlowCallIsLoggedWithItsStages(t *testing.T) {
 func TestTheRecordNamesTheKeyAndTheTool(t *testing.T) {
 	var buf, file bytes.Buffer
 	chain := []grpc.UnaryServerInterceptor{
-		RequestLogInterceptor(TraceOptions{All: true, Log: log.New(&buf, "", 0), File: &file}),
+		RequestLogInterceptor(TraceOptions{All: true, Log: slog.New(slog.NewTextHandler(&buf, nil)), File: &file}),
 		authInterceptor(readerAndWriter(t), nil),
 	}
 	served := func(ctx context.Context, _ any) (any, error) { return nil, nil }
@@ -125,7 +125,7 @@ func TestAFastCallIsQuietUnlessTracingIsOn(t *testing.T) {
 	if got := runThrough(t, TraceOptions{Slow: time.Second}, quick); got != "" {
 		t.Fatalf("a fast call was logged: %q", got)
 	}
-	if got := runThrough(t, TraceOptions{All: true, Slow: time.Second}, quick); !strings.Contains(got, "rpc=SearchMemory") || strings.Contains(got, "(slow)") {
+	if got := runThrough(t, TraceOptions{All: true, Slow: time.Second}, quick); !strings.Contains(got, "rpc=SearchMemory") || strings.Contains(got, "slow=true") {
 		t.Fatalf("with tracing on every call is logged: %q", got)
 	}
 }
@@ -140,7 +140,7 @@ func TestACallerCannotWriteFieldsOrLinesIntoTheLog(t *testing.T) {
 		"knowledge_get key=operator",
 	} {
 		var buf, file bytes.Buffer
-		logged := RequestLogInterceptor(TraceOptions{All: true, Log: log.New(&buf, "", 0), File: &file})
+		logged := RequestLogInterceptor(TraceOptions{All: true, Log: slog.New(slog.NewTextHandler(&buf, nil)), File: &file})
 		auth := authInterceptor(readerAndWriter(t), nil)
 		info := &grpc.UnaryServerInfo{FullMethod: callToolMethod}
 		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer wrong"))

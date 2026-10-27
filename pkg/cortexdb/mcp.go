@@ -40,6 +40,7 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		Instructions: instructions,
 		Logger:       opts.Logger,
 	})
+	server.AddReceivingMiddleware(MCPCallMiddleware(LocalClientInfo()))
 
 	toolbox := db.GraphRAGTools()
 	definitions := make(map[string]ToolDefinition, len(toolbox.Definitions()))

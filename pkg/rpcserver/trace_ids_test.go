@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"reflect"
 	"strings"
 	"testing"
@@ -24,7 +24,7 @@ import (
 func TestTheRecordNamesTheRowsTheCallNames(t *testing.T) {
 	var buf, file bytes.Buffer
 	chain := []grpc.UnaryServerInterceptor{
-		RequestLogInterceptor(TraceOptions{All: true, Log: log.New(&buf, "", 0), File: &file}),
+		RequestLogInterceptor(TraceOptions{All: true, Log: slog.New(slog.NewTextHandler(&buf, nil)), File: &file}),
 		authInterceptor(readerAndWriter(t), nil),
 	}
 	served := func(ctx context.Context, _ any) (any, error) { return nil, nil }

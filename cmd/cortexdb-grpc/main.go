@@ -12,6 +12,8 @@
 //	CORTEXDB_KEY_FILE    JSON file of scoped API keys (replaces the single token)
 //	CORTEXDB_BACKUP_DIR  where AdminService.Backup may write
 //	CORTEXDB_HTTP_ADDR   also serve REST + /metrics + /debug/vars here
+//	CORTEXDB_LOG_FORMAT  text (logfmt, default) or json
+//	CORTEXDB_LOG_LEVEL   debug, info (default), warn or error
 //
 // `cortexdb-grpc -health` probes a server already running at -addr instead of
 // starting one, so the same binary is its own liveness check. See deploy/ for
@@ -63,6 +65,7 @@ func main() {
 		return
 	}
 	_ = godotenv.Load()
+	observability.SetupLogsFromEnv()
 
 	var (
 		dbPath = flag.String("db", envOr("CORTEXDB_PATH", cortexdb.DefaultDBPath()), "SQLite database path")

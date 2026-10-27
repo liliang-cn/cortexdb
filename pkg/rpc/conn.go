@@ -1,10 +1,14 @@
 package rpc
 
 import (
+	"context"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/metadata"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
 )
 
 // A client of a shared brain holds one connection for hours and uses it a
@@ -55,6 +59,32 @@ func DialOptions() []grpc.DialOption {
 			PermitWithoutStream: true,
 		}),
 		grpc.WithDefaultServiceConfig(retryServiceConfig),
+		grpc.WithChainUnaryInterceptor(CallInterceptor()),
+	}
+}
+
+// CallInterceptor sends the request id of the call in ctx, and what the
+// call's client said about itself, with every RPC, so the server's record of
+// the call carries the id the client logs (observability.Call). A ctx with no
+// call sends nothing and the server mints an id of its own, which it returns
+// in the response header.
+func CallInterceptor() grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		if call := observability.CallFrom(ctx); call != nil {
+			kv := []string{observability.RequestIDHeader, call.ID()}
+			c := call.Client()
+			for _, f := range [][2]string{
+				{observability.ClientHostHeader, c.Host},
+				{observability.ClientProjectHeader, c.Project},
+				{observability.ClientAgentHeader, c.Agent},
+			} {
+				if f[1] != "" {
+					kv = append(kv, f[0], observability.EncodeClientValue(f[1]))
+				}
+			}
+			ctx = metadata.AppendToOutgoingContext(ctx, kv...)
+		}
+		return invoker(ctx, method, req, reply, cc, opts...)
 	}
 }
 

@@ -66,6 +66,16 @@ func (s *Stages) Add(stage string, d time.Duration) {
 	s.count[stage]++
 }
 
+// Names is the stages in the order they were first timed.
+func (s *Stages) Names() []string {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.order...)
+}
+
 // Millis is each stage's total in milliseconds.
 func (s *Stages) Millis() map[string]int64 {
 	if s == nil {

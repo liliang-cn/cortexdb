@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
 	cortexdbroot "github.com/liliang-cn/cortexdb/v2"
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
 	"github.com/liliang-cn/cortexdb/v2/pkg/rpc"
 	rpcv1 "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -63,6 +66,10 @@ func runRemoteMCPStdio(ctx context.Context, addr, token string) error {
 	}, &mcp.ServerOptions{
 		Instructions: remoteMCPInstructions,
 	})
+	// The id each call is given here goes to the brain with the call
+	// (rpc.CallInterceptor), so the brain's trace record and the id this
+	// returns in _meta are the same.
+	server.AddReceivingMiddleware(cortexdb.MCPCallMiddleware(cortexdb.LocalClientInfo()))
 
 	for _, def := range list.GetTools() {
 		addRemoteTool(server, client, def)
@@ -102,6 +109,7 @@ func addRemoteTool(server *mcp.Server, client rpcv1.ToolsServiceClient, def *rpc
 		}
 		resp, err := client.CallTool(ctx, &rpcv1.CallToolRequest{Name: name, ArgsJson: args})
 		if err != nil {
+			log.Printf("cortexdb remote: %s failed, request_id=%s: %v", name, observability.RequestID(ctx), err)
 			return nil, fmt.Errorf("remote tool %s: %w", name, err)
 		}
 		return &mcp.CallToolResult{

@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"reflect"
 	"strings"
 	"testing"
@@ -21,7 +21,7 @@ func boundRecord(t *testing.T, args any) (string, map[string][]string, int) {
 	t.Helper()
 	var buf, file bytes.Buffer
 	raw, _ := json.Marshal(args)
-	logger := RequestLogInterceptor(TraceOptions{All: true, Log: log.New(&buf, "", 0), File: &file})
+	logger := RequestLogInterceptor(TraceOptions{All: true, Log: slog.New(slog.NewTextHandler(&buf, nil)), File: &file})
 	req := &rpcv1.CallToolRequest{Name: "memory_get", ArgsJson: string(raw)}
 	_, _ = logger(context.Background(), req, &grpc.UnaryServerInfo{FullMethod: callToolMethod}, func(context.Context, any) (any, error) { return nil, nil })
 	var rec struct {

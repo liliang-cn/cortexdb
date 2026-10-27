@@ -24,6 +24,7 @@ import (
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/authz"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
 )
 
 // Options configures the HTTP server wrapper. The three policy fields are
@@ -80,7 +81,23 @@ func NewWithPolicy(db *cortexdb.DB, opts Options) (http.Handler, error) {
 	// inside the router, unwrapped: a path nobody registered is not an
 	// authorisation failure and should not be reported as one.
 	rt.wrapEach(authorizeWith(db))
-	return authenticateFrom(src, rt), nil
+	return withCall(authenticateFrom(src, rt)), nil
+}
+
+// withCall gives every request a request id — the client's X-Request-Id
+// when it is a valid one — and returns it in the response's X-Request-Id,
+// as the gRPC server does in its response header.
+func withCall(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, call := observability.WithCall(r.Context(), r.Header.Get(observability.RequestIDHeader))
+		call.SetClient(observability.ClientInfo{
+			Host:    observability.DecodeClientValue(r.Header.Get(observability.ClientHostHeader)),
+			Project: observability.DecodeClientValue(r.Header.Get(observability.ClientProjectHeader)),
+			Agent:   observability.DecodeClientValue(r.Header.Get(observability.ClientAgentHeader)),
+		})
+		w.Header().Set(observability.RequestIDHeader, call.ID())
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 // refuseAll is what a server does when it has no policy it can trust: say why,
