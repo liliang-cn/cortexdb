@@ -106,3 +106,19 @@ func TestExportFrontmatterCarriesSourceAndExpiry(t *testing.T) {
 		t.Errorf("absent fields must stay absent, not become empty:\n%s", plain)
 	}
 }
+
+// An exported lesson keeps saying how it is known, and the index marks a
+// guess.
+func TestExportCarriesTheGrade(t *testing.T) {
+	m := cortexdb.MemoryRecord{ID: "fix", Content: "the fix holds", Grade: cortexdb.GradeVerified, GradeWhy: "drill passed"}
+	out := renderMemoryMarkdown(m, "t", "fix")
+	if !strings.Contains(out, "  grade: verified\n") || !strings.Contains(out, "  grade_why: drill passed\n") {
+		t.Fatalf("frontmatter:\n%s", out)
+	}
+	if out := renderMemoryMarkdown(cortexdb.MemoryRecord{ID: "plain", Content: "x"}, "t", "plain"); strings.Contains(out, "grade") {
+		t.Fatalf("an untagged memory was given a grade:\n%s", out)
+	}
+	if !cortexdb.GradeAtLeast("", cortexdb.GradeAsserted) || cortexdb.GradeAtLeast(cortexdb.GradeAsserted, cortexdb.GradeVerified) || !cortexdb.GradeAtLeast(cortexdb.GradeVerified, cortexdb.GradeVerified) {
+		t.Fatal("GradeAtLeast ranks wrongly")
+	}
+}

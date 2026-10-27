@@ -137,7 +137,9 @@ var (
 	// The review fields are data: the facade takes the calling key as the
 	// reviewer and refuses another name, so a decision names who made it.
 	reviewArgs = []string{"review_status", "reviewed_by", "reviewed_at"}
-	memoryArgs = []string{"content", "role", "importance", "ttl_seconds", "session_id", "metadata.*"}
+	// The grade is data: it says how the memory is known, and the facade
+	// checks it as it checks any other value.
+	memoryArgs = []string{"content", "role", "importance", "ttl_seconds", "session_id", "metadata.*", "grade", "grade_why"}
 	docArgs    = paths([]string{"content", "title", "source_url", "author", "metadata.*", "chunk_size", "chunk_overlap", "expires_at"}, reviewArgs)
 	// An entity or a relation the caller declares is a node or an edge of
 	// the shared graph, keyed by name across every collection, so declaring
@@ -247,14 +249,14 @@ var confinedTools = map[string]toolRule{
 	"knowledge_memory_remember": {scope: memoryScope, stores: storeMemory, rewritten: cortexdb.EngineMemoryKeys,
 		args: memoryArgs, ids: []idField{{"memory_id", idMemory}}},
 	"memory_search": {scope: memoryScope, stores: storeMemory,
-		args: paths(queryArgs[:4], planArgs, pprArgs, []string{"entity_names", "top_k", "session_id"})},
+		args: paths(queryArgs[:4], planArgs, pprArgs, []string{"entity_names", "top_k", "session_id", "min_grade"})},
 	// Memory, addressed by id alone. The list form of memory_get is data: the
 	// facade lists a row outside the caller's scope under missing, in the
 	// order asked, exactly as a row that does not exist (cortexdb.DB.GetMemory).
 	// The facade reads the list and ignores memory_id when both are set, so a
 	// call sends one form.
 	"memory_get":    {stores: storeMemory, args: []string{"memory_ids"}, ids: []idField{{"memory_id", idMemory}}, oneOf: []string{"memory_id", "memory_ids"}},
-	"memory_update": {stores: storeMemory, rewritten: cortexdb.EngineMemoryKeys, args: paths([]string{"content", "importance", "ttl_seconds", "metadata.*"}, reviewArgs), ids: []idField{{"memory_id", idMemory}}},
+	"memory_update": {stores: storeMemory, rewritten: cortexdb.EngineMemoryKeys, args: paths([]string{"content", "importance", "ttl_seconds", "metadata.*", "grade", "grade_why"}, reviewArgs), ids: []idField{{"memory_id", idMemory}}},
 	"memory_delete": {stores: storeMemory, ids: []idField{{"memory_id", idMemory}}},
 
 	// The graph, walked from a seed or read by node id. Under a caller scope
@@ -286,9 +288,9 @@ var confinedTools = map[string]toolRule{
 	// Both stores, each behind its gate. Recall adds no graph facts for a
 	// caller with a scope (cortexdb.KnowledgeMemory.Recall).
 	"knowledge_memory_recall": {scope: bothScopes, stores: storeKnowledge | storeMemory,
-		args: paths(queryArgs, walkArgs, planArgs, pprArgs, recallArgs, []string{"detail", "explain", "planner"}), gates: recallGates},
+		args: paths(queryArgs, walkArgs, planArgs, pprArgs, recallArgs, []string{"detail", "explain", "planner", "min_grade"}), gates: recallGates},
 	"knowledge_memory_build_context_pack": {scope: bothScopes, stores: storeKnowledge | storeMemory,
-		args: paths(queryArgs, walkArgs, planArgs, pprArgs, recallArgs, []string{"explain", "planner"}), gates: recallGates},
+		args: paths(queryArgs, walkArgs, planArgs, pprArgs, recallArgs, []string{"explain", "planner", "min_grade"}), gates: recallGates},
 
 	// The recall log, which the facade holds to the calling key: a confined
 	// key reads and marks the recalls it made and no other, whatever key it

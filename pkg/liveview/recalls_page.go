@@ -115,14 +115,14 @@ var S = {
     degraded:"degraded",query:"query",keywords:"keywords",entities:"entities",mode:"mode",planner:"planner",asked:"asked by",useful:"useful",noise:"noise",
     totals:"Last %d days",recalls:"recalls",emptyN:"returned nothing",degN:"degraded",most:"Most recalled",reached:"records reached",never:"Never recalled",count:"count",last:"last",queries:"queries",
     noneNever:"Every memory has been recalled at least once.",confined:"Not shown for a key with a scope.",byRecord:"recalls of",clear:"clear",graph:"graph",retriever:"retriever",rank:"rank",score:"score",by:"by",threshold:"threshold",
-    noExplain:"No explain record was kept for this recall."},
+    noExplain:"No explain record was kept for this recall.",unverified:"unverified",verified:"verified"},
   zh:{title:"召回记录",timeline:"时间线",records:"记录",filter:"按查询文本筛选",empty:"无结果",pick:"选一条召回，看它为什么返回这些结果。",
     off:"这个大脑没有开启召回日志。",offHow:"用 <code>CORTEXDB_RECALL_LOG=1</code> 启动服务。日志会保存查询文本，保留 <code>CORTEXDB_RECALL_LOG_DAYS</code> 天（默认 30）。",
     none:"还没有召回。",more:"更早的召回",hits:"条命中",ms:"毫秒",replay:"在图上重放",plan:"检索计划",hitsH:"命中",cands:"候选",dropped:"被阈值和过滤掉的",
     degraded:"降级",query:"查询",keywords:"关键词",entities:"实体",mode:"模式",planner:"规划",asked:"提问方",useful:"有用",noise:"噪音",
     totals:"最近 %d 天",recalls:"次召回",emptyN:"无结果",degN:"降级",most:"最常被召回",reached:"被召回过的记录",never:"从未被召回",count:"次数",last:"最近",queries:"查询",
     noneNever:"每条记忆都至少被召回过一次。",confined:"限定范围的 key 不显示这一项。",byRecord:"召回了",clear:"清除",graph:"图谱",retriever:"检索器",rank:"名次",score:"分数",by:"原因",threshold:"阈值",
-    noExplain:"这次召回没有保留解释记录。"}
+    noExplain:"这次召回没有保留解释记录。",unverified:"未验证",verified:"已验证"}
 }[LANG];
 document.documentElement.lang = LANG === "zh" ? "zh-CN" : "en";
 
@@ -252,8 +252,13 @@ function hitHTML(r, h){
   if(h.coverage) scores.push("cov " + num(h.coverage));
   var origin = [h.date, h.writer ? "key " + h.writer : "", h.source, h.project].filter(Boolean).map(esc).join(" · ");
   var graph = h.node_id ? " <a href='./?focus=" + encodeURIComponent(h.node_id) + "'>" + esc(S.graph) + "</a>" : "";
+  // How the record says it is known: a guess is marked, a verified hit
+  // shows its check on hover; an untagged one says nothing.
+  var grade = h.grade === "asserted" || h.grade === "held"
+    ? " <span class='badge warn' title='" + esc(h.grade) + "'>" + esc(S.unverified) + "</span>"
+    : h.grade === "verified" ? " <span class='badge good' title='" + esc(h.grade_why || "") + "'>" + esc(S.verified) + "</span>" : "";
   return "<div class='hit'><span class='n'>" + h.rank + "</span><div class='t'>" +
-    "<span class='badge'>" + esc(h.kind) + "</span> " + esc(h.title || h.id) +
+    "<span class='badge'>" + esc(h.kind) + "</span>" + grade + " " + esc(h.title || h.id) +
     "<div class='meta'>" + via + "<span>" + esc(scores.join(" · ")) + "</span>" + (origin ? "<span>" + origin + "</span>" : "") +
     "<span class='muted'>" + esc(h.id) + "</span>" + graph + "</div></div>" +
     "<div class='fb' data-recall='" + esc(r.id) + "' data-record='" + esc(h.id) + "'>" +

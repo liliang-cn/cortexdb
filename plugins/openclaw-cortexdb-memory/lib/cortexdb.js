@@ -115,6 +115,8 @@ export function recallHits(response) {
       score: Number(hit.score || 0),
       snippet: memory.content || "",
       source: "memory",
+      // How the memory says it is known; a guess is "asserted".
+      ...(memory.grade ? { grade: memory.grade } : {}),
     });
   }
   for (const hit of response.knowledge || []) {

@@ -51,6 +51,8 @@ const STRINGS = {
     recallTime: (s: string) => `召回 ${s}s`,
     skipped: '这条不用召回',
     keywordOnly: '向量服务连不上，只用了关键词',
+    unverified: (grade: string) => `⚠ 未验证（${grade}）`,
+    verified: (why?: string) => (why ? `✓ 已验证：${why}` : '✓ 已验证'),
     unreachable: '连不上',
     recallFailed: '召回失败',
     denied: (tools: string) => `没有调用 CortexDB 工具的权限，请在 settings.json 的 permissions.allow 里允许：${tools}`,
@@ -81,6 +83,8 @@ const STRINGS = {
     recallTime: (s: string) => `recall ${s}s`,
     skipped: 'no recall needed',
     keywordOnly: 'embedder unreachable, keyword only',
+    unverified: (grade: string) => `⚠ unverified (${grade})`,
+    verified: (why?: string) => (why ? `✓ verified: ${why}` : '✓ verified'),
     unreachable: 'unreachable',
     recallFailed: 'recall failed',
     denied: (tools: string) => `not allowed to call CortexDB tools; allow them in settings.json permissions.allow: ${tools}`,
@@ -354,6 +358,8 @@ async function recall($: EngineInterface, prompt: string): Promise<Recall | 'ski
         snippet: snippetOf(content),
         why: { ...memoryVia(m, memoryMode), matched: matchedIn(content, terms) },
         origin: memoryOrigin(m.memory),
+        grade: text(m.memory?.grade),
+        gradeWhy: text(m.memory?.grade_why),
       }
     }),
     ...(payload.knowledge ?? payload.results ?? []).map(k => ({
@@ -362,6 +368,8 @@ async function recall($: EngineInterface, prompt: string): Promise<Recall | 'ski
       snippet: snippetOf(k.snippet ?? ''),
       why: { ...knowledgeVia(k, knowledgeMode), matched: matchedIn(`${k.title ?? ''} ${k.snippet ?? ''}`, terms) },
       origin: knowledgeOrigin(k),
+      grade: text(k.metadata?._grade)?.toLowerCase(),
+      gradeWhy: text(k.metadata?._why),
     })),
   ].filter(hit => hit.snippet !== '')
   return { hits, ms: (await $.clock.now()) - started, plan, degraded: payload.degraded ?? [] }
@@ -446,6 +454,24 @@ const knowledgeOrigin = (k: KnowledgeHit) => {
 
 // The shell capture's prompt (cmd/cortexdb-mcp-stdio/capture_session.go), so a
 // memory reads the same whichever wrote it, plus what this session already gave.
+type Graded = { grade: 'verified' | 'asserted'; grade_why?: string }
+
+// The grade a captured memory is saved with, as the shell capture's
+// capturedGrade: verified that names no check is saved as asserted, since
+// the store refuses it and a claim nobody can point to is what asserted
+// means; a preference or a decision, and any other word, is left untagged.
+const capturedGrade = (m: { type?: string; grade?: string; grade_why?: string }): Graded | undefined => {
+  if (m.type === 'preference' || m.type === 'decision') return undefined
+  const why = scrubForCapture((m.grade_why ?? '').trim())
+  switch ((m.grade ?? '').trim().toLowerCase()) {
+    case 'verified':
+      return why ? { grade: 'verified', grade_why: why } : { grade: 'asserted' }
+    case 'asserted':
+      return why ? { grade: 'asserted', grade_why: why } : { grade: 'asserted' }
+  }
+  return undefined
+}
+
 const CAPTURE_SYSTEM = `You distil a coding-session transcript into durable memories for a long-term store shared across future sessions.
 
 Extract ONLY things worth knowing weeks later: decisions made and why, facts established (deployments, topology, versions, credentials locations — not values), user preferences expressed, outcomes and their root causes, lessons that changed how something is done.
@@ -460,8 +486,9 @@ Rules:
 - slug: short kebab-case ascii. importance: 0.3 routine fact, 0.6 useful decision, 0.85+ hard-won lesson or standing preference.
 - entities: the concrete named things (projects, hosts, services, people) each memory is about.
 - When a memory is about specific files listed under FILES, add each of those files as an entity of type "file", named exactly as listed. Leave out files a memory is not about; a memory about none has no file entities.
+- grade, for a fact or a lesson: "verified" only when the transcript shows it was checked — a command's output, a test that passed or failed, a bug reproduced, a measurement — and grade_why then names that check in a few words; "asserted" when it was not checked: a suspected root cause, a fix nobody tested, a guess about how something works. Write an asserted memory so its content says it is unverified ("probably", "suspected", "not tested"). A guess the session later confirmed is one verified memory, not a guess beside a fact. Leave grade empty for a preference or a decision: it records what someone said or chose, and there is nothing to check.
 
-Respond with JSON only: {"memories":[{"slug":"...","content":"...","importance":0.6,"type":"fact|decision|preference|lesson","entities":[{"name":"...","type":"..."}]}]}`
+Respond with JSON only: {"memories":[{"slug":"...","content":"...","importance":0.6,"type":"fact|decision|preference|lesson","grade":"verified|asserted|","grade_why":"...","entities":[{"name":"...","type":"..."}]}]}`
 
 type CapturedReply = {
   memories?: {
@@ -469,6 +496,8 @@ type CapturedReply = {
     content?: string
     importance?: number
     type?: string
+    grade?: string
+    grade_why?: string
     entities?: { name?: string; type?: string }[]
   }[]
 }
@@ -645,7 +674,7 @@ async function capture($: EngineInterface) {
     // Stable per session and slug, as the shell capture's: capturing again
     // replaces a memory instead of stacking a second copy.
     const ownPrefix = `auto:${sessionId.slice(0, 8)}:`
-    const drafts: (Fresh & { importance?: number; type?: string })[] = []
+    const drafts: (Fresh & { importance?: number; type?: string; grade?: Graded })[] = []
     for (const m of out.memories ?? []) {
       const content = (m.content ?? '').trim()
       const slug = slugOf(m.slug || content)
@@ -653,7 +682,7 @@ async function capture($: EngineInterface) {
       const entities = (m.entities ?? [])
         .map(entity => ({ name: (entity.name ?? '').trim(), type: entity.type ?? '' }))
         .filter(entity => entity.name !== '')
-      drafts.push({ slug, content, entities, importance: m.importance, type: m.type })
+      drafts.push({ slug, content, entities, importance: m.importance, type: m.type, grade: capturedGrade(m) })
     }
     // Failing here saves everything and retires nothing, as capture always did.
     const plan = await planRetirement($, drafts, ownPrefix, today()).catch(noRetirement)
@@ -682,6 +711,7 @@ async function capture($: EngineInterface) {
         },
         entities: m.entities,
         ...(supersedes.length > 0 ? { supersedes } : {}),
+        ...(m.grade ?? {}),
       })
       written.push({ slug: m.slug, content: m.content })
       retiredCount += supersedes.length
@@ -834,7 +864,7 @@ export const register: Register = (on, options) => {
 
 // --- text -------------------------------------------------------------------
 
-type RecallMemory = { id?: string; content?: string; metadata?: Record<string, unknown>; created_at?: string }
+type RecallMemory = { id?: string; content?: string; metadata?: Record<string, unknown>; created_at?: string; grade?: string; grade_why?: string }
 
 type KnowledgeHit = {
   knowledge_id?: string
@@ -885,10 +915,21 @@ const contextOf = (hits: RecallHit[]) => {
 // Where a hit came from and why it came back, as one bracket the model can
 // weigh before relying on it: the date, who wrote it, from which session and
 // project, and the retriever's score. The same words the shell hook writes.
+// What a trail says first about how a hit is known: a guess before anything
+// else, the check behind a verified hit, nothing for an untagged one. The
+// shell hook's gradeMark (recall_remote.go) writes the same words.
+const gradeMark = (grade?: string, why?: string) => {
+  if (!grade) return undefined
+  if (grade === 'asserted' || grade === 'held') return `UNVERIFIED (${grade})`
+  if (grade === 'verified') return why ? `verified: ${[...why.trim()].slice(0, 80).join('')}` : 'verified'
+  return grade
+}
+
 const trailOf = (hit: RecallHit) => {
   const o = hit.origin ?? {}
   const by = [o.agent, o.source, o.model ? `(${o.model})` : undefined].filter(Boolean).join(' ')
   const parts = [
+    gradeMark(hit.grade, hit.gradeWhy),
     o.date,
     by || undefined,
     o.writer ? `key ${o.writer}` : undefined,
@@ -932,7 +973,13 @@ const explainOf = (hit: RecallHit, s: (typeof STRINGS)[Lang]) => {
   ]
     .filter(Boolean)
     .join(' · ')
-  return [why ? `${s.why} ${why}` : '', from ? `${s.from} ${from}` : ''].filter(Boolean).join('  ')
+  const graded =
+    hit.grade === 'asserted' || hit.grade === 'held'
+      ? s.unverified(hit.grade)
+      : hit.grade === 'verified'
+        ? s.verified(hit.gradeWhy)
+        : ''
+  return [graded, why ? `${s.why} ${why}` : '', from ? `${s.from} ${from}` : ''].filter(Boolean).join('  ')
 }
 
 // The shell capture's digestTranscript: what the person typed and what the

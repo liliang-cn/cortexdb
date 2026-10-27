@@ -189,6 +189,9 @@ type RecallLogHit struct {
 	Source     string   `json:"source,omitempty"`
 	Project    string   `json:"project,omitempty"`
 	Date       string   `json:"date,omitempty"`
+	// Grade is how the record says it is known; empty when untagged.
+	Grade    string `json:"grade,omitempty"`
+	GradeWhy string `json:"grade_why,omitempty"`
 	// Verdict is the feedback given on this hit in this recall, if any.
 	Verdict string `json:"verdict,omitempty"`
 }
@@ -236,6 +239,7 @@ func recallLogHits(resp *KnowledgeMemoryRecallResponse) []RecallLogHit {
 			Kind: "memory", ID: h.Memory.ID, NodeID: memoryGraphNodeID(h.Memory.ID), Rank: i + 1,
 			Title: firstLine(h.Memory.Content, recallLogTitleRunes), Score: h.Score, Similarity: h.Similarity, Coverage: h.Coverage, Via: h.Via,
 			Writer: metaString(m, metadataWrittenBy), Source: metaString(m, "source", "agent"), Project: metaString(m, "project"), Date: date,
+			Grade: h.Memory.Grade, GradeWhy: h.Memory.GradeWhy,
 		})
 	}
 	for i, h := range resp.Knowledge {
@@ -247,7 +251,8 @@ func recallLogHits(resp *KnowledgeMemoryRecallResponse) []RecallLogHit {
 			Kind: "knowledge", ID: h.KnowledgeID, NodeID: "doc:" + h.KnowledgeID, Rank: i + 1,
 			Title: firstLine(title, recallLogTitleRunes), Score: h.Score,
 			Writer: h.Metadata[metadataWrittenBy], Source: firstNonEmpty(h.Author, h.SourceURL, h.Metadata["source"]), Project: h.Metadata["project"],
-			Date: firstNonEmpty(h.Metadata["updated"], h.Metadata["date"]),
+			Date:  firstNonEmpty(h.Metadata["updated"], h.Metadata["date"]),
+			Grade: normalizeGrade(h.Metadata[KeyGrade]), GradeWhy: h.Metadata[KeyWhy],
 		})
 	}
 	return out

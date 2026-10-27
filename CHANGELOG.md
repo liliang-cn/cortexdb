@@ -20,6 +20,11 @@ All notable changes to this project will be documented in this file.
   includes the embedder (#104).
 - Structured logs (`log/slog`, `CORTEXDB_LOG_FORMAT`, `CORTEXDB_LOG_LEVEL`) and a
   rotating trace file (#104).
+- Memories say how they are known: `grade` (`verified`, `asserted`, …) and
+  `grade_why` on save and update, `min_grade` on memory search and recall,
+  guesses in their own `unverified_memories` section of the context pack and
+  marked `UNVERIFIED` in auto-recall, graded capture, and `--export-memory
+  --min-grade verified` for sharing lessons without the guesses (#107).
 - An opt-in recall log (`CORTEXDB_RECALL_LOG=1`) with `recall_log_*` tools,
   feedback that exports as recall-eval golden cases, a `/recalls` page in the
   live view, and graph shading and replay by recall (#104).

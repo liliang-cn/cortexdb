@@ -41,3 +41,17 @@ test("the injected block names each hit, and nothing is injected for no hits", (
   assert.equal(formatRecall([]), "");
   assert.equal(formatRecall([{ id: "x", snippet: "" }]), "");
 });
+
+test("a recalled guess is marked unverified and a checked hit names its check", () => {
+  const hits = recallHits({
+    memories: [
+      { memory: { id: "cause", content: "the switch probably dropped quorum", grade: "asserted" } },
+      { memory: { id: "fix", content: "the fix holds", grade: "verified", grade_why: "drill passed" } },
+      { memory: { id: "plain", content: "lunch at noon" } },
+    ],
+  });
+  const block = formatRecall(hits);
+  assert.match(block, /- cause \[UNVERIFIED \(asserted\)\]: the switch/);
+  assert.match(block, /- fix \[verified: drill passed\]: the fix holds/);
+  assert.match(block, /- plain: lunch at noon/);
+});
