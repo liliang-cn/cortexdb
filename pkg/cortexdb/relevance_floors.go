@@ -127,7 +127,14 @@ func (db *DB) applyKnowledgeFloors(ctx context.Context, result *GraphRAGQueryRes
 		if keep {
 			kept = append(kept, chunk)
 		} else {
-			recallExplainerOf(ctx).dropped(explainKnowledge, dropKnowledgeFloor, chunk.ID, chunk.VectorScore, vectorFloor)
+			// The cosine against the vector floor when the vector search found
+			// the chunk; a chunk only the keyword search found failed the
+			// keyword floor, whose score the scorer keeps to itself.
+			if chunk.VectorRank > 0 {
+				recallExplainerOf(ctx).dropped(explainKnowledge, dropKnowledgeFloor, chunk.ID, chunk.VectorScore, vectorFloor)
+			} else {
+				recallExplainerOf(ctx).dropped(explainKnowledge, dropKnowledgeKeywordFloor, chunk.ID, 0, keywordFloor)
+			}
 		}
 	}
 	if len(kept) == len(result.Chunks) {

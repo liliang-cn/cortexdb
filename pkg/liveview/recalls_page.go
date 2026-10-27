@@ -113,15 +113,15 @@ var S = {
     off:"The recall log is off on this brain.",offHow:"Start the server with <code>CORTEXDB_RECALL_LOG=1</code>. It stores queries, kept for <code>CORTEXDB_RECALL_LOG_DAYS</code> (30).",
     none:"No recalls yet.",more:"Older recalls",hits:"hits",ms:"ms",replay:"replay on graph",plan:"Plan",hitsH:"Hits",cands:"Candidates",dropped:"Dropped by floors and filters",
     degraded:"degraded",query:"query",keywords:"keywords",entities:"entities",mode:"mode",planner:"planner",asked:"asked by",useful:"useful",noise:"noise",
-    totals:"Last %d days",recalls:"recalls",emptyN:"returned nothing",degN:"degraded",most:"Most recalled",never:"Never recalled",count:"count",last:"last",queries:"queries",
+    totals:"Last %d days",recalls:"recalls",emptyN:"returned nothing",degN:"degraded",most:"Most recalled",reached:"records reached",never:"Never recalled",count:"count",last:"last",queries:"queries",
     noneNever:"Every memory has been recalled at least once.",confined:"Not shown for a key with a scope.",byRecord:"recalls of",clear:"clear",graph:"graph",retriever:"retriever",rank:"rank",score:"score",by:"by",threshold:"threshold",
     noExplain:"No explain record was kept for this recall."},
   zh:{title:"召回记录",timeline:"时间线",records:"记录",filter:"按查询文本筛选",empty:"无结果",pick:"选一条召回，看它为什么返回这些结果。",
     off:"这个大脑没有开启召回日志。",offHow:"用 <code>CORTEXDB_RECALL_LOG=1</code> 启动服务。日志会保存查询文本，保留 <code>CORTEXDB_RECALL_LOG_DAYS</code> 天（默认 30）。",
     none:"还没有召回。",more:"更早的召回",hits:"条命中",ms:"毫秒",replay:"在图上重放",plan:"检索计划",hitsH:"命中",cands:"候选",dropped:"被阈值和过滤掉的",
     degraded:"降级",query:"查询",keywords:"关键词",entities:"实体",mode:"模式",planner:"规划",asked:"提问方",useful:"有用",noise:"噪音",
-    totals:"最近 %d 天",recalls:"次召回",emptyN:"无结果",degN:"降级",most:"最常被召回",never:"从未被召回",count:"次数",last:"最近",queries:"查询",
-    noneNever:"每条记忆都至少被召回过一次。",confined:"限定范围的 key 不显示这一项。",byRecord:"召回了",clear:"清除",graph:"图",retriever:"检索器",rank:"名次",score:"分数",by:"原因",threshold:"阈值",
+    totals:"最近 %d 天",recalls:"次召回",emptyN:"无结果",degN:"降级",most:"最常被召回",reached:"被召回过的记录",never:"从未被召回",count:"次数",last:"最近",queries:"查询",
+    noneNever:"每条记忆都至少被召回过一次。",confined:"限定范围的 key 不显示这一项。",byRecord:"召回了",clear:"清除",graph:"图谱",retriever:"检索器",rank:"名次",score:"分数",by:"原因",threshold:"阈值",
     noExplain:"这次召回没有保留解释记录。"}
 }[LANG];
 document.documentElement.lang = LANG === "zh" ? "zh-CN" : "en";
@@ -151,6 +151,7 @@ document.getElementById("tabRecords").textContent = S.records;
 document.getElementById("contains").placeholder = S.filter;
 document.getElementById("emptyLabel").textContent = S.empty;
 document.getElementById("pick").textContent = S.pick;
+document.getElementById("tograph").textContent = S.graph;
 
 function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
   return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
@@ -319,7 +320,7 @@ function loadRecords(){
   getJSON("api/recalls/stats?limit=50").then(function(s){
     var days = Math.max(1, Math.round((Date.now() - Date.parse(s.since)) / 86400000));
     var tiles = "<div class='tiles'>" + [[s.recalls, S.recalls], [s.empty_recalls, S.emptyN], [s.degraded_recalls, S.degN],
-      [(s.most_recalled || []).length, S.most]].map(function(t){ return "<div class='tile'><b>" + t[0] + "</b><span>" + esc(t[1]) + "</span></div>"; }).join("") + "</div>";
+      [(s.most_recalled || []).length, S.reached]].map(function(t){ return "<div class='tile'><b>" + t[0] + "</b><span>" + esc(t[1]) + "</span></div>"; }).join("") + "</div>";
     list.innerHTML = "<section style='padding:14px 16px 0'><h2>" + esc(S.totals.replace("%d", days)) + "</h2></section>" + tiles +
       "<section style='padding:0 16px 14px'><h2>" + esc(S.most) + "</h2><table><tr><th>" + esc(S.count) + "</th><th></th><th>" + esc(S.last) + "</th></tr>" +
       (s.most_recalled || []).map(function(m){

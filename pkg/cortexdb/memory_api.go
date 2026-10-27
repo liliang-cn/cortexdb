@@ -886,7 +886,11 @@ func (db *DB) searchMemoryLexical(ctx context.Context, bucketID, query string, k
 	for _, c := range candidates {
 		match := scorer.coverage(c.record.Content)
 		if !scorer.answers(match, floor) {
-			recallExplainerOf(ctx).dropped(explainMemory, dropMemoryKeywordFloor, c.record.ID, match.share, floor)
+			by := dropMemoryKeywordFloor
+			if match.share >= floor {
+				by = dropOneWord
+			}
+			recallExplainerOf(ctx).dropped(explainMemory, by, c.record.ID, match.share, floor)
 			continue
 		}
 		results = append(results, MemorySearchHit{

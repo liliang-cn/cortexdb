@@ -1203,6 +1203,18 @@ function drawLegend(types){
   var title = document.getElementById("legendtitle");
   var box = document.getElementById("legenditems");
   var panel = document.getElementById("legend");
+  if(colorMode === "recalls"){
+    title.textContent = "Reached by recalls";
+    panel.setAttribute("data-label", "Recalls");
+    if(recallHeatError){ box.innerHTML = "<div class='say'>" + esc(/recall log is off/i.test(recallHeatError)
+      ? "The recall log is off on this brain. Start it with CORTEXDB_RECALL_LOG=1." : recallHeatError) + "</div>"; return; }
+    var steps = recallHeatMax > 1 ? [recallHeatMax, Math.max(2, Math.round(Math.sqrt(recallHeatMax))), 1] : [1];
+    box.innerHTML = steps.filter(function(v, i, a){ return a.indexOf(v) === i; }).map(function(c){
+      return "<div class='li'><span class='dot' style='background:" + heatTint(c) + "'></span>" + c + "×</div>";
+    }).join("") + "<div class='li'><span class='dot' style='background:" + heatTint(0) + "'></span>never</div>" +
+      "<div class='li' data-recalls='1'><a href='recalls?view=records'>who and why →</a></div>";
+    return;
+  }
   if(colorMode !== "grade"){
     title.textContent = "Node types";
     panel.setAttribute("data-label", "Node types");

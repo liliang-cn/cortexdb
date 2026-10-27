@@ -119,10 +119,14 @@ type RecallExplainHit struct {
 const (
 	dropMemorySemanticFloor = "memory_semantic_floor"
 	dropMemoryKeywordFloor  = "memory_keyword_floor"
-	dropKnowledgeFloor      = "knowledge_floor"
-	dropExpired             = "expired"
-	dropSuperseded          = "superseded"
-	dropUnreviewed          = "unreviewed"
+	// dropOneWord: the hit covered enough of the question but shared one
+	// word of it only, which is not an answer (rarityScorer.answers).
+	dropOneWord               = "keyword_one_word"
+	dropKnowledgeFloor        = "knowledge_vector_floor"
+	dropKnowledgeKeywordFloor = "knowledge_keyword_floor"
+	dropExpired               = "expired"
+	dropSuperseded            = "superseded"
+	dropUnreviewed            = "unreviewed"
 )
 
 // recallExplainer collects the account while the recall runs. Every method
