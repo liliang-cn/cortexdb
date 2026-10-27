@@ -54,12 +54,21 @@ export function recallHits(payload) {
   const hits = [];
   for (const hit of payload?.memories ?? []) {
     const memory = hit?.memory ?? {};
-    hits.push({ id: memory.id ?? "", title: "", snippet: snippetOf(memory.content), score: Number(hit?.score ?? 0), source: "memory" });
+    hits.push({ id: memory.id ?? "", title: "", snippet: snippetOf(memory.content), score: Number(hit?.score ?? 0), source: "memory", grade: memory.grade ?? "", gradeWhy: memory.grade_why ?? "" });
   }
   for (const hit of [...(payload?.knowledge ?? []), ...(payload?.results ?? [])]) {
-    hits.push({ id: hit?.knowledge_id ?? "", title: hit?.title ?? "", snippet: String(hit?.snippet ?? "").trim(), score: Number(hit?.score ?? 0), source: "knowledge" });
+    hits.push({ id: hit?.knowledge_id ?? "", title: hit?.title ?? "", snippet: String(hit?.snippet ?? "").trim(), score: Number(hit?.score ?? 0), source: "knowledge", grade: String(hit?.metadata?._grade ?? "").toLowerCase(), gradeWhy: hit?.metadata?._why ?? "" });
   }
   return hits;
+}
+
+// gradeMark is how a hit says it is known, in the words the Claude Code hooks
+// use: a guess is marked before its text, a verified hit names its check, an
+// untagged one says nothing.
+export function gradeMark(grade, why) {
+  if (grade === "asserted" || grade === "held") return `UNVERIFIED (${grade})`;
+  if (grade === "verified") return why ? `verified: ${[...String(why).trim()].slice(0, 80).join("")}` : "verified";
+  return grade || "";
 }
 
 // formatRecall is the block injected before the prompt, or "" when nothing is
@@ -68,7 +77,8 @@ export function formatRecall(hits) {
   const lines = [];
   for (const hit of hits) {
     if (!hit.snippet) continue;
-    lines.push(`- ${hit.title || hit.id}: ${hit.snippet}`);
+    const mark = gradeMark(hit.grade, hit.gradeWhy);
+    lines.push(`- ${hit.title || hit.id}${mark ? ` [${mark}]` : ""}: ${hit.snippet}`);
   }
   if (lines.length === 0) return "";
   return [HEADER, ...lines, FOOTER].join("\n");
