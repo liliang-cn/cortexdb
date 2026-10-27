@@ -159,6 +159,7 @@ func hitsFromRecall(resp *cortexdb.KnowledgeMemoryRecallResponse) []recallHit {
 				Host:    metaString(meta, "host"),
 				Project: metaString(meta, "project"),
 				Session: metaString(meta, "session"),
+				Grade:   m.Memory.Grade, GradeWhy: m.Memory.GradeWhy,
 			}, memoryVia(m, resp.MemoryDecision.EffectiveMode)),
 		})
 	}
@@ -178,6 +179,7 @@ func hitsFromRecall(resp *cortexdb.KnowledgeMemoryRecallResponse) []recallHit {
 				Project: meta["project"],
 				Session: meta["session"],
 				URL:     k.SourceURL,
+				Grade:   strings.ToLower(strings.TrimSpace(meta[cortexdb.KeyGrade])), GradeWhy: meta[cortexdb.KeyWhy],
 			}, knowledgeVia(k, resp.KnowledgeDecision.EffectiveMode)),
 		})
 	}
@@ -187,6 +189,27 @@ func hitsFromRecall(resp *cortexdb.KnowledgeMemoryRecallResponse) []recallHit {
 // hitOrigin is what a hit's writer left on it.
 type hitOrigin struct {
 	Date, Writer, Source, Model, Agent, Host, Project, Session, URL string
+	// Grade and GradeWhy are how the record says it is known.
+	Grade, GradeWhy string
+}
+
+// gradeMark is what a trail says first about how a hit is known: a guess
+// ("UNVERIFIED (asserted)") before anything else, so an agent does not act
+// on it as if it were measured, and the check behind a verified hit. An
+// untagged hit says nothing. The cortexdb-live mod writes the same words.
+func gradeMark(grade, why string) string {
+	switch grade {
+	case cortexdb.GradeAsserted, cortexdb.GradeHeld:
+		return "UNVERIFIED (" + grade + ")"
+	case cortexdb.GradeVerified:
+		if why = strings.TrimSpace(why); why != "" {
+			return "verified: " + firstRunes(why, 80)
+		}
+		return "verified"
+	case "":
+		return ""
+	}
+	return grade
 }
 
 // sharedKey is the one token every client of an unkeyed brain speaks with: it
@@ -206,7 +229,7 @@ func trailOf(o hitOrigin, why string) string {
 	if o.Model != "" {
 		by = append(by, "("+o.Model+")")
 	}
-	parts := []string{o.Date, strings.Join(by, " ")}
+	parts := []string{gradeMark(o.Grade, o.GradeWhy), o.Date, strings.Join(by, " ")}
 	if o.Writer != "" && o.Writer != sharedKey {
 		parts = append(parts, "key "+o.Writer)
 	}

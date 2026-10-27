@@ -193,6 +193,7 @@ func capturedRequest(sessionID, date string, f capturedFact) cortexdb.MemorySave
 			"type":    firstNonEmptyStr(f.Type, "fact"),
 		},
 	}
+	req.Grade, req.GradeWhy = capturedGrade(f)
 	for _, e := range f.Entities {
 		if strings.TrimSpace(e.Name) == "" {
 			continue
@@ -200,6 +201,29 @@ func capturedRequest(sessionID, date string, f capturedFact) cortexdb.MemorySave
 		req.Entities = append(req.Entities, cortexdb.ToolEntityInput{Name: e.Name, Type: e.Type})
 	}
 	return req
+}
+
+// capturedGrade is the grade a captured fact is saved with. The model may say
+// verified without naming the check, which the store refuses; such a fact is
+// saved as asserted rather than lost, since a claim of verification nobody can
+// point to is what asserted means. Anything but verified or asserted — and
+// any grade on a preference or a decision — is left untagged.
+func capturedGrade(f capturedFact) (string, string) {
+	switch strings.ToLower(strings.TrimSpace(f.Type)) {
+	case "preference", "decision":
+		return "", ""
+	}
+	why := scrubForCapture(strings.TrimSpace(f.GradeWhy))
+	switch strings.ToLower(strings.TrimSpace(f.Grade)) {
+	case cortexdb.GradeVerified:
+		if why == "" {
+			return cortexdb.GradeAsserted, ""
+		}
+		return cortexdb.GradeVerified, why
+	case cortexdb.GradeAsserted:
+		return cortexdb.GradeAsserted, why
+	}
+	return "", ""
 }
 
 // capturedIDPrefix is what every memory captured from one session starts with.
@@ -345,7 +369,11 @@ type capturedFact struct {
 	Content    string  `json:"content"`
 	Importance float64 `json:"importance"`
 	Type       string  `json:"type"`
-	Entities   []struct {
+	// Grade is how a fact or lesson is known — verified when the transcript
+	// shows the check, asserted when it is a guess — and GradeWhy the check.
+	Grade    string `json:"grade"`
+	GradeWhy string `json:"grade_why"`
+	Entities []struct {
 		Name string `json:"name"`
 		Type string `json:"type"`
 	} `json:"entities"`
@@ -364,8 +392,9 @@ Rules:
 - slug: short kebab-case ascii. importance: 0.3 routine fact, 0.6 useful decision, 0.85+ hard-won lesson or standing preference.
 - entities: the concrete named things (projects, hosts, services, people) each memory is about.
 - When a memory is about specific files listed under FILES, add each of those files as an entity of type "file", named exactly as listed. Leave out files a memory is not about; a memory about none has no file entities.
+- grade, for a fact or a lesson: "verified" only when the transcript shows it was checked — a command's output, a test that passed or failed, a bug reproduced, a measurement — and grade_why then names that check in a few words; "asserted" when it was not checked: a suspected root cause, a fix nobody tested, a guess about how something works. Write an asserted memory so its content says it is unverified ("probably", "suspected", "not tested"). A guess the session later confirmed is one verified memory, not a guess beside a fact. Leave grade empty for a preference or a decision: it records what someone said or chose, and there is nothing to check.
 
-Respond with JSON only: {"memories":[{"slug":"...","content":"...","importance":0.6,"type":"fact|decision|preference|lesson","entities":[{"name":"...","type":"..."}]}]}`
+Respond with JSON only: {"memories":[{"slug":"...","content":"...","importance":0.6,"type":"fact|decision|preference|lesson","grade":"verified|asserted|","grade_why":"...","entities":[{"name":"...","type":"..."}]}]}`
 
 func extractSessionFacts(ctx context.Context, llm interface {
 	GenerateJSON(ctx context.Context, systemPrompt, userPrompt string) ([]byte, error)

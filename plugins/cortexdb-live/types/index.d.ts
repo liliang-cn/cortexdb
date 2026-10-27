@@ -15,7 +15,8 @@ export type HitOrigin = {
   url?: string
 }
 
-export type RecallHit = { kind: 'memory' | 'knowledge'; title: string; snippet: string; why?: HitWhy; origin?: HitOrigin }
+/** grade is how the record says it is known (verified, asserted, …); absent when untagged. */
+export type RecallHit = { kind: 'memory' | 'knowledge'; title: string; snippet: string; why?: HitWhy; origin?: HitOrigin; grade?: string; gradeWhy?: string }
 
 /** query is what was asked after the conversation resolved the message; project is the session's. */
 export type RecallPlan = {

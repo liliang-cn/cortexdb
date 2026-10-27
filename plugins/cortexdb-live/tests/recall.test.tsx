@@ -436,6 +436,54 @@ test('a captured memory names the project and the machine it came from', async (
   expect(save?.args.metadata).toMatchObject({ project: 'linstor-server', host: 'mac', agent: 'claude-code' })
 })
 
+test('a captured guess is saved as one, and a checked fact names its check', async ($, on) => {
+  const seen = world(on, {
+    messages: conversation,
+    captured: {
+      memories: [
+        { slug: 'fix', content: 'linstor-server resize fix verified.', type: 'lesson', grade: 'verified', grade_why: 'TestResize red without the fix' },
+        { slug: 'cause', content: 'linstor-server: the satellite probably misses the update (not tested).', type: 'fact', grade: 'asserted' },
+        { slug: 'claim', content: 'linstor-server drbd options are fine.', type: 'fact', grade: 'verified' },
+        { slug: 'tabs', content: 'Alice prefers tabs.', type: 'preference', grade: 'verified', grade_why: 'she said so' },
+      ],
+    },
+  })
+
+  await $.turn.complete(turnDone)
+  await seen.clock.advance(91 * 1000)
+
+  const saved = Object.fromEntries(
+    seen.calls.filter(c => c.tool === 'memory_save').map(c => [String(c.args.memory_id).split(':').at(-1), c.args]),
+  )
+  expect(saved.fix).toMatchObject({ grade: 'verified', grade_why: 'TestResize red without the fix' })
+  expect(saved.cause).toMatchObject({ grade: 'asserted' })
+  // Verified with no check named is a claim nobody can point to.
+  expect(saved.claim).toMatchObject({ grade: 'asserted' })
+  expect(saved.claim?.grade_why).toBeUndefined()
+  // A preference records what was said; there is nothing to check.
+  expect(saved.tabs?.grade).toBeUndefined()
+})
+
+test('a recalled guess says it is unverified before anything else', async ($, on) => {
+  world(on, {
+    autorecall: 'on',
+    payload: {
+      memories: [
+        { memory: { id: 'cause', content: 'The satellite probably misses the update.', grade: 'asserted' } },
+        { memory: { id: 'fix', content: 'The resize fix holds.', grade: 'verified', grade_why: 'TestResize' } },
+        { memory: { id: 'plain', content: 'Alice prefers tabs.' } },
+      ],
+    },
+  })
+
+  const out = await $.classic.UserPromptSubmit({ prompt: 'why does resize fail?' })
+
+  const block = (out.additionalContext ?? []).join('\n')
+  expect(block).toContain('- cause [UNVERIFIED (asserted)')
+  expect(block).toContain('- fix [verified: TestResize')
+  expect(block).not.toMatch(/- plain \[(UNVERIFIED|verified)/)
+})
+
 test('a capture retires the older memory it made untrue, never a later one', async ($, on) => {
   const seen = world(on, {
     messages: conversation,
