@@ -287,6 +287,30 @@ res, _ := db.VerifyClaims(ctx, []cortexdb.Claim{{Subject: "Leo", Relation: "live
 发现评 grade，并把复核者解决的冲突写成 `_contradicts`。它六个 sink 里只有这一个
 这么做；其余五个存下图、丢掉理由。
 
+### 记忆说明自己凭什么
+
+踩坑经验要能分享，读的人得分得清哪些验证过、哪些是猜测。记忆也带契约里的等级：`memory_save`、
+`knowledge_memory_remember`、`memory_update` 接受 `grade` 和 `grade_why`（存为 `_grade` / `_why`，
+所以也可以放在 `metadata` 里传）。
+
+- `verified`——由写入者以外的东西核实过：跑过的测试、测量、复现的 bug、某个人。必须用 `grade_why`
+  写明是什么核实的。
+- `asserted`——说过但没核实：怀疑的根因、没测过的修复。
+- `self_consistent`、`held`、`refused` 同其他记录（`held`、`refused` 需要 `grade_why`）。
+- 不传等级就是 **untagged**：没人说明。它和 `asserted` 分开，所以有等级之前写的记忆读起来和以前一样。
+
+召回会返回每条记忆的 `grade` 和 `grade_why`，解释记录和召回日志里也有。`memory_search` 和
+`knowledge_memory_recall` 的 `min_grade` 去掉可信度低于它的内容（verified > self_consistent >
+asserted = untagged > held > refused；召回时也作用于文档的 `_grade`）——答案要拿去执行时用
+`min_grade: "verified"`。context pack 把猜测单独放：标了 `asserted` 或 `held` 的记忆进
+`unverified_memories` 段，标题 "Unverified — said, not checked"；已验证的记忆那一行写明核实依据。
+自动召回注入的文本里，猜测在括号最前面标 `UNVERIFIED (asserted)`，已验证的标 `verified: …`。
+
+自动捕获会给写入的记忆打等级：只有对话里看得到核实过程才标 `verified`，猜测标 `asserted`（内容里也写明），
+偏好和决定不打等级——它们记录的是某人说了什么、选了什么。后来证实的猜测另存一条 verified 记忆并
+`supersedes` 原来那条，历史里两条都在。`--export-memory` 把 `grade` 和 `grade_why` 写进每个文件，
+`--sync-memory` 读回；`--export-memory <目录> --min-grade verified` 只导出验证过的，用来分享经验而不带猜测。
+
 ## 知识图谱
 
 同一文件内嵌 RDF：triples/quads、namespaces、N-Triples/N-Quads/Turtle/TriG/JSON-LD 导入导出和 RDF/XML 导入（`RDFFormatRDFXML`），SPARQL 1.1 和 1.2（SELECT/ASK/CONSTRUCT/DESCRIBE、FROM/FROM NAMED、更新语句和图管理、OPTIONAL/UNION/MINUS/VALUES/BIND/FILTER、函数库与 XSD 类型转换、聚合、子查询、全部 property path `^p p/q p|q p+ p* p? !(p|^q)`、`SERVICE`），RDFS 加 OWL 2 RL 的物化推理，以及 SHACL Core 和 SHACL-SPARQL 校验。
