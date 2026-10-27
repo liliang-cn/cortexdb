@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
 
 	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
 	rpcv1 "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1"
 )
 
@@ -65,6 +67,7 @@ func runRecallRemote(addr, token, prompt string, situation recallSituation, topK
 		// Graph expansion earns its keep on relational prompts ("who uses X"),
 		// but this runs before every single message: light traversal only.
 		"graph_light": true,
+		"planner":     "keywords: shell hook",
 	}
 	if situation.Project != "" {
 		request["entity_names"] = []string{situation.Project}
@@ -76,20 +79,37 @@ func runRecallRemote(addr, token, prompt string, situation recallSituation, topK
 
 	ctx, cancel := context.WithTimeout(context.Background(), remoteDialTimeout)
 	defer cancel()
+	// An id the brain's trace record will carry, so a recall that fails here
+	// — the hook stays silent on stdout and says why on stderr — can be
+	// matched to what the brain did with it.
+	ctx, call := observability.WithCall(ctx, "")
+	call.SetClient(cortexdb.LocalClientInfo())
 
 	resp, err := rpcv1.NewToolsServiceClient(conn).CallTool(ctx, &rpcv1.CallToolRequest{
 		Name:     recallToolName,
 		ArgsJson: string(args),
 	})
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "cortexdb recall: %s failed (request_id %s): %v\n", recallToolName, call.ID(), err)
 		return ""
 	}
 
 	hits, err := parseRecallPayload(resp.GetResultJson())
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "cortexdb recall: %v (request_id %s, received %s)\n", err, call.ID(), describeReply(resp.GetResultJson()))
 		return ""
 	}
 	return formatRecallHits(hits)
+}
+
+// describeReply is what a reply that could not be read was: its size and its
+// first bytes, which say more than a decoder's complaint about them.
+func describeReply(body string) string {
+	head := strings.Join(strings.Fields(body), " ")
+	if r := []rune(head); len(r) > 200 {
+		head = string(r[:200]) + "…"
+	}
+	return fmt.Sprintf("%d bytes: %q", len(body), head)
 }
 
 // parseRecallPayload reads hits out of the tool's JSON answer. Anything that is

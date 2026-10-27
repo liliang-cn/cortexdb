@@ -19,6 +19,22 @@ def _tool_error(message: str) -> str:
     return json.dumps({"error": message})
 
 
+
+def _parse_tool_result(tool: str, text: str, request_id: str = "") -> dict:
+    """Read a tool's JSON answer; report one that is not JSON by what it was.
+
+    The parser's message ("Expecting value") says nothing about a reply a
+    host replaced with a line of text. The size, the first bytes and the
+    request id do, and the id finds the server's record of what it sent.
+    """
+    text = text or "{}"
+    try:
+        return json.loads(text)
+    except ValueError:
+        head = " ".join(text[:200].split())
+        rid = f", request_id {request_id}" if request_id else ""
+        raise ValueError(f"{tool}: reply is not JSON ({len(text.encode())} bytes{rid}): {head}") from None
+
 class CortexDBMemoryProvider(MemoryProvider):
     def __init__(self) -> None:
         self._client: Optional[CortexClient] = None
@@ -64,10 +80,13 @@ class CortexDBMemoryProvider(MemoryProvider):
     def _call(self, name: str, args: dict) -> dict:
         if self._client is None:
             raise RuntimeError("CortexDB provider is not initialized")
+        # The id goes with the call and into any error, so a reply that went
+        # wrong can be matched to the server's record of what it sent.
+        request_id = uuid.uuid4().hex
         response = self._client.tools.CallTool(proto.CallToolRequest(
             name=name, args_json=json.dumps(args),
-        ))
-        return json.loads(response.result_json or "{}")
+        ), metadata=[("x-request-id", request_id)])
+        return _parse_tool_result(name, response.result_json, request_id)
 
     def _recall(self, query: str, session_id: str = "") -> dict:
         return self._call("knowledge_memory_recall", {

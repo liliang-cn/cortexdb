@@ -242,16 +242,37 @@ test('a recall past the host limit is asked again as an index', async ($, on) =>
 
   const recalls = seen.calls.filter(c => c.tool === 'knowledge_memory_recall')
   expect(recalls.map(c => c.args.detail)).toEqual([undefined, 'index'])
-  expect(out.additionalContext.join('\n')).toContain('pref-tabs')
+  expect((out.additionalContext ?? []).join('\n')).toContain('pref-tabs')
 })
 
 test('a reply that is not JSON is reported by what it says', async ($, on) => {
   const seen = world(on, { autorecall: 'on', hostReply: 'Error: the MCP server went away' })
+  const logged: { text: string; to?: string }[] = []
+  on('ui.log', async (_$, e) => {
+    logged.push({ text: e.text, to: e.to })
+    return { value: undefined }
+  })
 
   const out = await $.classic.UserPromptSubmit({ prompt: 'how do we indent Go?' })
 
   expect(out.additionalContext).toEqual([SHELL, 'another plugin'])
-  expect(seen.status.at(-1)).toContain('knowledge_memory_recall: Error: the MCP server went away')
+  // What arrived and how big it was, not the parser's complaint about it.
+  expect(seen.status.at(-1)).toContain('knowledge_memory_recall: not JSON (31 bytes): Error: the MCP server went away')
+  // The whole reply goes to the debug log, with the time to find the
+  // brain's record of the call by.
+  const line = logged.find(l => l.to === 'debug')?.text ?? ''
+  expect(line).toContain('received: Error: the MCP server went away')
+  expect(line).toMatch(/at \d{4}-\d{2}-\d{2}T/)
+})
+
+test('a recall the embedder could not serve says so in the status', async ($, on) => {
+  const seen = world(on, { autorecall: 'on', payload: { ...recallPayload, degraded: ['embedder_unreachable'] } })
+
+  await $.classic.UserPromptSubmit({ prompt: 'how do we indent Go?' })
+
+  expect(seen.status.at(-1)).toContain('embedder unreachable, keyword only')
+  const recall = seen.calls.find(c => c.tool === 'knowledge_memory_recall')
+  expect(String(recall?.args.planner ?? '')).not.toBe('')
 })
 
 const linstor = [

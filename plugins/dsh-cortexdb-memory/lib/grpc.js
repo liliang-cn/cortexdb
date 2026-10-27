@@ -6,6 +6,7 @@
 // protobuf runtime: a unary gRPC call is one HTTP/2 POST with a five-byte frame
 // header, and its status comes back in the trailers.
 
+import { randomBytes } from "node:crypto";
 import http2 from "node:http2";
 
 // --- protobuf, the subset these messages use: strings, bools, int64s ------
@@ -97,9 +98,29 @@ function unframe(body) {
 }
 
 export class GrpcError extends Error {
-  constructor(code, message) {
-    super(`gRPC ${code}: ${message}`);
+  constructor(code, message, requestId = "") {
+    super(`gRPC ${code}: ${message}${requestId ? ` (request_id ${requestId})` : ""}`);
     this.code = code;
+    this.requestId = requestId;
+  }
+}
+
+// parseToolResult reads a tool's JSON answer. A reply that is not JSON is
+// reported by what it was — its size, its first bytes and the call's request
+// id — not by the parser's message: "Unexpected identifier" says nothing about
+// a host that swapped an oversized result for a line of text, and the request
+// id finds the server's record of what it actually sent.
+export function parseToolResult(tool, resultJson, requestId = "") {
+  const text = resultJson || "{}";
+  try {
+    return JSON.parse(text);
+  } catch {
+    const head = text.slice(0, 200).replace(/\s+/g, " ");
+    const id = requestId ? `, request_id ${requestId}` : "";
+    const error = new Error(`${tool}: reply is not JSON (${Buffer.byteLength(text)} bytes${id}): ${head}`);
+    error.requestId = requestId;
+    error.received = text.slice(0, 2000);
+    throw error;
   }
 }
 
@@ -127,7 +148,10 @@ export function createClient(endpoint, { token = "" } = {}) {
     return session;
   }
 
+  // Every call carries a request id the server logs and returns, so a reply
+  // that went wrong can be matched to the server's record of it.
   function unary(path, message, timeoutMs) {
+    const requestId = randomBytes(16).toString("hex");
     return new Promise((resolve, reject) => {
       const conn = connection();
       active += 1;
@@ -139,6 +163,7 @@ export function createClient(endpoint, { token = "" } = {}) {
         te: "trailers",
         ...(timeoutMs ? { "grpc-timeout": `${Math.max(1, Math.ceil(timeoutMs))}m` } : {}),
         ...(token ? { authorization: `Bearer ${token}` } : {}),
+        "x-request-id": requestId,
       };
       const stream = conn.request(headers);
       const chunks = [];
@@ -146,7 +171,7 @@ export function createClient(endpoint, { token = "" } = {}) {
       let detail = "";
       let settled = false;
       const timer = timeoutMs ? setTimeout(() => {
-        finish(new GrpcError("DEADLINE_EXCEEDED", `${path} timed out after ${timeoutMs} ms`));
+        finish(new GrpcError("DEADLINE_EXCEEDED", `${path} timed out after ${timeoutMs} ms`, requestId));
         stream.close(http2.constants.NGHTTP2_CANCEL);
       }, timeoutMs) : null;
       timer?.unref?.();
@@ -157,8 +182,10 @@ export function createClient(endpoint, { token = "" } = {}) {
         clearTimeout(timer);
         active -= 1;
         if (active === 0 && !conn.destroyed) conn.unref();
-        if (error) reject(error);
-        else resolve(value);
+        if (error) {
+          error.requestId ||= requestId;
+          reject(error);
+        } else resolve({ fields: value, requestId });
       }
       function readStatus(h) {
         if (h["grpc-status"] !== undefined) {
@@ -169,17 +196,17 @@ export function createClient(endpoint, { token = "" } = {}) {
 
       stream.on("response", (h) => {
         if (h[":status"] !== 200) {
-          finish(new GrpcError("UNAVAILABLE", `${path}: HTTP ${h[":status"]}`));
+          finish(new GrpcError("UNAVAILABLE", `${path}: HTTP ${h[":status"]}`, requestId));
           return;
         }
         readStatus(h);
       });
       stream.on("trailers", readStatus);
       stream.on("data", (chunk) => chunks.push(chunk));
-      stream.on("error", (error) => finish(new GrpcError("UNAVAILABLE", error.message)));
+      stream.on("error", (error) => finish(new GrpcError("UNAVAILABLE", error.message, requestId)));
       stream.on("end", () => {
-        if (status === null) return finish(new GrpcError("UNKNOWN", `${path}: no grpc-status`));
-        if (status !== 0) return finish(new GrpcError(status, detail || `${path} failed`));
+        if (status === null) return finish(new GrpcError("UNKNOWN", `${path}: no grpc-status`, requestId));
+        if (status !== 0) return finish(new GrpcError(status, detail || `${path} failed`, requestId));
         try {
           finish(null, decodeFields(unframe(Buffer.concat(chunks))));
         } catch (error) {
@@ -193,18 +220,18 @@ export function createClient(endpoint, { token = "" } = {}) {
   return {
     admin: {
       async Health(_req, timeoutMs = 5000) {
-        const f = await unary("/cortexdb.v1.AdminService/Health", Buffer.alloc(0), timeoutMs);
+        const { fields: f } = await unary("/cortexdb.v1.AdminService/Health", Buffer.alloc(0), timeoutMs);
         return { ok: bool(f[1]) };
       },
       async Info(_req, timeoutMs = 5000) {
-        const f = await unary("/cortexdb.v1.AdminService/Info", Buffer.alloc(0), timeoutMs);
+        const { fields: f } = await unary("/cortexdb.v1.AdminService/Info", Buffer.alloc(0), timeoutMs);
         return { version: str(f[1]), dbPath: str(f[2]), hasEmbedder: bool(f[3]) };
       },
     },
     tools: {
       async CallTool({ name, argsJson }, timeoutMs) {
-        const f = await unary("/cortexdb.v1.ToolsService/CallTool", encodeStrings({ 1: name, 2: argsJson }), timeoutMs);
-        return { resultJson: str(f[1]) };
+        const { fields: f, requestId } = await unary("/cortexdb.v1.ToolsService/CallTool", encodeStrings({ 1: name, 2: argsJson }), timeoutMs);
+        return { resultJson: str(f[1]), requestId };
       },
     },
     close() {

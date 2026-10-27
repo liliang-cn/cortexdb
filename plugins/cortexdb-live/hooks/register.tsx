@@ -50,6 +50,7 @@ const STRINGS = {
     nodes: (n: string) => `${n} 节点`,
     recallTime: (s: string) => `召回 ${s}s`,
     skipped: '这条不用召回',
+    keywordOnly: '向量服务连不上，只用了关键词',
     unreachable: '连不上',
     recallFailed: '召回失败',
     denied: (tools: string) => `没有调用 CortexDB 工具的权限，请在 settings.json 的 permissions.allow 里允许：${tools}`,
@@ -79,6 +80,7 @@ const STRINGS = {
     nodes: (n: string) => `${n} nodes`,
     recallTime: (s: string) => `recall ${s}s`,
     skipped: 'no recall needed',
+    keywordOnly: 'embedder unreachable, keyword only',
     unreachable: 'unreachable',
     recallFailed: 'recall failed',
     denied: (tools: string) => `not allowed to call CortexDB tools; allow them in settings.json permissions.allow: ${tools}`,
@@ -91,7 +93,7 @@ const STRINGS = {
 }
 
 type Lang = keyof typeof STRINGS
-type Brain = { where?: string; nodes?: number; error?: string; recallMs?: number; skipped?: boolean }
+type Brain = { where?: string; nodes?: number; error?: string; recallMs?: number; skipped?: boolean; degraded?: string[] }
 
 let server: string | undefined
 let lang: Lang = 'en'
@@ -132,23 +134,39 @@ async function serverOf($: EngineInterface) {
 // A reply that is not JSON is the host's, not the server's: Claude Code
 // swaps a tool result past its token limit for a line of text that starts
 // "Error:" and does not flag it as an error. Its opening words say which.
+// The error says what arrived — its size and first bytes — and the request id
+// when the reply still carried one; the debug log keeps the rest, with the
+// time, so the call can be found in the brain's trace by host, project and
+// time even when the host left no id.
 class NotJSON extends Error {
-  constructor(tool: string, readonly reply: string) {
-    super(`${tool}: ${reply.slice(0, 120).replace(/\s+/g, ' ') || 'empty reply'}`)
+  constructor(tool: string, readonly reply: string, readonly requestId?: string) {
+    const size = new TextEncoder().encode(reply).length
+    super(`${tool}: not JSON (${size} bytes${requestId ? `, request_id ${requestId}` : ''}): ${reply.slice(0, 120).replace(/\s+/g, ' ') || 'empty reply'}`)
   }
   get tooLarge() {
     return /exceeds maximum allowed tokens/i.test(this.reply)
   }
 }
 
+// The id the brain gave the call (cortexdb.MCPRequestIDMetaKey), when the
+// host passed the result's _meta through.
+const requestIdOf = (result: unknown) => {
+  const meta = (result as { _meta?: Record<string, unknown> })?._meta
+  const id = meta?.['cortexdb/request_id']
+  return typeof id === 'string' ? id : undefined
+}
+
 async function callTool($: EngineInterface, tool: string, args: Record<string, unknown>) {
   const result = await $.mcp.call(await serverOf($), tool, args)
   const text = result.content.find(block => block.type === 'text')?.text ?? ''
-  if (result.isError) throw new Error(text.slice(0, 200) || `${tool} failed`)
+  const requestId = requestIdOf(result)
+  if (result.isError) throw new Error(`${text.slice(0, 200) || `${tool} failed`}${requestId && !text.includes(requestId) ? ` (request_id ${requestId})` : ''}`)
   try {
     return JSON.parse(text) as unknown
   } catch {
-    throw new NotJSON(tool, text)
+    const err = new NotJSON(tool, text, requestId)
+    $.ui.log(`cortexdb-live: ${err.message} | at ${new Date(await $.clock.now()).toISOString()} | received: ${text.slice(0, 2000)}`, { to: 'debug' })
+    throw err
   }
 }
 
@@ -159,6 +177,7 @@ function showStatus($: EngineInterface) {
     if (brain.nodes !== undefined) parts.push(t().nodes(brain.nodes.toLocaleString('en-US')))
     if (brain.skipped) parts.push(t().skipped)
     else if (brain.recallMs !== undefined) parts.push(t().recallTime((brain.recallMs / 1000).toFixed(1)))
+    if (!brain.skipped && brain.degraded?.includes('embedder_unreachable')) parts.push(`⚠ ${t().keywordOnly}`)
   }
   $.ui.status(parts.join(' · '))
 }
@@ -261,11 +280,11 @@ async function planRecall($: EngineInterface, prompt: string): Promise<Planned> 
   const project = situation.project ? [situation.project] : []
   const lexical = [...new Set([...keywordsOf(prompt), ...project])]
   const query = situated(prompt, situation)
-  const fallback: Planned = {
-    args: { query, keywords: lexical, ...(project.length > 0 ? { entity_names: project } : {}) },
+  const fallback = (why: string): Planned => ({
+    args: { query, keywords: lexical, ...(project.length > 0 ? { entity_names: project } : {}), planner: `fallback: ${why}` },
     plan: { by: 'lexical', query, keywords: lexical, entities: project, mode: 'auto', ms: 0, project: situation.project },
     skip: false,
-  }
+  })
 
   const conversation = conversationOf(situation)
   const reply = await $.model.complete({
@@ -281,9 +300,9 @@ async function planRecall($: EngineInterface, prompt: string): Promise<Planned> 
     maxTokens: 500,
     timeoutMs: PLAN_TIMEOUT_MS,
   })
-  if (!reply.isAnswered) return fallback
+  if (!reply.isAnswered) return fallback('no answer from the planner')
   const planned = parseJSON<PlanReply>(reply.text)
-  if (!planned) return fallback
+  if (!planned) return fallback('the plan was not JSON')
 
   const keywords = [...new Set([...strings(planned.keywords, 12), ...lexical])].slice(0, 24)
   const entities = strings(planned.entity_names, 6)
@@ -296,6 +315,7 @@ async function planRecall($: EngineInterface, prompt: string): Promise<Planned> 
       alternate_queries: strings(planned.alternate_queries, 3),
       entity_names: entities,
       retrieval_mode: mode,
+      planner: 'model',
     },
     plan: {
       by: 'haiku',
@@ -344,7 +364,7 @@ async function recall($: EngineInterface, prompt: string): Promise<Recall | 'ski
       origin: knowledgeOrigin(k),
     })),
   ].filter(hit => hit.snippet !== '')
-  return { hits, ms: (await $.clock.now()) - started, plan }
+  return { hits, ms: (await $.clock.now()) - started, plan, degraded: payload.degraded ?? [] }
 }
 
 // The plan's terms a hit actually contains: the part of "why this came back"
@@ -738,7 +758,7 @@ export const register: Register = (on, options) => {
       return { ...result, additionalContext: others }
     }
 
-    brain = { ...brain, error: undefined, skipped: false, recallMs: found.ms }
+    brain = { ...brain, error: undefined, skipped: false, recallMs: found.ms, degraded: found.degraded }
     if (brain.nodes === undefined) void refreshStats($)
     showStatus($)
     await update($, last, () => found)
@@ -830,6 +850,8 @@ type KnowledgeHit = {
 type MemoryHit = { memory?: RecallMemory; score?: number; similarity?: number; via?: string[] }
 
 type RecallPayload = {
+  // What did not run: "embedder_unreachable" means keyword search only.
+  degraded?: string[]
   memory_decision?: { effective_mode?: string }
   knowledge_decision?: { effective_mode?: string }
   memories?: MemoryHit[]

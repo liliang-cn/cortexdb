@@ -66,7 +66,7 @@ func fetchAllMemoriesRemote(ctx context.Context, addr, token string, limit int) 
 
 		var out cortexdb.MemoryListAllResponse
 		if err := json.Unmarshal([]byte(resp.GetResultJson()), &out); err != nil {
-			return cortexdb.MemoryListAllResponse{}, fmt.Errorf("decode memory_list_all from %s: %w", addr, err)
+			return cortexdb.MemoryListAllResponse{}, fmt.Errorf("decode memory_list_all from %s (%s): %w", addr, describeReply(resp.GetResultJson()), err)
 		}
 		return out, nil
 	}

@@ -28,7 +28,7 @@ export type RecallPlan = {
   project?: string
 }
 
-export type Recall = { hits: RecallHit[]; ms: number; plan: RecallPlan }
+export type Recall = { hits: RecallHit[]; ms: number; plan: RecallPlan; degraded?: string[] }
 
 export type CapturedMemory = { slug: string; content: string }
 

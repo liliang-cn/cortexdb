@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Optional
 
 import grpc
@@ -21,6 +22,31 @@ def _bearer_interceptor(token: str) -> grpc.UnaryUnaryClientInterceptor:
             return continuation(new_details, request)
 
     return _Interceptor()
+
+
+REQUEST_ID_HEADER = "x-request-id"
+
+
+class _RequestIDInterceptor(grpc.UnaryUnaryClientInterceptor):
+    """Send a request id with every unary call, unless the caller set one.
+
+    The server logs the id and returns it; here it is also put on what the
+    call returns as ``request_id`` — on the raised ``grpc.RpcError`` too — so
+    a reply that went wrong can be matched to the server's record of it.
+    """
+
+    def intercept_unary_unary(self, continuation, client_call_details, request):
+        metadata = list(client_call_details.metadata or [])
+        request_id = next((v for k, v in metadata if k == REQUEST_ID_HEADER), None)
+        if request_id is None:
+            request_id = uuid.uuid4().hex
+            metadata.append((REQUEST_ID_HEADER, request_id))
+        outcome = continuation(client_call_details._replace(metadata=metadata), request)
+        try:
+            outcome.request_id = request_id
+        except AttributeError:
+            pass
+        return outcome
 
 
 class CortexClient:
@@ -65,6 +91,7 @@ class CortexClient:
         else:
             channel = grpc.insecure_channel(target)
 
+        channel = grpc.intercept_channel(channel, _RequestIDInterceptor())
         if token:
             channel = grpc.intercept_channel(channel, _bearer_interceptor(token))
 

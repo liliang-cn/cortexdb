@@ -1,6 +1,10 @@
 import type { ChannelCredentials, Metadata } from '@grpc/grpc-js';
 
-/** A unary RPC: pass a plain request object, await a plain response object. */
+/**
+ * A unary RPC: pass a plain request object, await a plain response object.
+ * Each call sends an `x-request-id` the server logs; it is on the response as
+ * the non-enumerable `requestId`, and on a failed call's error as `requestId`.
+ */
 type Rpc = (request?: Record<string, any>) => Promise<any>;
 
 /** A service sub-client: every RPC available in PascalCase and camelCase. */

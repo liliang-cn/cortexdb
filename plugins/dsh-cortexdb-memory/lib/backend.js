@@ -14,7 +14,7 @@ import { basename, dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { gunzipSync } from "node:zlib";
-import { createClient } from "./grpc.js";
+import { createClient, parseToolResult } from "./grpc.js";
 
 export const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
@@ -191,7 +191,7 @@ export function createBackend(config, options = {}) {
   async function call(name, args, timeoutMs = config.callTimeoutMs) {
     await ready();
     const response = await withTimeout(client.tools.CallTool({ name, argsJson: JSON.stringify(args) }, timeoutMs), timeoutMs, name);
-    return JSON.parse(response.resultJson || "{}");
+    return parseToolResult(name, response.resultJson, response.requestId);
   }
 
   async function close() {

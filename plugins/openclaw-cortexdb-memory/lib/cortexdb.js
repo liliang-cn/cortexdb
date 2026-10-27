@@ -6,6 +6,24 @@ import { createSidecar } from "./sidecar.js";
 
 const { CortexClient } = clientPackage;
 
+// parseToolResult reads a tool's JSON answer, and reports one that is not
+// JSON by what it was — its size, its first bytes and the call's request id —
+// rather than by the parser's message, so it can be matched to the server's
+// record of what was sent.
+export function parseToolResult(tool, resultJson, requestId = "") {
+  const text = resultJson || "{}";
+  try {
+    return JSON.parse(text);
+  } catch {
+    const head = text.slice(0, 200).replace(/\s+/g, " ");
+    const id = requestId ? `, request_id ${requestId}` : "";
+    const error = new Error(`${tool}: reply is not JSON (${Buffer.byteLength(text)} bytes${id}): ${head}`);
+    error.requestId = requestId;
+    error.received = text.slice(0, 2000);
+    throw error;
+  }
+}
+
 function integer(value, fallback, min = 0) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
   return Number.isFinite(parsed) ? Math.max(min, parsed) : fallback;
@@ -45,7 +63,7 @@ export function createCortexDB(config = {}, connect = CortexClient.connect, side
   async function call(name, args) {
     await ready();
     const response = await client.tools.CallTool({ name, argsJson: JSON.stringify(args) });
-    return JSON.parse(response.resultJson || "{}");
+    return parseToolResult(name, response.resultJson, response.requestId);
   }
 
   async function recall(query, overrides = {}) {

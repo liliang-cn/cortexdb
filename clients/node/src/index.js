@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const path = require('path');
 const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
@@ -21,6 +22,8 @@ function loadPackage() {
   return grpc.loadPackageDefinition(def).cortexdb.v1;
 }
 
+const REQUEST_ID_HEADER = 'x-request-id';
+
 // Promisify every unary method on a generated grpc client so callers can await
 // instead of dealing with callbacks. Returns a plain object of method -> fn.
 function promisify(stub, metadata) {
@@ -32,9 +35,25 @@ function promisify(stub, metadata) {
     if (typeof method !== 'function' || !method.requestSerialize) continue;
     // Expose both the original PascalCase RPC name and a camelCase alias.
     const camel = name.charAt(0).toLowerCase() + name.slice(1);
+    // Every call carries a request id the server logs and returns. The id
+    // is on a failed call's error (err.requestId, and in its message) and,
+    // not enumerable, on the response, so a reply that went wrong can be
+    // matched to the server's record of it.
     const fn = (request = {}) =>
       new Promise((resolve, reject) => {
-        stub[name](request, metadata, (err, res) => (err ? reject(err) : resolve(res)));
+        const requestId = crypto.randomBytes(16).toString('hex');
+        const md = metadata.clone();
+        md.set(REQUEST_ID_HEADER, requestId);
+        stub[name](request, md, (err, res) => {
+          if (err) {
+            err.requestId = requestId;
+            err.message = `${err.message} (request_id ${requestId})`;
+            reject(err);
+            return;
+          }
+          if (res && typeof res === 'object') Object.defineProperty(res, 'requestId', { value: requestId });
+          resolve(res);
+        });
       });
     out[name] = fn;
     out[camel] = fn;

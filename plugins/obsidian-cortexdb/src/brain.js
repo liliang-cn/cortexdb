@@ -4,7 +4,7 @@
 // nothing else, which is also what an Obsidian plugin wants — one bundled
 // file, no protobuf runtime.
 
-import { createClient } from "../../dsh-cortexdb-memory/lib/grpc.js";
+import { createClient, parseToolResult } from "../../dsh-cortexdb-memory/lib/grpc.js";
 
 export const DEFAULT_ENDPOINT = "127.0.0.1:47821";
 
@@ -16,8 +16,8 @@ export class Brain {
 
   // call runs one CortexDB tool and returns its parsed answer.
   async call(name, args = {}, timeoutMs = 30000) {
-    const { resultJson } = await this.client.tools.CallTool({ name, argsJson: JSON.stringify(args) }, timeoutMs);
-    return JSON.parse(resultJson || "{}");
+    const { resultJson, requestId } = await this.client.tools.CallTool({ name, argsJson: JSON.stringify(args) }, timeoutMs);
+    return parseToolResult(name, resultJson, requestId);
   }
 
   info(timeoutMs = 5000) {
