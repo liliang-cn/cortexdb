@@ -207,7 +207,7 @@ func (db *DB) ReindexMemoryGraph(ctx context.Context, opts GraphMaintenanceOptio
 			continue
 		}
 		nodeID := memoryGraphNodeID(m.ID)
-		if err := db.upsertMemoryNode(ctx, tools, nodeID, m.Content); err != nil {
+		if err := db.upsertMemoryNode(ctx, tools, nodeID, m.Content, m.Grade); err != nil {
 			return report, fmt.Errorf("memory %q: %w", m.ID, err)
 		}
 		entities := make([]ToolEntityInput, 0, len(extracted))

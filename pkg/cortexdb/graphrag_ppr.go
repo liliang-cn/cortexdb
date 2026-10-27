@@ -834,7 +834,7 @@ func (db *DB) searchMemoryPPR(ctx context.Context, req MemorySearchRequest, reso
 			if err != nil {
 				continue // a node can outlive its memory
 			}
-			if row.record.SessionID != bucketID || memoryExpired(row.record) || memorySuperseded(row.record) || db.memoryUnreviewed(row.record) {
+			if row.record.SessionID != bucketID || !db.memoryKept(ctx, row.record) {
 				continue
 			}
 			e = &entry{

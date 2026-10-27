@@ -206,9 +206,15 @@ type MemoryRecord struct {
 	// and _reviewed_by (see review.go). Under the review gate, a proposed or
 	// rejected memory is left out of search, recall and the graph walks from
 	// a node.
-	ReviewStatus string    `json:"review_status,omitempty"`
-	ReviewedBy   string    `json:"reviewed_by,omitempty"`
-	CreatedAt    time.Time `json:"created_at,omitempty"`
+	ReviewStatus string `json:"review_status,omitempty"`
+	ReviewedBy   string `json:"reviewed_by,omitempty"`
+	// Grade and GradeWhy mirror the contract keys _grade and _why: how the
+	// memory is known (verified, self_consistent, asserted, held, refused)
+	// and what established it. Empty Grade is untagged — nobody said — which
+	// is not the same claim as asserted. See memory_grade.go.
+	Grade     string    `json:"grade,omitempty"`
+	GradeWhy  string    `json:"grade_why,omitempty"`
+	CreatedAt time.Time `json:"created_at,omitempty"`
 }
 
 // MemorySaveRequest stores a memory in a dedicated memory bucket.
@@ -241,6 +247,13 @@ type MemorySaveRequest struct {
 	ReviewStatus string `json:"review_status,omitempty"`
 	ReviewedBy   string `json:"reviewed_by,omitempty"`
 	ReviewedAt   string `json:"reviewed_at,omitempty"`
+	// Grade says how the memory is known: verified (something outside the
+	// writer checked it — a test, a measurement, a person), self_consistent,
+	// asserted (said, not checked: a guess, a suspected cause), held or
+	// refused. GradeWhy names the evidence; verified, held and refused need
+	// one. Left out, the memory is untagged.
+	Grade    string `json:"grade,omitempty"`
+	GradeWhy string `json:"grade_why,omitempty"`
 }
 
 func (r MemorySaveRequest) review() reviewFields {
@@ -266,6 +279,11 @@ type MemoryUpdateRequest struct {
 	ReviewStatus string `json:"review_status,omitempty"`
 	ReviewedBy   string `json:"reviewed_by,omitempty"`
 	ReviewedAt   string `json:"reviewed_at,omitempty"`
+	// Grade and GradeWhy change how the memory is known; left out, the
+	// stored ones are kept. A guess later confirmed is better saved as a new
+	// memory that supersedes it, so the history keeps both.
+	Grade    *string `json:"grade,omitempty"`
+	GradeWhy *string `json:"grade_why,omitempty"`
 }
 
 func (r MemoryUpdateRequest) review() reviewFields {
@@ -321,6 +339,9 @@ type MemorySearchRequest struct {
 	Plan          *RetrievalPlan `json:"plan,omitempty"`
 	// PPR tunes retrieval_mode "ppr"; ignored by every other mode.
 	PPR *PPRRetrievalOptions `json:"ppr,omitempty"`
+	// MinGrade leaves out memories known less well than this grade
+	// (verified > self_consistent > asserted = untagged > held > refused).
+	MinGrade string `json:"min_grade,omitempty"`
 }
 
 // MemorySearchHit is one scored memory result.

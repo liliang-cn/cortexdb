@@ -371,7 +371,7 @@ func (db *DB) searchMemoryCJK(ctx context.Context, bucketID, query string, stats
 			}
 		}
 		applyMemoryMetadata(&record)
-		if memoryExpired(record) || memorySuperseded(record) || db.memoryUnreviewed(record) {
+		if !db.memoryKept(ctx, record) {
 			continue
 		}
 		records = append(records, record)
