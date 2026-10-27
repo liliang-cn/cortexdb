@@ -339,3 +339,33 @@ func (db *DB) stopVectorHealer() {
 		db.heal.cancel = nil
 	}
 }
+
+// embedderProbeText is what ProbeEmbedder embeds: short, and the same every
+// time, so a probe costs the embedder as little as a call can.
+const embedderProbeText = "cortexdb embedder probe"
+
+// ProbeEmbedder embeds a fixed short text, bypassing the query cache, and
+// records the outcome in EmbedderStatus as any other call would. A brain
+// nobody is asking does not call its embedder, so without a probe the status
+// says what was true at the last recall: an embedding host that went to
+// sleep an hour ago still read as healthy. Returns how long the call took.
+func (db *DB) ProbeEmbedder(ctx context.Context, timeout time.Duration) (time.Duration, error) {
+	if db.embedder == nil {
+		return 0, ErrEmbedderNotConfigured
+	}
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	start := time.Now()
+	_, err := unwrapEmbedder(db.embedder).Embed(ctx, embedderProbeText)
+	took := time.Since(start)
+	// A call that runs out its own bound is the finding here, not a caller
+	// giving up: a sleeping host answers nothing at all.
+	if err != nil && errors.Is(err, context.DeadlineExceeded) && ctx.Err() != nil {
+		err = fmt.Errorf("embedder did not answer within %s", timeout)
+	}
+	db.heal.note(err)
+	return took, err
+}
