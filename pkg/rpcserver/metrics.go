@@ -151,9 +151,10 @@ func MetricsInterceptorWithTracer(reg *observability.Registry, tracer observabil
 	tr := observability.TracerOrNop(tracer)
 
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
-		// The call record is started here, outermost, so what the handler
-		// reports about a recall comes back up to be counted. The request
-		// log further in finds it and keeps it.
+		// The call record is started outside the handler (here, or already
+		// by CallServerInterceptor), so what the handler reports about a
+		// recall comes back up to be counted, and a tracer's Start sees the
+		// call's span. The request log further in finds it and keeps it.
 		ctx, call := incomingCall(ctx)
 		method := info.FullMethod
 		m.requests.Inc(method)
