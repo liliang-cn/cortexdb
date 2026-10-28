@@ -32,6 +32,20 @@ import "context"
 //		o.s.End()
 //	}
 //
+// The trace is this repo's, not the backend's: by the time Start runs the
+// call has its span (Call, SpanFrom), a child of the caller's traceparent, and
+// that span is what the server returns and what the trace file and recall log
+// record. An adapter whose spans should sit in the same trace starts them
+// under that span context rather than minting a trace of its own:
+//
+//	if s, ok := observability.SpanFrom(ctx); ok {
+//		tid, _ := trace.TraceIDFromHex(s.TraceID)
+//		sid, _ := trace.SpanIDFromHex(s.SpanID)
+//		ctx = trace.ContextWithRemoteSpanContext(ctx, trace.NewSpanContext(trace.SpanContextConfig{
+//			TraceID: tid, SpanID: sid, TraceFlags: trace.TraceFlags(s.Flags), Remote: true,
+//		}))
+//	}
+//
 // The returned context must be the one passed down to the handler, so a backend
 // that propagates span context through context.Context keeps its parent-child
 // links. A tracer that needs nothing from the context returns it unchanged.

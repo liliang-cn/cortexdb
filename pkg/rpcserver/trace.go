@@ -94,14 +94,19 @@ func envInt(name string, def int) int {
 }
 
 type traceRecord struct {
-	TS      string `json:"ts"`
-	ReqID   string `json:"req_id"`
-	Method  string `json:"method"`
-	Key     string `json:"key,omitempty"`
-	Tool    string `json:"tool,omitempty"`
-	Host    string `json:"host,omitempty"`
-	Project string `json:"project,omitempty"`
-	Agent   string `json:"agent,omitempty"`
+	TS    string `json:"ts"`
+	ReqID string `json:"req_id"`
+	// TraceID, SpanID and ParentSpanID place the call in its flow (see
+	// observability.WithTraceparent).
+	TraceID      string `json:"trace_id"`
+	SpanID       string `json:"span_id"`
+	ParentSpanID string `json:"parent_span_id,omitempty"`
+	Method       string `json:"method"`
+	Key          string `json:"key,omitempty"`
+	Tool         string `json:"tool,omitempty"`
+	Host         string `json:"host,omitempty"`
+	Project      string `json:"project,omitempty"`
+	Agent        string `json:"agent,omitempty"`
 	// IDs are the rows a CallTool names in its arguments, by path
 	// (authz.RowIDsOf): the ids, distinct and sorted before the cut, at
 	// most maxTraceIDs per path, each cut at maxTraceIDBytes. IDsOmitted
@@ -150,8 +155,12 @@ func tagCaller(ctx context.Context, keyID string) {
 const callToolMethod = "/cortexdb.v1.ToolsService/CallTool"
 
 // incomingCall starts the call record from the request metadata: the
-// client's request id and what it says about itself.
+// client's request id, the span it was called from (traceparent) and what it
+// says about itself.
 func incomingCall(ctx context.Context) (context.Context, *observability.Call) {
+	if call := observability.CallFrom(ctx); call != nil {
+		return ctx, call
+	}
 	md, _ := metadata.FromIncomingContext(ctx)
 	first := func(k string) string {
 		if v := md.Get(k); len(v) > 0 {
@@ -159,6 +168,7 @@ func incomingCall(ctx context.Context) (context.Context, *observability.Call) {
 		}
 		return ""
 	}
+	ctx = observability.WithTraceparent(ctx, first(observability.TraceparentHeader), first(observability.TracestateHeader))
 	ctx, call := observability.WithCall(ctx, first(observability.RequestIDHeader))
 	call.SetClient(observability.ClientInfo{
 		Host:    observability.DecodeClientValue(first(observability.ClientHostHeader)),
@@ -176,7 +186,7 @@ func RequestLogInterceptor(o TraceOptions) grpc.UnaryServerInterceptor {
 		ctx, call := incomingCall(ctx)
 		// Sent before the handler runs, so a call that fails still says
 		// which record to look for. No stream in ctx (a test) is no error.
-		_ = grpc.SetHeader(ctx, metadata.Pairs(observability.RequestIDHeader, call.ID()))
+		ctx = sendCallHeader(ctx, call)
 		ctx, stages := observability.WithStages(ctx)
 		start := time.Now()
 		resp, err := handler(ctx, req)
@@ -212,9 +222,16 @@ func RequestLogInterceptor(o TraceOptions) grpc.UnaryServerInterceptor {
 
 		attrs := []slog.Attr{
 			slog.String("req_id", call.ID()),
+			slog.String("trace_id", call.TraceID()),
+			slog.String("span_id", call.SpanID()),
+		}
+		if p := call.ParentSpanID(); p != "" {
+			attrs = append(attrs, slog.String("parent_span_id", p))
+		}
+		attrs = append(attrs,
 			slog.String("rpc", method),
 			slog.Float64("dur_s", roundSeconds(dur)),
-		}
+		)
 		if key != "" {
 			attrs = append(attrs, slog.String("key", key))
 		}
@@ -256,7 +273,8 @@ func RequestLogInterceptor(o TraceOptions) grpc.UnaryServerInterceptor {
 		logger.LogAttrs(ctx, level, "cortexdb-trace", attrs...)
 		if o.File != nil {
 			rec := traceRecord{
-				TS: start.UTC().Format(time.RFC3339Nano), ReqID: call.ID(), Method: method, Key: key, Tool: tool,
+				TS: start.UTC().Format(time.RFC3339Nano), ReqID: call.ID(),
+				TraceID: call.TraceID(), SpanID: call.SpanID(), ParentSpanID: call.ParentSpanID(), Method: method, Key: key, Tool: tool,
 				Host: client.Host, Project: client.Project, Agent: client.Agent,
 				DurMs: dur.Milliseconds(), Stages: stages.Millis(), RespBytes: respBytes, ResultBytes: resultBytes,
 			}
@@ -276,6 +294,57 @@ func RequestLogInterceptor(o TraceOptions) grpc.UnaryServerInterceptor {
 		return resp, err
 	}
 }
+
+// callHeader is what a server returns about the call: its request id and
+// the traceparent of the span it ran in, which the caller links as a child.
+func callHeader(call *observability.Call) metadata.MD {
+	return metadata.Pairs(observability.RequestIDHeader, call.ID(), observability.TraceparentHeader, call.Traceparent())
+}
+
+type headerSentKey struct{}
+
+// sendCallHeader returns the call's header once per call, however many
+// interceptors that start a call record are chained. No stream in ctx (a
+// test) is no error.
+func sendCallHeader(ctx context.Context, call *observability.Call) context.Context {
+	if ctx.Value(headerSentKey{}) != nil {
+		return ctx
+	}
+	_ = grpc.SetHeader(ctx, callHeader(call))
+	return context.WithValue(ctx, headerSentKey{}, true)
+}
+
+// CallServerInterceptor starts every unary call's record — request id,
+// client, and its span in the flow the client's traceparent names — and
+// returns the request id and traceparent in the response header. New and
+// NewWithPolicy chain it first, so a server built without the request log
+// still records each call in its flow; the request log and the metrics
+// further in find the record and keep it.
+func CallServerInterceptor() grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		ctx, call := incomingCall(ctx)
+		return handler(sendCallHeader(ctx, call), req)
+	}
+}
+
+// TraceStreamInterceptor gives a streaming call what RequestLogInterceptor
+// gives a unary one: a call record in the stream's context, a child span of
+// the client's traceparent, and the request id and traceparent returned in
+// the response header.
+func TraceStreamInterceptor() grpc.StreamServerInterceptor {
+	return func(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		ctx, call := incomingCall(ss.Context())
+		_ = ss.SetHeader(callHeader(call))
+		return handler(srv, &tracedStream{ServerStream: ss, ctx: ctx})
+	}
+}
+
+type tracedStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s *tracedStream) Context() context.Context { return s.ctx }
 
 // roundSeconds is d in seconds to the millisecond.
 func roundSeconds(d time.Duration) float64 {

@@ -60,32 +60,61 @@ func DialOptions() []grpc.DialOption {
 		}),
 		grpc.WithDefaultServiceConfig(retryServiceConfig),
 		grpc.WithChainUnaryInterceptor(CallInterceptor()),
+		grpc.WithChainStreamInterceptor(CallStreamInterceptor()),
 	}
 }
 
 // CallInterceptor sends the request id of the call in ctx, and what the
 // call's client said about itself, with every RPC, so the server's record of
 // the call carries the id the client logs (observability.Call). A ctx with no
-// call sends nothing and the server mints an id of its own, which it returns
+// call sends no id and the server mints an id of its own, which it returns
 // in the response header.
+//
+// It also sends the flow the call belongs to: the traceparent of the span
+// ctx runs in (the call's, or the one observability.WithTraceparent put
+// there), which the server takes as the parent of its own span, and the
+// tracestate untouched. A ctx with no flow sends none and the server starts
+// a trace.
 func CallInterceptor() grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-		if call := observability.CallFrom(ctx); call != nil {
-			kv := []string{observability.RequestIDHeader, call.ID()}
-			c := call.Client()
-			for _, f := range [][2]string{
-				{observability.ClientHostHeader, c.Host},
-				{observability.ClientProjectHeader, c.Project},
-				{observability.ClientAgentHeader, c.Agent},
-			} {
-				if f[1] != "" {
-					kv = append(kv, f[0], observability.EncodeClientValue(f[1]))
-				}
-			}
-			ctx = metadata.AppendToOutgoingContext(ctx, kv...)
-		}
-		return invoker(ctx, method, req, reply, cc, opts...)
+		return invoker(outgoingCall(ctx), method, req, reply, cc, opts...)
 	}
+}
+
+// CallStreamInterceptor is CallInterceptor for streaming RPCs.
+func CallStreamInterceptor() grpc.StreamClientInterceptor {
+	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+		return streamer(outgoingCall(ctx), desc, cc, method, opts...)
+	}
+}
+
+// outgoingCall adds the call's id, client and flow to ctx's outgoing
+// metadata.
+func outgoingCall(ctx context.Context) context.Context {
+	var kv []string
+	if call := observability.CallFrom(ctx); call != nil {
+		kv = append(kv, observability.RequestIDHeader, call.ID())
+		c := call.Client()
+		for _, f := range [][2]string{
+			{observability.ClientHostHeader, c.Host},
+			{observability.ClientProjectHeader, c.Project},
+			{observability.ClientAgentHeader, c.Agent},
+		} {
+			if f[1] != "" {
+				kv = append(kv, f[0], observability.EncodeClientValue(f[1]))
+			}
+		}
+	}
+	if tp := observability.Traceparent(ctx); tp != "" {
+		kv = append(kv, observability.TraceparentHeader, tp)
+		if ts := observability.Tracestate(ctx); ts != "" {
+			kv = append(kv, observability.TracestateHeader, ts)
+		}
+	}
+	if len(kv) == 0 {
+		return ctx
+	}
+	return metadata.AppendToOutgoingContext(ctx, kv...)
 }
 
 // ServerOptions let a brain's server accept the pings DialOptions sends.
