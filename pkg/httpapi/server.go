@@ -86,16 +86,20 @@ func NewWithPolicy(db *cortexdb.DB, opts Options) (http.Handler, error) {
 
 // withCall gives every request a request id — the client's X-Request-Id
 // when it is a valid one — and returns it in the response's X-Request-Id,
-// as the gRPC server does in its response header.
+// as the gRPC server does in its response header. The request runs as a
+// child span of the client's traceparent, or starts a trace when it sent
+// none that parses, and the response's traceparent names that span.
 func withCall(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx, call := observability.WithCall(r.Context(), r.Header.Get(observability.RequestIDHeader))
+		ctx := observability.WithTraceparent(r.Context(), r.Header.Get(observability.TraceparentHeader), r.Header.Get(observability.TracestateHeader))
+		ctx, call := observability.WithCall(ctx, r.Header.Get(observability.RequestIDHeader))
 		call.SetClient(observability.ClientInfo{
 			Host:    observability.DecodeClientValue(r.Header.Get(observability.ClientHostHeader)),
 			Project: observability.DecodeClientValue(r.Header.Get(observability.ClientProjectHeader)),
 			Agent:   observability.DecodeClientValue(r.Header.Get(observability.ClientAgentHeader)),
 		})
 		w.Header().Set(observability.RequestIDHeader, call.ID())
+		w.Header().Set(observability.TraceparentHeader, call.Traceparent())
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
