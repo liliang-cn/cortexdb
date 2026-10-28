@@ -74,7 +74,7 @@ haiku 用的是 Claude Code 自己的模型额度，不需要 API key。语言�
 - `serve_graph_3d`：实时 3D 视图，可查找、提问、查询、展开，桌面和手机都能用；也可以切成图书馆，每条记忆是它所属项目书架上的一本书
 - `import_agent_memory`：把 Claude Code、Codex 和 DeepSeek Harness 已有的记忆导进来——记忆笔记、`CLAUDE.md` / `AGENTS.md`、Codex 的记忆库，也可以把历史会话提炼成记忆——本地大脑和共享大脑都行
 - 变更事件流：每次已提交的写入，按顺序、恰好一次
-- 可观测性：request id 从 MCP 经 gRPC 贯穿到 trace，召回能解释自己、降级时直说，`/metrics` 和 `/healthz` 里有向量服务的健康状况，可选开启的召回日志带 `/recalls` 页面
+- 可观测性：request id 和 W3C 链路（`traceparent`）从 MCP 经 gRPC 贯穿到 trace 和召回日志，召回能解释自己、降级时直说，`/metrics` 和 `/healthz` 里有向量服务的健康状况，可选开启的召回日志带 `/recalls` 页面
 - 默认 SQLite，换成 `postgres://` DSN 就跑在 PostgreSQL + pgvector 上
 
 ## 环境变量

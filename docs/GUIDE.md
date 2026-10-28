@@ -638,6 +638,24 @@ response or status metadata. When a reply is not JSON, the plugins and the
 `cortexdb-live` mod report what arrived — its size and first bytes, and the
 request id — instead of the parser's message.
 
+A call also belongs to a **flow**: one request a person makes, followed through
+every service it reaches, as a W3C Trace Context. A call that arrives with a
+`traceparent` — gRPC metadata or HTTP header, or `params._meta.traceparent` on an
+MCP `tools/call` — runs as a child span of it (a span id of its own, the caller's
+span as its parent; `tracestate` is passed on untouched). One without, or with a
+value that does not parse, starts a trace of its own; a malformed value is
+dropped, never logged. The server returns the span it ran the call in, in the
+`traceparent` response header or metadata, and in a tool result's `_meta` as
+`cortexdb/traceparent`, beside the request id. Calls CortexDB makes on the way —
+the MCP bridge to the brain, the brain to its embedder, LLM, reranker or a
+SPARQL `SERVICE` — forward the flow, so the embedder sees the brain's span as
+its parent. Log lines and trace records carry `trace_id`, `span_id` and
+`parent_span_id` next to the request id, recall-log rows carry `trace_id` and
+`span_id`, and `recall_log_list` with `trace_id` (or the `/recalls?trace=<id>`
+page) answers "what did the brain do for this flow", each recall with its
+explain record. A program that embeds CortexDB joins it to its own flow with
+`ctx = observability.WithTraceparent(ctx, traceparent, tracestate)`.
+
 The trace (`CORTEXDB_TRACE=1`, or slow calls past `CORTEXDB_SLOW_MS`) is
 structured: `log/slog`, logfmt by default or JSON with `CORTEXDB_LOG_FORMAT=json`,
 `CORTEXDB_LOG_LEVEL` for the level. Each record has the request id, key, tool,

@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Flow traces (W3C Trace Context): gRPC, HTTP and MCP calls join the caller's
+  `traceparent` (MCP: `params._meta.traceparent`) as a child span or start a
+  trace, return their own span (`traceparent`, MCP `_meta`
+  `cortexdb/traceparent`), and forward it to the brain, the embedder, LLM,
+  reranker and SPARQL `SERVICE`. Log lines, trace records and the recall log
+  carry `trace_id` and `span_id`; `recall_log_list` and `/recalls?trace=` filter
+  by it; `observability.WithTraceparent` joins library calls to a flow.
+
 ## [2.140.0] - 2026-10-28
 
 ### Added

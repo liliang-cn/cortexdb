@@ -541,6 +541,18 @@ gRPC metadata 和 REST header 里的 `x-request-id`，MCP 工具结果 `_meta` �
 回复不是 JSON 时，各插件和 `cortexdb-live` mod 报告实际收到了什么——大小、开头几个字节、request id——
 而不是解析器的报错。
 
+调用还属于一条**链路**（flow）：一个人发起的一次请求，经过的每个服务都串在一起，按 W3C Trace Context。
+带着 `traceparent` 来的调用——gRPC metadata、HTTP header，或 MCP `tools/call` 的
+`params._meta.traceparent`——作为它的子 span 运行（自己的 span id，调用方的 span 是父；`tracestate`
+原样传下去）。没带，或者带的值解析不了，就自己开一条 trace；格式不对的值直接丢弃，从不写进日志。服务端
+在响应 header/metadata 的 `traceparent` 里返回它跑这次调用的 span，MCP 工具结果在 `_meta` 的
+`cortexdb/traceparent` 里返回，和 request id 放在一起。CortexDB 沿途发出的调用——MCP bridge 到大脑、
+大脑到 embedder、LLM、reranker 或 SPARQL `SERVICE`——都会把链路带下去。日志行和 trace 记录在 request id
+旁边带 `trace_id`、`span_id`、`parent_span_id`，召回日志的每行带 `trace_id` 和 `span_id`；
+`recall_log_list` 加 `trace_id`（或 `/recalls?trace=<id>` 页面）回答"这条链路里大脑做了什么"，每次召回
+都带解释记录。把 CortexDB 当库嵌入的程序用
+`ctx = observability.WithTraceparent(ctx, traceparent, tracestate)` 把它接进自己的链路。
+
 trace（`CORTEXDB_TRACE=1`，或超过 `CORTEXDB_SLOW_MS` 的慢请求）是结构化日志：`log/slog`，默认 logfmt，
 `CORTEXDB_LOG_FORMAT=json` 输出 JSON，`CORTEXDB_LOG_LEVEL` 设级别。每条记录有 request id、key、工具、
 客户端的 host 和 project、各阶段耗时、回复字节数。`CORTEXDB_TRACE_FILE` 把同样的记录写成 JSON lines，

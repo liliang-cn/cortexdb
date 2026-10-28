@@ -1230,6 +1230,16 @@ lighter explicit-tool integration.
   through gRPC to the trace record. `pkg/observability.Call` holds it with the
   key, the client's host/project/agent and what a recall reported; clients send
   one (`rpc.CallInterceptor`, the Node/Python clients) or the server mints it.
+- Flow traces (W3C Trace Context): a call that arrives with `traceparent`
+  (gRPC metadata, HTTP header, MCP `params._meta.traceparent`; `tracestate`
+  passed through) runs as a child span of it, otherwise it starts a trace; a
+  malformed value is dropped, never logged. The server returns its own span in
+  `traceparent` (MCP: result `_meta` `cortexdb/traceparent`). Outbound gRPC,
+  embedder, LLM, reranker and SPARQL SERVICE calls forward it. Library callers:
+  `observability.WithTraceparent(ctx, tp, ts)`; read with `TraceID(ctx)`,
+  `SpanID(ctx)`, `Traceparent(ctx)`, `LogArgs(ctx, …)`. Log lines, trace records
+  and recall-log rows carry `trace_id`/`span_id`; `recall_log_list` and
+  `/recalls?trace=<id>` filter by it.
 - Logs: `log/slog` (`CORTEXDB_LOG_FORMAT=text|json`, `CORTEXDB_LOG_LEVEL`). The
   trace record (`CORTEXDB_TRACE`, `CORTEXDB_SLOW_MS`, `CORTEXDB_TRACE_FILE`)
   carries the request id, reply bytes and a recall's explain record; the file

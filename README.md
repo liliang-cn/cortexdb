@@ -75,7 +75,7 @@ Haiku runs on Claude Code's own model access, so no API key is needed. Language:
 - `serve_graph_3d`: a live 3D view to find, ask, query and expand, on desktop or phone — or the same brain as a library, each memory a book on its project's shelf
 - `import_agent_memory`: bring in what Claude Code, Codex and DeepSeek Harness already remember — memory notes, `CLAUDE.md` / `AGENTS.md`, Codex's memories, and optionally past sessions distilled into memories — into a local or shared brain
 - Change feed: every committed write, in order, exactly once
-- Observability: a request id from MCP through gRPC to the trace, recalls that explain themselves and say when they were degraded, embedder health in `/metrics` and `/healthz`, and an opt-in recall log with a `/recalls` page
+- Observability: a request id and a W3C trace (`traceparent`) from MCP through gRPC to the trace and the recall log, recalls that explain themselves and say when they were degraded, embedder health in `/metrics` and `/healthz`, and an opt-in recall log with a `/recalls` page
 - SQLite by default, PostgreSQL + pgvector with a `postgres://` DSN
 
 ## Environment
