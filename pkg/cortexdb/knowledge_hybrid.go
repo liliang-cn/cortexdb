@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"sort"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
 )
 
 // hybridRRFK is the reciprocal-rank-fusion constant. 60 is the widely-used
@@ -43,7 +45,7 @@ func (db *DB) searchKnowledgeHybrid(ctx context.Context, query string, opts Grap
 		if errors.Is(verr, ErrEmbeddingFailed) {
 			reason = DegradedEmbedderUnreachable
 		}
-		log.Printf("cortexdb: knowledge semantic search fallback to lexical: %v", verr)
+		slog.Warn("cortexdb: knowledge semantic search fallback to lexical", observability.LogArgs(ctx, "err", verr)...)
 		ex.candidates(explainKnowledge, explainKeyword, chunkCandidates(lres.Chunks, func(c GraphRAGChunkResult) float64 { return c.Score }))
 		lres.Degraded = addDegraded(lres.Degraded, reason)
 		lres.Decision.EffectiveMode = RetrievalModeLexical

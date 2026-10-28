@@ -3,7 +3,7 @@ package cortexdb
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"maps"
 	"slices"
 	"sort"
@@ -11,6 +11,7 @@ import (
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
+	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
 )
 
 // SearchText runs lexical retrieval over chunk content.
@@ -109,7 +110,7 @@ func (t *GraphRAGToolbox) searchTextCandidates(ctx context.Context, req ToolSear
 	if core.ContainsCJK(resolution.Plan.Query) {
 		cjk, err := t.db.searchTextCJK(ctx, resolution.Plan.Query, searchOpts)
 		if err != nil {
-			log.Printf("cortexdb: cjk bigram search skipped: %v", err)
+			slog.Warn("cortexdb: cjk bigram search skipped", observability.LogArgs(ctx, "err", err)...)
 		}
 		for _, result := range cjk {
 			if existing, ok := merged[result.ID]; !ok || result.Score > existing.Score {
@@ -160,7 +161,7 @@ func (t *GraphRAGToolbox) searchTextPhrasings(ctx context.Context, resolution re
 	if core.ContainsCJK(resolution.Plan.Query) {
 		cjk, err := t.db.searchTextCJK(ctx, resolution.Plan.Query, searchOpts)
 		if err != nil {
-			log.Printf("cortexdb: cjk bigram search skipped: %v", err)
+			slog.Warn("cortexdb: cjk bigram search skipped", observability.LogArgs(ctx, "err", err)...)
 		}
 		lists = append(lists, lexicalList{rows: cjk, own: true, share: cjkShareOfQuestion(resolution.Plan.Query)})
 	}

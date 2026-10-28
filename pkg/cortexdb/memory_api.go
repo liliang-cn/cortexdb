@@ -6,8 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
-	"log"
+	"log/slog"
 	"math"
 	"os"
 	"slices"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
+	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
 	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 )
 
@@ -455,7 +455,7 @@ func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordR
 		queryVec, err := db.embedder.Embed(embedCtx, resolution.Plan.Query)
 		cancelEmbed()
 		if err != nil {
-			log.Printf("cortexdb: memory semantic embed fallback to lexical: %v", err)
+			slog.Warn("cortexdb: memory semantic embed fallback to lexical", observability.LogArgs(ctx, "err", err)...)
 			degraded = addDegraded(degraded, DegradedEmbedderUnreachable)
 			// Said in the answer too, not only the log: the decision used to
 			// keep claiming a vector search had run, so a caller could not tell
@@ -474,7 +474,7 @@ func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordR
 			scored, searchErr := db.store.SearchChatHistoryScored(ctx, queryVec, bucketID, req.TopK*4)
 			doneVector()
 			if searchErr != nil {
-				log.Printf("cortexdb: memory semantic search fallback to lexical: %v", searchErr)
+				slog.Warn("cortexdb: memory semantic search fallback to lexical", observability.LogArgs(ctx, "err", searchErr)...)
 				degraded = addDegraded(degraded, DegradedVectorSearchFailed)
 			} else {
 				now := time.Now().UTC()
@@ -749,7 +749,7 @@ func (db *DB) embedMemoryContent(ctx context.Context, content string) ([]byte, e
 		// unlike its vector, which a re-embed pass can fill in later. Search
 		// already degrades to lexical for exactly this reason; the healer
 		// embeds it once the embedder answers again.
-		log.Printf("cortexdb: memory save proceeding without vector (embed failed: %v)", err)
+		slog.Warn("cortexdb: memory save proceeding without vector", observability.LogArgs(ctx, "err", err)...)
 		db.noteVectorDebt()
 		return nil, nil
 	}
@@ -920,7 +920,7 @@ func (db *DB) searchMemoryLexical(ctx context.Context, bucketID, query string, k
 	if cjkQuery {
 		cjk, err := db.searchMemoryCJK(ctx, bucketID, query, &stats)
 		if err != nil {
-			log.Printf("cortexdb: cjk bigram memory search skipped: %v", err)
+			slog.Warn("cortexdb: cjk bigram memory search skipped", observability.LogArgs(ctx, "err", err)...)
 		}
 		for _, c := range cjk {
 			consider(c.record, c.relevance)

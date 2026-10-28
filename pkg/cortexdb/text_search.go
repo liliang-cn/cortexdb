@@ -5,12 +5,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
-	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 	"log"
+	"log/slog"
 	"math"
 	"sort"
 	"strings"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
+	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 
 	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
@@ -346,7 +348,7 @@ func (db *DB) searchTextOnlyAll(ctx context.Context, query string, opts TextSear
 	// A CJK sentence is one token to the word index; see lexical_cjk.go.
 	cjk, cjkErr := db.searchTextCJK(ctx, query, opts)
 	if cjkErr != nil {
-		log.Printf("cortexdb: cjk bigram search skipped: %v", cjkErr)
+		slog.Warn("cortexdb: cjk bigram search skipped", observability.LogArgs(ctx, "err", cjkErr)...)
 		return results, nil
 	}
 	return mergeScoredEmbeddings(opts.TopK, results, cjk), nil
