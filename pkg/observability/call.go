@@ -73,6 +73,10 @@ type RecallNote struct {
 // never comes back up, which is why this is a holder and not a value.
 type Call struct {
 	id string
+	// span is the span the call runs in; parentSpanID the span it was
+	// called from, "" when the call started its trace.
+	span         SpanContext
+	parentSpanID string
 
 	mu     sync.Mutex
 	key    string
@@ -94,6 +98,9 @@ type callKey struct{}
 // WithCall gives ctx a call record with id, or a fresh id when id is not
 // ValidRequestID. An existing record in ctx is kept, so a call that already
 // has an id (the MCP bridge made one, then forwarded it in process) keeps it.
+//
+// The call runs in a span of its own: a child of the span WithTraceparent
+// put in ctx, or the root of a new trace when there is none.
 func WithCall(ctx context.Context, id string) (context.Context, *Call) {
 	if c := CallFrom(ctx); c != nil {
 		return ctx, c
@@ -102,6 +109,11 @@ func WithCall(ctx context.Context, id string) (context.Context, *Call) {
 		id = NewRequestID()
 	}
 	c := &Call{id: id}
+	if parent, ok := ParentSpanFrom(ctx); ok {
+		c.span, c.parentSpanID = childOf(parent), parent.SpanID
+	} else {
+		c.span = newRootSpan()
+	}
 	return context.WithValue(ctx, callKey{}, c), c
 }
 
@@ -128,6 +140,49 @@ func (c *Call) ID() string {
 		return ""
 	}
 	return c.id
+}
+
+// TraceID is the trace id of the flow the call belongs to.
+func (c *Call) TraceID() string {
+	if c == nil {
+		return ""
+	}
+	return c.span.TraceID
+}
+
+// SpanID is the id of the span the call runs in.
+func (c *Call) SpanID() string {
+	if c == nil {
+		return ""
+	}
+	return c.span.SpanID
+}
+
+// ParentSpanID is the span the call was made from, or "" when the call
+// started its trace.
+func (c *Call) ParentSpanID() string {
+	if c == nil {
+		return ""
+	}
+	return c.parentSpanID
+}
+
+// Span is the span the call runs in.
+func (c *Call) Span() SpanContext {
+	if c == nil {
+		return SpanContext{}
+	}
+	return c.span
+}
+
+// Traceparent is the call's own span as a traceparent header value: what a
+// server returns so its caller can link the child, and what a call made from
+// this one sends as its parent.
+func (c *Call) Traceparent() string {
+	if c == nil {
+		return ""
+	}
+	return c.span.Traceparent()
 }
 
 // SetKey records the id of the key the call authenticated as.
