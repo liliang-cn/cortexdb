@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
 )
 
 // Every recall-log tool the page may run exists, and only recall_feedback
@@ -123,5 +124,36 @@ func TestTheRecallsRoutesSayWhenTheLogIsOff(t *testing.T) {
 	var out map[string]string
 	if code := get(t, h, "/api/recalls", &out); code == 200 || !strings.Contains(out["error"], "recall log is off") {
 		t.Fatalf("an off log: %d %v", code, out)
+	}
+}
+
+// /api/recalls?trace= keeps the timeline to one flow; the page reads ?trace
+// from its own URL and shows the trace a recall ran in.
+func TestTheRecallsPageFiltersByTrace(t *testing.T) {
+	db, h := recallsServer(t, cortexdb.WithRecallLog(cortexdb.RecallLogOptions{}))
+	const traceID = "4bf92f3577b34da6a3ce929d0e0e4736"
+	flow := observability.WithTraceparent(context.Background(), "00-"+traceID+"-00f067aa0ba902b7-01", "")
+	for ctx, q := range map[context.Context]string{flow: "in the flow", context.Background(): "outside it"} {
+		if _, err := db.KnowledgeMemory().Recall(ctx, cortexdb.KnowledgeMemoryRecallRequest{Query: q}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var page cortexdb.RecallLogListResponse
+	if code := get(t, h, "/api/recalls?trace="+traceID, &page); code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	if len(page.Recalls) != 1 || page.Recalls[0].Query != "in the flow" || page.Recalls[0].TraceID != traceID {
+		t.Fatalf("trace page: %+v", page.Recalls)
+	}
+	if code := get(t, h, "/api/recalls?trace=not-a-trace", nil); code == http.StatusOK {
+		t.Fatal("a malformed trace filter was accepted")
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/recalls?trace="+traceID, nil))
+	body := rec.Body.String()
+	for _, want := range []string{`Q.get("trace")`, `p.set("trace", state.trace)`, "r.trace_id"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("page lacks %q", want)
+		}
 	}
 }

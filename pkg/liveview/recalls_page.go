@@ -98,6 +98,7 @@ const recallsHTML = `<!DOCTYPE html>
     <input type="search" id="contains" placeholder="Filter by query text">
     <label><input type="checkbox" id="emptyOnly"> <span id="emptyLabel">returned nothing</span></label>
     <span class="filter" id="recordFilter" hidden></span>
+    <span class="filter" id="traceFilter" hidden></span>
   </div>
 </header>
 <main>
@@ -115,14 +116,14 @@ var S = {
     degraded:"degraded",query:"query",keywords:"keywords",entities:"entities",mode:"mode",planner:"planner",asked:"asked by",useful:"useful",noise:"noise",
     totals:"Last %d days",recalls:"recalls",emptyN:"returned nothing",degN:"degraded",most:"Most recalled",reached:"records reached",never:"Never recalled",count:"count",last:"last",queries:"queries",
     noneNever:"Every memory has been recalled at least once.",confined:"Not shown for a key with a scope.",byRecord:"recalls of",clear:"clear",graph:"graph",retriever:"retriever",rank:"rank",score:"score",by:"by",threshold:"threshold",
-    noExplain:"No explain record was kept for this recall.",unverified:"unverified",verified:"verified"},
+    noExplain:"No explain record was kept for this recall.",unverified:"unverified",verified:"verified",byTrace:"recalls of trace",trace:"trace"},
   zh:{title:"召回记录",timeline:"时间线",records:"记录",filter:"按查询文本筛选",empty:"无结果",pick:"选一条召回，看它为什么返回这些结果。",
     off:"这个大脑没有开启召回日志。",offHow:"用 <code>CORTEXDB_RECALL_LOG=1</code> 启动服务。日志会保存查询文本，保留 <code>CORTEXDB_RECALL_LOG_DAYS</code> 天（默认 30）。",
     none:"还没有召回。",more:"更早的召回",hits:"条命中",ms:"毫秒",replay:"在图上重放",plan:"检索计划",hitsH:"命中",cands:"候选",dropped:"被阈值和过滤掉的",
     degraded:"降级",query:"查询",keywords:"关键词",entities:"实体",mode:"模式",planner:"规划",asked:"提问方",useful:"有用",noise:"噪音",
     totals:"最近 %d 天",recalls:"次召回",emptyN:"无结果",degN:"降级",most:"最常被召回",reached:"被召回过的记录",never:"从未被召回",count:"次数",last:"最近",queries:"查询",
     noneNever:"每条记忆都至少被召回过一次。",confined:"限定范围的 key 不显示这一项。",byRecord:"召回了",clear:"清除",graph:"图谱",retriever:"检索器",rank:"名次",score:"分数",by:"原因",threshold:"阈值",
-    noExplain:"这次召回没有保留解释记录。",unverified:"未验证",verified:"已验证"}
+    noExplain:"这次召回没有保留解释记录。",unverified:"未验证",verified:"已验证",byTrace:"这条链路的召回",trace:"链路"}
 }[LANG];
 document.documentElement.lang = LANG === "zh" ? "zh-CN" : "en";
 
@@ -173,13 +174,14 @@ function isOff(err){ return /recall log is off/i.test(String(err && err.message 
 function offHTML(){ return "<div class='say'><b>" + esc(S.off) + "</b>" + S.offHow + "</div>"; }
 
 var state = {view: Q.get("view") === "records" ? "records" : "timeline", contains: "", empty: false,
-  record: Q.get("record_id") || "", recalls: [], next: 0, selected: Q.get("recall") || ""};
+  record: Q.get("record_id") || "", trace: /^[0-9a-f]{32}$/.test(Q.get("trace") || "") ? Q.get("trace") : "", recalls: [], next: 0, selected: Q.get("recall") || ""};
 
 function query(before){
   var p = new URLSearchParams();
   if(state.contains) p.set("contains", state.contains);
   if(state.empty) p.set("empty", "1");
   if(state.record) p.set("record_id", state.record);
+  if(state.trace) p.set("trace", state.trace);
   if(before) p.set("before", before);
   return "api/recalls?" + p.toString();
 }
@@ -200,6 +202,9 @@ function loadTimeline(more){
   var rf = document.getElementById("recordFilter");
   rf.hidden = !state.record;
   if(state.record) rf.innerHTML = esc(S.byRecord) + " <b>" + esc(state.record) + "</b> <a href='#' id='clearRecord'>" + esc(S.clear) + "</a>";
+  var tf = document.getElementById("traceFilter");
+  tf.hidden = !state.trace;
+  if(state.trace) tf.innerHTML = esc(S.byTrace) + " <b>" + esc(state.trace) + "</b> <a href='#' id='clearTrace'>" + esc(S.clear) + "</a>";
   getJSON(query(more ? state.next : 0)).then(function(res){
     state.recalls = state.recalls.concat(res.recalls || []);
     state.next = res.next_before || 0;
@@ -219,6 +224,9 @@ document.getElementById("list").addEventListener("click", function(e){
 });
 document.addEventListener("click", function(e){
   if(e.target.id === "clearRecord"){ e.preventDefault(); state.record = ""; syncURL(); loadTimeline(false); }
+  if(e.target.id === "clearTrace"){ e.preventDefault(); state.trace = ""; syncURL(); loadTimeline(false); }
+  var tr = e.target.closest && e.target.closest("a[data-trace]");
+  if(tr){ e.preventDefault(); state.trace = tr.getAttribute("data-trace"); syncURL(); loadTimeline(false); }
 });
 var typing;
 document.getElementById("contains").addEventListener("input", function(e){
@@ -228,9 +236,10 @@ document.getElementById("emptyOnly").addEventListener("change", function(e){ sta
 
 function syncURL(){
   var p = new URLSearchParams(location.search);
-  ["recall", "record_id", "view"].forEach(function(k){ p.delete(k); });
+  ["recall", "record_id", "trace", "view"].forEach(function(k){ p.delete(k); });
   if(state.selected) p.set("recall", state.selected);
   if(state.record) p.set("record_id", state.record);
+  if(state.trace) p.set("trace", state.trace);
   if(state.view === "records") p.set("view", "records");
   history.replaceState(null, "", "recalls" + (p.toString() ? "?" + p.toString() : ""));
 }
@@ -295,6 +304,9 @@ function detailHTML(r){
     ["request_id", r.request_id], ["", new Date(r.at).toLocaleString() + " · " + r.latency_ms + " " + S.ms]]
     .filter(function(p){ return p[1]; })
     .map(function(p){ return "<dt>" + esc(p[0]) + "</dt><dd>" + esc(p[1]) + "</dd>"; }).join("");
+  // The flow the recall ran in: a link that keeps the timeline to it.
+  if(r.trace_id) kv += "<dt>trace_id</dt><dd><a href='recalls?trace=" + encodeURIComponent(r.trace_id) + "' data-trace='" + esc(r.trace_id) + "' title='" + esc(S.byTrace) + "'>" + esc(r.trace_id) + "</a>" +
+    (r.span_id ? " <span class='muted'>span " + esc(r.span_id) + "</span>" : "") + "</dd>";
   var deg = (r.degraded || []).map(function(d){ return "<span class='badge bad'>" + esc(S.degraded) + ": " + esc(d) + "</span>"; }).join(" ");
   var out = "<section><h2>" + esc(S.plan) + "</h2><dl class='kv'>" + kv + "</dl>" + (deg ? "<div style='margin-top:8px'>" + deg + "</div>" : "") +
     "<div style='margin-top:8px'><a href='./?replay=" + encodeURIComponent(r.id) + "'>" + esc(S.replay) + " →</a></div></section>";

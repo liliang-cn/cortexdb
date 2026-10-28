@@ -26,7 +26,9 @@ import (
 // shared brain holds the page to the key it was opened with: a key with a
 // scope sees its own recalls. The log is opt-in on the brain
 // (CORTEXDB_RECALL_LOG=1); a brain without it answers so, and the page says
-// that in words rather than showing an empty timeline.
+// that in words rather than showing an empty timeline. /recalls?trace=<trace
+// id> keeps the timeline to one flow: the recalls a request that sent that
+// trace's traceparent caused, each opening on its explain record.
 
 // RecallTools are the recall-log tools the page may run beside
 // [ExploreTools]. All read but recall_feedback, which writes a mark into the
@@ -61,6 +63,7 @@ func (s *Server) handleRecalls(w http.ResponseWriter, r *http.Request) {
 		Contains: strings.TrimSpace(q.Get("contains")),
 		Project:  strings.TrimSpace(q.Get("project")),
 		Key:      strings.TrimSpace(q.Get("key")),
+		TraceID:  strings.TrimSpace(q.Get("trace")),
 		Empty:    q.Get("empty") == "1",
 	}
 	req.Limit, _ = strconv.Atoi(q.Get("limit"))
