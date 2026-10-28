@@ -12,6 +12,7 @@ import (
 	"time"
 
 	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
 )
 
 // newReranker builds a cortexdb.Reranker from CORTEXDB_RERANK_* env, or returns
@@ -67,6 +68,7 @@ func (r *httpReranker) Rerank(ctx context.Context, query string, documents []str
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	observability.InjectHTTP(ctx, req.Header)
 	if r.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+r.apiKey)
 	}

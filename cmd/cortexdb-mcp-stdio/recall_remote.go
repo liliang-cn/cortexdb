@@ -82,6 +82,10 @@ func runRecallRemote(addr, token, prompt string, situation recallSituation, topK
 	// An id the brain's trace record will carry, so a recall that fails here
 	// — the hook stays silent on stdout and says why on stderr — can be
 	// matched to what the brain did with it.
+	// A host that runs the hook inside a traced flow says so in TRACEPARENT
+	// (and TRACESTATE), the environment form of the header; the recall then
+	// joins that flow rather than starting one.
+	ctx = observability.WithTraceparent(ctx, os.Getenv("TRACEPARENT"), os.Getenv("TRACESTATE"))
 	ctx, call := observability.WithCall(ctx, "")
 	call.SetClient(cortexdb.LocalClientInfo())
 
@@ -90,7 +94,7 @@ func runRecallRemote(addr, token, prompt string, situation recallSituation, topK
 		ArgsJson: string(args),
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "cortexdb recall: %s failed (request_id %s): %v\n", recallToolName, call.ID(), err)
+		fmt.Fprintf(os.Stderr, "cortexdb recall: %s failed (request_id %s, trace_id %s): %v\n", recallToolName, call.ID(), call.TraceID(), err)
 		return ""
 	}
 

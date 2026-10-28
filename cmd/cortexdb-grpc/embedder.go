@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
 )
 
 // openAIEmbedder calls any OpenAI-compatible /embeddings endpoint using
@@ -52,6 +54,7 @@ func (e *openAIEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]fl
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	observability.InjectHTTP(ctx, req.Header)
 	if e.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+e.apiKey)
 	}

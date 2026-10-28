@@ -68,7 +68,9 @@ func runRemoteMCPStdio(ctx context.Context, addr, token string) error {
 	})
 	// The id each call is given here goes to the brain with the call
 	// (rpc.CallInterceptor), so the brain's trace record and the id this
-	// returns in _meta are the same.
+	// returns in _meta are the same. So does the flow: the call joins the
+	// traceparent in the request's params._meta as a span of this bridge,
+	// and the brain's span is a child of it.
 	server.AddReceivingMiddleware(cortexdb.MCPCallMiddleware(cortexdb.LocalClientInfo()))
 
 	for _, def := range list.GetTools() {
@@ -109,7 +111,7 @@ func addRemoteTool(server *mcp.Server, client rpcv1.ToolsServiceClient, def *rpc
 		}
 		resp, err := client.CallTool(ctx, &rpcv1.CallToolRequest{Name: name, ArgsJson: args})
 		if err != nil {
-			log.Printf("cortexdb remote: %s failed, request_id=%s: %v", name, observability.RequestID(ctx), err)
+			log.Printf("cortexdb remote: %s failed, request_id=%s trace_id=%s span_id=%s: %v", name, observability.RequestID(ctx), observability.TraceID(ctx), observability.SpanID(ctx), err)
 			return nil, fmt.Errorf("remote tool %s: %w", name, err)
 		}
 		return &mcp.CallToolResult{

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/graphflow"
+	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
 )
 
 // newOrganizeLLM builds a graphflow.JSONGenerator from CORTEXDB_LLM_* env, or
@@ -81,6 +82,7 @@ func (c *chatLLM) generateOllama(ctx context.Context, systemPrompt, userPrompt s
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	observability.InjectHTTP(ctx, req.Header)
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -118,6 +120,7 @@ func (c *chatLLM) generateOpenAI(ctx context.Context, systemPrompt, userPrompt s
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	observability.InjectHTTP(ctx, req.Header)
 	if c.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}

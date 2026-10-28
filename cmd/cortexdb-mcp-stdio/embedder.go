@@ -14,6 +14,7 @@ import (
 	"time"
 
 	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
 )
 
 // openBrainDB opens the CortexDB database, wiring an OpenAI-compatible embedder
@@ -209,6 +210,7 @@ func (e *openAIEmbedder) embedRequest(ctx context.Context, texts []string) ([][]
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	observability.InjectHTTP(ctx, req.Header)
 	if e.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+e.apiKey)
 	}

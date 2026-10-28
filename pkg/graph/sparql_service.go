@@ -25,6 +25,8 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
 )
 
 // SPARQLServiceFunc evaluates query, a SELECT, at endpoint and returns its
@@ -166,6 +168,7 @@ func HTTPSPARQLService(client *http.Client) SPARQLServiceFunc {
 			return nil, err
 		}
 		req.Header.Set("Content-Type", "application/sparql-query")
+		observability.InjectHTTP(ctx, req.Header)
 		req.Header.Set("Accept", SPARQLResultsJSON.MediaType())
 		resp, err := client.Do(req)
 		if err != nil {
