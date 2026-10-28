@@ -297,7 +297,7 @@ var confinedTools = map[string]toolRule{
 	// names, and its hits were held to its scope when the recall ran. The
 	// memories no recall returned are left out of its stats.
 	"recall_log_list": {stores: storeKnowledge | storeMemory, facade: true,
-		args: []string{"limit", "before", "record_id", "contains", "key", "project", "empty"}},
+		args: []string{"limit", "before", "record_id", "contains", "key", "project", "trace_id", "empty"}},
 	"recall_log_get":   {stores: storeKnowledge | storeMemory, facade: true, args: []string{"recall_id"}},
 	"recall_log_stats": {stores: storeKnowledge | storeMemory, facade: true, args: []string{"limit", "record_id", "key"}},
 	"recall_feedback": {stores: storeKnowledge | storeMemory, facade: true,

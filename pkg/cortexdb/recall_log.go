@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"sort"
 	"strconv"
@@ -135,7 +135,9 @@ func (db *DB) ensureRecallLog(ctx context.Context) error {
 			hit_count INTEGER NOT NULL DEFAULT 0,
 			degraded TEXT NOT NULL DEFAULT '',
 			hits TEXT NOT NULL DEFAULT '[]',
-			explain_json TEXT NOT NULL DEFAULT ''
+			explain_json TEXT NOT NULL DEFAULT '',
+			trace_id TEXT NOT NULL DEFAULT '',
+			span_id TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_recall_log_ts ON recall_log(ts_ms)`,
 		`CREATE INDEX IF NOT EXISTS idx_recall_log_key ON recall_log(key_id, ts_ms)`,
@@ -168,8 +170,25 @@ func (db *DB) ensureRecallLog(ctx context.Context) error {
 			return fmt.Errorf("recall log schema: %w", err)
 		}
 	}
+	// A log written before recalls carried their flow gains the columns;
+	// its rows read as recalls of no known trace.
+	for _, stmt := range recallLogTraceColumns {
+		if _, err := db.exec(ctx, stmt); err != nil && !db.dialect.IsDuplicateColumn(err) {
+			return fmt.Errorf("recall log schema: %w", err)
+		}
+	}
+	if _, err := db.exec(ctx, `CREATE INDEX IF NOT EXISTS idx_recall_log_trace ON recall_log(trace_id, ts_ms)`); err != nil {
+		return fmt.Errorf("recall log schema: %w", err)
+	}
 	rt.ready = true
 	return nil
+}
+
+// recallLogTraceColumns add the flow a recall belongs to (trace_id, and the
+// span it ran in) to a recall log created before they existed.
+var recallLogTraceColumns = []string{
+	`ALTER TABLE recall_log ADD COLUMN trace_id TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE recall_log ADD COLUMN span_id TEXT NOT NULL DEFAULT ''`,
 }
 
 // RecallLogHit is one hit as the log keeps it: enough to show it in a
@@ -198,8 +217,13 @@ type RecallLogHit struct {
 
 // RecallLogEntry is one logged recall.
 type RecallLogEntry struct {
-	ID        string         `json:"id"`
-	RequestID string         `json:"request_id,omitempty"`
+	ID        string `json:"id"`
+	RequestID string `json:"request_id,omitempty"`
+	// TraceID is the flow the recall was part of, and SpanID the span it
+	// ran in (observability.WithTraceparent): what a caller that sent a
+	// traceparent looks its recalls up by.
+	TraceID   string         `json:"trace_id,omitempty"`
+	SpanID    string         `json:"span_id,omitempty"`
 	At        time.Time      `json:"at"`
 	Key       string         `json:"key,omitempty"`
 	Host      string         `json:"host,omitempty"`
@@ -277,7 +301,7 @@ func (db *DB) logRecall(ctx context.Context, req KnowledgeMemoryRecallRequest, r
 	// caller is still waiting, and its record should be too.
 	ctx = context.WithoutCancel(ctx)
 	if err := db.writeRecallLog(ctx, req, resp, explain, latency); err != nil {
-		log.Printf("cortexdb: recall log: %v", err)
+		slog.Warn("cortexdb: recall log not written", observability.LogArgs(ctx, "err", err)...)
 	}
 }
 
@@ -307,9 +331,9 @@ func (db *DB) writeRecallLog(ctx context.Context, req KnowledgeMemoryRecallReque
 	}
 	defer func() { _ = tx.Rollback() }()
 	if _, err := db.txExec(ctx, tx, `INSERT INTO recall_log
-		(id, request_id, ts_ms, key_id, host, project, agent, tool, query, planner, latency_ms, hit_count, degraded, hits, explain_json)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, call.ID(), now, key, client.Host, client.Project, client.Agent, "knowledge_memory_recall",
+		(id, request_id, trace_id, span_id, ts_ms, key_id, host, project, agent, tool, query, planner, latency_ms, hit_count, degraded, hits, explain_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, call.ID(), observability.TraceID(ctx), observability.SpanID(ctx), now, key, client.Host, client.Project, client.Agent, "knowledge_memory_recall",
 		resp.Query, req.Planner, latency.Milliseconds(), len(hits), strings.Join(resp.Degraded, ","), string(hitsJSON), explainJSON); err != nil {
 		return err
 	}
@@ -376,6 +400,9 @@ func (db *DB) recallLogRetention() time.Duration {
 	return defaultRecallLogRetention
 }
 
+// errBadTraceID refuses a trace filter that is not a trace id.
+var errBadTraceID = errors.New("trace_id must be a W3C trace id: 32 lowercase hex characters")
+
 // errRecallLogOff is what the recall-log tools answer on a brain that does
 // not keep one.
 var errRecallLogOff = errors.New("the recall log is off on this brain: start it with CORTEXDB_RECALL_LOG=1 (it stores queries; see CORTEXDB_RECALL_LOG_DAYS)")
@@ -402,6 +429,9 @@ type RecallLogListRequest struct {
 	// Key keeps the recalls of one key; a confined key is always held to its own.
 	Key     string `json:"key,omitempty"`
 	Project string `json:"project,omitempty"`
+	// TraceID keeps the recalls of one flow: what this brain did for the
+	// request that sent that trace's traceparent. 32 lowercase hex.
+	TraceID string `json:"trace_id,omitempty"`
 	// Empty keeps only recalls that returned nothing.
 	Empty bool `json:"empty,omitempty"`
 }
@@ -413,13 +443,13 @@ type RecallLogListResponse struct {
 	NextBefore int64 `json:"next_before,omitempty"`
 }
 
-const recallLogColumns = `id, request_id, ts_ms, key_id, host, project, agent, tool, query, planner, latency_ms, hit_count, degraded, hits`
+const recallLogColumns = `id, request_id, trace_id, span_id, ts_ms, key_id, host, project, agent, tool, query, planner, latency_ms, hit_count, degraded, hits`
 
 func scanRecallLogEntry(scan func(...any) error, withExplain bool) (RecallLogEntry, int64, error) {
 	var e RecallLogEntry
 	var ts int64
 	var degraded, hits, explain string
-	dest := []any{&e.ID, &e.RequestID, &ts, &e.Key, &e.Host, &e.Project, &e.Agent, &e.Tool, &e.Query, &e.Planner, &e.LatencyMs, &e.HitCount, &degraded, &hits}
+	dest := []any{&e.ID, &e.RequestID, &e.TraceID, &e.SpanID, &ts, &e.Key, &e.Host, &e.Project, &e.Agent, &e.Tool, &e.Query, &e.Planner, &e.LatencyMs, &e.HitCount, &degraded, &hits}
 	if withExplain {
 		dest = append(dest, &explain)
 	}
@@ -466,6 +496,12 @@ func (db *DB) ListRecalls(ctx context.Context, req RecallLogListRequest) (*Recal
 	}
 	if p := strings.TrimSpace(req.Project); p != "" {
 		where, args = append(where, "project = ?"), append(args, p)
+	}
+	if tr := strings.TrimSpace(req.TraceID); tr != "" {
+		if !observability.ValidTraceID(tr) {
+			return nil, errBadTraceID
+		}
+		where, args = append(where, "trace_id = ?"), append(args, tr)
 	}
 	if req.Empty {
 		where = append(where, "hit_count = 0")

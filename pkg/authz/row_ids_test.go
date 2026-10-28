@@ -147,6 +147,7 @@ var rowNamingExceptions = map[string]string{
 	"session_id":              "names a session bucket, not a row",
 	"plan.filters.session_id": "names a session bucket, not a row",
 	"plan.filters.user_id":    "is a scope field",
+	"trace_id":                "names a flow (W3C trace), not a row",
 }
 
 // Every argument of the allowlist whose name says it names rows (it ends in

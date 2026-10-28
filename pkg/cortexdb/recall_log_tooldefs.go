@@ -20,7 +20,7 @@ func recallLogToolDefinitions() []ToolDefinition {
 			Name: "recall_log_list",
 			Description: "List past recalls, newest first: the query, who asked (key, host, project), latency, whether it was degraded, " +
 				"and its hits with how each was found (via), score, writer and source. Filter by record_id (recalls that returned it), " +
-				"contains (query text), key, project or empty. Page with before = next_before. Needs CORTEXDB_RECALL_LOG=1 on the brain. Reads only.",
+				"contains (query text), key, project, trace_id (the W3C trace a request's traceparent carried: what this brain did for that flow) or empty. Page with before = next_before. Needs CORTEXDB_RECALL_LOG=1 on the brain. Reads only.",
 			InputSchema: toolObjectSchema(nil, map[string]any{
 				"limit":     toolIntegerSchema("Recalls per page (default 50, max 200)."),
 				"before":    toolIntegerSchema("next_before of the previous page."),
@@ -28,6 +28,7 @@ func recallLogToolDefinitions() []ToolDefinition {
 				"contains":  toolStringSchema("Only recalls whose query contains this text."),
 				"key":       toolStringSchema("Only recalls made with this key id. A confined key always sees its own only."),
 				"project":   toolStringSchema("Only recalls asked from this project."),
+				"trace_id":  toolStringSchema("Only recalls of this flow: the trace id (32 lowercase hex) of the traceparent the request carried."),
 				"empty":     toolBooleanSchema("Only recalls that returned nothing."),
 			}),
 		},
