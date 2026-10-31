@@ -135,6 +135,9 @@ func (g *GraphStore) UpsertNodesBatch(ctx context.Context, nodes []*GraphNode) (
 			recorded,
 		)
 
+		if err == nil && g.vecCap.Enabled {
+			err = g.pgUpsertVector(ctx, tx, node.ID, node.Vector)
+		}
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("failed to insert node %s: %w", node.ID, err))
 			result.FailedCount++
@@ -663,6 +666,11 @@ func (g *GraphStore) upsertNodesBatchTx(ctx context.Context, tx *sql.Tx, nodes [
 		}
 		_, err = stmt.ExecContext(ctx, node.ID, vectorBytes, node.Content, node.NodeType,
 			string(propertiesJSON), at, recorded)
+		// The vector mirror goes in the same transaction: a node and the row
+		// that makes it findable are written together or not at all.
+		if err == nil && g.vecCap.Enabled {
+			err = g.pgUpsertVector(ctx, tx, node.ID, node.Vector)
+		}
 		if err != nil {
 			result.FailedCount++
 			result.Errors = append(result.Errors, err)

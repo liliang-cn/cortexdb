@@ -21,9 +21,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
+	"math"
 	"strconv"
 	"strings"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 )
 
@@ -86,6 +89,17 @@ func (g *GraphStore) initPgVector(ctx context.Context, dim int) vectorCapability
 	if _, err := g.db.ExecContext(ctx, ddl); err != nil {
 		return vectorCapability{Reason: "vector table: " + err.Error()}
 	}
+	// The table may predate this store's settings, created at another width
+	// by an earlier open (another embedder, or the 64 of an unset dimension):
+	// what it accepts is its column's, not the config's. pgvector keeps a
+	// vector column's width as its type modifier, -1 when it has none; a
+	// column without one takes any width, and the config's then keeps the
+	// table to one.
+	var width int
+	if err := g.db.QueryRowContext(ctx, `SELECT atttypmod FROM pg_attribute
+		WHERE attrelid = 'graph_node_vectors'::regclass AND attname = 'embedding'`).Scan(&width); err == nil && width > 0 {
+		dim = width
+	}
 
 	cap := vectorCapability{Enabled: true, Dimensions: dim}
 	switch {
@@ -110,19 +124,135 @@ func (g *GraphStore) initPgVector(ctx context.Context, dim int) vectorCapability
 	return cap
 }
 
-// pgUpsertVector mirrors a node's vector into the searchable table. A node
-// without one is removed from it: a vector a node no longer has must not keep
-// it findable by similarity.
-func (g *GraphStore) pgUpsertVector(ctx context.Context, nodeID string, vec []float32) error {
-	if len(vec) == 0 {
-		_, err := g.exec(ctx, `DELETE FROM graph_node_vectors WHERE node_id = ?`, nodeID)
+// mirrorable reports whether a vector can be in graph_node_vectors, whose
+// column is dim wide (0: any width). pgvector refuses a vector of another
+// width, and one holding NaN or an infinity, and inside a batch the refusal
+// would abort the transaction and lose every node written with it.
+func mirrorable(vec []float32, dim int) bool {
+	if len(vec) == 0 || (dim > 0 && len(vec) != dim) {
+		return false
+	}
+	for _, x := range vec {
+		if math.IsNaN(float64(x)) || math.IsInf(float64(x), 0) {
+			return false
+		}
+	}
+	return true
+}
+
+// pgUpsertVector mirrors a node's vector into the searchable table, inside tx
+// when there is one. A node without a vector the table can hold is removed
+// from it: a vector a node no longer has must not keep it findable by
+// similarity, and one of another width than the table's (an embedder changed
+// since the table was made) is left to the search in Go.
+func (g *GraphStore) pgUpsertVector(ctx context.Context, tx *sql.Tx, nodeID string, vec []float32) error {
+	exec := g.exec
+	if tx != nil {
+		exec = func(ctx context.Context, q string, args ...any) (sql.Result, error) {
+			return g.txExec(ctx, tx, q, args...)
+		}
+	}
+	if !mirrorable(vec, g.vecCap.Dimensions) {
+		_, err := exec(ctx, `DELETE FROM graph_node_vectors WHERE node_id = ?`, nodeID)
 		return err
 	}
-	_, err := g.exec(ctx, `
+	_, err := exec(ctx, `
 		INSERT INTO graph_node_vectors (node_id, embedding) VALUES (?, ?)
 		ON CONFLICT (node_id) DO UPDATE SET embedding = EXCLUDED.embedding`,
 		nodeID, pgVectorLiteral(vec))
 	return err
+}
+
+// mirrorBackfillPage is how many nodes pgBackfillVectors reads at a time.
+var mirrorBackfillPage = 1000
+
+// mirrorStoredVectors runs pgBackfillVectors when the store opens, and logs
+// what it did. Batch writes did not keep the mirror before; a store they
+// wrote is mirrored here, once. Not fatal, like the rest of the mirror: a node
+// it misses is still found by the exact scan while the mirror is empty.
+func (g *GraphStore) mirrorStoredVectors(ctx context.Context) {
+	mirrored, skipped, err := g.pgBackfillVectors(ctx, g.vecCap.Dimensions)
+	if err != nil {
+		log.Printf("cortexdb/graph: mirroring stored vectors for search: %v", err)
+	}
+	if mirrored+skipped > 0 {
+		log.Printf("cortexdb/graph: %d stored vectors mirrored for search, %d corrupt or not finite skipped", mirrored, skipped)
+	}
+}
+
+// pgBackfillVectors mirrors the nodes that have a vector of the table's width
+// and no row in graph_node_vectors, which is what batch writes left before
+// they kept the mirror. The first open of such a store pays it; later ones
+// read only the rows it skipped. Only vectors whose stored bytes have the
+// width's length are read; one whose header still disagrees with dim is
+// corrupt, and one holding NaN or an infinity pgvector refuses: both are
+// skipped and counted, and the pass goes on.
+//
+// A row a concurrent write puts in first is left as it is: that write has the
+// node's current vector, and this pass may have read an older one.
+func (g *GraphStore) pgBackfillVectors(ctx context.Context, dim int) (mirrored, skipped int, err error) {
+	// An empty vector is encoded as its 4-byte length alone.
+	shortest, longest := 5, math.MaxInt32
+	if dim > 0 {
+		shortest, longest = 4+4*dim, 4+4*dim
+	}
+	last := ""
+	for {
+		page, err := g.unmirroredPage(ctx, last, shortest, longest)
+		if err != nil {
+			return mirrored, skipped, err
+		}
+		// Written after the page is read, so the scan holds no connection
+		// while the writes need one.
+		for _, p := range page {
+			last = p.id
+			vec, derr := encoding.DecodeVector(p.blob)
+			if derr != nil || !mirrorable(vec, dim) {
+				skipped++
+				continue
+			}
+			res, err := g.exec(ctx, `
+				INSERT INTO graph_node_vectors (node_id, embedding) VALUES (?, ?)
+				ON CONFLICT (node_id) DO NOTHING`, p.id, pgVectorLiteral(vec))
+			if err != nil {
+				return mirrored, skipped, err
+			}
+			if n, _ := res.RowsAffected(); n > 0 {
+				mirrored++
+			}
+		}
+		if len(page) < mirrorBackfillPage {
+			return mirrored, skipped, nil
+		}
+	}
+}
+
+type storedVector struct {
+	id   string
+	blob []byte
+}
+
+// unmirroredPage reads the next nodes after the id last, in id order, that
+// have no mirror row and a stored vector of shortest to longest bytes.
+func (g *GraphStore) unmirroredPage(ctx context.Context, last string, shortest, longest int) ([]storedVector, error) {
+	rows, err := g.query(ctx, `
+		SELECT n.id, n.vector FROM graph_nodes n
+		LEFT JOIN graph_node_vectors m ON m.node_id = n.id
+		WHERE m.node_id IS NULL AND octet_length(n.vector) BETWEEN ? AND ? AND n.id > ?
+		ORDER BY n.id LIMIT ?`, shortest, longest, last, mirrorBackfillPage)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var page []storedVector
+	for rows.Next() {
+		var v storedVector
+		if err := rows.Scan(&v.id, &v.blob); err != nil {
+			return nil, err
+		}
+		page = append(page, v)
+	}
+	return page, rows.Err()
 }
 
 // pgVectorCandidates asks PostgreSQL for the nearest nodes.

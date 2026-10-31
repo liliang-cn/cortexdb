@@ -332,7 +332,10 @@ func (g *GraphStore) vectorCandidates(ctx context.Context, query *HybridQuery) (
 	// In-database first when it is available: the alternative below this is
 	// GetAllNodes, which reads the whole table into memory and scores it in
 	// Go. That is the difference this backend exists to make.
-	if g.vecCap.Enabled && len(query.Vector) > 0 {
+	// Only for a query the table can compare: pgvector refuses a vector of
+	// another width than its column, which failed every search of a store
+	// whose embedder is not the width the table was made at.
+	if g.vecCap.Enabled && mirrorable(query.Vector, g.vecCap.Dimensions) {
 		limit := query.TopK * 5
 		if limit < 50 {
 			limit = 50

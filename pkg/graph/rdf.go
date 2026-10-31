@@ -993,6 +993,11 @@ func (g *GraphStore) upsertRDFTermNodeWithLabelTx(ctx context.Context, tx *sql.T
 	if err != nil {
 		return fmt.Errorf("upsert rdf node: %w", err)
 	}
+	if g.vecCap.Enabled {
+		if err := g.pgUpsertVector(ctx, tx, node.ID, node.Vector); err != nil {
+			return fmt.Errorf("mirror rdf node vector for search: %w", err)
+		}
+	}
 	return nil
 }
 

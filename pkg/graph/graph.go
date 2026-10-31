@@ -283,6 +283,9 @@ func (g *GraphStore) InitGraphSchema(ctx context.Context) error {
 	if g.vecCap.Enabled && !g.vecCap.Indexed {
 		log.Printf("cortexdb/graph: pgvector enabled without an index — %s", g.vecCap.Reason)
 	}
+	if g.vecCap.Enabled {
+		g.mirrorStoredVectors(ctx)
+	}
 	g.schemaReady = true
 	return nil
 }
@@ -499,7 +502,7 @@ func (g *GraphStore) UpsertNode(ctx context.Context, node *GraphNode) error {
 	// error rather than a warning. A node written without a vector is taken
 	// out of it, so one that had a vector stops being found by it.
 	if g.vecCap.Enabled {
-		if err := g.pgUpsertVector(ctx, node.ID, node.Vector); err != nil {
+		if err := g.pgUpsertVector(ctx, nil, node.ID, node.Vector); err != nil {
 			return fmt.Errorf("mirror vector for search: %w", err)
 		}
 	}

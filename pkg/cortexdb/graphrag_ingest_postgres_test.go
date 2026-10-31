@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
 
 // The ingest paths on PostgreSQL, where the dedupe lookup locks the hash
@@ -94,4 +96,70 @@ func TestADedupeIngestThatCannotLockTheHashIsReported(t *testing.T) {
 	if _, err := db.store.GetDocument(ctx, "locked"); err == nil {
 		t.Fatal("the record was written although the lock was not taken")
 	}
+}
+
+// An ingested chunk is found by its vector in the graph on PostgreSQL. Ingest
+// writes its nodes in a batch, and only nodes written one at a time (a
+// decision, an execution step, an ontology action) reached
+// graph_node_vectors: once one had, the graph's vector search read the mirror
+// alone and no ingested node was found.
+func TestAnIngestedChunkIsFoundByItsVectorInTheGraphOnPostgres(t *testing.T) {
+	db := openPostgresBrain(t, 4)
+	ctx := context.Background()
+	if err := db.graph.UpsertNode(ctx, &graph.GraphNode{ID: "alone", NodeType: "decision", Content: "x",
+		Vector: []float32{0, 0, 0, 1}}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := db.GraphRAGTools().IngestDocument(ctx, ToolIngestDocumentRequest{
+		DocumentID: "pg-mirror", Content: "One chunk about the vector mirror on PostgreSQL."})
+	if err != nil || len(res.ChunkNodeIDs) != 1 {
+		t.Fatalf("ingest: %+v %v", res, err)
+	}
+	chunks, err := db.store.GetByDocID(ctx, "pg-mirror")
+	if err != nil || len(chunks) != 1 {
+		t.Fatalf("chunk rows: %d %v", len(chunks), err)
+	}
+	found, err := db.graph.HybridSearch(ctx, &graph.HybridQuery{Vector: chunks[0].Vector, TopK: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, r := range found {
+		if r.Node.ID == res.ChunkNodeIDs[0] {
+			return
+		}
+		ids = append(ids, r.Node.ID)
+	}
+	t.Fatalf("the chunk node %s is not among the nodes nearest its own vector: %v", res.ChunkNodeIDs[0], ids)
+}
+
+// A brain opened on PostgreSQL with the default config has no dimension, and
+// its graph's vector table is 64 wide whatever the embedder writes. An ingest
+// with an 8-wide embedder is written, and its chunk is found by its vector:
+// the graph search used to fail on the table's width.
+func TestAnIngestWithoutADimensionIsFoundInTheGraphOnPostgres(t *testing.T) {
+	if os.Getenv("CORTEXDB_TEST_POSTGRES") == "" {
+		t.Skip("CORTEXDB_TEST_POSTGRES unset — PostgreSQL is NOT covered by this run")
+	}
+	db := openPostgresBrainWith(t, 0, WithEmbedder(NewMockEmbedder(8)))
+	ctx := context.Background()
+	res, err := db.GraphRAGTools().IngestDocument(ctx, ToolIngestDocumentRequest{
+		DocumentID: "pg-width", Content: "One chunk written by an eight-wide embedder."})
+	if err != nil || len(res.ChunkNodeIDs) != 1 {
+		t.Fatalf("ingest: %+v %v", res, err)
+	}
+	chunks, err := db.store.GetByDocID(ctx, "pg-width")
+	if err != nil || len(chunks) != 1 || len(chunks[0].Vector) != 8 {
+		t.Fatalf("chunk rows: %d %v", len(chunks), err)
+	}
+	found, err := db.graph.HybridSearch(ctx, &graph.HybridQuery{Vector: chunks[0].Vector, TopK: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range found {
+		if r.Node.ID == res.ChunkNodeIDs[0] {
+			return
+		}
+	}
+	t.Fatalf("the chunk node %s is not among the nodes nearest its own vector", res.ChunkNodeIDs[0])
 }

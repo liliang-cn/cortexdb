@@ -34,6 +34,27 @@ All notable changes to this project will be documented in this file.
   (`DELETE FROM index_snapshots WHERE type LIKE 'HNSW%' OR type =
   'QUANTIZER'`) and it is rebuilt on the next open. `ImportIndex` still loads
   a graph as it is given. Reported by Lauro Foletti.
+- On PostgreSQL, graph nodes written in a batch (`UpsertNodesBatch`,
+  `ExecuteBatch`, and so ingest, memory, graph import and knowledge
+  transactions) and the RDF term nodes written with triples are found by their
+  vector. Only `UpsertNode` copied a vector into `graph_node_vectors`, the
+  table the graph's vector search reads: once a single node had been written
+  alone, no node written in a batch was found by similarity, with no error.
+  These writes now put the mirror row in their own transaction, and opening a
+  store mirrors the stored vectors that an earlier version left out; a stored
+  vector it cannot take is skipped, and read again at the next open. Each node
+  of a batch now pays the HNSW index insert that each `UpsertNode` already
+  paid: a batch of 500 nodes of 384 dimensions went from 33 ms to 3.9 s here;
+  a bulk load can drop `idx_graph_node_vectors_cos` and let the next open
+  rebuild it.
+- On PostgreSQL, the graph's vector table holds, and is asked about, only
+  vectors of its column's width, read from the column (or the configured one,
+  for a column without a width), and finite. A store opened with the default
+  config makes that table 64 wide; with an embedder of another width, every
+  graph vector search failed (`expected 64 dimensions, not 8`), and
+  `UpsertNode` returned that error after writing the node. Such a search is
+  now scored in Go and such a node is written without an error, left out of
+  the table, as is a vector holding NaN or an infinity.
 
 ## [2.141.0] - 2026-10-29
 
