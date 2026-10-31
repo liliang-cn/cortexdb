@@ -23,7 +23,7 @@ dsh plugin --profile web add "github:liliang-cn/cortexdb#semver:^2&path:/plugins
 
 It installs from this repository's release tags: `semver:^2` takes the newest
 v2 release, and the profile's lockfile pins the exact commit. Pin one release
-with `#v2.141.0&path:/plugins/dsh-cortexdb-memory` instead; move to the newest
+with `#v2.142.0&path:/plugins/dsh-cortexdb-memory` instead; move to the newest
 with `dsh plugin --profile web update cortexdb-dsh-memory`.
 
 Any profile works (`web`, `tui`, `headless`, your own). Installing selects the

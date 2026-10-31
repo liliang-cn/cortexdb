@@ -1,7 +1,7 @@
 {
   "id": "cortexdb",
   "name": "CortexDB",
-  "version": "2.141.0",
+  "version": "2.142.0",
   "minAppVersion": "1.11.4",
   "description": "What your CortexDB brain knows about the open note, notes sent to it, and the brain exported as linked notes.",
   "author": "Liang Li",

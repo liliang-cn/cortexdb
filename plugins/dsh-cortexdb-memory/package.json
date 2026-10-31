@@ -1,6 +1,6 @@
 {
   "name": "cortexdb-dsh-memory",
-  "version": "2.141.0",
+  "version": "2.142.0",
   "description": "CortexDB memory for DeepSeek Harness: recall before each prompt, session capture, and memory tools over the CortexDB gRPC sidecar",
   "license": "MIT",
   "type": "module",

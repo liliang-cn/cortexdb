@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.142.0] - 2026-10-31
+
+Known issue: on PostgreSQL, lexical knowledge search ranks its candidates
+in storage order, so the keyword floor can leave a lexical search empty
+where SQLite answers (#119, since v2.138.0).
+
 ### Added
 
 - `find_nodes` takes `skip_chunks`: nodes whose id begins `chunk:`, the

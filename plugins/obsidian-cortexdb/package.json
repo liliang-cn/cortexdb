@@ -1,6 +1,6 @@
 {
   "name": "obsidian-cortexdb",
-  "version": "2.141.0",
+  "version": "2.142.0",
   "private": true,
   "description": "CortexDB for Obsidian: what the brain knows about the open note, notes saved to it, and the brain exported as a vault",
   "license": "MIT",
