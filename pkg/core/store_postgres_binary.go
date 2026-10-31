@@ -67,16 +67,13 @@ func (s *PostgresStore) binaryOversample() int {
 // searchBinary is the unfiltered search through the bit index.
 func (s *PostgresStore) searchBinary(ctx context.Context, query []float32, topK int, threshold float64) ([]ScoredEmbedding, error) {
 	shortlist := topK * s.binaryOversample()
-	tx, err := s.db.BeginTx(ctx, nil)
+	// The shortlist is the bit index's LIMIT: up to 1000 rows it widens the
+	// scan, past that it is ranked exactly (pgvector refuses a wider scan).
+	tx, err := s.beginVectorScan(ctx, shortlist, false)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback() //nolint:errcheck // read-only; rollback after commit is a no-op
-	// An HNSW scan returns at most ef_search rows (default 40), so a
-	// shortlist longer than that would be cut short without a word.
-	if _, err := tx.ExecContext(ctx, fmt.Sprintf("SET LOCAL hnsw.ef_search = %d", max(shortlist, 40))); err != nil {
-		return nil, err
-	}
 	q := fmt.Sprintf(`
 		SELECT %[1]s, 1 - (vector <=> $1) AS score
 		FROM (SELECT * FROM embeddings

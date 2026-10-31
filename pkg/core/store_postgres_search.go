@@ -391,9 +391,9 @@ func (s *PostgresStore) runVectorSearch(
 	if len(where) > 0 {
 		clause = " WHERE " + strings.Join(where, " AND ")
 	}
-	limit := ""
+	limit, sqlLimit := "", 0
 	if post == nil {
-		limit = " LIMIT " + args.add(topK)
+		limit, sqlLimit = " LIMIT "+args.add(topK), topK
 	}
 
 	q := fmt.Sprintf(`
@@ -402,7 +402,12 @@ func (s *PostgresStore) runVectorSearch(
 		ORDER BY vector <=> %[2]s%[4]s`,
 		pgSearchColumns, vec, clause, limit)
 
-	rows, err := s.db.QueryContext(ctx, q, args.vals...)
+	tx, err := s.beginVectorScan(ctx, sqlLimit, clause != "")
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck // read-only
+	rows, err := tx.QueryContext(ctx, q, args.vals...)
 	if err != nil {
 		return nil, err
 	}

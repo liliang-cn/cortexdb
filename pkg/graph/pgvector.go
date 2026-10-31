@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/liliang-cn/cortexdb/v2/internal/pgscan"
 	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 )
 
@@ -134,14 +135,7 @@ func (g *GraphStore) pgVectorCandidates(ctx context.Context, query *HybridQuery,
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, err := g.query(ctx, `
-		SELECT node_id FROM graph_node_vectors
-		ORDER BY embedding <=> ?
-		LIMIT ?`, pgVectorLiteral(query.Vector), limit)
-	if err != nil {
-		return nil, err
-	}
-	ids, err := scanIDs(rows)
+	ids, err := g.pgNearestIDs(ctx, query.Vector, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -167,6 +161,27 @@ func (g *GraphStore) pgVectorCandidates(ctx context.Context, query *HybridQuery,
 		out = append(out, node)
 	}
 	return out, nil
+}
+
+// pgNearestIDs is the ids of the limit nodes nearest vec, read in a
+// transaction of their own so the scan reaches limit (pgscan.Setting).
+func (g *GraphStore) pgNearestIDs(ctx context.Context, vec []float32, limit int) ([]string, error) {
+	tx, err := g.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck // read-only
+	if _, err := tx.ExecContext(ctx, pgscan.Setting(limit, false)); err != nil {
+		return nil, err
+	}
+	rows, err := tx.QueryContext(ctx, g.dialect.Rebind(`
+		SELECT node_id FROM graph_node_vectors
+		ORDER BY embedding <=> ?
+		LIMIT ?`), pgVectorLiteral(vec), limit)
+	if err != nil {
+		return nil, err
+	}
+	return scanIDs(rows)
 }
 
 func scanIDs(rows *sql.Rows) ([]string, error) {

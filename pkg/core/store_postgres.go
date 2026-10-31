@@ -365,7 +365,12 @@ func (s *PostgresStore) search(ctx context.Context, query []float32, opts Search
 		ORDER BY vector <=> $1
 		LIMIT $%d`, pgSearchColumns, clause, len(args))
 
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	tx, err := s.beginVectorScan(ctx, topK, clause != "")
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck // read-only
+	rows, err := tx.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

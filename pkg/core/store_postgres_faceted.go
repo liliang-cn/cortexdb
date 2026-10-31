@@ -106,7 +106,13 @@ func (s *PostgresStore) rangeSearch(ctx context.Context, query []float32, radius
 		q += " LIMIT " + args.add(opts.TopK)
 	}
 
-	rows, err := s.db.QueryContext(ctx, q, args.vals...)
+	// Always filtered, by the radius: ranked exactly, whatever the limit.
+	tx, err := s.beginVectorScan(ctx, 0, true)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck // read-only
+	rows, err := tx.QueryContext(ctx, q, args.vals...)
 	if err != nil {
 		return nil, err
 	}
@@ -227,9 +233,9 @@ func (s *PostgresStore) searchWithFacets(ctx context.Context, query []float32, o
 	// applied first would return fewer than TopK rows while qualifying rows
 	// sat just past the cut — which is not what SQLite does: it thresholds the
 	// whole candidate set and then takes TopK.
-	limit := ""
+	limit, sqlLimit := "", 0
 	if opts.Threshold <= 0 {
-		limit = " LIMIT " + args.add(topK)
+		limit, sqlLimit = " LIMIT "+args.add(topK), topK
 	}
 
 	q := fmt.Sprintf(`
@@ -238,7 +244,12 @@ func (s *PostgresStore) searchWithFacets(ctx context.Context, query []float32, o
 		ORDER BY vector <=> %[2]s%[4]s`,
 		pgSearchColumns, vec, clause, limit)
 
-	rows, err := s.db.QueryContext(ctx, q, args.vals...)
+	tx, err := s.beginVectorScan(ctx, sqlLimit, clause != "")
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck // read-only
+	rows, err := tx.QueryContext(ctx, q, args.vals...)
 	if err != nil {
 		return nil, err
 	}

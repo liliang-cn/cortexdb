@@ -34,6 +34,20 @@ All notable changes to this project will be documented in this file.
   (`DELETE FROM index_snapshots WHERE type LIKE 'HNSW%' OR type =
   'QUANTIZER'`) and it is rebuilt on the next open. `ImportIndex` still loads
   a graph as it is given. Reported by Lauro Foletti.
+- A vector search on PostgreSQL no longer stops at the first 40 rows of the
+  HNSW index. pgvector's scan returns at most `hnsw.ef_search` rows (40
+  unless set), before any `WHERE`: a search for more than 40 came back with
+  40, and one restricted to a collection, a metadata value, an ACL, a facet
+  or a radius came back with the few of the first 40 that passed (3 of 5 for
+  a collection holding 5 % of the store), all without an error. An
+  unfiltered search of up to 1000 rows now widens the scan to its limit; a
+  filtered, unbounded or longer one is ranked exactly, without the index.
+  The graph's nearest nodes, asked for at least 50, got 40 and now get their
+  limit; the binary index's shortlist past 1000 rows (from `top_k` 126 at
+  the default oversample) failed with an `hnsw.ef_search` range error and is
+  now ranked exactly. The scan still counts row versions a vacuum has not
+  removed yet, so an unfiltered search on a table with many updated or
+  deleted rows can still come back short until the next vacuum.
 
 ## [2.141.0] - 2026-10-29
 
