@@ -3,6 +3,7 @@ package cortexdb
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 	"strings"
@@ -25,7 +26,19 @@ const (
 )
 
 func (db *DB) cleanupKnowledgeGraphArtifactsTx(ctx context.Context, tx *sql.Tx, knowledgeID string, chunks []*core.Embedding) ([]string, error) {
+	// The entities that name this document as a source let go of it, as
+	// delete_document_graph has them do. Left there, the id outlived the
+	// document: the delete of the entity's last real source then saw one
+	// source left and kept the entity, which nothing cited any more. Those
+	// left with no source join the orphan check below, mentioned or not.
+	unsourced, err := db.releaseDocumentSourcesTx(ctx, tx, knowledgeID)
+	if err != nil {
+		return nil, err
+	}
 	entityNodeSet := make(map[string]struct{})
+	for _, id := range unsourced {
+		entityNodeSet[id] = struct{}{}
+	}
 	chunkIDs := make([]string, 0, len(chunks))
 	for _, chunk := range chunks {
 		chunkIDs = append(chunkIDs, chunk.ID)
@@ -83,6 +96,70 @@ func (db *DB) cleanupKnowledgeGraphArtifactsTx(ctx context.Context, tx *sql.Tx, 
 		return nil, fmt.Errorf("delete orphan entity nodes: %w", err)
 	}
 	return append(nodeIDs, orphanIDs...), nil
+}
+
+// sourceRelease is a node that names a document among its sources, and the
+// sources it keeps without it.
+type sourceRelease struct {
+	id        string
+	remaining []string
+}
+
+// releaseDocumentSourcesTx takes documentID out of the source_document_ids
+// of every node that lists it, and returns the ids of the nodes it left with
+// no source.
+func (db *DB) releaseDocumentSourcesTx(ctx context.Context, tx *sql.Tx, documentID string) ([]string, error) {
+	releases, err := db.documentSourcesTx(ctx, tx, documentID)
+	if err != nil {
+		return nil, fmt.Errorf("find the entities %s sourced: %w", documentID, err)
+	}
+	unsourced := make([]string, 0)
+	for _, r := range releases {
+		// A list of strings always encodes.
+		remainingJSON, _ := json.Marshal(r.remaining)
+		if _, err := db.txExec(ctx, tx,
+			`UPDATE graph_nodes SET properties = `+db.Dialect().JSONSet("properties", "source_document_ids")+
+				`, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+			string(remainingJSON), r.id); err != nil {
+			return nil, fmt.Errorf("release %s from %s: %w", r.id, documentID, err)
+		}
+		if len(r.remaining) == 0 {
+			unsourced = append(unsourced, r.id)
+		}
+	}
+	return unsourced, nil
+}
+
+// documentSourcesTx lists the nodes that name documentID as a source, each
+// with the sources it keeps without it.
+func (db *DB) documentSourcesTx(ctx context.Context, tx *sql.Tx, documentID string) ([]sourceRelease, error) {
+	rows, err := db.txQuery(ctx, tx, `
+		SELECT id, properties FROM graph_nodes
+		WHERE `+db.Dialect().JSONArrayContains("graph_nodes.properties", "source_document_ids"), documentID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var releases []sourceRelease
+	for rows.Next() {
+		var id, propertiesJSON string
+		var properties map[string]interface{}
+		err := rows.Scan(&id, &propertiesJSON)
+		if err == nil {
+			err = json.Unmarshal([]byte(propertiesJSON), &properties)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read the sources of %s: %w", id, err)
+		}
+		remaining := make([]string, 0)
+		for _, source := range toStringSlice(properties["source_document_ids"]) {
+			if source != documentID {
+				remaining = append(remaining, source)
+			}
+		}
+		releases = append(releases, sourceRelease{id: id, remaining: remaining})
+	}
+	return releases, rows.Err()
 }
 
 // retireChunkNodesTx takes the chunk nodes of a document's previous text out
