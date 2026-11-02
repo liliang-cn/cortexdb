@@ -35,6 +35,7 @@ type knowledgeMutationPlan struct {
 	graphOps   *graph.BatchGraphOperation
 	ingest     knowledgeIngestResult
 	dedupe     *contentLookup
+	condition  *ingestCondition
 }
 
 // knowledgeRetire says what a write takes out of what is stored before it
@@ -780,6 +781,16 @@ func (db *DB) applyKnowledgeMutation(ctx context.Context, knowledgeID string, re
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// Writers of one id queue on PostgreSQL, conditional or not, so a
+	// condition checked here still holds when the document is written.
+	if err := db.lockDocumentIDTx(ctx, tx, knowledgeID); err != nil {
+		return err
+	}
+	if plan.condition != nil {
+		if err := db.checkIngestConditionTx(ctx, tx, knowledgeID, plan.condition); err != nil {
+			return err
+		}
+	}
 	// The lookup runs once the transaction holds the write lock (SQLite
 	// queues the writers of a process, core/sqlite_writelock.go; PostgreSQL
 	// takes an advisory lock on the hash), so two ingests of the same content

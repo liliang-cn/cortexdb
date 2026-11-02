@@ -31,8 +31,13 @@ func statusFor(err error) int {
 	// Checked before the sniffing below, which only recognises a few stock
 	// phrases and would otherwise report a caller's malformed schema as an
 	// internal server fault.
-	if errors.Is(err, cortexdb.ErrInvalidOntology) {
+	if errors.Is(err, cortexdb.ErrInvalidOntology) || errors.Is(err, cortexdb.ErrConflictingConditions) {
 		return http.StatusBadRequest
+	}
+	// A conditional write refused: the caller's condition, as
+	// FailedPrecondition is on gRPC.
+	if errors.Is(err, cortexdb.ErrPreconditionFailed) {
+		return http.StatusPreconditionFailed
 	}
 	lower := strings.ToLower(err.Error())
 	switch {

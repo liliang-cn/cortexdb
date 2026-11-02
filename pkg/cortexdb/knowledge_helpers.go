@@ -36,6 +36,11 @@ func (db *DB) cleanupKnowledgeArtifactsIf(ctx context.Context, knowledgeID, cond
 		return fmt.Errorf("begin knowledge cleanup transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	// A delete waits for a write of the same id, so a conditional write never
+	// brings back a document deleted under it.
+	if err := db.lockDocumentIDTx(ctx, tx, knowledgeID); err != nil {
+		return err
+	}
 
 	chunks, err := db.knowledgeChunkRefsTx(ctx, tx, knowledgeID)
 	if err != nil {
