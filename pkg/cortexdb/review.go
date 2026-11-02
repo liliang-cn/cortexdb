@@ -29,6 +29,10 @@ const (
 // what the gate is, and what it is not.
 const ReviewGateNote = "The review gate is a curation filter, not access control: knowledge_get and memory_get still read a hidden row by id, any writer can save accepted, and plan.filters.review_status lists proposed documents to any reader (memories ignore that filter)."
 
+// includeProposedDescription is the schema text of include_proposed on
+// knowledge_search and aggregate_metadata.
+const includeProposedDescription = "Documents only. Set true to serve proposed documents too while the review gate is on (CORTEXDB_REVIEW_GATE=1); rejected ones stay hidden, and a review_status filter still decides. Without the gate nothing is hidden and it changes nothing. A hit's metadata carries its _review_status."
+
 // reviewFields are the explicit fields of a write. An empty status keeps
 // the stored decision, whatever the write does with metadata: a decision
 // is never cleared, only replaced by another.
@@ -135,6 +139,20 @@ func WithReviewGate() Option {
 	}
 }
 
+type proposalsContextKey struct{}
+
+// includeProposed returns the context of a read that asked for the
+// proposed documents too (include_proposed): under the gate such a read
+// has a rejected document hidden and no other (reviewHiddenPredicateFor).
+// Any caller may ask, as any caller may filter on review_status: the gate
+// is a curation filter, not access control (ReviewGateNote).
+func includeProposed(ctx context.Context, include bool) context.Context {
+	if !include {
+		return ctx
+	}
+	return context.WithValue(ctx, proposalsContextKey{}, true)
+}
+
 // reviewHides reports whether the gate leaves a row of this status out.
 func reviewHides(status string) bool {
 	return status == ReviewProposed || status == ReviewRejected
@@ -163,6 +181,16 @@ func (db *DB) reviewHiddenPredicate(want string) string {
 	default:
 		return `(1 = 1)`
 	}
+}
+
+// reviewHiddenPredicateFor is reviewHiddenPredicate for a read under ctx. A
+// call that asked for the proposals too (includeProposed) and wants no
+// status has, under the gate, a rejected document hidden and no other.
+func (db *DB) reviewHiddenPredicateFor(ctx context.Context, want string) string {
+	if want == "" && db.reviewGate && ctx.Value(proposalsContextKey{}) != nil {
+		return `(` + db.Dialect().JSONTextGuarded("metadata", reviewStatusKey) + ` IN ('` + ReviewRejected + `'))`
+	}
+	return db.reviewHiddenPredicate(want)
 }
 
 // memoryUnreviewed reports whether the gate leaves a memory out of recall.

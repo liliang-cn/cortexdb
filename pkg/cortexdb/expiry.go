@@ -181,7 +181,7 @@ func (db *DB) hiddenAmong(ctx context.Context, filters *RetrievalFilters, ids []
 		want = filters.ReviewStatus
 	}
 	ids = documentIDsOf(ids)
-	hidden, err := db.hiddenDocuments(ctx, time.Now(), db.reviewHiddenPredicate(want), ids)
+	hidden, err := db.hiddenDocuments(ctx, time.Now(), db.reviewHiddenPredicateFor(ctx, want), ids)
 	if err != nil && !db.reviewGate && want == "" {
 		hidden, err = map[string]struct{}{}, nil
 	}

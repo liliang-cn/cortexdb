@@ -36,7 +36,7 @@ func (db *DB) Aggregate(ctx context.Context, req core.AggregationRequest) (*core
 		req.Filters = withoutKey(req.Filters, reviewStatusKey)
 		req.OnlyDocuments, req.OnlyDocumentsArgs = db.reviewStatusIs(want)
 	}
-	req.ExcludeDocuments, req.ExcludeDocumentsArgs = db.hiddenDocumentsWhere(statusFiltered)
+	req.ExcludeDocuments, req.ExcludeDocumentsArgs = db.hiddenDocumentsWhere(ctx, statusFiltered)
 	return db.store.Aggregate(ctx, req)
 }
 
@@ -72,9 +72,9 @@ func withoutKey[V any](m map[string]V, key string) map[string]V {
 // on the review status itself, the review gate hides nothing and the filter
 // decides: that is how a curator lists what waits. Expired documents stay
 // out either way.
-func (db *DB) hiddenDocumentsWhere(statusFiltered bool) (string, []interface{}) {
+func (db *DB) hiddenDocumentsWhere(ctx context.Context, statusFiltered bool) (string, []interface{}) {
 	where := db.expiredPredicate()
-	if review := db.reviewHiddenPredicate(""); review != "" && !statusFiltered {
+	if review := db.reviewHiddenPredicateFor(ctx, ""); review != "" && !statusFiltered {
 		where = `(` + where + ` OR ` + review + `)`
 	}
 	return where, []interface{}{instant(time.Now())}
@@ -120,7 +120,7 @@ func (db *DB) VectorAggregate(ctx context.Context, req core.VectorAggregateReque
 		req.Filter = withoutKey(req.Filter, reviewStatusKey)
 		req.OnlyDocuments, req.OnlyDocumentsArgs = db.reviewStatusIs(want)
 	}
-	req.ExcludeDocuments, req.ExcludeDocumentsArgs = db.hiddenDocumentsWhere(statusFiltered)
+	req.ExcludeDocuments, req.ExcludeDocumentsArgs = db.hiddenDocumentsWhere(ctx, statusFiltered)
 	return db.store.VectorAggregate(ctx, req)
 }
 
@@ -134,6 +134,9 @@ type ToolAggregateMetadataRequest struct {
 	Collection string            `json:"collection,omitempty"`
 	OrderBy    string            `json:"order_by,omitempty"`
 	Limit      int               `json:"limit,omitempty"`
+	// IncludeProposed counts the proposed documents too under the review
+	// gate; rejected ones stay out.
+	IncludeProposed bool `json:"include_proposed,omitempty"`
 }
 
 // ToolAggregateMetadataGroup is one row of the answer.
@@ -151,6 +154,7 @@ type ToolAggregateMetadataResponse struct {
 
 // AggregateMetadata answers a counting question for a tool caller.
 func (t *GraphRAGToolbox) AggregateMetadata(ctx context.Context, req ToolAggregateMetadataRequest) (*ToolAggregateMetadataResponse, error) {
+	ctx = includeProposed(ctx, req.IncludeProposed)
 	// The tool takes string values because that is what a metadata equality
 	// filter compares against in storage; core's map is `any` for callers that
 	// already hold typed values.

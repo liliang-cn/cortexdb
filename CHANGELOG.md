@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- `knowledge_search` and `aggregate_metadata` take `include_proposed`:
+  under the review gate, proposed documents are served and counted beside
+  accepted ones, and rejected ones stay hidden; a `review_status` filter
+  still decides. Without the gate it changes nothing. A hit's `metadata`
+  carries `_review_status`, as before.
+
 ## [2.142.0] - 2026-10-31
 
 Known issue: on PostgreSQL, lexical knowledge search ranks its candidates
