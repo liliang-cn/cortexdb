@@ -92,6 +92,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 					"max_entities_per_chunk": toolIntegerSchema("Optional cap on graph-derived entities attached to each chunk."),
 					"ppr":                    toolPPROptionsSchema(),
 					"plan":                   toolRetrievalPlanSchema("Preferred structured retrieval plan produced by the external LLM before search."),
+					"include_proposed":       toolBooleanSchema(includeProposedDescription),
 				},
 			),
 		},

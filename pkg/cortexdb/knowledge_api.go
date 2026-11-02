@@ -286,7 +286,7 @@ func (db *DB) GetKnowledge(ctx context.Context, req KnowledgeGetRequest) (*Knowl
 
 // SearchKnowledge searches durable knowledge and groups chunk results by knowledge document.
 func (db *DB) SearchKnowledge(ctx context.Context, req KnowledgeSearchRequest) (*KnowledgeSearchResponse, error) {
-	ctx = withVariantMemo(ctx)
+	ctx = withVariantMemo(includeProposed(ctx, req.IncludeProposed))
 	// Pre-retrieval query transformation (rewrite + HyDE): fold any transformer
 	// AlternateQueries/Keywords into the request before planning, and capture the
 	// hypothetical document to steer the semantic query vector below. Best-effort:

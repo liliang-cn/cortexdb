@@ -151,6 +151,9 @@ type KnowledgeSearchRequest struct {
 	Plan                *RetrievalPlan `json:"plan,omitempty"`
 	// PPR tunes retrieval_mode "ppr"; ignored by every other mode.
 	PPR *PPRRetrievalOptions `json:"ppr,omitempty"`
+	// IncludeProposed serves the proposed documents too under the review
+	// gate; rejected ones stay out. A hit's Metadata carries _review_status.
+	IncludeProposed bool `json:"include_proposed,omitempty"`
 }
 
 // KnowledgeSearchHit is a document-shaped search result aggregated from chunk retrieval.
