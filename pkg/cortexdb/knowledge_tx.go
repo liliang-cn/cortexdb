@@ -159,6 +159,7 @@ func (db *DB) buildEmbedderKnowledgePlan(ctx context.Context, input knowledgeMut
 	if err := db.mergeEntityNodeProperties(ctx, entityNodes, ingestOpts.Collection); err != nil {
 		return nil, err
 	}
+	recordEntitySourceDocument(entityNodes, input.KnowledgeID)
 	plan.graphOps.NodeUpserts = append(plan.graphOps.NodeUpserts, sortedNodePointers(entityNodes)...)
 	plan.graphOps.EdgeUpserts = sortedEdgePointers(edgeMap)
 	return plan, nil
@@ -229,6 +230,7 @@ func (db *DB) buildLexicalKnowledgePlan(ctx context.Context, input knowledgeMuta
 	if err := db.mergeEntityNodeProperties(ctx, entityNodes, ingestOpts.Collection); err != nil {
 		return nil, err
 	}
+	recordEntitySourceDocument(entityNodes, input.KnowledgeID)
 	plan.graphOps.NodeUpserts = append(plan.graphOps.NodeUpserts, sortedNodePointers(entityNodes)...)
 	plan.graphOps.EdgeUpserts = sortedEdgePointers(edgeMap)
 	return plan, nil
@@ -562,6 +564,18 @@ func (db *DB) mergeEntityNodeProperties(ctx context.Context, entityNodes map[str
 	}
 	mergeEntityCollections(nodes, prior, collection)
 	return nil
+}
+
+// recordEntitySourceDocument names the document among the sources of every
+// entity node a knowledge write is about to produce, after the sources
+// mergeEntityNodeProperties carried over from the stored node, as
+// upsert_entities does. Without it, the cleanup of the document could not
+// tell the entities it alone asserted from the ones another document, or a
+// hand, still holds: only those it leaves with no source are its to remove.
+func recordEntitySourceDocument(entityNodes map[string]*graph.GraphNode, documentID string) {
+	for _, node := range entityNodes {
+		node.Properties["source_document_ids"] = unionStrings(node.Properties["source_document_ids"], []string{documentID})
+	}
 }
 
 func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowledgeMutationInput, entityNodes map[string]*graph.GraphNode, entityTypes map[string]string, edgeMap map[string]*graph.GraphEdge, ingest *knowledgeIngestResult) error {
