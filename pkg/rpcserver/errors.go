@@ -28,6 +28,13 @@ func toStatus(err error) error {
 	if errors.Is(err, cortexdb.ErrInvalidOntology) {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
+	// A conditional write refused: the caller's condition, not the server.
+	if errors.Is(err, cortexdb.ErrPreconditionFailed) {
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+	if errors.Is(err, cortexdb.ErrConflictingConditions) {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
 	msg := err.Error()
 	lower := strings.ToLower(msg)
 	switch {

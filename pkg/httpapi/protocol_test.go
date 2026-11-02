@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -157,6 +158,25 @@ func TestStatusForMapsFacadeErrorsOntoHonestCodes(t *testing.T) {
 		}
 	}
 }
+
+// A refused condition is the caller's, as FailedPrecondition is on gRPC: 412,
+// whatever its message says; both conditions together are a 400.
+func TestAConditionalWriteRefusedIsA412(t *testing.T) {
+	refused := fmt.Errorf("%w: document %q not found, invalid", cortexdb.ErrPreconditionFailed, "d1")
+	if got := statusFor(refused); got != http.StatusPreconditionFailed {
+		t.Fatalf("statusFor(refused condition) = %d, want 412", got)
+	}
+	if got := statusFor(conflictingConditions{}); got != http.StatusBadRequest {
+		t.Fatalf("statusFor(both conditions) = %d, want 400", got)
+	}
+}
+
+// conflictingConditions wraps the sentinel without the word "invalid", so only
+// the errors.Is arm can make it a 400.
+type conflictingConditions struct{}
+
+func (conflictingConditions) Error() string { return "two conditions" }
+func (conflictingConditions) Unwrap() error { return cortexdb.ErrConflictingConditions }
 
 // ontologyRejection wraps the sentinel without borrowing its wording, so this
 // can only pass through the errors.Is arm rather than by accidentally

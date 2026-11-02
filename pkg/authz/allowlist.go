@@ -204,7 +204,7 @@ func paths(lists ...[]string) []string {
 var confinedTools = map[string]toolRule{
 	// Knowledge: one collection, named at the top level.
 	"ingest_document": {scope: collectionScope, stores: storeKnowledge, rewritten: documentKeys,
-		args: paths(docArgs, []string{"dedupe"}), ids: []idField{{"document_id", idKnowledge}}},
+		args: paths(docArgs, []string{"dedupe", "if_absent", "if_sha256"}), ids: []idField{{"document_id", idKnowledge}}},
 	"knowledge_save": {scope: collectionScope, stores: storeKnowledge, rewritten: documentKeys,
 		args: docArgs, ids: []idField{{"knowledge_id", idKnowledge}}, denied: graphDenied},
 	"knowledge_update": {scope: collectionScope, stores: storeKnowledge, rewritten: documentKeys,

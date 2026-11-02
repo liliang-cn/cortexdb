@@ -60,6 +60,17 @@ type ToolIngestDocumentRequest struct {
 	// exact content, nothing is written and the response names it in
 	// DuplicateOf.
 	Dedupe bool `json:"dedupe,omitempty"`
+	// IfAbsent writes only when the brain has no document of this id, and
+	// IfSHA256 only when the stored document's content hash
+	// (_content_sha256) is this one: a client that reads, checks and then
+	// writes is not overtaken by another write. The condition is checked in
+	// the write transaction, which every knowledge write and delete of the
+	// id waits for (not the typed InsertGraphDocument RPC); a write it
+	// refuses changes nothing and fails with
+	// ErrPreconditionFailed. The two are not given together
+	// (ErrConflictingConditions).
+	IfAbsent bool   `json:"if_absent,omitempty"`
+	IfSHA256 string `json:"if_sha256,omitempty"`
 	// ExpiresAt is an RFC 3339 instant after which the document is left out
 	// of every search and removed by the expiry sweep. Empty removes the
 	// expiry; absent keeps the one stored, so a re-ingest from the source

@@ -25,6 +25,11 @@ func (t *GraphRAGToolbox) IngestDocument(ctx context.Context, req ToolIngestDocu
 		return nil, ErrEmptyText
 	}
 
+	condition, err := newIngestCondition(req)
+	if err != nil {
+		return nil, err
+	}
+
 	ingestOpts := GraphRAGIngestOptions{
 		Collection:   req.Collection,
 		ChunkSize:    req.ChunkSize,
@@ -56,6 +61,15 @@ func (t *GraphRAGToolbox) IngestDocument(ctx context.Context, req ToolIngestDocu
 	var stored map[string]any
 	if existing != nil {
 		stored = existing.Metadata
+	}
+	// A condition that does not hold refuses before anything is made, the
+	// unchanged path included; the transaction checks it again under the
+	// write lock.
+	if condition != nil {
+		hash, _ := stored[contentHashKey].(string)
+		if err := condition.holds(req.DocumentID, existing != nil, hash); err != nil {
+			return nil, err
+		}
 	}
 	if err := carryExpiry(metadata, stored, req.ExpiresAt); err != nil {
 		return nil, err
@@ -223,6 +237,7 @@ func (t *GraphRAGToolbox) IngestDocument(ctx context.Context, req ToolIngestDocu
 	// knowledge_save uses, so a failure half-way leaves nothing behind. The
 	// dedupe lookup runs in that transaction too, once the write lock is
 	// held, so two ingests of the same content that race store one copy.
+	plan.condition = condition
 	if req.Dedupe {
 		plan.dedupe = &contentLookup{hash: contentHash, collection: ingestOpts.Collection}
 	}
