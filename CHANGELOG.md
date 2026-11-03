@@ -4,13 +4,42 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.143.0] - 2026-11-03
+
+Known issue: on PostgreSQL, lexical knowledge search ranks its candidates
+in storage order, so the keyword floor can leave a lexical search empty
+where SQLite answers (#119, since v2.138.0).
+
 ### Added
 
+- `ingest_document` takes `if_absent: true` (write only a new document id)
+  and `if_sha256` (write only over the stored `_content_sha256` the caller
+  read). A refused condition writes nothing and fails with
+  `ErrPreconditionFailed`: gRPC `FailedPrecondition`, HTTP 412. Both
+  together are refused (`ErrConflictingConditions`, 400). On PostgreSQL
+  every knowledge write and delete now takes a transaction advisory lock
+  on the document id, so the check and the write are one step. Lauro
+  Foletti (#120).
 - `knowledge_search` and `aggregate_metadata` take `include_proposed`:
   under the review gate, proposed documents are served and counted beside
   accepted ones, and rejected ones stay hidden; a `review_status` filter
   still decides. Without the gate it changes nothing. A hit's `metadata`
-  carries `_review_status`, as before.
+  carries `_review_status`, as before. Lauro Foletti (#121).
+
+### Fixed
+
+- `knowledge_delete`, and `knowledge_save` / `knowledge_update` over a
+  stored document, take the document out of the `source_document_ids` of
+  every entity that lists it, as `delete_document_graph` does. An entity
+  left with no source and held by no edge is removed, mentioned or not;
+  before, it kept naming a deleted document and outlived its last source.
+  Lauro Foletti (#122).
+- `knowledge_save` and `knowledge_update` record the document among the
+  sources of the entities they write, as `upsert_entities` does, so an
+  entity a document alone declared goes with that document or with the
+  version that drops it. Entities another document still sources, and
+  nodes written by hand, stay. Entities written before this release carry
+  no source and are kept. Lauro Foletti (#123).
 
 ## [2.142.0] - 2026-10-31
 
