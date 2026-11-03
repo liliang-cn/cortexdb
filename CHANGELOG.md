@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- `cortexdb.NewOpenAIEmbedder` and `cortexdb.EmbedderFromEnv`: the OpenAI-compatible
+  embedder (OpenAI, Ollama, vLLM …) that cortexdb-mcp and cortexdb-grpc used privately,
+  for any program that embeds CortexDB. `EmbedderFromEnv` reads the same
+  `CORTEXDB_EMBED_*` variables as cortexdb-mcp and is nil when none is set.
 - Flow traces (W3C Trace Context): gRPC, HTTP and MCP calls join the caller's
   `traceparent` (MCP: `params._meta.traceparent`) as a child span or start a
   trace, return their own span (`traceparent`, MCP `_meta`
