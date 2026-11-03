@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- `cortexdb.NewOpenAIEmbedder` and `cortexdb.EmbedderFromEnv`: the OpenAI-compatible
+  embedder (OpenAI, Ollama, vLLM …) that cortexdb-mcp and cortexdb-grpc used privately,
+  for any program that embeds CortexDB. `EmbedderFromEnv` reads the same
+  `CORTEXDB_EMBED_*` variables as cortexdb-mcp and is nil when none is set.
+
 ## [2.143.0] - 2026-11-03
 
 Known issue: on PostgreSQL, lexical knowledge search ranks its candidates
