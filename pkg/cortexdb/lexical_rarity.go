@@ -46,7 +46,9 @@ import (
 //
 // Words are compared without their accents, as the word index reads them
 // (see foldAccents): the index finds "Universität" for "universitat", and the
-// score must not then drop the row for holding none of the question.
+// score must not then drop the row for holding none of the question. English
+// words are also compared by their stem (see stemWord): "own" is in a row
+// that says "owns", and "shipped" in one that says "ships".
 
 // rarityExtraWeight is the credit a supplied keyword earns, as a share of
 // what the same term would earn as a word of the question.
@@ -80,24 +82,30 @@ type rarityQuery struct {
 
 // newRarityQuery breaks a question, and the synonyms supplied with it, into
 // coverage units. A word typed twice with other accents ("universität
-// universitat") is one unit, the first spelling kept: the index reads both
-// the same, and counted twice it would pass the "more than one word" rule
-// alone.
+// universitat"), or in two forms ("own owns"), is one unit, the first
+// spelling kept: coverage reads both the same, and counted twice it would
+// pass the "more than one word" rule alone.
 func newRarityQuery(query string, synonyms []string) rarityQuery {
 	q := rarityQuery{cjk: cjkQueryTerms(query)}
 	words := rarityWords(query, rarityMaxWords)
 	have := make(map[string]struct{}, len(words)+len(q.cjk.terms))
+	stems := make(map[string]struct{}, len(words))
 	for _, w := range words {
 		key := foldAccents(w)
-		if _, ok := have[key]; ok {
+		if _, ok := stems[stemWord(key)]; ok {
 			continue
 		}
+		stems[stemWord(key)] = struct{}{}
 		have[key] = struct{}{}
 		q.words = append(q.words, w)
 	}
 	for _, t := range q.cjk.terms {
 		have[t] = struct{}{}
 	}
+	// A synonym that is another form of a question word ("owned" for "own")
+	// stays a synonym, as the OR query searches for it; inflects keeps it
+	// from counting as a second word of a row that holds both.
+	//
 	// The synonyms' words are capped after the question's own are taken out,
 	// as the keyword OR query caps them (see lexicalORSynonyms), so a word
 	// that query searches for is credited when a row holds it. Their CJK
@@ -149,6 +157,12 @@ func (q rarityQuery) empty() bool {
 // They keep the accents they were typed with: the count is a LIKE, which
 // compares them, so a word typed without its accents is counted only in rows
 // that spell it so, and weighs as a rare word.
+//
+// A word is counted as typed, not by its stem: coverage matches "owns" for
+// "own", but how rare a word is stays the rarity of the form asked. Counted by
+// the stem's root, "Summers" weighed what "summer" does, and on the
+// benchmarks (2WikiMultiHopQA, LongMemEval) a name or a plural that is rare as
+// typed lost the rows that hold it to rows holding the common root.
 func (q rarityQuery) patterns() []string {
 	out := make([]string, 0, len(q.words)+len(q.cjk.terms)+len(q.extras))
 	out = append(out, q.words...)
@@ -170,6 +184,7 @@ func (q rarityQuery) patternsBesideBigrams() []string {
 type rarityScorer struct {
 	q      rarityQuery
 	folded []string  // q.words then q.extras, without their accents
+	stems  []string  // stemWord of each folded word
 	wordW  []float64 // weight of q.words[i]
 	charW  []float64 // weight of each CJK content character of the question
 	extraW []float64 // weight of q.extras[i]
@@ -218,7 +233,9 @@ func rarityIDF(df, n int) float64 {
 func newRarityScorer(q rarityQuery, df map[string]int, n int) *rarityScorer {
 	s := &rarityScorer{q: q}
 	for _, w := range append(append([]string{}, q.words...), q.extras...) {
-		s.folded = append(s.folded, foldAccents(w))
+		f := foldAccents(w)
+		s.folded = append(s.folded, f)
+		s.stems = append(s.stems, stemWord(f))
 	}
 	for _, w := range q.words {
 		weight := rarityIDF(df[w], n)
@@ -307,11 +324,22 @@ func (s *rarityScorer) coverage(content string) rarityMatch {
 	}
 	lower := strings.ToLower(content)
 	folded := foldAccents(lower)
+	var stems map[string]struct{}
+	holds := func(i int) bool {
+		if containsWord(folded, s.folded[i]) {
+			return true
+		}
+		if stems == nil {
+			stems = stemmedWords(folded)
+		}
+		_, ok := stems[s.stems[i]]
+		return ok
+	}
 	var m rarityMatch
 	var got float64
 	held := make([]bool, len(s.q.words))
 	for i := range s.q.words {
-		if containsWord(folded, s.folded[i]) {
+		if holds(i) {
 			got += s.wordW[i]
 			m.words++
 			held[i] = true
@@ -348,7 +376,7 @@ func (s *rarityScorer) coverage(content string) rarityMatch {
 		if isCJKTerm(e) {
 			hit = strings.Contains(content, e)
 		} else {
-			hit = containsWord(folded, s.folded[len(s.q.words)+i])
+			hit = holds(len(s.q.words) + i)
 		}
 		if hit {
 			got += s.extraW[i]
@@ -477,15 +505,22 @@ var latinFolds = []struct {
 		"....uuuu..........yyyyyyyy"}, //       U+1EE0
 }
 
-// inflects reports whether two words are forms of one as containsWord
-// matches them: the longer starts with the shorter, of four letters or more
-// ("recommend", "recommendation"). A row that holds "recommendations" holds
-// both, and that is one word of the question, not two.
+// inflects reports whether two words are forms of one as coverage matches
+// them: they have one stem ("ship", "shipped"), or the longer starts with the
+// shorter, of four letters or more ("recommend", "recommendation"). A row
+// that holds "recommendations" holds both, and that is one word of the
+// question, not two.
 func inflects(a, b string) bool {
+	if a == b {
+		return false
+	}
+	if stemWord(a) == stemWord(b) {
+		return true
+	}
 	if len(a) > len(b) {
 		a, b = b, a
 	}
-	return a != b && utf8.RuneCountInString(a) >= 4 && strings.HasPrefix(b, a)
+	return utf8.RuneCountInString(a) >= 4 && strings.HasPrefix(b, a)
 }
 
 // heldInflection reports whether a row holds one of the question words of.

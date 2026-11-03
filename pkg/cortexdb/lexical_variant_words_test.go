@@ -137,7 +137,9 @@ func TestLexicalSearchQueriesTakeAlternateWords(t *testing.T) {
 			t.Errorf("OR query %q lacks %q; queries = %q", plain, want, queries)
 		}
 	}
-	for _, want := range []string{"verfahren*", "kantone*", "bund*"} {
+	// The prefix form searches a word by the root of its stem: kanton* finds
+	// Kantone and Kantons alike.
+	for _, want := range []string{"verfahren*", "kanton*", "bund*"} {
 		if !slices.Contains(prefix, want) {
 			t.Errorf("prefix OR query %q lacks %q; queries = %q", prefix, want, queries)
 		}

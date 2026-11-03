@@ -151,6 +151,15 @@ Both reported privately by Lauro Foletti.
   carry `trace_id` and `span_id`; `recall_log_list` and `/recalls?trace=` filter
   by it; `observability.WithTraceparent` joins library calls to a flow.
 
+### Fixed
+
+- Keyword recall counts an English word and its inflections as one word:
+  "what does Alice own?" finds "Alice owns Apollo", and "shipped" covers
+  "ships", "box" "boxes". The relevance floors compared short words whole,
+  so such a row was dropped as sharing one word of the question. Coverage now
+  compares words by a light stem (CJK unchanged), and the prefix keyword query
+  searches the stem (`own*`).
+
 ## [2.140.0] - 2026-10-28
 
 ### Added

@@ -320,6 +320,12 @@ func mergeLexicalKeywords(groups ...[]string) []string {
 	return merged
 }
 
+// formatFTSKeywords are keywords as terms of an OR query. In the prefix form
+// an English word is searched by the root of its stem (see stemRoot), as the
+// coverage floor matches it: "owned*" would not find "owns", "own*" does, and
+// "compan*" finds "company" as well as "companies". The word index does not
+// stem, so this form is the one that finds a row through another form of a
+// question's word.
 func formatFTSKeywords(keywords []string, prefix bool) []string {
 	terms := make([]string, 0, len(keywords))
 	for _, keyword := range keywords {
@@ -328,7 +334,7 @@ func formatFTSKeywords(keywords []string, prefix bool) []string {
 		}
 		term := keyword
 		if prefix && isASCIIAlphaNum(keyword) && len(keyword) > 2 {
-			term += "*"
+			term = stemRoot(keyword) + "*"
 		}
 		terms = append(terms, term)
 	}
