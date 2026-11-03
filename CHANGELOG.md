@@ -4,12 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.145.0] - 2026-11-03
+
+v2.144.0 was tagged on a feature branch by mistake and is retracted; it
+holds the same two changes on top of unreleased work. Use v2.145.0.
+
 ### Added
 
 - `cortexdb.NewOpenAIEmbedder` and `cortexdb.EmbedderFromEnv`: the OpenAI-compatible
   embedder (OpenAI, Ollama, vLLM …) that cortexdb-mcp and cortexdb-grpc used privately,
   for any program that embeds CortexDB. `EmbedderFromEnv` reads the same
   `CORTEXDB_EMBED_*` variables as cortexdb-mcp and is nil when none is set.
+
+### Fixed
+
+- Keyword recall counts an English word and its inflections as one word:
+  "what does Alice own?" finds "Alice owns Apollo", and "shipped" covers
+  "ships", "box" "boxes". The relevance floors compared short words whole,
+  so such a row was dropped as sharing one word of the question. Coverage now
+  compares words by a light stem (CJK unchanged), and the prefix keyword query
+  searches the stem (`own*`).
 
 ## [2.143.0] - 2026-11-03
 
@@ -150,15 +164,6 @@ Both reported privately by Lauro Foletti.
   reranker and SPARQL `SERVICE`. Log lines, trace records and the recall log
   carry `trace_id` and `span_id`; `recall_log_list` and `/recalls?trace=` filter
   by it; `observability.WithTraceparent` joins library calls to a flow.
-
-### Fixed
-
-- Keyword recall counts an English word and its inflections as one word:
-  "what does Alice own?" finds "Alice owns Apollo", and "shipped" covers
-  "ships", "box" "boxes". The relevance floors compared short words whole,
-  so such a row was dropped as sharing one word of the question. Coverage now
-  compares words by a light stem (CJK unchanged), and the prefix keyword query
-  searches the stem (`own*`).
 
 ## [2.140.0] - 2026-10-28
 
