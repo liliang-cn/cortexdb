@@ -25,6 +25,7 @@
 - **向量 + 词法引擎** — FTS5、HNSW / IVF / Flat 索引、标量与乘积量化，以及 `IndexTypeBinary`：1 bit 编码（内存只占 1/32），按汉明距离粗筛，再用原始精度对候选精确重排——真实 768 维向量上，默认 8 倍过采样时 recall@10 为 0.979–0.996，10 万条向量时比精确扫描快约 110 倍；PostgreSQL 上用 pgvector 的 `binary_quantize`。小设备上用 `cortexdb.EmbeddedConfig`：HNSW 索引存成 SQ8 编码，SQLite 的缓存和连接数有上限（`core.ResourceConfig`），索引快照定期保存、按 4 MiB 分块读写——10 万条 768 维向量从快照打开 0.28 秒，堆内存 193 MB，峰值 RSS 297 MB。地理索引、语义查询路由。
 - **外部召回通道** — 你已经在跑的搜索集群（Meilisearch、Weaviate…）可以通过 `QuerySource` 成为参与融合的一条 lane，而不必成为存储：它只点名候选 id，内容仍归大脑所有，过期的 id 会被丢弃而不是被编造成结果。
 - **知识契约** — 每条记录都能回答*我怎么知道的*和*我多确定*：`_source`、`_chunk`、`_producer`，以及一个闭集里的 `_grade` —— `verified`（有名有姓的人留下的）、`self_consistent`（从已陈述的东西推导出来的）、`asserted`（模型或人说的，没人核过）、`held`、`refused`（被词汇表拒绝，附原因）。`contract_tally` 回答整个书架站在什么之上，未标注的行也算进去；`contract_needs_attention` 列出需要人看的 —— 包括实体消解在"两个名字可能是同一个实体"时写下的 `possiblySame` 链接，而不是凭猜测直接合并；`fact_provenance` 引出事实所来自的原文；`verify_claims` 拿 (主语, 关系, 宾语) 三元组对照图谱逐条判定 —— supported、contradicted（单值关系上当前是另一个值、有效期已结束、或有 `_contradicts` 记录否定它）或 absent —— 每条判定都附来源，全程不调模型。生产者写入前调 `ValidateContract`。[alchemy](https://github.com/liliang-cn/alchemy) 往这里入库的每张图都带契约 —— 它六个 sink 里唯一这么做的。
+- **图片、音频和视频** — `ingest_media` 把照片、录音或视频存成文档，文字从文件里派生：图片的说明和图中可见的文字、录音的转写稿、视频的转写稿加上各帧说明，排在同一条时间线上。这些文字跟其他文档一样被检索，有没有嵌入模型都行，命中会给出文件和时间点（`media.spans`：`start_ms`/`end_ms`）。CortexDB 不调用任何模型：描述、转写和取帧都是接口，`pkg/media` 里有 Ollama、OpenAI 兼容（whisper.cpp）和 ffmpeg 的实现，调用方也可以自己派生文字再发过来。文件的哈希就是内容哈希：没变的文件不会被派生第二次，换了更好的模型只替换它自己的分块。
 - **可换存储后端** — 默认 SQLite；把 DSN 换成 `postgres://` 就把同一个大脑搬到 **PostgreSQL + pgvector**，向量、混合检索、记忆和 RDF 图谱在两个后端上都跑。注册表是编译期的，不是插件系统（存储是热路径）。104 个 opt-in 的 PostgreSQL 测试，大多是 parity 测试：一份测试体、两个数据库、必须给出相同答案。
 - **知识图谱** — 同一文件上的 RDF 三元组/四元组,**属性图也能当 RDF 读**:抽取和 `upsert_entities` 写进去的一切,都以只读三元组的形式参与 SPARQL、推理和 SHACL(`cxn:` 节点、`cxt:` 类型、`cxr:` 关系、`cxp:` 属性),不复制数据,也就没有同步问题。**RDF 1.2**:三元组项 `<<( s p o )>>`、具名化三元组和 `{| |}` 注解,于是"关于一条事实的事实"(谁说的、多大把握)本身也能查询;支持带书写方向的字面量。SPARQL 1.1 和 1.2——查询、带图管理(`ADD`/`COPY`/`MOVE`/`CLEAR`/`DROP`)的更新、全部属性路径、JSON/XML/CSV/TSV 结果格式,以及通过应用设置的处理器执行的 `SERVICE`——在两种后端上通过 W3C 官方测试:RDF 1.2 与 RDF/XML 全部通过,SPARQL 1.2 269/269,SPARQL 1.1 查询 329/331(两条是有意的宽松处理:`"1" + "2"` 得 3)、更新 157/157、结果格式和联邦查询全部通过。半朴素求值的物化推理,覆盖 RDFS 和 OWL 2 RL 规则——`inverseOf`、对称、传递、`equivalentClass`/`equivalentProperty`、`sameAs`、**键**(`FunctionalProperty` / `InverseFunctionalProperty` / `hasKey` 推出 `sameAs`:邮箱相同就是同一个人)、**属性链**,以及类表达式(`someValuesFrom`、`allValuesFrom`、`hasValue`、`intersectionOf`、`unionOf`、`oneOf`、最大基数)——事实变化时**自动**保持最新(删除再重推,异步执行,`WaitForInference` 可读到自己刚写入的结果),每条推理结果都能解释来源。矛盾(`disjointWith` 与 `AllDisjointClasses`、不相交属性、函数型属性出现两个值、`differentFrom` 与 `AllDifferent` 和推出的 `sameAs` 冲突、非自反和非对称属性、否定属性断言、`complementOf`、`owl:Nothing`、基数为 0)会连同冲突的三元组一起报告,绝不靠猜来消解。**完整的 SHACL Core**——全部属性路径、限定值形状、`sh:lessThan`、隐式类目标;W3C Core 测试 98/98——以及 **SHACL-SPARQL**(`sh:sparql` 约束和基于 SPARQL 的约束组件,支持预绑定;22 条通过 21 条,规范中可选的 `$shapesGraph` 除外),还有 **SHACL-AF 规则**(`sh:TripleRule`,支持条件、顺序和节点表达式,迭代到不动点,结果可解释)。属性图上的**只读 Cypher / GQL**(`graph_cypher_query`:MATCH / OPTIONAL MATCH / WITH / 最多 6 跳的变长路径 / 聚合;3,897 个 openCypher TCK 场景 0 错答——做不到的直接拒绝)。N-Triples/N-Quads/Turtle/TriG/JSON-LD 读写和 RDF/XML 导入(大多数 OWL 本体以此发布),JSON-LD 绝不拉取远程 context;属性图侧 `apply_inference` 物化两跳关系组合并带出处;实体记录断言文档,`delete_document_graph` 是按摄入形状做的删除。
 - **Ontology(Palantir 风格)** — 带主键与基数的对象/链接/接口类型,对象集代数(union / intersect / filter / `search_around`),带审计的受治理**动作类型**,自动生成的类型化 agent 工具,以及破坏性变更的 schema diff;`strict` 与 `vocabulary` 两种执行模式。
@@ -430,7 +431,7 @@ tools := db.GraphRAGTools()                             // 进程内 tool callin
 server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 ```
 
-工具分组（100+ 个工具，进程内与 MCP 同名）：GraphRAG（`ingest_document`、`search_text`、`build_context`、`expand_graph`、`search_paths`、`find_nodes`、`delete_document_graph`）、统一检索（`cortex_query`）、knowledge/memory（`knowledge_save`、`memory_search` …）、KnowledgeMemory（`knowledge_memory_recall`、`_reflect`、`_consolidate`、`extract_conversation`）、KG（`knowledge_graph_query`、`_shacl_validate`、`apply_inference`）、ontology（`ontology_save`、`ontology_action_apply`、`object_set_resolve`）、维护（`vector_dimension_repair`、`sweep_expired`）。`cortexdb-mcp-stdio` 这个二进制额外提供 `render_graph_html`（交互式知识图谱视图）、`serve_graph_3d`、`side_graph_*`、`import_agent_memory`，本地模式下还有 `global_search` / `build_community_hierarchy`；`db.NewMCPServer` 只提供 facade 自己的工具。`memoryflow`/`graphflow`/`importflow`/`connector` 各自也暴露自己的 toolbox。
+工具分组（100+ 个工具，进程内与 MCP 同名）：GraphRAG（`ingest_document`、`search_text`、`build_context`、`expand_graph`、`search_paths`、`find_nodes`、`delete_document_graph`）、统一检索（`cortex_query`）、knowledge/memory（`knowledge_save`、`memory_search` …）、KnowledgeMemory（`knowledge_memory_recall`、`_reflect`、`_consolidate`、`extract_conversation`）、KG（`knowledge_graph_query`、`_shacl_validate`、`apply_inference`）、ontology（`ontology_save`、`ontology_action_apply`、`object_set_resolve`）、媒体（`ingest_media`、`search_media`）、维护（`vector_dimension_repair`、`sweep_expired`）。`cortexdb-mcp-stdio` 这个二进制额外提供 `render_graph_html`（交互式知识图谱视图）、`serve_graph_3d`、`side_graph_*`、`import_agent_memory`，本地模式下还有 `global_search` / `build_community_hierarchy`；`db.NewMCPServer` 只提供 facade 自己的工具。`memoryflow`/`graphflow`/`importflow`/`connector` 各自也暴露自己的 toolbox。
 
 ### 过期与清理
 
@@ -445,6 +446,43 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 `ingest_document`、`knowledge_save`、`knowledge_update`、`memory_save`、`memory_update`（以及使用 `memory_save` 请求的 `knowledge_memory_remember`）接受 `review_status`（`proposed`、`accepted`、`rejected`），批准或拒绝时可带 `reviewed_by` 和 `reviewed_at`。服务端启用 key 时，审核人就是调用方的 key，`reviewed_by` 写成别人会被拒绝；提议（proposed）不带这两个字段。没有给出审核决定的写入保留原来的决定。引擎把它存在自己的键 `_review_status`、`_reviewed_by`、`_reviewed_at` 下，只放在记录上；名为 `review_status` 的 metadata 键属于调用方，引擎从不读取。
 
 服务端（或 `cortexdb-mcp-stdio`）设置 `CORTEXDB_REVIEW_GATE=1` 时，待审和被拒的文档、记忆不进任何搜索和召回、分块工具、统计，也不出现在从某个节点出发的图遍历里（`knowledge_memory_neighbors`、`knowledge_memory_expand_entity_context`、`expand_graph`、`get_nodes`、`search_paths`、`knowledge_memory_shortest_path`）。按原样读图的工具（`find_nodes`、`disambiguate_mentions`、`predict_graph_edges`、`rank_graph_nodes`、`graph_list_all`、`graph_cypher_query`）仍会返回，就像过期行在清理前仍会返回一样。不开门禁时只记录决定、不隐藏任何东西。门禁是整理用的过滤，不是权限控制：`knowledge_get` 和 `memory_get` 仍能按 id 读到被隐藏的行，任何写入方都能直接存为 `accepted`，`plan.filters.review_status` 也能让任何读取方列出某种状态的文档（记忆忽略这个过滤）。整理者用按 `_review_status` 过滤的 `aggregate_metadata` 列出待审内容，它读的是记录上的决定。在计划和统计里按 `accepted` 过滤时，也包括没有状态的文档。开门禁时，待审或被拒的记忆不会被提升为知识，对话摘要也不会包含它。引擎自己做的其他写入（整合、对话提取、导入）不带状态。
+
+### 图片、音频和视频
+
+`ingest_media` 接收图片、录音或视频。把文件作为 `data`（base64；默认上限 32 MiB，
+`CORTEXDB_MEDIA_MAX_BYTES`）发过来，大脑会派生它的文字：图片由描述模型写说明并读出
+图中文字（`CORTEXDB_MEDIA_VISION_URL` / `_MODEL`，Ollama 视觉模型），录音被转写成带
+时间的片段（`CORTEXDB_MEDIA_TRANSCRIBE_URL` / `_MODEL`，任何 OpenAI 兼容接口，
+whisper.cpp 的 `whisper-server` 也行），视频两样都有：转写稿，加上用 `ffmpeg` 每隔
+`CORTEXDB_MEDIA_FRAME_INTERVAL` 秒取一帧写的说明，排在同一条时间线上，同一个画面
+持续多帧只描述一次。也可以自己派生文字（能看图的 agent 自己就能写说明），带上文件的
+`sha256` 发 `caption`、`text` 或 `segments`，不发字节。经 gRPC 和 REST 一次调用上限
+4 MiB，所以共享大脑上的大文件走这条路。
+
+派生出的文字切成分块（录音的一个分块最多 30 秒），走所有文档都走的路径：没有嵌入模型
+时靠词和图谱找到，有嵌入模型时还能按语义找到。实体抽取跟 `knowledge_save` 一样，所以点名某个实体的 `graph` 或 `ppr` 检索能找到提到它的那个时间点；重新导入会重建这部分图谱。命中带 `media`：`media_type`、
+`duration_ms`，以及命中分块的 `spans`，客户端可以直接打开文件跳到那个时间点；分块
+记录上也有 `_start_ms`/`_end_ms`。文档记下 `_media_type`、`_media_size`、
+`_media_duration_ms` 和派生它的模型（`_media_derived_by`），它的 `_content_sha256`
+是文件的哈希：同一个文件用同样的模型再导入一次，不调用任何模型、什么也不写；换了新模型
+会重新派生，只替换它自己的分块；`dedupe` 拒绝集合里已有的文件，`if_sha256` 比较的是
+文件哈希。字节不入库，`source_url` 说明文件在哪。`examples/20_media` 用本地模型把一个
+文件夹里的照片、录音和视频跑一遍。
+
+配上媒体嵌入模型（`WithMediaEmbedder`；`CORTEXDB_MEDIA_EMBED_URL` / `_MODEL`，
+infinity 等带 `modality` 的 `/embeddings` 接口后面的 CLIP、SigLIP 或 CLAP 模型）后，
+图片、视频的每个取样帧，以及模型能处理声音时的录音，还会被嵌入到这个模型自己的向量空间，
+没有任何说明文字描述的照片也能按画面内容被找到。这些向量不进文本索引：它们存在
+`media_vectors` 里，每个模型和维度一个空间（`_media_embedded_by`），跟分块在同一个事务里
+写入，随文档一起删除；分块本身跟没有它时完全一样。文字检索也把问题嵌入这个空间，把找到的
+加进结果：文字检索已经找到的分块保持原来的顺序（其中的媒体命中只多一个 `media_score`），
+只靠媒体向量找到的分块按自己的名次插进来。媒体命中要达到最低余弦（`0.2`，
+`CORTEXDB_MEDIA_EMBED_MIN_SCORE`；CLIP 文字对图片的分数一般在 0.2 到 0.35），并且不低于
+最佳媒体命中的 85%，所以没有图片相符的问题一张也找不到。明确要求的关键词检索
+（`retrieval_mode: lexical`）保持不变；没有媒体的大脑回答跟以前一样。`search_media` 只查
+这个空间，可以用 `query` 文字，也可以把图片作为 `data`，找出看起来像它的图片和视频帧。
+没变的文件不会被再嵌入一次；换了模型会重新嵌入并替换它的向量。检索是精确扫描，适合一个
+媒体库，不适合上百万张图片。
 
 ## Claude Code 和 Codex 插件
 

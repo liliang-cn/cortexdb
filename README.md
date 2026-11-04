@@ -76,6 +76,7 @@ Haiku runs on Claude Code's own model access, so no API key is needed. Language:
 - `import_agent_memory`: bring in what Claude Code, Codex and DeepSeek Harness already remember — memory notes, `CLAUDE.md` / `AGENTS.md`, Codex's memories, and optionally past sessions distilled into memories — into a local or shared brain
 - Change feed: every committed write, in order, exactly once
 - Observability: a request id and a W3C trace (`traceparent`) from MCP through gRPC to the trace and the recall log, recalls that explain themselves and say when they were degraded, embedder health in `/metrics` and `/healthz`, and an opt-in recall log with a `/recalls` page
+- Images, recordings and videos (`ingest_media`): found by a text question through their caption, visible text and transcript, a hit saying where in the file — with or without an embedder; with a CLIP-style media embedder also by what they show, and by an image (`search_media`)
 - SQLite by default, PostgreSQL + pgvector with a `postgres://` DSN
 
 ## Environment
@@ -98,6 +99,11 @@ Haiku runs on Claude Code's own model access, so no API key is needed. Language:
 | `CORTEXDB_EMBED_PROBE_SECONDS` | Server: probe the embedder this often, for `/healthz` and `/metrics` (default `60`, `0` = off) |
 | `CORTEXDB_RECALL_LOG` | Server and `cortexdb-mcp-stdio`: `1` keeps a log of recalls — queries included — for the `/recalls` page and the `recall_log_*` tools (default off) |
 | `CORTEXDB_RECALL_LOG_DAYS` / `CORTEXDB_RECALL_LOG_MAX_ROWS` | How long (`30` days) and how many (`100000`) recalls the log keeps |
+| `CORTEXDB_MEDIA_VISION_URL` / `CORTEXDB_MEDIA_VISION_MODEL` | Server and `cortexdb-mcp-stdio`: an Ollama vision model that captions images and video frames for `ingest_media` (e.g. `http://localhost:11434` / `qwen3.5:4b`) |
+| `CORTEXDB_MEDIA_TRANSCRIBE_URL` / `CORTEXDB_MEDIA_TRANSCRIBE_MODEL` / `CORTEXDB_MEDIA_TRANSCRIBE_API_KEY` | An OpenAI-compatible `…/v1` transcription endpoint for audio and the sound of videos (OpenAI, or whisper.cpp's `whisper-server --inference-path /v1/audio/transcriptions --convert`) |
+| `CORTEXDB_MEDIA_EMBED_URL` / `CORTEXDB_MEDIA_EMBED_MODEL` / `CORTEXDB_MEDIA_EMBED_API_KEY` | A CLIP-style embedding endpoint (infinity's `/embeddings` with `modality`) that puts images, video frames and text in one space, so an image is found by what it shows and `search_media` takes an image as the query |
+| `CORTEXDB_MEDIA_EMBED_AUDIO` / `CORTEXDB_MEDIA_EMBED_MIN_SCORE` | `1` when that model embeds sound too (CLAP); the cosine a media vector must reach to be a hit (`0.2`) |
+| `CORTEXDB_MEDIA_FRAME_INTERVAL` / `CORTEXDB_MEDIA_MAX_BYTES` | Seconds between the video frames captioned (`10`, `0` = none; needs `ffmpeg`), and the size cap of one file (32 MiB) |
 
 ## Docs
 

@@ -85,11 +85,11 @@ func TestTheGuardWithholdsAForeignIdAndPassesAMissingOneOnEveryRowIdField(t *tes
 			}
 		}
 	}
-	// document_id once, knowledge_id four times, memory_id five times,
+	// document_id twice (ingest_document, ingest_media), knowledge_id four times, memory_id five times,
 	// supersedes once. A field added or lost changes the count, and the
 	// body of the change says which.
-	if fields != 11 {
-		t.Fatalf("%d id fields were checked, want 11; the allowlist changed its row-id fields", fields)
+	if fields != 12 {
+		t.Fatalf("%d id fields were checked, want 12; the allowlist changed its row-id fields", fields)
 	}
 }
 

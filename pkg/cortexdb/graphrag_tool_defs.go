@@ -545,6 +545,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 	// --- point-in-time reads (pkg/cortexdb/temporal_tooldefs.go) ---
 	definitions = append(definitions, temporalToolDefinitions()...)
 	definitions = append(definitions, expiryToolDefinitions()...)
+	definitions = append(definitions, mediaToolDefinitions()...)
 	// --- end point-in-time reads ---
 	definitions = append(definitions, changeToolDefinitions()...)
 	definitions = append(definitions, recallLogToolDefinitions()...)
@@ -571,6 +572,9 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 		return resp, err
 	}
 	if resp, handled, err := t.callExpiryTool(ctx, name, input); handled {
+		return resp, err
+	}
+	if resp, handled, err := t.callMediaTool(ctx, name, input); handled {
 		return resp, err
 	}
 	// --- end point-in-time reads ---

@@ -171,11 +171,18 @@ type KnowledgeSearchHit struct {
 	// VectorScore and LexicalScore are the best each retriever gave any chunk
 	// of this document, zero when that retriever did not run or did not
 	// return it. Populated only by hybrid retrieval.
-	VectorScore  float64           `json:"vector_score,omitempty"`
-	LexicalScore float64           `json:"lexical_score,omitempty"`
-	ChunkIDs     []string          `json:"chunk_ids,omitempty"`
-	Entities     []string          `json:"entities,omitempty"`
-	Metadata     map[string]string `json:"metadata,omitempty"`
+	VectorScore  float64 `json:"vector_score,omitempty"`
+	LexicalScore float64 `json:"lexical_score,omitempty"`
+	// MediaScore is the best cosine a media vector of this document reached
+	// (WithMediaEmbedder), zero when none was searched or none reached the
+	// floor.
+	MediaScore float64           `json:"media_score,omitempty"`
+	ChunkIDs   []string          `json:"chunk_ids,omitempty"`
+	Entities   []string          `json:"entities,omitempty"`
+	Metadata   map[string]string `json:"metadata,omitempty"`
+	// Media is set when the hit is an image, a recording or a video
+	// (ingest_media): its type, and where each of ChunkIDs sits in it.
+	Media *MediaHit `json:"media,omitempty"`
 }
 
 // KnowledgeSearchResponse contains grouped knowledge hits and the packed GraphRAG context.

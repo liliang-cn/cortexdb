@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- `ingest_media` (`GraphRAGToolbox.IngestMedia`): images, recordings and
+  videos as documents whose text is derived from the file, a caption and the
+  visible text of an image, the timed transcript of audio, a video's
+  transcript and frame captions on one timeline. The text is searched like
+  any document, with or without an embedder, its entities extracted as
+  `knowledge_save` extracts them; a hit carries `media` with the
+  `media_type` and the `start_ms`/`end_ms` of each matching chunk. The
+  derivers are interfaces (`WithImageDescriber`, `WithTranscriber`,
+  `WithFrameSampler`); `pkg/media` has an Ollama describer, an
+  OpenAI-compatible transcriber (whisper.cpp's server too) and an ffmpeg
+  frame sampler, configured by `CORTEXDB_MEDIA_*` in `cortexdb-grpc` and
+  `cortexdb-mcp-stdio`. A caller may send text it derived itself with the
+  file's sha256. The file's hash is the content hash: an unchanged file is
+  not derived again, another model replaces only its chunks. The bytes are
+  not stored. `examples/20_media` (#103).
+- Media vectors (#103): with `WithMediaEmbedder` (a CLIP, SigLIP or CLAP
+  model; `media.NewOpenAIMediaEmbedder` for infinity's `/embeddings` with a
+  `modality`, `CORTEXDB_MEDIA_EMBED_*`) images, video frames and, for a model
+  that takes sound, recordings are embedded into the model's own space, in a
+  `media_vectors` table apart from the text index, written with the chunks
+  and deleted with the document. `knowledge_search` and recall add what that
+  space finds for the question without reordering the text answer
+  (`media_score` on a hit), past a cosine floor (`WithMediaScoreFloor`,
+  0.2) and 85% of the best media hit. New tool `search_media` searches it by
+  text or by an image. An unchanged file is not embedded again.
+
 ## [2.145.0] - 2026-11-03
 
 v2.144.0 was tagged on a feature branch by mistake and is retracted; it

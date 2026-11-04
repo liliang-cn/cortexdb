@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -316,7 +317,13 @@ func TestTheSweepDeletesOnlyWhatIsStillExpiredWhenItDeletes(t *testing.T) {
 		t.Fatal(err)
 	}
 	listed, err := db.SweepExpired(ctx, now, true)
-	if err != nil || strings.Join(listed.Documents, ",") != "d" || strings.Join(listed.Memories, ",") != "m-gone,m-renewed" {
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The listing runs oldest first (created_at, then id), and the two
+	// memories land in different seconds on a slow run: compare them as a set.
+	memories := slices.Sorted(slices.Values(listed.Memories))
+	if strings.Join(listed.Documents, ",") != "d" || strings.Join(memories, ",") != "m-gone,m-renewed" {
 		t.Fatalf("listing: %+v %v", listed, err)
 	}
 	// Renewed between the listing and the delete: both are kept.

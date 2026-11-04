@@ -25,6 +25,7 @@ Planning a launch or community post? See [docs/LAUNCH_KIT.md](LAUNCH_KIT.md) for
 - **Vector + lexical engine** — FTS5, HNSW / IVF / Flat indexes, scalar and product quantization, and `IndexTypeBinary`: 1-bit codes (1/32 of the memory) searched by Hamming distance, then the shortlist rescored exactly — recall@10 0.979–0.996 on real 768-d embeddings at the default 8× oversample, ~110× faster than a flat scan at 100k vectors; on PostgreSQL it uses pgvector's `binary_quantize`. For small devices, `cortexdb.EmbeddedConfig` holds the HNSW index as SQ8 codes, bounds SQLite's caches and connections (`core.ResourceConfig`) and saves the index snapshot periodically, written and read in 4 MiB chunks: 100k 768-d vectors open from the snapshot in 0.28 s with a 193 MB heap and a 297 MB peak RSS. Geospatial indexing, semantic query routing.
 - **External retrieval lanes** — a search cluster you already run (Meilisearch, Weaviate, …) can be one fused lane via `QuerySource`, without becoming the storage: it names candidate ids, the brain still owns the content, and a stale id is dropped rather than fabricated.
 - **The knowledge contract** — every record can say *how it knows* and *how sure*: `_source`, `_chunk`, `_producer`, and a `_grade` from a closed set — `verified` (a named person kept it), `self_consistent` (derived from something that stated it), `asserted` (a model or a person said so, unchecked), `held`, `refused` (the vocabulary declined it, with why). `contract_tally` answers what the whole shelf stands on, counting the untagged rows too; `contract_needs_attention` lists what wants a person — including the `possiblySame` links entity resolution writes when two names *might* be one entity, instead of merging on a guess; `fact_provenance` cites the text a fact came from; `verify_claims` checks (subject, relation, object) triples against the graph — supported, contradicted (a single-valued link holds another value, the interval ended, or a `_contradicts` record denies it) or absent — each verdict with its provenance, no model involved. Producers call `ValidateContract` before they write. [alchemy](https://github.com/liliang-cn/alchemy) writes the contract for every graph it loads here — the one sink of its six that does.
+- **Images, audio and video** — `ingest_media` stores a photo, a recording or a video as a document whose text is derived from the file: a caption and the text visible in an image, the transcript of a recording, a video's transcript and the captions of its frames on one timeline. The text is searched like any other, with or without an embedder, and a hit says the file and the moment (`media.spans`: `start_ms`/`end_ms`). CortexDB calls no model: describer, transcriber and frame sampler are interfaces, with an Ollama, an OpenAI-compatible (whisper.cpp) and an ffmpeg one in `pkg/media`, or the caller sends the text it derived. The file's hash is the content hash: an unchanged file is never derived twice, and a better model replaces exactly its chunks.
 - **Swappable storage** — SQLite by default; a `postgres://` DSN moves the same brain to **PostgreSQL + pgvector**, with vectors, hybrid search, memory and the RDF graph all running on either. Compile-time backend registry, not a plugin system (storage is the hot path). 104 opt-in PostgreSQL tests, mostly parity: one test body, both databases, same answer required.
 - **Knowledge graph** — RDF triples/quads on the same file, **and the property graph readable as RDF**: everything extraction and `upsert_entities` write answers SPARQL, inference and SHACL as read-only triples (`cxn:` nodes, `cxt:` types, `cxr:` relations, `cxp:` properties) with no copy to keep in sync. **RDF 1.2**: triple terms `<<( s p o )>>`, reified triples and `{| |}` annotations, so a statement about a fact — who said it, how sure — is itself queryable; base-directed literals. SPARQL 1.1 and 1.2 — queries, updates with graph management (`ADD`/`COPY`/`MOVE`/`CLEAR`/`DROP`), every property path, results as JSON/XML/CSV/TSV, and `SERVICE` through a handler the application sets — passing the W3C test suites on both backends: RDF 1.2 and RDF/XML in full, SPARQL 1.2 269/269, SPARQL 1.1 query 329/331 (the two are a deliberate leniency: `"1" + "2"` is 3), update 157/157, results formats and federation in full. Semi-naive materialized inference over RDFS and the OWL 2 RL rules — `inverseOf`, symmetric, transitive, `equivalentClass`/`equivalentProperty`, `sameAs`, **keys** (`FunctionalProperty` / `InverseFunctionalProperty` / `hasKey` derive `sameAs`: the same e-mail is the same person), **property chains**, and class expressions (`someValuesFrom`, `allValuesFrom`, `hasValue`, `intersectionOf`, `unionOf`, `oneOf`, max cardinality) — kept current **automatically** as facts change (delete-and-rederive, asynchronous, `WaitForInference` to read your own writes), every inferred triple explainable. Contradictions (`disjointWith` and `AllDisjointClasses`, disjoint properties, two values of a functional property, `differentFrom` and `AllDifferent` against a derived `sameAs`, irreflexive and asymmetric properties, negative property assertions, `complementOf`, `owl:Nothing`, a cardinality of 0) are reported with the conflicting triples, never resolved by guessing. **SHACL Core in full** — every property path, qualified value shapes, `sh:lessThan`, implicit class targets; the W3C Core suite passes 98/98 — and **SHACL-SPARQL** (`sh:sparql` constraints and SPARQL-based constraint components, with pre-binding; 21 of 22, the optional `$shapesGraph` aside), and **SHACL-AF rules** (`sh:TripleRule` with conditions, order and node expressions, run to a fixpoint, results explainable). **Read-only Cypher / GQL** over the property graph (`graph_cypher_query`: MATCH / OPTIONAL MATCH / WITH / variable-length paths up to 6 hops / aggregation; 0 wrong answers across 3,897 openCypher TCK scenarios — what it cannot do, it refuses). N-Triples/N-Quads/Turtle/TriG/JSON-LD I/O and RDF/XML import (how most OWL ontologies are published), where JSON-LD never fetches a remote context; property-graph `apply_inference` materializes two-hop relation compositions with provenance; entities track asserting documents, and `delete_document_graph` is deletion shaped like ingest.
 - **Ontology (Palantir-style)** — typed object/link/interface types with primary keys and cardinality, an object-set algebra (union / intersect / filter / `search_around`), governed **action types** with audit trail, generated typed agent tools, and a breaking-change schema diff; `strict` or `vocabulary` enforcement.
@@ -478,7 +479,7 @@ tools := db.GraphRAGTools()                             // in-process tool calli
 server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 ```
 
-Tool groups (100+ tools, same names in-process and over MCP): GraphRAG (`ingest_document`, `search_text`, `build_context`, `expand_graph`, `search_paths`, `find_nodes`, `delete_document_graph`), unified retrieval (`cortex_query`), knowledge/memory (`knowledge_save`, `memory_search`, …), KnowledgeMemory (`knowledge_memory_recall`, `_reflect`, `_consolidate`, `extract_conversation`), KG (`knowledge_graph_query`, `_shacl_validate`, `apply_inference`), ontology (`ontology_save`, `ontology_action_apply`, `object_set_resolve`), and maintenance (`vector_dimension_repair`, `sweep_expired`). The `cortexdb-mcp-stdio` binary adds `render_graph_html` (an interactive knowledge-graph view), `serve_graph_3d`, `side_graph_*`, `import_agent_memory`, and in local mode `global_search` / `build_community_hierarchy`; `db.NewMCPServer` serves the facade's tools only. `memoryflow`/`graphflow`/`importflow`/`connector` expose their own toolboxes too.
+Tool groups (100+ tools, same names in-process and over MCP): GraphRAG (`ingest_document`, `search_text`, `build_context`, `expand_graph`, `search_paths`, `find_nodes`, `delete_document_graph`), unified retrieval (`cortex_query`), knowledge/memory (`knowledge_save`, `memory_search`, …), KnowledgeMemory (`knowledge_memory_recall`, `_reflect`, `_consolidate`, `extract_conversation`), KG (`knowledge_graph_query`, `_shacl_validate`, `apply_inference`), ontology (`ontology_save`, `ontology_action_apply`, `object_set_resolve`), media (`ingest_media`, `search_media`), and maintenance (`vector_dimension_repair`, `sweep_expired`). The `cortexdb-mcp-stdio` binary adds `render_graph_html` (an interactive knowledge-graph view), `serve_graph_3d`, `side_graph_*`, `import_agent_memory`, and in local mode `global_search` / `build_community_hierarchy`; `db.NewMCPServer` serves the facade's tools only. `memoryflow`/`graphflow`/`importflow`/`connector` expose their own toolboxes too.
 
 ### Expiry and the sweep
 
@@ -533,6 +534,57 @@ status too, in a plan and on the aggregates. Under the gate, a proposed or
 rejected memory is not promoted to knowledge, and a conversation summary leaves
 it out. The other writes the engine makes by itself (consolidation, conversation
 extraction, imports) carry no status.
+
+### Images, audio and video
+
+`ingest_media` takes an image, a recording or a video. Send the file as `data`
+(base64; 32 MiB by default, `CORTEXDB_MEDIA_MAX_BYTES`) and the brain derives
+its text: an image is captioned and its visible text read by the describer
+(`CORTEXDB_MEDIA_VISION_URL` / `_MODEL`, an Ollama vision model), a recording
+is transcribed into timed segments (`CORTEXDB_MEDIA_TRANSCRIBE_URL` / `_MODEL`,
+any OpenAI-compatible endpoint, whisper.cpp's `whisper-server` included), and a
+video gets both: its transcript, and a caption of a frame every
+`CORTEXDB_MEDIA_FRAME_INTERVAL` seconds taken with `ffmpeg`, on one timeline,
+a scene that holds described once. Or derive the text yourself (an agent that
+can see images can caption them) and send `caption`, `text` or `segments`
+with the file's `sha256`, and no bytes. Over gRPC and REST one call is capped
+at 4 MiB, so that is the way for large files on a shared brain.
+
+The derived text becomes chunks (a chunk of a recording covers at most 30 s)
+and takes the path every document takes, so it is found by words and the graph
+without an embedder, and by meaning with one. Its entities are extracted as
+`knowledge_save` extracts them, so a `graph` or `ppr` search that names one
+reaches the moment it is spoken of; a re-ingest rebuilds that graph. A hit carries `media`: the
+`media_type`, the `duration_ms`, and the `spans` of its matching chunks, so a
+client can open the file at the right moment; the chunk rows carry
+`_start_ms`/`_end_ms` too. The document records `_media_type`, `_media_size`,
+`_media_duration_ms` and what derived it (`_media_derived_by`), and its
+`_content_sha256` is the hash of the file: an unchanged file re-ingested with
+the same derivers calls no model and writes nothing, a new model derives it
+again and replaces only its chunks, `dedupe` refuses a file the collection
+holds, and `if_sha256` compares file hashes. The bytes are not stored;
+`source_url` says where the file is. `examples/20_media` runs a folder of
+photos, recordings and videos through local models.
+
+With a media embedder (`WithMediaEmbedder`; `CORTEXDB_MEDIA_EMBED_URL` /
+`_MODEL`, a CLIP, SigLIP or CLAP model behind infinity's `/embeddings` with a
+`modality`), an image, each sampled frame of a video, and a recording when the
+model takes sound are also embedded into the model's own space, so a photo no
+caption describes is found by what it shows. Those vectors are not the text
+index's: they live in `media_vectors`, one space per model and width
+(`_media_embedded_by`), written in the transaction that writes the chunks and
+deleted with the document; the chunk rows are what they are without it. A
+text search embeds the question into that space too and adds what it finds:
+the chunks the text search found keep their order (a media hit among them only
+gains `media_score`), and a chunk found by its media vectors alone joins at its
+rank. A media hit must reach a cosine floor (`0.2`, `CORTEXDB_MEDIA_EMBED_MIN_SCORE`;
+CLIP's text-to-image scores sit near 0.2 to 0.35) and 85% of the best media
+hit's score, so a question no image matches finds none. A keyword search asked
+for (`retrieval_mode: lexical`) stays one; a brain with no media answers as it
+did. `search_media` searches that space alone, with `query` text or an image
+as `data`, which finds the images and frames that look like it. An unchanged
+file is not embedded again; another model embeds it again and replaces its
+vectors. The scan is exact, which suits a media library, not millions of images.
 
 ## Claude Code and Codex plugin
 

@@ -401,6 +401,14 @@ func (db *DB) SearchKnowledge(ctx context.Context, req KnowledgeSearchRequest) (
 		if err := db.applyKnowledgeFloors(ctx, result, resolution.Plan, resolution.Decision, opts.Collection, opts); err != nil {
 			return nil, err
 		}
+		// Images and sound found by what they show or sound like, in the
+		// media embedder's space, after the floors, which read the text
+		// index's scores; a keyword search asked for is left a keyword one.
+		if req.RetrievalMode != RetrievalModeLexical {
+			if err := db.addMediaHits(ctx, result, resolution.Plan.Query, resolution.Plan.Filters, opts); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	hits, err := db.aggregateKnowledgeHits(ctx, result.Chunks)

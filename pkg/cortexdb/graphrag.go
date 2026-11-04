@@ -139,7 +139,11 @@ type GraphRAGChunkResult struct {
 	LexicalScore float64
 	VectorRank   int
 	LexicalRank  int
-	Entities     []string
+	// MediaScore and MediaRank are the media vector search's cosine and
+	// position (media_vectors.go), zero when it did not return the chunk.
+	MediaScore float64
+	MediaRank  int
+	Entities   []string
 }
 
 // GraphRAGQueryResult contains the assembled GraphRAG retrieval output.
@@ -249,7 +253,7 @@ func (db *DB) InsertGraphDocument(ctx context.Context, doc GraphRAGDocument, opt
 			"title":       doc.Title,
 		}
 		for k, v := range doc.Metadata {
-			if slices.Contains(EngineDocumentKeys(), k) {
+			if slices.Contains(EngineDocumentKeys(), k) || slices.Contains(mediaKeys, k) {
 				continue
 			}
 			metadata[k] = v

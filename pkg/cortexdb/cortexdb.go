@@ -64,6 +64,11 @@ type DB struct {
 	// reviewGate, when set, leaves proposed and rejected rows out of search
 	// and recall; see WithReviewGate in review.go.
 	reviewGate bool
+	// media derives the text of images, audio and video for ingest_media;
+	// see media.go.
+	media mediaRuntime
+	// mediaTable is media_vectors, made on first use (media_vectors.go).
+	mediaTable mediaTable
 	// memoryKeywordFloor, knowledgeVectorFloor and knowledgeKeywordFloor are
 	// the minimum a keyword memory hit's coverage, a knowledge chunk's cosine
 	// and a knowledge chunk's coverage must reach; see relevance_floors.go.

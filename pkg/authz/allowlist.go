@@ -189,7 +189,7 @@ var (
 // document: the engine's marks, expiry and review decision, and the
 // signature of the key that writes.
 func documentKeys() []string {
-	return append(cortexdb.EngineDocumentKeys(), cortexdb.WriterKeys()...)
+	return append(append(cortexdb.EngineDocumentKeys(), cortexdb.EngineMediaKeys()...), cortexdb.WriterKeys()...)
 }
 
 func paths(lists ...[]string) []string {
@@ -205,12 +205,19 @@ var confinedTools = map[string]toolRule{
 	// Knowledge: one collection, named at the top level.
 	"ingest_document": {scope: collectionScope, stores: storeKnowledge, rewritten: documentKeys,
 		args: paths(docArgs, []string{"dedupe", "if_absent", "if_sha256"}), ids: []idField{{"document_id", idKnowledge}}},
+	"ingest_media": {scope: collectionScope, stores: storeKnowledge, rewritten: documentKeys,
+		args: paths([]string{"title", "source_url", "author", "metadata.*", "chunk_size", "expires_at"}, reviewArgs,
+			[]string{"dedupe", "if_absent", "if_sha256", "media_type", "data", "sha256", "size_bytes", "duration_ms",
+				"caption", "text", "derived_by", "segments", "segments[].start_ms", "segments[].end_ms", "segments[].text",
+				"segments[].speaker"}), ids: []idField{{"document_id", idKnowledge}}},
 	"knowledge_save": {scope: collectionScope, stores: storeKnowledge, rewritten: documentKeys,
 		args: docArgs, ids: []idField{{"knowledge_id", idKnowledge}}, denied: graphDenied},
 	"knowledge_update": {scope: collectionScope, stores: storeKnowledge, rewritten: documentKeys,
 		args: docArgs, ids: []idField{{"knowledge_id", idKnowledge}}, denied: graphDenied},
 	"knowledge_search": {scope: collectionScope, stores: storeKnowledge,
 		args: paths(queryArgs, walkArgs, planArgs, pprArgs, []string{"top_k", "diversity_lambda", "include_proposed"})},
+	"search_media": {scope: collectionScope, stores: storeKnowledge,
+		args: []string{"query", "data", "media_type", "top_k"}},
 	"search_text": {scope: collectionScope, stores: storeKnowledge,
 		args: paths(queryArgs, planArgs, []string{"top_k", "threshold"})},
 	"search_graphrag_lexical": {scope: collectionScope, stores: storeKnowledge,

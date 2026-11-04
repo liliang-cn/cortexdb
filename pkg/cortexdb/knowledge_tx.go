@@ -36,6 +36,8 @@ type knowledgeMutationPlan struct {
 	ingest     knowledgeIngestResult
 	dedupe     *contentLookup
 	condition  *ingestCondition
+	// mediaVectors replace the document's media vectors (media_vectors.go).
+	mediaVectors []mediaVectorRow
 }
 
 // knowledgeRetire says what a write takes out of what is stored before it
@@ -789,6 +791,14 @@ func (db *DB) validateKnowledgeRelationInputs(ctx context.Context, relations []T
 }
 
 func (db *DB) applyKnowledgeMutation(ctx context.Context, knowledgeID string, retire knowledgeRetire, plan *knowledgeMutationPlan) error {
+	// A write over a stored document clears its media vectors, whatever it
+	// writes, so a document saved again as text keeps none.
+	touchesMedia := retire != retireNothing || len(plan.mediaVectors) > 0
+	if touchesMedia {
+		if err := db.ensureMediaVectorTable(ctx); err != nil {
+			return err
+		}
+	}
 	tx, err := db.store.GetDB().BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin knowledge mutation transaction: %w", err)
@@ -853,6 +863,11 @@ func (db *DB) applyKnowledgeMutation(ctx context.Context, knowledgeID string, re
 	}
 	if err := db.store.UpsertBatchTx(ctx, tx, plan.embeddings); err != nil {
 		return err
+	}
+	if touchesMedia {
+		if err := db.writeMediaVectorsTx(ctx, tx, knowledgeID, retire != retireNothing, plan.mediaVectors); err != nil {
+			return err
+		}
 	}
 	graphResult, err := db.graph.ExecuteBatchTx(ctx, tx, plan.graphOps)
 	if err != nil {

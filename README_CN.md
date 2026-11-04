@@ -75,6 +75,7 @@ haiku 用的是 Claude Code 自己的模型额度，不需要 API key。语言�
 - `import_agent_memory`：把 Claude Code、Codex 和 DeepSeek Harness 已有的记忆导进来——记忆笔记、`CLAUDE.md` / `AGENTS.md`、Codex 的记忆库，也可以把历史会话提炼成记忆——本地大脑和共享大脑都行
 - 变更事件流：每次已提交的写入，按顺序、恰好一次
 - 可观测性：request id 和 W3C 链路（`traceparent`）从 MCP 经 gRPC 贯穿到 trace 和召回日志，召回能解释自己、降级时直说，`/metrics` 和 `/healthz` 里有向量服务的健康状况，可选开启的召回日志带 `/recalls` 页面
+- 图片、录音和视频（`ingest_media`）：凭说明文字、图中文字和转写稿用文字问题找到，命中会说出在文件的哪个时间点；有没有嵌入模型都行；配上 CLIP 类媒体嵌入模型后还能按画面内容找，也能以图搜图（`search_media`）
 - 默认 SQLite，换成 `postgres://` DSN 就跑在 PostgreSQL + pgvector 上
 
 ## 环境变量
@@ -96,6 +97,11 @@ haiku 用的是 Claude Code 自己的模型额度，不需要 API key。语言�
 | `CORTEXDB_EMBED_PROBE_SECONDS` | 服务端：每隔多少秒探测向量服务，供 `/healthz` 和 `/metrics`（默认 `60`，`0` 关闭） |
 | `CORTEXDB_RECALL_LOG` | 服务端和 `cortexdb-mcp-stdio`：`1` 记录召回日志（含查询文本），供 `/recalls` 页面和 `recall_log_*` 工具（默认关闭） |
 | `CORTEXDB_RECALL_LOG_DAYS` / `CORTEXDB_RECALL_LOG_MAX_ROWS` | 召回日志保留多久（`30` 天）、最多多少条（`100000`） |
+| `CORTEXDB_MEDIA_VISION_URL` / `CORTEXDB_MEDIA_VISION_MODEL` | 服务端与 `cortexdb-mcp-stdio`：给 `ingest_media` 的图片和视频帧写说明的 Ollama 视觉模型（如 `http://localhost:11434` / `qwen3.5:4b`） |
+| `CORTEXDB_MEDIA_TRANSCRIBE_URL` / `CORTEXDB_MEDIA_TRANSCRIBE_MODEL` / `CORTEXDB_MEDIA_TRANSCRIBE_API_KEY` | 转写音频和视频声音的 OpenAI 兼容 `…/v1` 接口（OpenAI，或 whisper.cpp 的 `whisper-server --inference-path /v1/audio/transcriptions --convert`） |
+| `CORTEXDB_MEDIA_EMBED_URL` / `CORTEXDB_MEDIA_EMBED_MODEL` / `CORTEXDB_MEDIA_EMBED_API_KEY` | CLIP 类嵌入接口（infinity 带 `modality` 的 `/embeddings`），把图片、视频帧和文字放进同一个向量空间：图片能按画面内容被找到，`search_media` 能以图搜图 |
+| `CORTEXDB_MEDIA_EMBED_AUDIO` / `CORTEXDB_MEDIA_EMBED_MIN_SCORE` | 该模型也能嵌入声音（CLAP）时设 `1`；媒体向量算作命中所需的最低余弦（`0.2`） |
+| `CORTEXDB_MEDIA_FRAME_INTERVAL` / `CORTEXDB_MEDIA_MAX_BYTES` | 视频每隔几秒取一帧写说明（`10`，`0` 不取；需要 `ffmpeg`），单个文件的大小上限（32 MiB） |
 
 ## 文档
 
