@@ -30,6 +30,9 @@ func (db *DB) cleanupKnowledgeArtifactsIf(ctx context.Context, knowledgeID, cond
 	if err := db.graph.InitGraphSchema(ctx); err != nil {
 		return fmt.Errorf("init graph schema: %w", err)
 	}
+	if err := db.ensureMediaVectorTable(ctx); err != nil {
+		return err
+	}
 
 	tx, err := db.store.GetDB().BeginTx(ctx, nil)
 	if err != nil {
@@ -57,6 +60,9 @@ func (db *DB) cleanupKnowledgeArtifactsIf(ctx context.Context, knowledgeID, cond
 	}
 	if _, err := db.txExec(ctx, tx, `DELETE FROM embeddings WHERE doc_id = ?`, knowledgeID); err != nil {
 		return fmt.Errorf("delete knowledge chunks: %w", err)
+	}
+	if _, err := db.txExec(ctx, tx, `DELETE FROM media_vectors WHERE doc_id = ?`, knowledgeID); err != nil {
+		return fmt.Errorf("delete media vectors: %w", err)
 	}
 	result, err := db.txExec(ctx, tx, `DELETE FROM documents WHERE id = ? `+condition, append([]any{knowledgeID}, args...)...)
 	if err != nil {
@@ -205,6 +211,7 @@ func (db *DB) aggregateKnowledgeHits(ctx context.Context, chunks []GraphRAGChunk
 		}
 		agg.hit.VectorScore = max(agg.hit.VectorScore, chunk.VectorScore)
 		agg.hit.LexicalScore = max(agg.hit.LexicalScore, chunk.LexicalScore)
+		agg.hit.MediaScore = max(agg.hit.MediaScore, chunk.MediaScore)
 		if _, exists := agg.chunkSet[chunk.ID]; !exists {
 			agg.chunkSet[chunk.ID] = struct{}{}
 			agg.hit.ChunkIDs = append(agg.hit.ChunkIDs, chunk.ID)
@@ -234,6 +241,7 @@ func (db *DB) aggregateKnowledgeHits(ctx context.Context, chunks []GraphRAGChunk
 	for _, docID := range order {
 		agg := grouped[docID]
 		agg.hit.Entities = uniqueSortedStrings(sortedKeysFromSet(agg.entitySet))
+		agg.hit.Media = mediaHitOf(agg.hit.Metadata, agg.hit.ChunkIDs, docID)
 		results = append(results, agg.hit)
 	}
 	// Equal scores keep the order retrieval ranked them in. Fused scores tie

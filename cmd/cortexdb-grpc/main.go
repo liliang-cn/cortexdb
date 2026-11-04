@@ -48,6 +48,7 @@ import (
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"github.com/liliang-cn/cortexdb/v2/pkg/httpapi"
+	"github.com/liliang-cn/cortexdb/v2/pkg/media"
 	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
 	"github.com/liliang-cn/cortexdb/v2/pkg/rpcserver"
 )
@@ -146,6 +147,14 @@ func main() {
 		log.Printf("recall log: on (CORTEXDB_RECALL_LOG); queries are stored for CORTEXDB_RECALL_LOG_DAYS")
 	}
 	opts = append(opts, recallLog...)
+	derivers, err := media.OptionsFromEnv()
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	if len(derivers) > 0 {
+		log.Printf("ingest_media: %d deriver option(s) from CORTEXDB_MEDIA_*", len(derivers))
+	}
+	opts = append(opts, derivers...)
 
 	db, err := openStore(*dbPath, opts...)
 	if err != nil {

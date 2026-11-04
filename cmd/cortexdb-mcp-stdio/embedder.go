@@ -8,6 +8,7 @@ import (
 	"time"
 
 	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/liliang-cn/cortexdb/v2/pkg/media"
 )
 
 // openBrainDB opens the CortexDB database, wiring an OpenAI-compatible embedder
@@ -32,6 +33,8 @@ import (
 //	CORTEXDB_MEMORY_KEYWORD_FLOOR              rarity-weighted coverage a keyword
 //	CORTEXDB_KNOWLEDGE_VECTOR_FLOOR            memory hit, the cosine and coverage
 //	CORTEXDB_KNOWLEDGE_KEYWORD_FLOOR           a knowledge chunk must reach (0 = off)
+//	CORTEXDB_MEDIA_*                           ingest_media's describer and transcriber
+//	                                           (see media.OptionsFromEnv)
 func openBrainDB(dbPath string) (*cortexdb.DB, error) {
 	var opts []cortexdb.Option
 	if e := cortexdb.EmbedderFromEnv(); e != nil {
@@ -70,6 +73,11 @@ func openBrainDB(dbPath string) (*cortexdb.DB, error) {
 	if qt := newQueryTransformer(); qt != nil {
 		opts = append(opts, cortexdb.WithQueryTransformer(qt))
 	}
+	derivers, err := media.OptionsFromEnv()
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, derivers...)
 	return cortexdb.Open(cortexdb.DefaultConfig(dbPath), opts...)
 }
 

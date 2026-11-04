@@ -57,6 +57,7 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 	// --- point-in-time reads (pkg/cortexdb/temporal_tooldefs.go) ---
 	addTemporalMCPTools(server, definitions, db)
 	addExpiryMCPTools(server, definitions, db)
+	addMediaMCPTools(server, definitions, toolbox)
 	// --- end point-in-time reads ---
 	addChangeMCPTools(server, definitions, db)
 	addRecallLogMCPTools(server, definitions, db)

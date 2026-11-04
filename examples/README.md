@@ -22,6 +22,7 @@ go run ./examples/16_ontology
 go run ./examples/17_query_source
 go run ./examples/18_vector_graph_ontology
 go run ./examples/19_execution_graph
+go run ./examples/20_media -dir <folder> -q "<question>"
 ```
 
 ## 01_core
@@ -256,3 +257,18 @@ An agent's step-by-step record as a graph, after the execution graph in
 
 `-bench` measures write throughput, history and change-feed growth, concurrent
 writers and query latency on the same workload.
+
+## 20_media
+
+A folder of images, recordings and videos, found by text questions.
+
+- `ingest_media` with the derivers of `media.OptionsFromEnv`: an Ollama vision
+  model for images and video frames, whisper.cpp's `whisper-server` (or any
+  OpenAI-compatible endpoint) for audio, ffmpeg for frames
+- each answer names the file and, for audio and video, the moment
+- a second run calls no model: the files are unchanged
+- with `CORTEXDB_EMBED_*` the text is embedded too; without, it is searched by
+  words and the graph
+- with `CORTEXDB_MEDIA_EMBED_*` (a CLIP model behind an infinity-style
+  `/embeddings`) photos are found by what they show, caption or not, and
+  `-like photo.jpg` finds the images that look like it

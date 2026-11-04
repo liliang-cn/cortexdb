@@ -22,6 +22,7 @@ import (
 var toolWrites = map[string]bool{
 	// GraphRAG ingest and graph editing.
 	"ingest_document":       true,
+	"ingest_media":          true,
 	"upsert_entities":       true,
 	"upsert_relations":      true,
 	"delete_entities":       true,
@@ -46,6 +47,7 @@ var toolWrites = map[string]bool{
 	// GraphRAG retrieval. All of these only read what is stored; none of them
 	// records the access, caches an embedding, or writes a rendered file.
 	"search_text":               false,
+	"search_media":              false,
 	"search_vector_range":       false,
 	"aggregate_metadata":        false,
 	"graph_schema":              false,
@@ -185,7 +187,7 @@ var toolWrites = map[string]bool{
 // table so that a tool added without a decision cannot slip through by sharing
 // a name with one already listed, and so that a tool quietly disappearing is
 // noticed too. Change it in the same commit that adds the tool and its row.
-const toolCount = 106
+const toolCount = 108
 
 // TestEveryToolDeclaresWhetherItWrites is the test the Mutates doc comment
 // promises: it makes forgetting impossible rather than merely unlikely.

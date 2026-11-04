@@ -15,6 +15,7 @@ import (
 // listed with none.
 var loggedPaths = map[string][]string{
 	"ingest_document":                        {"document_id"},
+	"ingest_media":                           {"document_id"},
 	"knowledge_save":                         {"knowledge_id"},
 	"knowledge_update":                       {"knowledge_id"},
 	"knowledge_get":                          {"knowledge_id", "knowledge_ids"},
@@ -31,6 +32,7 @@ var loggedPaths = map[string][]string{
 	"knowledge_memory_recall":                {"plan.filters.document_ids"},
 	"knowledge_memory_build_context_pack":    {"plan.filters.document_ids"},
 	"search_vector_range":                    nil,
+	"search_media":                           nil,
 	"aggregate_metadata":                     nil,
 	"representative_records":                 nil,
 	"extract_conversation":                   nil,

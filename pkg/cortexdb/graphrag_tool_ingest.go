@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -52,6 +53,13 @@ func (t *GraphRAGToolbox) IngestDocument(ctx context.Context, req ToolIngestDocu
 		metadata = map[string]string{}
 	}
 	t.db.stampIngestMarks(metadata, req.Content, ingestOpts)
+	// A media document's content is its file: the hash is the file's, so
+	// dedupe, if_sha256 and the unchanged check all speak of the file, and
+	// the marks name what its text was derived with and where each chunk
+	// sits in it (media.go).
+	if req.media != nil {
+		req.media.stamp(metadata)
+	}
 	contentHash := metadata[contentHashKey]
 
 	existing, err := t.db.store.GetDocument(ctx, req.DocumentID)
@@ -82,6 +90,9 @@ func (t *GraphRAGToolbox) IngestDocument(ctx context.Context, req ToolIngestDocu
 	}
 	// Content that is not blank splits into at least one chunk.
 	chunks := splitGraphRAGText(req.Content, ingestOpts.ChunkSize, ingestOpts.ChunkOverlap)
+	if req.media != nil {
+		chunks = req.media.texts()
+	}
 
 	// A re-ingest upserts the record, the document node and the chunks under
 	// their ids: chunk i of the new text is chunk i of the old one, as on
@@ -158,7 +169,7 @@ func (t *GraphRAGToolbox) IngestDocument(ctx context.Context, req ToolIngestDocu
 	// caller's keys cannot displace the two the graph relies on.
 	docProps := map[string]interface{}{}
 	for k, v := range metadata {
-		if !recordOnlyKey(k) {
+		if !recordOnlyKey(k) && !documentOnlyKey(k) {
 			docProps[k] = v
 		}
 	}
@@ -190,9 +201,17 @@ func (t *GraphRAGToolbox) IngestDocument(ctx context.Context, req ToolIngestDocu
 			"title":       req.Title,
 		}
 		for k, v := range metadata {
-			if !recordOnlyKey(k) {
+			if !recordOnlyKey(k) && !documentOnlyKey(k) {
 				chunkMetadata[k] = v
 			}
+		}
+		chunkProps := map[string]interface{}{
+			"document_id": req.DocumentID,
+			"chunk_index": i,
+			"title":       req.Title,
+		}
+		if req.media != nil {
+			req.media.markChunk(i, chunkMetadata, chunkProps)
 		}
 
 		chunkVector := chunkVectors[i]
@@ -205,15 +224,11 @@ func (t *GraphRAGToolbox) IngestDocument(ctx context.Context, req ToolIngestDocu
 			Metadata:   chunkMetadata,
 		})
 		plan.graphOps.NodeUpserts = append(plan.graphOps.NodeUpserts, &graph.GraphNode{
-			ID:       chunkID,
-			Vector:   chunkVector,
-			Content:  chunk,
-			NodeType: "chunk",
-			Properties: map[string]interface{}{
-				"document_id": req.DocumentID,
-				"chunk_index": i,
-				"title":       req.Title,
-			},
+			ID:         chunkID,
+			Vector:     chunkVector,
+			Content:    chunk,
+			NodeType:   "chunk",
+			Properties: chunkProps,
 		})
 		plan.graphOps.EdgeUpserts = append(plan.graphOps.EdgeUpserts, &graph.GraphEdge{
 			ID:         fmt.Sprintf("edge:doc_chunk:%s:%d", req.DocumentID, i),
@@ -237,6 +252,20 @@ func (t *GraphRAGToolbox) IngestDocument(ctx context.Context, req ToolIngestDocu
 	// knowledge_save uses, so a failure half-way leaves nothing behind. The
 	// dedupe lookup runs in that transaction too, once the write lock is
 	// held, so two ingests of the same content that race store one copy.
+	// A media document's graph comes from its derived text alone, as a
+	// knowledge_save document's does from its text: extract its entities,
+	// and on a re-ingest rebuild the graph, so an entity only the old
+	// transcript named does not outlive it.
+	if req.media != nil {
+		if err := t.appendMediaEntities(ctx, req, ingestOpts.Collection, chunks, chunkIDs, plan); err != nil {
+			return nil, err
+		}
+		if existing != nil {
+			retire = retireGraph
+		}
+		plan.mediaVectors = req.media.vectorRows(req.DocumentID, ingestOpts.Collection, chunkIDs)
+	}
+
 	plan.condition = condition
 	if req.Dedupe {
 		plan.dedupe = &contentLookup{hash: contentHash, collection: ingestOpts.Collection}
@@ -295,6 +324,14 @@ func EngineDocumentKeys() []string {
 	return []string{contentHashKey, chunkSizeKey, chunkOverlapKey, vectorsKey, expiresAtKey, reviewStatusKey, reviewedByKey, reviewedAtKey}
 }
 
+// EngineMediaKeys are the marks only ingest_media writes on a document
+// (media.go). Every other write of a document's metadata drops a caller's
+// copy of them, since it rebuilds the chunks they describe from the text,
+// so the allowlist lets a media document read back be sent again with them.
+func EngineMediaKeys() []string {
+	return slices.Clone(mediaKeys)
+}
+
 // EngineMemoryKeys are the metadata keys the facade rewrites on every write
 // of a memory's metadata (memory_save, memory_update, and their typed
 // routes): its review decision, which only the review fields set. A
@@ -314,6 +351,11 @@ func contentSHA256(content string) string {
 // document's chunks calls it, so the keys always describe the chunks that are
 // stored, whatever a caller put under their names.
 func (db *DB) stampIngestMarks(metadata map[string]string, content string, opts GraphRAGIngestOptions) {
+	// The media marks describe chunks only ingest_media makes; any other
+	// write rebuilds the chunks from the text, so they no longer hold.
+	for _, key := range mediaKeys {
+		delete(metadata, key)
+	}
 	metadata[contentHashKey] = contentSHA256(content)
 	metadata[chunkSizeKey] = strconv.Itoa(opts.ChunkSize)
 	metadata[chunkOverlapKey] = strconv.Itoa(opts.ChunkOverlap)

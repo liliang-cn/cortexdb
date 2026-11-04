@@ -35,6 +35,7 @@ var readToolsAndTheExpiry = map[string]string{
 	"search_text":                            "gated",
 	"aggregate_metadata":                     "gated: TestAggregateMetadataCountsVisibleRowsOnly",
 	"search_vector_range":                    "gated: TestSearchVectorRangeLeavesExpiredDocumentsOut",
+	"search_media":                           "gated: TestSearchMediaLeavesHiddenDocumentsOut",
 
 	"knowledge_get": "by id: the record, until the sweep",
 	"changes_since": "the change feed: an insert happened",

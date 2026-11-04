@@ -84,6 +84,10 @@ type ToolIngestDocumentRequest struct {
 	ReviewStatus string `json:"review_status,omitempty"`
 	ReviewedBy   string `json:"reviewed_by,omitempty"`
 	ReviewedAt   string `json:"reviewed_at,omitempty"`
+
+	// media is set by IngestMedia: the chunks come from the file's derived
+	// segments instead of from splitting Content.
+	media *mediaPayload
 }
 
 // ToolIngestDocumentResponse summarizes lexical ingestion output.
