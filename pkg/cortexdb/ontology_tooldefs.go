@@ -20,11 +20,26 @@ func ontologyToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "ontology_get",
-			Description: "Fetch one ontology schema by ID.",
+			Description: "Fetch one ontology schema by ID: the current stored one, or with version a stored earlier version's definition, or with as_of the schema that was ACTIVE at that instant (its version is in the result, with the activation interval). version and as_of are exclusive; a malformed as_of is refused, never read as now.",
 			InputSchema: toolObjectSchema(
 				[]string{"schema_id"},
 				map[string]any{
-					"schema_id": toolStringSchema("Ontology schema ID."),
+					"schema_id": toolStringSchema("Ontology schema ID. With as_of it may be left empty to mean whichever schema was active then."),
+					"version":   toolIntegerSchema("Return this stored version's definition instead of the current one."),
+					"as_of":     toolStringSchema("RFC 3339 instant (e.g. 2026-03-05T15:00:00Z). Return the schema version that was active then."),
+				},
+			),
+		},
+		{
+			Name:        "ontology_history",
+			Description: "List every stored version of an ontology schema, newest first (oldest_first=true reverses), each with who saved it and when, a summary of what it changed against the version before (change counts, breaking count, by kind), and the intervals during which it was the active validator (active_from, active_to, who switched it, why it ended). Versions survive deletion of the schema. Read a version's definition with ontology_get(version); compare two with ontology_diff(from_version, to_version). To roll back, ontology_save the old definition: that appends a new version, history is never rewritten.",
+			InputSchema: toolObjectSchema(
+				[]string{"schema_id"},
+				map[string]any{
+					"schema_id":    toolStringSchema("Ontology schema ID."),
+					"limit":        toolIntegerSchema("Versions per page (default 50, max 500)."),
+					"offset":       toolIntegerSchema("Versions to skip, for paging."),
+					"oldest_first": toolBooleanSchema("List oldest version first instead of newest."),
 				},
 			),
 		},
@@ -40,15 +55,17 @@ func ontologyToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "ontology_diff",
-			Description: "Compare a candidate ontology schema against the stored schema of the same ID and report what changed, flagging the changes that would invalidate objects or edges already in the graph: a removed object or link type, a removed property, a changed property data type, a property that became required, a new required property, a changed primary key, a retargeted link side, and a cardinality tightened from MANY to ONE. Run this before ontology_save when a schema is already in use.",
+			Description: "Compare a candidate ontology schema against the stored schema of the same ID and report what changed, flagging the changes that would invalidate objects or edges already in the graph: a removed object or link type, a removed property, a changed property data type, a property that became required, a new required property, a changed primary key, a retargeted link side, and a cardinality tightened from MANY to ONE. Run this before ontology_save when a schema is already in use. Instead of a candidate, give from_version (and optionally to_version, default the latest) to compare two stored versions of the schema.",
 			InputSchema: toolObjectSchema(
-				[]string{"schema_id", "candidate"},
+				[]string{"schema_id"},
 				map[string]any{
 					"schema_id": toolStringSchema("ID of the stored schema to compare against. It is the 'before' side."),
 					"candidate": map[string]any{
 						"type":        "object",
-						"description": "The proposed schema, in the same shape ontology_save takes.",
+						"description": "The proposed schema, in the same shape ontology_save takes. Required unless from_version is given; not allowed with it.",
 					},
+					"from_version": toolIntegerSchema("Compare two stored versions: the 'before' version."),
+					"to_version":   toolIntegerSchema("The 'after' version; omitted means the schema's latest."),
 				},
 			),
 		},

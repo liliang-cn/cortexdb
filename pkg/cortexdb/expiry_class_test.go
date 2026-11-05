@@ -90,6 +90,7 @@ var readToolsAndTheExpiry = map[string]string{
 	"ontology_diff":            "no document: ontologies",
 	"ontology_draft":           "no document: ontologies",
 	"ontology_get":             "no document: ontologies",
+	"ontology_history":         "no document: ontologies",
 	"ontology_list":            "no document: ontologies",
 	"rules_list":               "no document: rules",
 }

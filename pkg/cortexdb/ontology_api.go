@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
@@ -21,13 +22,23 @@ type OntologySaveResponse struct {
 }
 
 // OntologyGetRequest fetches one ontology schema by ID.
+//
+// With neither Version nor AsOf it returns the current stored schema, as it
+// always did. Version returns that stored version's definition. AsOf (RFC
+// 3339) returns the schema that was ACTIVE at that instant, with its Version
+// set; SchemaID may then be empty to mean whichever schema was active. Giving
+// both is an error, and so is a malformed instant.
 type OntologyGetRequest struct {
 	SchemaID string `json:"schema_id"`
+	Version  int    `json:"version,omitempty"`
+	AsOf     string `json:"as_of,omitempty"`
 }
 
 // OntologyGetResponse returns one ontology schema.
 type OntologyGetResponse struct {
 	Schema OntologySchema `json:"schema"`
+	// ActiveInterval is the activation interval an as_of lookup landed in.
+	ActiveInterval *OntologyActivation `json:"active_interval,omitempty"`
 }
 
 // OntologyListRequest lists ontology schemas.
@@ -60,6 +71,9 @@ func (db *DB) SaveOntologySchema(ctx context.Context, req OntologySaveRequest) (
 }
 
 func (db *DB) GetOntologySchema(ctx context.Context, req OntologyGetRequest) (*OntologyGetResponse, error) {
+	if req.Version != 0 || strings.TrimSpace(req.AsOf) != "" {
+		return db.ontologyGetVersioned(ctx, req)
+	}
 	schema, err := db.loadOntologySchema(ctx, req.SchemaID)
 	if err != nil {
 		return nil, err
@@ -83,10 +97,15 @@ func (db *DB) DeleteOntologySchema(ctx context.Context, req OntologyDeleteReques
 	return &OntologyDeleteResponse{SchemaID: req.SchemaID, Deleted: deleted}, nil
 }
 
-// OntologyDiffRequest compares a candidate schema against a stored one.
+// OntologyDiffRequest compares a candidate schema against a stored one, or two
+// stored versions of one schema with each other: FromVersion is the "before"
+// side and ToVersion the "after" (omitted means the latest version). The two
+// forms are exclusive.
 type OntologyDiffRequest struct {
-	SchemaID  string         `json:"schema_id"`
-	Candidate OntologySchema `json:"candidate"`
+	SchemaID    string         `json:"schema_id"`
+	Candidate   OntologySchema `json:"candidate"`
+	FromVersion int            `json:"from_version,omitempty"`
+	ToVersion   int            `json:"to_version,omitempty"`
 }
 
 // OntologyDiffResponse reports the differences and whether any break data.
@@ -99,6 +118,9 @@ type OntologyDiffResponse struct {
 // it is applied. The stored schema is the `before` side: the question being
 // answered is what happens to the data already written under it.
 func (db *DB) DiffOntologySchema(ctx context.Context, req OntologyDiffRequest) (*OntologyDiffResponse, error) {
+	if req.FromVersion != 0 || req.ToVersion != 0 {
+		return db.ontologyDiffVersions(ctx, req)
+	}
 	stored, err := db.loadOntologySchema(ctx, req.SchemaID)
 	if err != nil {
 		return nil, err
@@ -208,6 +230,10 @@ func (t *GraphRAGToolbox) DeleteOntologySchema(ctx context.Context, req Ontology
 
 func (t *GraphRAGToolbox) DiffOntologySchema(ctx context.Context, req OntologyDiffRequest) (*OntologyDiffResponse, error) {
 	return t.db.DiffOntologySchema(ctx, req)
+}
+
+func (t *GraphRAGToolbox) OntologyHistory(ctx context.Context, req OntologyHistoryRequest) (*OntologyHistoryResponse, error) {
+	return t.db.OntologyHistory(ctx, req)
 }
 
 func (t *GraphRAGToolbox) DraftOntology(ctx context.Context, req OntologyDraftRequest) (*OntologyDraftResponse, error) {

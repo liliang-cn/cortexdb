@@ -12,6 +12,33 @@ import (
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
+// History. ontology_schemas_v2 holds only the CURRENT row of each schema, and
+// every save overwrote its definition, so an earlier version was gone the
+// moment the next one was saved. Two append-only tables, written in the same
+// transaction as the row they describe, keep what that overwrote:
+//
+//   - ontology_schema_versions: every saved version in full (definition,
+//     name, metadata, who saved it and when) plus a computed summary of what
+//     changed against the version before it.
+//   - ontology_activations: the intervals during which a schema (at a
+//     version) was THE active validator, and who switched it. Saving an
+//     active schema closes the interval of its previous version and opens one
+//     for the new version at the same instant, so an instant always resolves
+//     to the definition that validated writes then.
+//
+// Deleting a schema deletes its current row and closes its open interval, and
+// nothing else: its versions and intervals stay readable through
+// ontology_history and ontology_get(version / as_of). The only call that
+// destroys history in CortexDB is vacuum_graph. Saving a schema again under a
+// deleted id continues the numbering from its history rather than restarting
+// at 1, so (schema_id, version) never names two different definitions.
+//
+// Reverting is a save of an old definition: it appends a new version equal to
+// the old one, like git revert. History is never rewritten.
+//
+// The hot path is untouched: loadActiveOntologySchema still reads the one
+// current row and never joins either history table.
+
 // ensureOntologySchemaTable creates the v2 table. The v1 table
 // graph_ontology_schemas is deliberately left alone: v2 neither reads nor
 // writes nor drops it, so an upgrade cannot corrupt or lose old rows.
@@ -40,6 +67,9 @@ func (db *DB) ensureOntologySchemaTable(ctx context.Context) error {
 	if _, err := db.exec(ctx, schema); err != nil {
 		// Deliberately not latched: a transient failure such as a cancelled
 		// context must not permanently disable ontology storage.
+		return err
+	}
+	if err := db.ensureOntologyHistoryTables(ctx); err != nil {
 		return err
 	}
 	db.ontologySchemaReady = true
@@ -114,10 +144,19 @@ func (db *DB) saveOntologySchemaRecord(ctx context.Context, req OntologySaveRequ
 	// pin the version forever on the read-modify-write round trip that is the
 	// normal way to edit a schema. Explicit versioning, if it is ever wanted,
 	// belongs on the request as an ExpectedVersion precondition.
+	// The history table is consulted as well as the live row: a schema that
+	// was deleted and is being saved again has no live row, and numbering it
+	// from 1 would collide with the versions its history already holds.
 	version := 1
 	if existing != nil {
 		version = existing.Version + 1
 	}
+	if latest, err := db.latestOntologyVersionTx(ctx, tx, schema.SchemaID); err != nil {
+		return nil, err
+	} else if latest >= version {
+		version = latest + 1
+	}
+	now := ontologyHistoryNow()
 
 	active := false
 	if existing != nil {
@@ -158,6 +197,22 @@ func (db *DB) saveOntologySchemaRecord(ctx context.Context, req OntologySaveRequ
 		boolToInt(schema.StrictActions), string(metadataJSON), string(definitionJSON),
 		boolToInt(active)); err != nil {
 		return nil, fmt.Errorf("upsert ontology schema: %w", err)
+	}
+
+	previous := existing
+	if previous == nil {
+		if previous, err = db.getOntologyVersionSchemaTx(ctx, tx, schema.SchemaID, version-1); err != nil && !errors.Is(err, core.ErrNotFound) {
+			return nil, err
+		}
+	}
+	summary := summarizeOntologyChange(previous, schema, string(definitionJSON))
+	if err := db.recordOntologyVersionTx(ctx, tx, schema.SchemaID, version, name, strings.TrimSpace(schema.Description),
+		schema.StrictActions, string(metadataJSON), string(definitionJSON), now, writerOf(ctx), summary); err != nil {
+		return nil, err
+	}
+	if err := db.recordOntologyActivationTx(ctx, tx, schema.SchemaID, version,
+		existing != nil && existing.Active, active, now, writerOf(ctx)); err != nil {
+		return nil, err
 	}
 
 	// Read back inside the transaction. Reading after the commit would race a
@@ -223,15 +278,33 @@ func (db *DB) deleteOntologySchemaRecord(ctx context.Context, schemaID string) (
 	if err := db.ensureOntologySchemaTable(ctx); err != nil {
 		return false, fmt.Errorf("init ontology schema table: %w", err)
 	}
-	result, err := db.exec(ctx, `DELETE FROM ontology_schemas_v2 WHERE id = ?`, schemaID)
+	tx, err := db.store.GetDB().BeginTx(ctx, nil)
 	if err != nil {
+		return false, fmt.Errorf("begin ontology transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	existing, err := db.getOntologySchemaTx(ctx, tx, schemaID)
+	if errors.Is(err, core.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	// Only the live row goes. The versions and activation intervals stay: they
+	// are the record of what this schema said and when it was in force.
+	if existing.Active {
+		if err := db.closeOntologyActivationsTx(ctx, tx, schemaID, false, ontologyHistoryNow(), writerOf(ctx), ontologyEndDeleted); err != nil {
+			return false, err
+		}
+	}
+	if _, err := db.txExec(ctx, tx, `DELETE FROM ontology_schemas_v2 WHERE id = ?`, schemaID); err != nil {
 		return false, fmt.Errorf("delete ontology schema: %w", err)
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("delete ontology schema rows: %w", err)
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit ontology delete: %w", err)
 	}
-	return affected > 0, nil
+	return true, nil
 }
 
 func (db *DB) loadActiveOntologySchema(ctx context.Context) (*OntologySchema, error) {
@@ -279,9 +352,18 @@ func scanOntologySchema(scanner ontologyRowScanner) (*OntologySchema, error) {
 		return nil, err
 	}
 
+	return buildOntologySchema(&schema, description, strictActions != 0, metadataJSON, definitionRaw,
+		isActive != 0, createdAt, updatedAt)
+}
+
+// buildOntologySchema fills schema from the stored columns; the live table
+// and the version table share it so a version decodes exactly as the live row
+// does.
+func buildOntologySchema(schema *OntologySchema, description sql.NullString, strictActions bool,
+	metadataJSON sql.NullString, definitionRaw string, active bool, createdAt, updatedAt time.Time) (*OntologySchema, error) {
 	schema.Description = description.String
-	schema.StrictActions = strictActions != 0
-	schema.Active = isActive != 0
+	schema.StrictActions = strictActions
+	schema.Active = active
 	schema.CreatedAt = createdAt
 	schema.UpdatedAt = updatedAt
 
@@ -302,7 +384,7 @@ func scanOntologySchema(scanner ontologyRowScanner) (*OntologySchema, error) {
 	schema.SharedProperties = definition.SharedProperties
 	schema.ActionTypes = definition.ActionTypes
 	schema.ObjectSets = definition.ObjectSets
-	return &schema, nil
+	return schema, nil
 }
 
 func boolToInt(value bool) int {

@@ -108,7 +108,7 @@ func (db *DB) ApplyAction(ctx context.Context, req ActionApplyRequest) (*ActionA
 	if req.ReturnEdits {
 		response.Edits = edits
 	}
-	if err := db.recordActionAudit(ctx, action, req, edits); err != nil {
+	if err := db.recordActionAudit(ctx, compiled.schema, action, req, edits); err != nil {
 		return nil, err
 	}
 	return response, nil
@@ -578,7 +578,9 @@ func (db *DB) ensureActionAuditTable(ctx context.Context) error {
 			actor TEXT,
 			parameters TEXT NOT NULL,
 			edits TEXT NOT NULL,
-			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			schema_id TEXT,
+			schema_version INTEGER
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_ontology_action_audit_action ON ontology_action_audit(action_api_name)`,
 	}
@@ -587,6 +589,16 @@ func (db *DB) ensureActionAuditTable(ctx context.Context) error {
 			// Deliberately not latched, for the same reason as the ontology
 			// schema table: one cancelled context must not disable the audit
 			// trail for the rest of this DB's lifetime.
+			return err
+		}
+	}
+	// An audit table created before actions recorded the ontology they ran
+	// under gains the two columns; those rows read as of no known version.
+	for _, stmt := range []string{
+		`ALTER TABLE ontology_action_audit ADD COLUMN schema_id TEXT`,
+		`ALTER TABLE ontology_action_audit ADD COLUMN schema_version INTEGER`,
+	} {
+		if _, err := db.exec(ctx, stmt); err != nil && !db.dialect.IsDuplicateColumn(err) {
 			return err
 		}
 	}
@@ -644,7 +656,10 @@ func (t *GraphRAGToolbox) ListActionTypes(ctx context.Context, req ActionListReq
 // This is the point of routing writes through actions rather than through a
 // generic upsert: the trail exists whether or not anyone asked for it, so the
 // edits are recorded even when return_edits withheld them from the caller.
-func (db *DB) recordActionAudit(ctx context.Context, action OntologyActionType, req ActionApplyRequest, edits []ActionEdit) error {
+// The row also names the ontology (schema id and version) the action was
+// validated under, so a later change to the schema cannot blur which rules a
+// past write answered to.
+func (db *DB) recordActionAudit(ctx context.Context, schema OntologySchema, action OntologyActionType, req ActionApplyRequest, edits []ActionEdit) error {
 	if err := db.ensureActionAuditTable(ctx); err != nil {
 		return fmt.Errorf("init action audit table: %w", err)
 	}
@@ -657,8 +672,8 @@ func (db *DB) recordActionAudit(ctx context.Context, action OntologyActionType, 
 		return fmt.Errorf("encode action edits: %w", err)
 	}
 	if _, err := db.exec(ctx,
-		`INSERT INTO ontology_action_audit (action_api_name, actor, parameters, edits) VALUES (?, ?, ?, ?)`,
-		action.APIName, req.Actor, string(parametersJSON), string(editsJSON)); err != nil {
+		`INSERT INTO ontology_action_audit (action_api_name, actor, parameters, edits, schema_id, schema_version) VALUES (?, ?, ?, ?, ?, ?)`,
+		action.APIName, req.Actor, string(parametersJSON), string(editsJSON), schema.SchemaID, schema.Version); err != nil {
 		return fmt.Errorf("record action audit: %w", err)
 	}
 	return nil
