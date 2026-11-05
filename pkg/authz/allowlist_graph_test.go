@@ -76,3 +76,30 @@ func TestTheWholeGraphReadsStayRefusedToAConfinedKey(t *testing.T) {
 		}
 	}
 }
+
+// The history tools read the history tables, where the rows a scope would hide
+// are still kept after they were closed, and no scope field confines them. A
+// confined key is refused all three, each with a reason of its own rather than
+// the default one, and a read-only key that is not confined may call them.
+func TestTheHistoryToolsAreRefusedToAConfinedKeyAndOpenToAReadOnlyOne(t *testing.T) {
+	confined := Key{ID: "alpha", Secret: "a", Clearance: ReadOnly, Scope: Scope{Collection: "alpha"}}
+	reader := Key{ID: "reader", Secret: "r", Clearance: ReadOnly}
+	for _, tool := range []string{"graph_history", "knowledge_graph_history", "ontology_history"} {
+		if access, ok := LookupTool(tool); !ok || access != Read {
+			t.Errorf("%s classified %v (known %v), want a read", tool, access, ok)
+		}
+		why := RefusedTools()[tool]
+		if why == "" || why == defaultRefusal {
+			t.Errorf("%s is refused without a reason of its own: %q", tool, why)
+		}
+		if err := confined.AuthorizeToolArgs(tool, []byte(`{"entity":"x"}`)); !errors.Is(err, ErrDenied) || !strings.Contains(err.Error(), why) {
+			t.Errorf("%s for a confined key: %v, want the denial %q", tool, err, why)
+		}
+		if err := reader.AuthorizeToolArgs(tool, []byte(`{"entity":"x"}`)); err != nil {
+			t.Errorf("%s for an unconfined read-only key: %v", tool, err)
+		}
+		if err := reader.AuthorizeCall(CallToolMethod, func() (string, bool) { return tool, true }); err != nil {
+			t.Errorf("%s for a read-only key: %v", tool, err)
+		}
+	}
+}

@@ -209,7 +209,7 @@ const ontologyHTML = `<!DOCTYPE html>
 <div class="panel" id="head" data-label="Ontology">
   <button class="fold" type="button" title="Collapse"></button>
   <div class="bd">
-    <h1>CortexDB — ontology &nbsp;<a href="." title="The instance graph: what is actually in this brain">← live brain</a> <a href="library" title="The same brain as a reading room">library →</a></h1>
+    <h1>CortexDB — ontology &nbsp;<a href="." title="The instance graph: what is actually in this brain">← live brain</a> <a href="library" title="The same brain as a reading room">library →</a> <a href="ontology-history" id="versionslink" title="Every saved version of a schema, when it was active, and what changed between versions">versions →</a></h1>
     <div id="sub">reading…</div>
     <div id="headrow">
       <button id="gapbtn" class="on" title="Count what the store actually holds and hold the declarations against it">Declared vs actual</button>
@@ -1097,6 +1097,8 @@ function load(){
 
 function render(rep){
   REP = rep;
+  var vl = document.getElementById("versionslink");
+  if(vl) vl.href = "ontology-history" + (rep && rep.schema_id ? "?schema=" + encodeURIComponent(rep.schema_id) : "");
   renderHead(rep);
   renderSay(rep);
   renderDiagram(rep);

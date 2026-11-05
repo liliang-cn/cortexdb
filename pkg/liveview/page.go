@@ -470,6 +470,56 @@ const pageTemplate = `<!DOCTYPE html>
     .nl.hub{display:none}
   }
 
+  /* The entity history: a vertical timeline, one rail per predicate and
+     direction, a version per commit. Written with the tokens above, so both
+     modes and every theme get it. */
+  #hist{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(680px,94vw);
+    max-height:86vh;overflow:auto;padding:16px 18px 18px;z-index:30;display:none}
+  #hist.on{display:block}
+  #hist .x{position:absolute;top:12px;right:14px;cursor:pointer;color:var(--mute);font-size:20px;line-height:1}
+  #hist .t{font-size:17px;font-weight:650;color:var(--ink);padding-right:26px;word-break:break-word}
+  #hist .st{font-size:11.5px;color:var(--mute);margin-top:3px}
+  #hist .hb{display:flex;gap:6px;margin:10px 0 2px}
+  #hist .hb input{flex:1;min-width:0;padding:6px 9px;background:var(--panel2);border:1px solid var(--line2);
+    border-radius:6px;color:var(--ink);font-size:12px;font-family:inherit}
+  #hist .hb button{flex:none;padding:6px 12px}
+  #hist .say{color:var(--ink2);font-size:12px;padding:8px 2px;line-height:1.55}
+  #hist .say.bad{color:#b42318}
+  #hist .asof{margin:10px 0 0;padding:6px 10px;border-radius:7px;font-size:11.5px;color:var(--ink);
+    background:rgba(var(--acc-rgb),.1);border:1px solid rgba(var(--acc-rgb),.3)}
+  #hist .lane{margin-top:18px}
+  #hist .lane h4{margin:0 0 8px;font-size:12px;font-weight:650;color:var(--ink);word-break:break-word}
+  #hist .lane h4 i{font-style:normal;font-weight:500;color:var(--mute)}
+  #hist .rail{position:relative;margin-left:7px;padding-left:22px;border-left:2px solid var(--line2)}
+  #hist .cm{position:relative;padding:0 0 15px}
+  #hist .cm:last-child{padding-bottom:2px}
+  #hist .cm::before{content:"";position:absolute;left:-30px;top:3px;width:12px;height:12px;border-radius:50%;
+    background:var(--solid);border:2px solid var(--mute)}
+  #hist .cm.current::before{background:var(--acc);border-color:var(--acc)}
+  #hist .cm.superseded::before{border-color:var(--mute)}
+  #hist .cm.retracted::before,#hist .cm.document_deleted::before{border-color:#b42318}
+  #hist .cm.merged::before{border-color:#a15c07}
+  #hist .cm.flash{background:rgba(var(--acc-rgb),.12);border-radius:6px}
+  #hist .cv{font-size:13px;font-weight:600;color:var(--ink);word-break:break-word}
+  #hist .chip{display:inline-block;font-size:10.5px;font-weight:600;padding:0 7px;line-height:18px;border-radius:999px;
+    margin-left:6px;vertical-align:1px;background:var(--panel2);color:var(--ink2);border:1px solid var(--line)}
+  #hist .chip.current{color:var(--acc);border-color:rgba(var(--acc-rgb),.45)}
+  #hist .chip.several{color:#a15c07;border-color:rgba(161,92,7,.5);background:rgba(161,92,7,.1)}
+  #hist .chip.retracted{color:#b42318;border-color:rgba(180,35,24,.4)}
+  #hist .iv{font-size:11.5px;color:var(--ink2);margin-top:2px;font-variant-numeric:tabular-nums}
+  #hist .why{font-size:11.5px;color:var(--mute);margin-top:2px;line-height:1.5}
+  #hist .link{font-size:11.5px;color:var(--ink2);margin-top:3px}
+  #hist .link a,#hist .more{color:var(--acc);cursor:pointer;border-bottom:1px dotted rgba(var(--acc-rgb),.5)}
+  #hist .ie{margin-top:5px;padding:6px 9px;border-radius:7px;font-size:11.5px;line-height:1.5;color:var(--ink);
+    background:rgba(var(--acc-rgb),.08);border:1px solid rgba(var(--acc-rgb),.25)}
+  #hist .ie b{font-weight:650}
+  #hist .ie.several{background:rgba(161,92,7,.09);border-color:rgba(161,92,7,.35)}
+  #hist .ie .m{display:block;color:var(--mute);margin-top:2px}
+  #hist .pv{font-size:11px;color:var(--mute);margin-top:3px;word-break:break-word}
+  #hist .pv code{font:11px ui-monospace,SFMono-Regular,Menlo,monospace}
+  #hist button.next{width:100%;margin-top:14px}
+  @media (max-width:760px){ #hist{top:auto;left:0;right:0;bottom:0;width:auto;transform:none;max-height:78vh;border-radius:14px 14px 0 0} }
+
   /* ================= themes =================
      Four built in. Space is the default; the others are the same page with a
      different token set — and, for the scene, a different THEMES entry in the
@@ -633,6 +683,10 @@ const pageTemplate = `<!DOCTYPE html>
 
 <div class="panel" id="detail"><span class="x" onclick="closeDetail()">&times;</span>
   <div class="t" id="dt"></div><div id="dacts"></div><div id="db"></div></div>
+<div class="panel" id="hist" role="dialog" aria-label="History"><span class="x" id="histx">&times;</span>
+  <div class="t" id="histt"></div><div class="st" id="hists"></div>
+  <form class="hb" id="histf" autocomplete="off"><input id="histrel" placeholder="Only this relation, e.g. lives_in"><button type="submit">Filter</button></form>
+  <div id="histbody"></div></div>
 <div id="toast" role="status" aria-live="polite"></div>
 
 <div id="boot"><div class="spin"></div><span id="boottext">Reading the brain…</span></div>
@@ -2092,6 +2146,11 @@ if(pinnedAt) document.getElementById("asof").value = localValue(pinnedAt);
 
 function setPinned(ms){
   pinnedAt = ms > 0 ? ms : 0;
+  // What exploring added belongs to the instant it was fetched for. Re-merged
+  // into a scene drawn for another instant it would be two times in one
+  // picture.
+  explored = {nodes:{}, edges:{}};
+  closeHistory();
   // Reconnecting is how the pin takes effect, because the instant is a property
   // of the stream and not of a frame: a pinned connection is one the poller was
   // never told about.
@@ -2333,7 +2392,7 @@ function readAnswer(res){
 
 // expandNode fetches what a node connects to and lights it.
 function expandNode(id, quiet){
-  return getJSON("api/expand?id=" + encodeURIComponent(id)).then(function(nb){
+  return getJSON("api/expand?id=" + encodeURIComponent(id) + asOfQuery()).then(function(nb){
     var fresh = mergeGraph(nb.nodes, nb.edges, true);
     fresh.forEach(function(x){ strike(x, "#7dd3fc", 6000); });
     if(!quiet) toast(fresh.length ? fresh.length + " new around " + labelOf(id) : "Nothing new around " + labelOf(id));
@@ -2489,7 +2548,7 @@ function runExplore(mode, text){
   lastQuery = {mode:mode, text:text};
   var gen = ++xgen;
   out("<div class='say'>" + (mode === "ask" ? "Asking…" : mode === "cypher" ? "Running…" : "Looking…") + "</div>");
-  var job = mode === "find" ? getJSON("api/find?q=" + encodeURIComponent(text)).then(function(r){ if(gen===xgen) showFind(r); })
+  var job = mode === "find" ? getJSON("api/find?q=" + encodeURIComponent(text) + asOfQuery()).then(function(r){ if(gen===xgen) showFind(r); })
     : mode === "ask" ? postJSON("api/ask", {q:text}).then(function(r){ if(gen===xgen) showAsk(r); })
     : postJSON("api/cypher", {query:text}).then(function(r){ if(gen===xgen) showCypher(r); });
   return job.catch(function(err){ if(gen===xgen) out("<div class='say bad'>" + esc(err.message||err) + "</div>"); });
@@ -2572,6 +2631,141 @@ function showCypher(r){
   setHighlight((r.nodes||[]).map(function(n){ return n.id; }), (r.nodes||[]).length > 0);
 }
 
+/* ---------- the entity history ----------
+   git log for one entity: a rail per predicate and direction, a commit per
+   version, the successor named on the version it replaced. Every word about
+   why a version holds comes from the server's in_effect, which is computed
+   from the stored rows; nothing here decides what is true. */
+function asOfQuery(){ return pinnedAt ? "&as_of=" + pinnedAt : ""; }
+var histEntity = "", histRel = "", histGen = 0, histNext = "";
+var IE_TITLE = {only_version:"Only version", replaced:"Replaced an earlier value", revised:"Revised in place",
+  merge_survivor:"Survivor of a merge", several_in_effect:"Several values in effect"};
+var OPINION = {no_opinion:"The ontology has no opinion on this link, so nothing is closed and no value is picked as the winner.",
+  multi_valued:"The ontology declares this link multi-valued, so these values hold together.",
+  single_valued_unenforced:"The ontology declares this link single-valued, but these values were written by a path that does not close the old one."};
+function tfmt(iso){ var d = new Date(iso); return isNaN(d) ? "" : d.toLocaleString(); }
+function closeHistory(){ document.getElementById("hist").classList.remove("on"); histGen++; }
+document.getElementById("histx").addEventListener("click", closeHistory);
+document.getElementById("histf").addEventListener("submit", function(ev){
+  ev.preventDefault();
+  openHistory(histEntity, document.getElementById("histrel").value.trim());
+});
+function openHistory(entity, relation){
+  histEntity = entity; histRel = relation || ""; histNext = "";
+  var gen = ++histGen;
+  var box = document.getElementById("hist");
+  box.classList.add("on");
+  document.getElementById("histt").textContent = labelOf(entity);
+  document.getElementById("hists").textContent = entity;
+  document.getElementById("histrel").value = histRel;
+  document.getElementById("histbody").innerHTML = "<div class='say'>Reading the history…</div>";
+  return fetchHistory(gen, false);
+}
+function fetchHistory(gen, append){
+  var url = "api/history?entity=" + encodeURIComponent(histEntity) +
+    (histRel ? "&relation=" + encodeURIComponent(histRel) : "") + asOfQuery() +
+    (append && histNext ? "&cursor=" + encodeURIComponent(histNext) : "");
+  return getJSON(url).then(function(r){
+    if(gen !== histGen) return;   // the reader moved on
+    histNext = r.next_cursor || "";
+    renderHistory(r, append);
+  }).catch(function(err){
+    if(gen !== histGen) return;
+    document.getElementById("histbody").innerHTML = "<div class='say bad'>" + esc(err.message||err) + "</div>";
+  });
+}
+function valid(v){
+  var from = v.valid_from ? tfmt(v.valid_from) : "the beginning";
+  var to = v.valid_to ? tfmt(v.valid_to) : (v.retracted_at ? tfmt(v.retracted_at) : "");
+  if(!to) to = v.status === "current" ? "now" : "";
+  return esc(from) + " → " + esc(to || "unknown");
+}
+function inEffectBox(ie){
+  if(!ie) return "";
+  var several = ie.kind === "several_in_effect";
+  var h = "<div class='ie" + (several ? " several" : "") + "'><b>" + esc(IE_TITLE[ie.kind] || ie.kind) + ".</b> " + esc(ie.summary || "");
+  if(ie.rule || ie.schema_id){
+    h += "<span class='m'>" + (ie.rule ? "rule: " + esc(ie.rule.replace(/_/g, " ")) : "") +
+      (ie.schema_id ? " · schema " + esc(ie.schema_id) + (ie.schema_version ? " v" + ie.schema_version : "") : "") +
+      (ie.producer ? " · by " + esc(ie.producer) : "") + "</span>";
+  }
+  if(ie.alongside && ie.alongside.length) h += "<span class='m'>alongside: " + ie.alongside.map(esc).join(", ") + "</span>";
+  if(ie.schema_opinion && OPINION[ie.schema_opinion]) h += "<span class='m'>" + esc(OPINION[ie.schema_opinion]) + "</span>";
+  if(ie.also_asserted_by && ie.also_asserted_by.length) h += "<span class='m'>also stated by " + ie.also_asserted_by.length + " other record" + (ie.also_asserted_by.length === 1 ? "" : "s") + "</span>";
+  return h + "</div>";
+}
+function provLine(p){
+  if(!p) return "";
+  var bits = [];
+  if(p.document_id) bits.push("document <code>" + esc(clip(p.document_id, 40)) + "</code>");
+  if(p.chunk_ids && p.chunk_ids.length) bits.push(p.chunk_ids.length + " chunk" + (p.chunk_ids.length === 1 ? "" : "s"));
+  if(p.rule) bits.push("rule <code>" + esc(p.rule) + "</code>");
+  if(p.inferred) bits.push("inferred");
+  if(p.source) bits.push("source " + esc(p.source));
+  return bits.length ? "<div class='pv'>from " + bits.join(" · ") + "</div>" : "";
+}
+function commitHTML(line, v, byVid){
+  var cls = v.status === "current" ? "current" : esc(v.status || "");
+  var several = v.in_effect && v.in_effect.kind === "several_in_effect";
+  var value = line.direction === "in" ? (line.subject_name || line.subject) : (v.object_name || v.object);
+  var h = "<div class='cm " + cls + "' data-vid='" + esc(v.id) + "'><div class='cv'>" + esc(value) +
+    "<span class='chip " + (v.status === "current" ? "current" : (v.status === "retracted" ? "retracted" : "")) + "'>" + esc(v.status || "") + "</span>" +
+    (several ? "<span class='chip several'>several values in effect</span>" : "") + "</div>" +
+    "<div class='iv'>valid " + valid(v) + (v.recorded_at ? " · recorded " + esc(tfmt(v.recorded_at)) : "") + "</div>";
+  if(v.reason) h += "<div class='why'>closed because: " + esc(v.reason.replace(/_/g, " ")) + (v.producer ? " · by " + esc(v.producer) : "") +
+    (v.schema_id ? " · under schema " + esc(v.schema_id) + (v.schema_version ? " v" + v.schema_version : "") : "") + "</div>";
+  if(v.superseded_by){
+    var nx = byVid[v.superseded_by];
+    h += "<div class='link'>↳ replaced by <a data-go='" + esc(v.superseded_by) + "'>" +
+      esc(nx ? (line.direction === "in" ? (line.subject_name || line.subject) : (nx.object_name || nx.object)) + " (" + nx.status + ")" : v.superseded_by) + "</a></div>";
+  }
+  h += inEffectBox(v.in_effect) + provLine(v.provenance);
+  return h + "</div>";
+}
+function renderHistory(r, append){
+  var body = document.getElementById("histbody"), html = "";
+  if(r.as_of && !append) document.getElementById("hists").textContent = histEntity;
+  if(!append){
+    if(r.as_of) html += "<div class='asof'>Marking what was in effect at <b>" + esc(tfmt(r.as_of)) + "</b>. Later versions are still listed.</div>";
+    var nv = r.node_versions || [];
+    if(nv.length > 1 || (nv.length === 1 && nv[0].in_effect && nv[0].in_effect.kind !== "only_version")){
+      html += "<div class='lane'><h4>The entity itself</h4><div class='rail'>";
+      nv.forEach(function(v){
+        html += "<div class='cm " + (v.status === "current" ? "current" : esc(v.status||"")) + "'><div class='cv'>" + esc(clip(v.content || v.node_type || "", 120)) +
+          "<span class='chip " + (v.status === "current" ? "current" : "") + "'>" + esc(v.status || "") + "</span></div>" +
+          "<div class='iv'>valid " + valid(v) + "</div>" +
+          (v.reason ? "<div class='why'>closed because: " + esc(v.reason.replace(/_/g, " ")) + "</div>" : "") + inEffectBox(v.in_effect) + "</div>";
+      });
+      html += "</div></div>";
+    }
+    (r.merged_from || []).forEach(function(m){
+      html += "<div class='say'>Merged from <b>" + esc(m.name || m.id) + "</b>" + (m.at ? " at " + esc(tfmt(m.at)) : "") + ".</div>";
+    });
+  }
+  var lines = r.lines || [];
+  if(!append && !lines.length && !html) html = "<div class='say'>No relations recorded for this entity" + (histRel ? " under " + esc(histRel) : "") + ".</div>";
+  lines.forEach(function(line){
+    var byVid = {};
+    (line.versions||[]).forEach(function(v){ byVid[v.id] = v; });
+    html += "<div class='lane'><h4>" + esc(line.predicate) + " <i>" + (line.direction === "in" ? "← from " + esc(line.subject_name || line.subject) : "→ " + esc(labelOf(line.subject))) + "</i></h4><div class='rail'>";
+    (line.versions||[]).forEach(function(v){ html += commitHTML(line, v, byVid); });
+    html += "</div>" + (line.versions_truncated ? "<div class='say'>Older versions of this line are not loaded; the newest are shown.</div>" : "") + "</div>";
+  });
+  var old = document.getElementById("histnext");
+  if(old) old.remove();
+  if(append) body.insertAdjacentHTML("beforeend", html); else body.innerHTML = html;
+  if(histNext){
+    body.insertAdjacentHTML("beforeend", "<button type='button' class='next' id='histnext'>More relations</button>");
+    document.getElementById("histnext").onclick = function(){ this.disabled = true; fetchHistory(histGen, true); };
+  }
+  Array.prototype.forEach.call(body.querySelectorAll("a[data-go]"), function(a){
+    a.onclick = function(){
+      var t = body.querySelector(".cm[data-vid='" + a.getAttribute("data-go").replace(/'/g, "\\'") + "']");
+      if(t){ t.scrollIntoView({block:"center", behavior:"smooth"}); t.classList.add("flash"); setTimeout(function(){ t.classList.remove("flash"); }, 1400); }
+    };
+  });
+}
+
 /* The record's actions: walk out from it, and share where you are. */
 function renderActs(id, isEdge){
   var box = document.getElementById("dacts");
@@ -2579,7 +2773,10 @@ function renderActs(id, isEdge){
     box.innerHTML = "<button type='button' id='dshare'>Share</button>";
   } else {
     box.innerHTML = (sourceExplore ? "<button type='button' id='dexpand'>Expand neighbours</button>" : "") +
+      (sourceExplore ? "<button type='button' id='dhist' title='Every version of this entity and its relations, and which one is in effect'>History</button>" : "") +
       "<button type='button' id='dshare'>Share</button>";
+    var hb = document.getElementById("dhist");
+    if(hb) hb.onclick = function(){ openHistory(id); };
     var ex = document.getElementById("dexpand");
     if(ex) ex.onclick = function(){
       ex.disabled = true; ex.textContent = "Expanding…";
@@ -2662,7 +2859,7 @@ function openingActions(){
     var f = OPTS.focus;
     // An id names a node; anything else is a name, looked up first.
     if(byId[f] || f.indexOf(":") > 0) focusNode(f, hops);
-    else getJSON("api/find?q=" + encodeURIComponent(f)).then(function(r){
+    else getJSON("api/find?q=" + encodeURIComponent(f) + asOfQuery()).then(function(r){
       var first = (r.results||[])[0];
       if(first) focusNode(first.id, hops); else toast("Nothing called " + f);
     }).catch(function(err){ toast(String(err.message||err)); });

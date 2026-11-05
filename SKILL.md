@@ -1041,6 +1041,61 @@ primary key (`RAGPlan.IDColumn`) so updates/deletes hit the right chunk —
 passes the signed `MaskingPlan`, raw PII never enters RAG/KG, and pseudonymized
 keys become the same deterministic tokens so KG edges survive.
 
+## History: every version, and which one is in effect
+
+Nothing that changes is overwritten silently, and the read tools can ask for
+the versions, for an instant, and for the reason a version is the one in effect.
+No model is involved.
+
+- **Entities and relations** are bitemporal (`valid_from`/`valid_to`,
+  `recorded_at`/`retracted_at`). A closed version moves to
+  `graph_node_history` / `graph_edge_history` with `reason`, `superseded_by`,
+  `producer`. `graph_history` (`db.GraphHistory`; inputs `entity`, `relation`,
+  `from`, `to`, `as_of`, `limit`, `max_versions`, `cursor`) returns the entity's
+  versions oldest first, with its edges grouped into one line per subject,
+  predicate and direction, so "Leo lives_in Beijing" then "Chengdu" is one line of
+  two versions. A version carries its interval, status (`current`, `superseded`,
+  `retracted`, `merged`, `ended`), reason, `superseded_by`, producer, the schema
+  id and version that decided its closure, and its provenance. A version in
+  effect (now, or at `as_of`) carries `in_effect`: `only_version`, `replaced`
+  (with the rule: single-valued link in schema vN, explicit supersede,
+  retraction), `revised` (rewritten in place), `merge_survivor`, or
+  `several_in_effect` (several live values; it states the schema's opinion,
+  `multi_valued`, `no_opinion` or `single_valued_unenforced`, and names no
+  winner).
+- **Write-time supersession**: when the active ontology gives a link a `ONE`
+  side, `upsert_relations` and graphflow close the old value in the same
+  transaction as the new one. Where the schema says nothing, nothing is closed.
+  Relations extracted from documents are not superseded at write time; both
+  values stay live and read as `several_in_effect`.
+- **Triples**: a deleted triple moves to `kg_triples_history`. `as_of` (RFC 3339)
+  on `knowledge_graph_query`, `knowledge_graph_find`, `expand_graph` and
+  `graph_cypher_query` reads the graph as it stood (`cortexdb.AsOf(ctx, t)` in
+  Go); a write, including a SPARQL Update, under `as_of` is refused, and a
+  malformed instant is an error, never now. `knowledge_graph_history` lists the
+  versions of a `subject`'s triples. `vacuum_graph` is the only call that destroys
+  history, triples included.
+- **Ontology**: every save appends to `ontology_schema_versions`; activation
+  intervals are in `ontology_activations`. `ontology_history` lists versions with
+  change summaries, saver and active intervals; `ontology_get` takes `version` or
+  `as_of`; `ontology_diff` takes `from_version` / `to_version`;
+  `ontology_action_audit` takes `schema_id` / `schema_version`. A rollback is a
+  save of the old definition, which appends a new version. A deleted schema keeps
+  its history.
+- **Access**: ordinary tools through `CallTool`; a read-only key may call the
+  three history tools, a key confined to a collection or user is refused them.
+- **Live view**: History on a selected node opens the timeline (one rail per
+  relation and direction, `in_effect` in words, "several values in effect"
+  marked); the As of field pins the page to an instant and find and expand follow
+  it; `/ontology-history` lists a schema's versions and diffs any two. Routes:
+  `/api/history`, `/api/ontology/history`, `/api/ontology/diff`, `as_of` on
+  `/api/find` and `/api/expand`; a malformed instant is a 400.
+- **Limits**: document-extracted relations are not superseded; triples and schemas
+  from before this release have a single starting version; an inferred triple's
+  rule shown is the latest one; a partly bound triple-term pattern read as of the
+  past misses terms no current triple uses; a pinned find matches names as they are
+  today.
+
 ## Tools and MCP
 
 In-process tool calls:
@@ -1065,10 +1120,11 @@ Important tools:
 - Knowledge/memory: `knowledge_save`, `knowledge_search`, `memory_save`, `memory_search`
 - Knowledge graph: `knowledge_graph_upsert`, `knowledge_graph_query`, `knowledge_graph_shacl_validate`, `knowledge_graph_infer_refresh`
 - KnowledgeMemory: `knowledge_memory_recall`, `knowledge_memory_build_context_pack`, `knowledge_memory_reflect`, `knowledge_memory_consolidate`
-- Ontology: `ontology_save`, `ontology_get`, `ontology_list`, `ontology_delete`, `ontology_diff`, `ontology_action_list`, `ontology_action_apply`, `object_set_resolve`
+- Ontology: `ontology_save`, `ontology_get`, `ontology_list`, `ontology_delete`, `ontology_diff`, `ontology_history`, `ontology_action_list`, `ontology_action_apply`, `object_set_resolve`
 - Inference: `apply_inference`, `rules_save`, `rules_list`, `rules_delete`, `rules_apply`, `inference_explain`
 - Decision ledger: `decision_record`, `decision_chain`, `decision_precedents`
 - Execution graph: `execution_run_start`, `execution_step_begin`, `execution_step_end`, `execution_step_record`, `execution_run_finish`, `execution_run_get`, `execution_runs_list`, `execution_step_lineage`, `execution_run_replay`
+- History: `graph_history`, `knowledge_graph_history`, `ontology_history`; `as_of` on `knowledge_graph_query`, `knowledge_graph_find`, `expand_graph`, `graph_cypher_query`
 - Aggregates and thresholds: `aggregate_metadata`, `representative_records`, `search_vector_range`
 - Graph introspection: `graph_schema`, `graph_property_values`, `graph_statistics`, `graph_health`
 - Claim checking: `verify_claims`, `fact_provenance`, `uncited_facts`, `check_against_sources`

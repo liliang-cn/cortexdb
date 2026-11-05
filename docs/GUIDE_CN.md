@@ -29,6 +29,7 @@
 - **可换存储后端** — 默认 SQLite；把 DSN 换成 `postgres://` 就把同一个大脑搬到 **PostgreSQL + pgvector**，向量、混合检索、记忆和 RDF 图谱在两个后端上都跑。注册表是编译期的，不是插件系统（存储是热路径）。104 个 opt-in 的 PostgreSQL 测试，大多是 parity 测试：一份测试体、两个数据库、必须给出相同答案。
 - **知识图谱** — 同一文件上的 RDF 三元组/四元组,**属性图也能当 RDF 读**:抽取和 `upsert_entities` 写进去的一切,都以只读三元组的形式参与 SPARQL、推理和 SHACL(`cxn:` 节点、`cxt:` 类型、`cxr:` 关系、`cxp:` 属性),不复制数据,也就没有同步问题。**RDF 1.2**:三元组项 `<<( s p o )>>`、具名化三元组和 `{| |}` 注解,于是"关于一条事实的事实"(谁说的、多大把握)本身也能查询;支持带书写方向的字面量。SPARQL 1.1 和 1.2——查询、带图管理(`ADD`/`COPY`/`MOVE`/`CLEAR`/`DROP`)的更新、全部属性路径、JSON/XML/CSV/TSV 结果格式,以及通过应用设置的处理器执行的 `SERVICE`——在两种后端上通过 W3C 官方测试:RDF 1.2 与 RDF/XML 全部通过,SPARQL 1.2 269/269,SPARQL 1.1 查询 329/331(两条是有意的宽松处理:`"1" + "2"` 得 3)、更新 157/157、结果格式和联邦查询全部通过。半朴素求值的物化推理,覆盖 RDFS 和 OWL 2 RL 规则——`inverseOf`、对称、传递、`equivalentClass`/`equivalentProperty`、`sameAs`、**键**(`FunctionalProperty` / `InverseFunctionalProperty` / `hasKey` 推出 `sameAs`:邮箱相同就是同一个人)、**属性链**,以及类表达式(`someValuesFrom`、`allValuesFrom`、`hasValue`、`intersectionOf`、`unionOf`、`oneOf`、最大基数)——事实变化时**自动**保持最新(删除再重推,异步执行,`WaitForInference` 可读到自己刚写入的结果),每条推理结果都能解释来源。矛盾(`disjointWith` 与 `AllDisjointClasses`、不相交属性、函数型属性出现两个值、`differentFrom` 与 `AllDifferent` 和推出的 `sameAs` 冲突、非自反和非对称属性、否定属性断言、`complementOf`、`owl:Nothing`、基数为 0)会连同冲突的三元组一起报告,绝不靠猜来消解。**完整的 SHACL Core**——全部属性路径、限定值形状、`sh:lessThan`、隐式类目标;W3C Core 测试 98/98——以及 **SHACL-SPARQL**(`sh:sparql` 约束和基于 SPARQL 的约束组件,支持预绑定;22 条通过 21 条,规范中可选的 `$shapesGraph` 除外),还有 **SHACL-AF 规则**(`sh:TripleRule`,支持条件、顺序和节点表达式,迭代到不动点,结果可解释)。属性图上的**只读 Cypher / GQL**(`graph_cypher_query`:MATCH / OPTIONAL MATCH / WITH / 最多 6 跳的变长路径 / 聚合;3,897 个 openCypher TCK 场景 0 错答——做不到的直接拒绝)。N-Triples/N-Quads/Turtle/TriG/JSON-LD 读写和 RDF/XML 导入(大多数 OWL 本体以此发布),JSON-LD 绝不拉取远程 context;属性图侧 `apply_inference` 物化两跳关系组合并带出处;实体记录断言文档,`delete_document_graph` 是按摄入形状做的删除。
 - **Ontology(Palantir 风格)** — 带主键与基数的对象/链接/接口类型,对象集代数(union / intersect / filter / `search_around`),带审计的受治理**动作类型**,自动生成的类型化 agent 工具,以及破坏性变更的 schema diff;`strict` 与 `vocabulary` 两种执行模式。
+- **历史** — 实体、关系、三元组、schema 的每个版本，以及现在生效的是哪一个：`graph_history`（按主语和谓词归成线，每个当前版本带 `in_effect` 原因）、`knowledge_graph_history`，SPARQL、查找、展开和 Cypher 工具上的 `as_of`，ontology 工具上的 `ontology_history` 与 `version` / `as_of` / `from_version`。实时视图有实体时间线、As of 固定时刻和 ontology 版本列表。详见下文“历史”一节。
 - **流水线** — `memoryflow`(转录 → 召回 → 唤醒 → 晋升)、`graphflow`(语料 → 图 → HTML 报告)、`importflow`(CSV / SQL dump / 在线 Postgres-MySQL → RAG + KG)、`connector`(PII 脱敏、签名计划、可逆保险库、CDC 同步)。
 - **工具与 MCP** — 100+ 工具,进程内与 MCP 同名同义,另有交互式图谱视图 `render_graph_html`,实时 3D 视图 `serve_graph_3d`(可在全库查找、提问、用 Cypher 查询、逐个节点展开邻居;只读、适配手机,每个视角都是可分享的链接:`?focus=`、`?ask=`、`?cypher=`;也可以切成按项目上架的记忆图书馆),`import_agent_memory`(把 Claude Code 和 Codex 已有的记忆导进来:记忆笔记、`CLAUDE.md` / `AGENTS.md`、Codex 的记忆库,按需把历史会话提炼成记忆),以及会分页的批量列举工具 `memory_list_all`、`graph_list_all`——`graph_list_all` 默认只给连接最密的核心子图,传 `order: "id"` 才会逐页走完整张图,像 `memory_list_all` 一样返回 `next_cursor`。
 - **对整个库发问** — 检索回答"什么与这个查询相关"，这几个回答"里面有什么"。*范围*检索返回距离查询一定距离内的全部、以外的一个不要，当 top-K 只是在编造一个 K 时这才是诚实的答案（`search_vector_range`，而且响应会说明是否有匹配被上限挡住）。`Aggregate` 按元数据字段计数、求和、分组（`aggregate_metadata`）。`VectorAggregate` 归约向量本身 —— 质心、几何中位数，以及 **medoid**：组内距离其余成员最近的那条**真实记录**，它用算术回答"这批近重复里哪条是正本""这一簇到底在讲什么"，全程不需要模型（`representative_records`）。两个后端行为一致，每种行为一份测试体、两边都跑。
@@ -415,7 +416,7 @@ diff, err := db.DiffOntologySchema(ctx, cortexdb.OntologyDiffRequest{SchemaID: "
 
 破坏性变更：删除 object type 或 link type、删除属性、属性数据类型改变、属性由可选变必填、新增必填属性、主键变更、link 一侧改指向、基数由 `MANY` 收紧为 `ONE`。非破坏性的新增与放宽也会被报告，并标记为安全。两侧都会先展开 shared property，所以改共享属性的类型是可见的。
 
-工具：`ontology_save`、`ontology_get`、`ontology_list`、`ontology_delete`、`ontology_diff`、`ontology_draft`、`ontology_action_list`、`ontology_action_apply`、`object_set_resolve`。
+工具：`ontology_save`、`ontology_get`、`ontology_list`、`ontology_delete`、`ontology_diff`、`ontology_history`、`ontology_draft`、`ontology_action_list`、`ontology_action_apply`、`object_set_resolve`。
 
 ### 当前限制
 
@@ -424,6 +425,46 @@ diff, err := db.DiffOntologySchema(ctx, cortexdb.OntologyDiffRequest{SchemaID: "
 - **`modify_object` 不会改写节点的显示标题。** 通过 modify 规则改 title 属性只更新属性本身，存储的标题不变，所以按名字解析端点仍会命中改名前的名字。
 - **刻意不建模：** Foundry 的 function runtime、branch/proposal、动态行级安全、backing datasource。那些需要的是 CortexDB 无意成为的那种平台。
 
+## 历史 —— 每个版本，以及现在生效的是哪一个
+
+事实变了，旧的不会被悄悄覆盖。每一层都留下被替换的版本，读取时可以问：有哪些版本、某个时刻是什么样、现在生效的这个版本为什么是它。整个过程不调用模型。
+
+**实体和关系。** 节点和边是双时态的：`valid_from` / `valid_to` 是事实在现实中成立的时间，`recorded_at` / `retracted_at` 是大脑记下它和不再认它的时间。一个版本结束后会移进 `graph_node_history` / `graph_edge_history`，附上 `reason`（`superseded`、`retracted`、`merged`、`document_deleted`、`orphaned`、`pruned`）、`superseded_by` 和 `producer`。`graph_snapshot` 读某个时刻的图，`graph_diff` 比较两个时刻。
+
+`graph_history`（`db.GraphHistory`）是一个实体的日志，最旧的版本在前。输入是 `entity`（节点 id，或名字，精确匹配或规范化后匹配），可选 `relation`、`from` / `to` 时间窗、`as_of`、`limit`（每页多少条线）、`max_versions`（每条线最多读多少个版本，保留最新的）和 `cursor`。结果把该实体两个方向上的边按主语、谓词和方向归成**线**：“Leo lives_in Beijing”之后又写了“Leo lives_in Chengdu”，是两个边 id，但在这里是一条线上的两个版本。每个版本带有效区间、`recorded_at` / `retracted_at`、`status`（`current`、`superseded`、`retracted`、`merged`、`ended`）、`reason`、`superseded_by`、`producer`、决定它结束的 schema id 和版本，以及出处（文档、分块、规则、来源）。一页是若干条线，`next_cursor` 接着往下读。
+
+处于生效状态的版本（当前，或 `as_of` 那一刻）带一个 `in_effect`，说明它为什么是有效的那个：
+
+| `kind` | 含义 |
+| --- | --- |
+| `only_version` | 没有断言过别的值 |
+| `replaced` | 它接替了更早的值，并说明依据的规则：schema vN 里的单值 link、某个 producer 明确的 supersede、撤回 |
+| `revised` | 同一条边被原地改写，来自一次更正或一次文档重新摄入 |
+| `merge_survivor` | 它所属的实体合并了另一个实体 |
+| `several_in_effect` | 这个 link 上有多个值同时有效；结果列出这些值，并说明 schema 对此的态度（`multi_valued`、`no_opinion` 或 `single_valued_unenforced`），不会指定谁赢 |
+
+**写入时的取代。** 当生效的 ontology 把某个 link 的一侧定为 `ONE`，`upsert_relations` 和 graphflow 会在写入新值的同一个事务里关闭旧值（`reason: superseded`，`superseded_by` 指向新边，被关闭的行上记下 schema id 和版本）。schema 对某个 link 没有说法时，什么都不关闭。从文档里抽取出来的关系在写入时不会被取代：两个值都保持有效，`graph_history` 把它们报告为 `several_in_effect`，并注明 `single_valued_unenforced` 或 `no_opinion`。`verify_claims` 和 `graph_health` 也会标出这类成对的值。
+
+**三元组。** `kg_triples` 只放当前有效的三元组。删除、SPARQL Update 或推理刷新去掉一个三元组时，它会在同一个事务里移进 `kg_triples_history`，记下时间、原因和执行者。推导出来的三元组也保留，连同规则和支持，所以回看过去得到的是当时的大脑说过的话。`knowledge_graph_query`（SPARQL）、`knowledge_graph_find`、`expand_graph` 和 `graph_cypher_query` 都有可选的 `as_of`（RFC 3339）：在 T 时刻删掉的三元组，在 T 之前的时刻能查到，从 T 起查不到。SPARQL Update 以及任何写操作带 `as_of` 都会被拒绝。`knowledge_graph_history` 列出某个 `subject`（必填）的三元组的各个版本，最旧的在前，可用 `predicate`、`object`、`inferred`、`from`、`to` 收窄，用 `limit` 和 `cursor` 翻页。在 Go 里用 `cortexdb.AsOf(ctx, t)` 把时刻放到 context 上。格式不对的 `as_of` 在所有工具上都是错误，不会当成“现在”。`vacuum_graph` 是唯一会销毁历史的调用，它也会清理三元组的历史（`PurgeReport.Triples`）。
+
+**Ontology 版本。** 每次保存 schema 都会往 `ontology_schema_versions` 追加一行（完整定义、`saved_at`、保存者，以及与上一版相比改了什么的摘要）；`ontology_activations` 记录某个 schema 的某个版本作为生效校验器的区间，以及是谁切换的。保存不会破坏更早的版本，删除 schema 后它的版本仍然保留。要回滚，就把旧定义再保存一次：这会追加一个内容与旧版相同的新版本。`ontology_history` 列出各版本（默认最新在前，`oldest_first` 反过来；可用 `limit`、`offset`），带变更摘要、生效标记和生效区间。`ontology_get` 接受 `version` 或 `as_of`（当时生效的 schema）。`ontology_diff` 接受 `from_version` 和 `to_version`，用来比较两个已保存的版本，而不是候选和当前版本。`ontology_action_audit` 的记录带有动作执行时的 schema id 和版本。
+
+**事实记得自己是按哪个 schema 判断的。** 由 ontology 决定的关闭，会把 schema id 和版本记在历史行上，`in_effect` 引用的就是那个版本。之后 schema 再改，这条解释也不会被改写。
+
+**实时视图。** 在图页面选中一个节点，点 History：出现一条竖向时间线，每个关系和方向一条轨道，每个版本像一次提交，显示有效区间、状态、被谁取代、出处，生效的版本还用文字写出 `in_effect` 的原因；“several values in effect”（多个值同时有效）会明确标出。图页面的 As of 输入框可以把整个页面固定在某个时刻（顶部横幅写明正在看过去，Now 回到现在），查找和展开也按这个时刻读。ontology 页面有一个链接指向 `/ontology-history`：一个 schema 的各版本，带 saved_at、saved_by、变更摘要和生效区间，任选两个版本可以看差异。页面通过 `/api/history`（`entity`、`relation`、`as_of`、`from`、`to`、`limit`、`max_versions`、`cursor`）、`/api/find` 和 `/api/expand`（`as_of`）、`/api/ontology/history`（`schema`、`limit`、`offset`、`oldest_first`）以及 `/api/ontology/diff`（`schema`、`from`、`to`）读取。这些接口都只读，格式不对的时刻返回 400。
+
+**gRPC 和 REST。** 历史工具是普通工具，和其他工具一样走 `ToolsService.CallTool`。只读 key 可以调用 `graph_history`、`knowledge_graph_history` 和 `ontology_history`；带 `as_of` 的写操作会被拒绝。限定在某个 collection 或 user 的 key 三个都不能用，因为历史表没有任何 scope 字段可以限定。
+
+**限制。**
+
+- 从文档抽取的关系保留两个值（见上），只有 `upsert_relations` 和 graphflow 会取代。
+- 在本次发布之前写入的三元组没有 `recorded_at`，读起来是“从最初就在”。在此之前保存的 ontology schema 只有一个版本，没有变更摘要，也没有保存者。
+- 推导出来的三元组在某个时刻是否存在是精确的；显示的规则和支持是最新的那一份。
+- 对部分绑定的 RDF 1.2 triple term 模式（`<<( ?s :p ?o )>>`）做 as-of 读取，会漏掉当前没有任何三元组使用的 triple term。
+- 图页面固定时刻后，查找按名字现在的样子匹配，再保留那个时刻已经存在的节点，所以当时叫另一个名字的节点用旧名字找不到。`/api/graph` 对格式不对的 `as_of` 返回 200，内容里写明固定失败，页面继续显示现在；其他历史接口返回 400。
+- 服务器没有配置 key 时，`saved_by` 和 `activated_by` 是空的。
+- 这些视图需要大脑带有这些工具；连到较旧的共享大脑时，历史面板会显示它返回的错误。
+
 ## Tools、MCP 与插件
 
 ```go
@@ -431,7 +472,7 @@ tools := db.GraphRAGTools()                             // 进程内 tool callin
 server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 ```
 
-工具分组（100+ 个工具，进程内与 MCP 同名）：GraphRAG（`ingest_document`、`search_text`、`build_context`、`expand_graph`、`search_paths`、`find_nodes`、`delete_document_graph`）、统一检索（`cortex_query`）、knowledge/memory（`knowledge_save`、`memory_search` …）、KnowledgeMemory（`knowledge_memory_recall`、`_reflect`、`_consolidate`、`extract_conversation`）、KG（`knowledge_graph_query`、`_shacl_validate`、`apply_inference`）、ontology（`ontology_save`、`ontology_action_apply`、`object_set_resolve`）、媒体（`ingest_media`、`search_media`）、维护（`vector_dimension_repair`、`sweep_expired`）。`cortexdb-mcp-stdio` 这个二进制额外提供 `render_graph_html`（交互式知识图谱视图）、`serve_graph_3d`、`side_graph_*`、`import_agent_memory`，本地模式下还有 `global_search` / `build_community_hierarchy`；`db.NewMCPServer` 只提供 facade 自己的工具。`memoryflow`/`graphflow`/`importflow`/`connector` 各自也暴露自己的 toolbox。
+工具分组（100+ 个工具，进程内与 MCP 同名）：GraphRAG（`ingest_document`、`search_text`、`build_context`、`expand_graph`、`search_paths`、`find_nodes`、`delete_document_graph`）、统一检索（`cortex_query`）、knowledge/memory（`knowledge_save`、`memory_search` …）、KnowledgeMemory（`knowledge_memory_recall`、`_reflect`、`_consolidate`、`extract_conversation`）、KG（`knowledge_graph_query`、`_shacl_validate`、`apply_inference`）、ontology（`ontology_save`、`ontology_history`、`ontology_action_apply`、`object_set_resolve`）、历史（`graph_history`、`knowledge_graph_history`）、媒体（`ingest_media`、`search_media`）、维护（`vector_dimension_repair`、`sweep_expired`）。`cortexdb-mcp-stdio` 这个二进制额外提供 `render_graph_html`（交互式知识图谱视图）、`serve_graph_3d`、`side_graph_*`、`import_agent_memory`，本地模式下还有 `global_search` / `build_community_hierarchy`；`db.NewMCPServer` 只提供 facade 自己的工具。`memoryflow`/`graphflow`/`importflow`/`connector` 各自也暴露自己的 toolbox。
 
 ### 过期与清理
 

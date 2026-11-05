@@ -21,6 +21,36 @@ All notable changes to this project will be documented in this file.
   file's sha256. The file's hash is the content hash: an unchanged file is
   not derived again, another model replaces only its chunks. The bytes are
   not stored. `examples/20_media` (#103).
+- History of the knowledge graph and the ontology (#125). `graph_history`
+  (`db.GraphHistory`) lists the versions of one entity and its relations, oldest
+  first, grouped into one line per subject, predicate and direction, in bounded
+  pages (`limit`, `max_versions`, `cursor`). Each version carries its valid
+  interval, status, reason, `superseded_by`, producer, provenance and the schema
+  id and version that decided its closure; each version in effect, now or at
+  `as_of`, carries `in_effect` (`only_version`, `replaced`, `revised`,
+  `merge_survivor`, `several_in_effect` with the schema's opinion). When the
+  active ontology gives a link a `ONE` side, `upsert_relations` and graphflow
+  now close the old value in the transaction that writes the new one; relations
+  extracted from documents are not superseded and read as `several_in_effect`.
+- RDF triples keep their history. A delete, a SPARQL Update or an inference
+  refresh moves the triple to `kg_triples_history`; `knowledge_graph_history`
+  lists the versions of a subject's triples, and `knowledge_graph_query`,
+  `knowledge_graph_find`, `expand_graph` and `graph_cypher_query` take an
+  optional `as_of`. A write under `as_of` and a malformed instant are refused.
+  `vacuum_graph` also purges triple history (`PurgeReport.Triples`).
+- Ontology schemas keep every version and every activation interval
+  (`ontology_schema_versions`, `ontology_activations`). New tool
+  `ontology_history`; `ontology_get` takes `version` or `as_of`, `ontology_diff`
+  takes `from_version` / `to_version`, `ontology_action_audit` takes
+  `schema_id` / `schema_version`. A rollback is a save of the old definition.
+  A deleted schema keeps its history.
+- Live view: History on a selected node opens a timeline with one rail per
+  relation and direction and the `in_effect` reason in words; find and expand
+  follow the As of pin (`as_of` on `/api/find` and `/api/expand`); the new page
+  `/ontology-history` lists a schema's versions and diffs any two
+  (`/api/history`, `/api/ontology/history`, `/api/ontology/diff`). A key
+  confined to a collection or user is refused the three history tools; a
+  read-only key may call them through `CallTool`.
 - Media vectors (#103): with `WithMediaEmbedder` (a CLIP, SigLIP or CLAP
   model; `media.NewOpenAIMediaEmbedder` for infinity's `/embeddings` with a
   `modality`, `CORTEXDB_MEDIA_EMBED_*`) images, video frames and, for a model

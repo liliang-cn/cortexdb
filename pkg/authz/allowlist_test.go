@@ -58,7 +58,8 @@ func TestEveryToolAndEveryArgumentIsClassifiedForConfinedKeys(t *testing.T) {
 		"graph_health", "knowledge_memory_consolidate",
 		"knowledge_memory_promote_to_knowledge", "knowledge_memory_reflect", "memory_list_all",
 		"sweep_expired", "vector_dimension_repair",
-		"graph_list_all", "graph_cypher_query", "rank_graph_nodes", "predict_graph_edges", "disambiguate_mentions", "graph_statistics"}
+		"graph_list_all", "graph_cypher_query", "rank_graph_nodes", "predict_graph_edges", "disambiguate_mentions", "graph_statistics",
+		"graph_history", "knowledge_graph_history", "ontology_history"}
 	for _, name := range own {
 		if why, ok := refused[name]; !ok || why == defaultRefusal || why == "" {
 			t.Errorf("%s lost its own reason: %q", name, why)
