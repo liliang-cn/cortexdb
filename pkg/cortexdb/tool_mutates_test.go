@@ -161,6 +161,7 @@ var toolWrites = map[string]bool{
 	"graph_diff":     false,
 	// A triple's versions, read from kg_triples and kg_triples_history.
 	"knowledge_graph_history": false,
+	"graph_history":           false,
 	"changes_since":           false,
 	// The recall log reads its own table; feedback writes a mark into it.
 	"recall_log_list":        false,
@@ -190,7 +191,7 @@ var toolWrites = map[string]bool{
 // table so that a tool added without a decision cannot slip through by sharing
 // a name with one already listed, and so that a tool quietly disappearing is
 // noticed too. Change it in the same commit that adds the tool and its row.
-const toolCount = 109
+const toolCount = 111
 
 // TestEveryToolDeclaresWhetherItWrites is the test the Mutates doc comment
 // promises: it makes forgetting impossible rather than merely unlikely.

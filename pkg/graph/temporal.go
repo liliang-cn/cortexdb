@@ -253,7 +253,9 @@ func (g *GraphStore) createTemporalSchema(ctx context.Context) error {
 		retracted_at TIMESTAMP,
 		reason TEXT,
 		superseded_by TEXT,
-		producer TEXT
+		producer TEXT,
+		schema_id TEXT,
+		schema_version INTEGER
 	);
 
 	CREATE TABLE IF NOT EXISTS graph_edge_history (
@@ -271,7 +273,9 @@ func (g *GraphStore) createTemporalSchema(ctx context.Context) error {
 		retracted_at TIMESTAMP,
 		reason TEXT,
 		superseded_by TEXT,
-		producer TEXT
+		producer TEXT,
+		schema_id TEXT,
+		schema_version INTEGER
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_node_history_id ON graph_node_history(id);
@@ -424,14 +428,14 @@ type execer interface {
 const archiveNodeVersionSQL = `
 	INSERT INTO graph_node_history (` + nodeColumns + `, ` + invalidationColumnList + `)
 	SELECT id, vector, content, node_type, properties, created_at, updated_at,
-	       valid_from, COALESCE(valid_to, ?), recorded_at, retracted_at, ?, ?, ?
+	       valid_from, COALESCE(valid_to, ?), recorded_at, retracted_at, ` + invalidationPlaceholders + `
 	FROM graph_nodes
 	WHERE id = ? AND ` + nodeContentChanged + ` AND ` + keepsAPartBefore
 
 const archiveEdgeVersionSQL = `
 	INSERT INTO graph_edge_history (` + edgeColumns + `, ` + invalidationColumnList + `)
 	SELECT id, from_node_id, to_node_id, edge_type, weight, properties, vector, created_at,
-	       valid_from, COALESCE(valid_to, ?), recorded_at, retracted_at, ?, ?, ?
+	       valid_from, COALESCE(valid_to, ?), recorded_at, retracted_at, ` + invalidationPlaceholders + `
 	FROM graph_edges
 	WHERE id = ? AND ` + edgeContentChanged + ` AND ` + keepsAPartBefore
 
@@ -459,14 +463,14 @@ const keepsAPartBefore = `(? = 0 OR valid_from IS NULL OR valid_from < ?)`
 const archiveNodeCorrectionSQL = `
 	INSERT INTO graph_node_history (` + nodeColumns + `, ` + invalidationColumnList + `)
 	SELECT id, vector, content, node_type, properties, created_at, updated_at,
-	       ` + correctedFrom + `, valid_to, recorded_at, COALESCE(retracted_at, ?), ?, ?, ?
+	       ` + correctedFrom + `, valid_to, recorded_at, COALESCE(retracted_at, ?), ` + invalidationPlaceholders + `
 	FROM graph_nodes
 	WHERE id = ? AND ` + nodeContentChanged
 
 const archiveEdgeCorrectionSQL = `
 	INSERT INTO graph_edge_history (` + edgeColumns + `, ` + invalidationColumnList + `)
 	SELECT id, from_node_id, to_node_id, edge_type, weight, properties, vector, created_at,
-	       ` + correctedFrom + `, valid_to, recorded_at, COALESCE(retracted_at, ?), ?, ?, ?
+	       ` + correctedFrom + `, valid_to, recorded_at, COALESCE(retracted_at, ?), ` + invalidationPlaceholders + `
 	FROM graph_edges
 	WHERE id = ? AND ` + edgeContentChanged
 
@@ -529,9 +533,9 @@ func (g *GraphStore) archiveNodeCorrection(ctx context.Context, ex execer, nodeI
 		return nil
 	}
 	inv := versionFrom(ctx, nodeID)
+	args := append([]any{at, at, recorded}, inv.columnArgs()...)
 	if _, err := ex.ExecContext(ctx, g.dialect.Rebind(archiveNodeCorrectionSQL),
-		at, at, recorded, inv.Reason, nullIfEmpty(inv.SupersededBy), inv.Producer,
-		nodeID, content, nodeType, properties); err != nil {
+		append(args, nodeID, content, nodeType, properties)...); err != nil {
 		return fmt.Errorf("cortexdb/graph: archive corrected node version %s: %w", nodeID, err)
 	}
 	return nil
@@ -542,9 +546,9 @@ func (g *GraphStore) archiveEdgeCorrection(ctx context.Context, ex execer, edgeI
 		return nil
 	}
 	inv := versionFrom(ctx, edgeID)
+	args := append([]any{at, at, recorded}, inv.columnArgs()...)
 	if _, err := ex.ExecContext(ctx, g.dialect.Rebind(archiveEdgeCorrectionSQL),
-		at, at, recorded, inv.Reason, nullIfEmpty(inv.SupersededBy), inv.Producer,
-		edgeID, from, to, edgeType, weight, properties); err != nil {
+		append(args, edgeID, from, to, edgeType, weight, properties)...); err != nil {
 		return fmt.Errorf("cortexdb/graph: archive corrected edge version %s: %w", edgeID, err)
 	}
 	return nil
@@ -601,10 +605,10 @@ func (g *GraphStore) archiveNodes(ctx context.Context, ex execer, nodeIDs []stri
 		q := g.dialect.Rebind(`
 			INSERT INTO graph_node_history (` + nodeColumns + `, ` + invalidationColumnList + `)
 			SELECT id, vector, content, node_type, properties, created_at, updated_at,
-			       valid_from, COALESCE(valid_to, ?), recorded_at, ?, ?, ?, ?
+			       valid_from, COALESCE(valid_to, ?), recorded_at, ?, ` + invalidationPlaceholders + `
 			FROM graph_nodes WHERE id IN (` + holes + `)`)
 		inv := retractionFrom(ctx)
-		if _, err := ex.ExecContext(ctx, q, append([]any{at, at, inv.Reason, nullIfEmpty(inv.SupersededBy), inv.Producer}, args...)...); err != nil {
+		if _, err := ex.ExecContext(ctx, q, append(append([]any{at, at}, inv.columnArgs()...), args...)...); err != nil {
 			return fmt.Errorf("cortexdb/graph: archive nodes: %w", err)
 		}
 	}
@@ -621,7 +625,7 @@ func (g *GraphStore) archiveEdges(ctx context.Context, ex execer, ids []string, 
 	for _, chunk := range idChunks(ids) {
 		holes, args := placeholderList(chunk)
 		inv := retractionFrom(ctx)
-		head := []any{at, at, inv.Reason, nullIfEmpty(inv.SupersededBy), inv.Producer}
+		head := append([]any{at, at}, inv.columnArgs()...)
 		where := "id IN (" + holes + ")"
 		params := append(head, args...)
 		if match == "endpoint" {
@@ -631,7 +635,7 @@ func (g *GraphStore) archiveEdges(ctx context.Context, ex execer, ids []string, 
 		q := g.dialect.Rebind(`
 			INSERT INTO graph_edge_history (` + edgeColumns + `, ` + invalidationColumnList + `)
 			SELECT id, from_node_id, to_node_id, edge_type, weight, properties, vector, created_at,
-			       valid_from, COALESCE(valid_to, ?), recorded_at, ?, ?, ?, ?
+			       valid_from, COALESCE(valid_to, ?), recorded_at, ?, ` + invalidationPlaceholders + `
 			FROM graph_edges WHERE ` + where)
 		if _, err := ex.ExecContext(ctx, q, params...); err != nil {
 			return fmt.Errorf("cortexdb/graph: archive edges: %w", err)

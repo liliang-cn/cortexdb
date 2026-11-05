@@ -283,6 +283,11 @@ func (g *GraphStore) UpsertEdgesBatch(ctx context.Context, edges []*GraphEdge) (
 		}
 
 		at, recorded := g.versionStamps(edge.ValidFrom)
+		if rule, ok := supersessionFrom(ctx); ok {
+			if err = g.supersedePriorEdges(ctx, tx, rule, edge, at, recorded); err != nil {
+				return nil, err
+			}
+		}
 		if _, err = archive.ExecContext(ctx, archiveEdgeVersionArgs(ctx, at, recorded, edge.ID, edge.FromNodeID, edge.ToNodeID,
 			edge.EdgeType, edge.Weight, string(propertiesJSON))...); err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("failed to archive edge version %s: %w", edge.ID, err))
@@ -747,6 +752,11 @@ func (g *GraphStore) upsertEdgesBatchTx(ctx context.Context, tx *sql.Tx, edges [
 		}
 
 		at, recorded := g.versionStamps(edge.ValidFrom)
+		if rule, ok := supersessionFrom(ctx); ok {
+			if err = g.supersedePriorEdges(ctx, tx, rule, edge, at, recorded); err != nil {
+				return nil, err
+			}
+		}
 		if _, err = archive.ExecContext(ctx, archiveEdgeVersionArgs(ctx, at, recorded, edge.ID, edge.FromNodeID, edge.ToNodeID,
 			edge.EdgeType, edge.Weight, string(propertiesJSON))...); err != nil {
 			result.FailedCount++

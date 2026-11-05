@@ -52,6 +52,7 @@ type VacuumGraphToolRequest struct {
 
 func temporalToolDefinitions() []ToolDefinition {
 	return []ToolDefinition{
+		graphHistoryToolDefinition(),
 		{
 			Name: "graph_snapshot",
 			Description: "Count the graph as it stood at an instant — nodes, edges and orphans — optionally listing some of it. " +
@@ -205,6 +206,13 @@ func (t *GraphRAGToolbox) callTemporalTool(ctx context.Context, name string, inp
 		}
 		resp, err := t.db.GraphDiffTool(ctx, req)
 		return resp, true, err
+	case "graph_history":
+		var req GraphHistoryToolRequest
+		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, true, fmt.Errorf("decode %s: %w", name, err)
+		}
+		resp, err := t.db.GraphHistoryTool(ctx, req)
+		return resp, true, err
 	case "vacuum_graph":
 		var req VacuumGraphToolRequest
 		if err := json.Unmarshal(input, &req); err != nil {
@@ -221,6 +229,7 @@ func (t *GraphRAGToolbox) callTemporalTool(ctx context.Context, name string, inp
 // in the server is absent from every MCP host while the release notes say it
 // shipped.
 func addTemporalMCPTools(server *mcp.Server, definitions map[string]ToolDefinition, db *DB) {
+	addGraphHistoryMCPTool(server, definitions, db)
 	addGraphRAGMCPTool(server, definitions["graph_snapshot"], func(ctx context.Context, req GraphSnapshotToolRequest) (GraphSnapshot, error) {
 		return db.GraphSnapshotTool(ctx, req)
 	})

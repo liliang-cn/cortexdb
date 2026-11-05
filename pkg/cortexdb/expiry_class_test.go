@@ -50,6 +50,7 @@ var readToolsAndTheExpiry = map[string]string{
 	"graph_cypher_query":                  "the whole graph",
 	"graph_diff":                          "the whole graph",
 	"graph_health":                        "the whole graph",
+	"graph_history":                       "the whole graph",
 	"graph_list_all":                      "the whole graph",
 	"graph_property_values":               "the whole graph",
 	"graph_schema":                        "the whole graph",
