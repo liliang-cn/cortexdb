@@ -177,3 +177,54 @@ func TestSaveTemporalFactSupersede(t *testing.T) {
 		t.Fatalf("as of 2024 expected [Senior], got %+v", facts)
 	}
 }
+
+// A fact the ontology closed through SaveTemporalFact reads as one line in
+// graph_history: the old value superseded by the new edge, the schema that
+// decided it recorded, and the live row graphflow keeps for the closed fact
+// folded into the same version rather than shown twice.
+func TestAGraphflowSupersessionReadsAsOneLineWithTheSchemaRecorded(t *testing.T) {
+	db, ctx := openTemporalTestDB(t)
+	str := cortexdb.OntologyDataType{Kind: cortexdb.OntologyDataString}
+	if _, err := db.SaveOntologySchema(ctx, cortexdb.OntologySaveRequest{Activate: true, Schema: cortexdb.OntologySchema{
+		SchemaID: "work", Name: "Work", Enforcement: cortexdb.OntologyEnforcementVocabulary,
+		ObjectTypes: []cortexdb.OntologyObjectType{
+			{APIName: "Person", PrimaryKey: "id", Properties: []cortexdb.OntologyProperty{{APIName: "id", DataType: str, Required: true}}},
+			{APIName: "Company", PrimaryKey: "id", Properties: []cortexdb.OntologyProperty{{APIName: "id", DataType: str, Required: true}}},
+		},
+		LinkTypes: []cortexdb.OntologyLinkType{{
+			APIName: "works_at",
+			A:       cortexdb.OntologyLinkSide{APIName: "employer", ObjectTypeAPIName: "Person", Cardinality: cortexdb.OntologyCardinalityOne},
+			B:       cortexdb.OntologyLinkSide{APIName: "staff", ObjectTypeAPIName: "Company", Cardinality: cortexdb.OntologyCardinalityMany},
+		}},
+	}}); err != nil {
+		t.Fatalf("schema: %v", err)
+	}
+	t2020 := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	t2022 := time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC)
+	for _, f := range []TemporalFact{
+		{From: "Alice", To: "Acme", Type: "works_at", ValidFrom: &t2020},
+		{From: "Alice", To: "Globex", Type: "works_at", ValidFrom: &t2022},
+	} {
+		if err := SaveTemporalFact(ctx, db, f); err != nil {
+			t.Fatalf("save %s: %v", f.To, err)
+		}
+	}
+
+	res, err := db.GraphHistory(ctx, cortexdb.GraphHistoryRequest{Entity: "Alice", Relation: "works_at"})
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+	if len(res.Lines) != 1 || len(res.Lines[0].Versions) != 2 {
+		t.Fatalf("want one line with two versions, got %+v", res.Lines)
+	}
+	old, cur := res.Lines[0].Versions[0], res.Lines[0].Versions[1]
+	if old.ObjectName != "Acme" || old.Status != cortexdb.HistoryStatusSuperseded || old.SupersededBy != cur.ID {
+		t.Errorf("Acme should be superseded by %s: %+v", cur.ID, old)
+	}
+	if old.SchemaID != "work" || old.SchemaVersion < 1 {
+		t.Errorf("the closure should record the schema: %q v%d", old.SchemaID, old.SchemaVersion)
+	}
+	if cur.InEffect == nil || cur.InEffect.Kind != cortexdb.InEffectReplaced || cur.InEffect.Rule != cortexdb.InEffectRuleSingleValued {
+		t.Errorf("in_effect = %+v", cur.InEffect)
+	}
+}

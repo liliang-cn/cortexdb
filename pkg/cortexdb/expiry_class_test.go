@@ -50,6 +50,7 @@ var readToolsAndTheExpiry = map[string]string{
 	"graph_cypher_query":                  "the whole graph",
 	"graph_diff":                          "the whole graph",
 	"graph_health":                        "the whole graph",
+	"graph_history":                       "the whole graph",
 	"graph_list_all":                      "the whole graph",
 	"graph_property_values":               "the whole graph",
 	"graph_schema":                        "the whole graph",
@@ -57,6 +58,7 @@ var readToolsAndTheExpiry = map[string]string{
 	"graph_statistics":                    "the whole graph",
 	"knowledge_graph_export":              "the whole graph",
 	"knowledge_graph_find":                "the whole graph",
+	"knowledge_graph_history":             "the whole graph",
 	"knowledge_graph_infer_explain":       "the whole graph",
 	"knowledge_graph_infer_explain_match": "the whole graph",
 	"knowledge_graph_infer_summary":       "the whole graph",
@@ -90,6 +92,7 @@ var readToolsAndTheExpiry = map[string]string{
 	"ontology_diff":            "no document: ontologies",
 	"ontology_draft":           "no document: ontologies",
 	"ontology_get":             "no document: ontologies",
+	"ontology_history":         "no document: ontologies",
 	"ontology_list":            "no document: ontologies",
 	"rules_list":               "no document: rules",
 }

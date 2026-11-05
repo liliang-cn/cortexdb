@@ -77,6 +77,7 @@ Haiku runs on Claude Code's own model access, so no API key is needed. Language:
 - Change feed: every committed write, in order, exactly once
 - Observability: a request id and a W3C trace (`traceparent`) from MCP through gRPC to the trace and the recall log, recalls that explain themselves and say when they were degraded, embedder health in `/metrics` and `/healthz`, and an opt-in recall log with a `/recalls` page
 - Images, recordings and videos (`ingest_media`): found by a text question through their caption, visible text and transcript, a hit saying where in the file — with or without an embedder; with a CLIP-style media embedder also by what they show, and by an image (`search_media`)
+- History of the graph and the ontology: for an entity, relation, triple or schema, every version, when and why it changed, and which one is in effect and why (`graph_history`, `knowledge_graph_history`, `ontology_history`); `as_of` on SPARQL, find, expand and Cypher; an entity timeline, an As of pin and an ontology version list in the live view
 - SQLite by default, PostgreSQL + pgvector with a `postgres://` DSN
 
 ## Environment

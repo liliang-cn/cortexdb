@@ -66,6 +66,10 @@ var ExploreTools = []string{
 	"get_chunks",
 	"fact_provenance",
 	"memory_get",
+	// History (history.go). All three read.
+	"graph_history",
+	"ontology_history",
+	"ontology_diff",
 }
 
 // Caller runs one of the brain's tools with JSON arguments and returns its
@@ -206,6 +210,15 @@ type FindResult struct {
 
 // Find looks a name up across the whole store, not only the drawn core.
 func Find(ctx context.Context, call Caller, q string) ([]FindResult, error) {
+	return FindAt(ctx, call, q, time.Time{})
+}
+
+// FindAt is Find for a page pinned to an instant. find_nodes answers about now
+// and takes no instant, so a pinned find matches the name against the store as
+// it is and keeps only the nodes that already existed at that instant, read
+// through Cypher's as_of. The limit: a node that carried a different name then
+// is found under the name it has now, not the one it had.
+func FindAt(ctx context.Context, call Caller, q string, at time.Time) ([]FindResult, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
 		return nil, errors.New("find: nothing to look for")
@@ -214,11 +227,29 @@ func Find(ctx context.Context, call Caller, q string) ([]FindResult, error) {
 	if err := callInto(ctx, call, "find_nodes", cortexdb.ToolFindNodesRequest{Names: []string{q}, Limit: findLimit}, &resp); err != nil {
 		return nil, err
 	}
+	var existed map[string]bool
+	if !at.IsZero() {
+		var ids []string
+		for _, m := range resp.Matches {
+			for _, n := range m.Nodes {
+				if n != nil {
+					ids = append(ids, n.ID)
+				}
+			}
+		}
+		var err error
+		if existed, err = existedAt(ctx, call, ids, at); err != nil {
+			return nil, err
+		}
+	}
 	out := make([]FindResult, 0)
 	seen := map[string]bool{}
 	for _, m := range resp.Matches {
 		for _, n := range m.Nodes {
 			if n == nil || bookkeepingNode(n.NodeType) || seen[n.ID] {
+				continue
+			}
+			if existed != nil && !existed[n.ID] {
 				continue
 			}
 			seen[n.ID] = true
@@ -227,6 +258,29 @@ func Find(ctx context.Context, call Caller, q string) ([]FindResult, error) {
 				return out, nil
 			}
 		}
+	}
+	return out, nil
+}
+
+// existedAt reports which of ids were nodes at an instant.
+func existedAt(ctx context.Context, call Caller, ids []string, at time.Time) (map[string]bool, error) {
+	out := map[string]bool{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var cy cortexdb.CypherQueryResponse
+	err := callInto(ctx, call, "graph_cypher_query", cortexdb.CypherQueryRequest{
+		Query:     fmt.Sprintf("MATCH (n) WHERE id(n) IN $ids RETURN n LIMIT %d", len(ids)),
+		Params:    map[string]any{"ids": ids},
+		MaxRows:   len(ids),
+		TimeoutMS: int(exploreTimeout / time.Millisecond),
+		AsOf:      instantText(at),
+	}, &cy)
+	if err != nil {
+		return nil, err
+	}
+	for _, n := range neighbourhoodFromRows(cy.Rows).Nodes {
+		out[n.ID] = true
 	}
 	return out, nil
 }
@@ -248,6 +302,13 @@ type Neighbourhood struct {
 // bookkeeping it skips, so the limit is spent on relations. expand_graph is
 // the fallback for a store too old to run Cypher.
 func Expand(ctx context.Context, call Caller, id string, limit int) (Neighbourhood, error) {
+	return ExpandAt(ctx, call, id, limit, time.Time{})
+}
+
+// ExpandAt is Expand for a page pinned to an instant: the neighbourhood as it
+// stood then, so what is merged into a scene drawn as it was is not a mix of
+// two times.
+func ExpandAt(ctx context.Context, call Caller, id string, limit int, at time.Time) (Neighbourhood, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return Neighbourhood{}, errors.New("expand: no node")
@@ -262,6 +323,7 @@ func Expand(ctx context.Context, call Caller, id string, limit int) (Neighbourho
 		Params:    map[string]any{"id": id, "skip": graph.BookkeepingEdgeTypes},
 		MaxRows:   limit,
 		TimeoutMS: int(exploreTimeout / time.Millisecond),
+		AsOf:      instantText(at),
 	}, &cy)
 	if err == nil {
 		nb := neighbourhoodFromRows(cy.Rows)
@@ -269,24 +331,32 @@ func Expand(ctx context.Context, call Caller, id string, limit int) (Neighbourho
 			// A node with no relations still exists, and the page asked for it
 			// to fly there: without it the neighbourhood is empty and the page
 			// can only say there is no such node.
-			nb.Nodes = anchorNode(ctx, call, id)
+			nb.Nodes = anchorNode(ctx, call, id, at)
 		}
 		return nb, nil
 	}
 	var resp cortexdb.ToolExpandGraphResponse
-	if err := callInto(ctx, call, "expand_graph", cortexdb.ToolExpandGraphRequest{NodeIDs: []string{id}, MaxHops: 1, Limit: limit}, &resp); err != nil {
+	if err := callInto(ctx, call, "expand_graph", cortexdb.ToolExpandGraphRequest{NodeIDs: []string{id}, MaxHops: 1, Limit: limit, AsOf: instantText(at)}, &resp); err != nil {
 		return Neighbourhood{}, err
 	}
 	nodes, edges := viewGraph(resp.Nodes, resp.Edges)
 	if len(nodes) == 0 {
-		nodes = anchorNode(ctx, call, id)
+		nodes = anchorNode(ctx, call, id, at)
 	}
 	return Neighbourhood{Nodes: nodes, Edges: edges}, nil
 }
 
 // anchorNode is the expanded node on its own, for one with no relations to
 // expand: nil if the brain has no such node.
-func anchorNode(ctx context.Context, call Caller, id string) []Node {
+func anchorNode(ctx context.Context, call Caller, id string, at time.Time) []Node {
+	if !at.IsZero() {
+		// get_nodes answers about now. Under a pin, a node that did not exist
+		// yet must not be anchored into the past.
+		existed, err := existedAt(ctx, call, []string{id}, at)
+		if err != nil || !existed[id] {
+			return nil
+		}
+	}
 	var got cortexdb.ToolGetNodesResponse
 	if err := callInto(ctx, call, "get_nodes", cortexdb.ToolGetNodesRequest{NodeIDs: []string{id}}, &got); err != nil {
 		return nil
@@ -643,17 +713,27 @@ func readQuestion(r *http.Request) (string, error) {
 }
 
 func (s *Server) handleFind(w http.ResponseWriter, r *http.Request) {
+	at, perr := asOfParam(r, "as_of")
+	if perr != nil {
+		writeBadRequest(w, perr)
+		return
+	}
 	ctx, cancel := s.exploreContext(r)
 	defer cancel()
-	res, err := Find(ctx, s.src.Call, r.URL.Query().Get("q"))
+	res, err := FindAt(ctx, s.src.Call, r.URL.Query().Get("q"), at)
 	writeExplore(w, map[string]any{"results": res}, err)
 }
 
 func (s *Server) handleExpand(w http.ResponseWriter, r *http.Request) {
+	at, perr := asOfParam(r, "as_of")
+	if perr != nil {
+		writeBadRequest(w, perr)
+		return
+	}
 	ctx, cancel := s.exploreContext(r)
 	defer cancel()
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	res, err := Expand(ctx, s.src.Call, r.URL.Query().Get("id"), limit)
+	res, err := ExpandAt(ctx, s.src.Call, r.URL.Query().Get("id"), limit, at)
 	writeExplore(w, res, err)
 }
 

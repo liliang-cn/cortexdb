@@ -23,6 +23,7 @@ go run ./examples/17_query_source
 go run ./examples/18_vector_graph_ontology
 go run ./examples/19_execution_graph
 go run ./examples/20_media -dir <folder> -q "<question>"
+go run ./examples/21_history
 ```
 
 ## 01_core
@@ -272,3 +273,15 @@ A folder of images, recordings and videos, found by text questions.
 - with `CORTEXDB_MEDIA_EMBED_*` (a CLIP model behind an infinity-style
   `/embeddings`) photos are found by what they show, caption or not, and
   `-like photo.jpg` finds the images that look like it
+
+## 21_history
+
+The history of a brain, read like git log.
+
+- a person moves from Beijing to Chengdu under a schema where `lives_in` has one
+  city: `graph_history` shows one line with two versions and why Chengdu is in
+  effect
+- a deleted triple is still answered by a SPARQL query with `as_of` before the
+  delete
+- `ontology_history` lists the versions of a schema, and a diff compares two
+- no embedder and no model

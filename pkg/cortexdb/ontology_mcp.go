@@ -51,6 +51,16 @@ func addOntologyMCPTools(server *mcp.Server, definitions map[string]ToolDefiniti
 		}
 		return *resp, nil
 	})
+	addOntologyMCPTool(server, definitions["ontology_history"], func(ctx context.Context, req OntologyHistoryRequest) (OntologyHistoryResponse, error) {
+		resp, err := toolbox.OntologyHistory(ctx, req)
+		if err != nil {
+			return OntologyHistoryResponse{}, err
+		}
+		if resp == nil {
+			return OntologyHistoryResponse{}, nil
+		}
+		return *resp, nil
+	})
 	// Through addOntologyMCPTool, not addGraphRAGMCPTool: ObjectSet refers to
 	// itself through Source and Operands, and the SDK's schema inference
 	// panics on a recursive type rather than returning an error.

@@ -29,6 +29,7 @@ Planning a launch or community post? See [docs/LAUNCH_KIT.md](LAUNCH_KIT.md) for
 - **Swappable storage** — SQLite by default; a `postgres://` DSN moves the same brain to **PostgreSQL + pgvector**, with vectors, hybrid search, memory and the RDF graph all running on either. Compile-time backend registry, not a plugin system (storage is the hot path). 104 opt-in PostgreSQL tests, mostly parity: one test body, both databases, same answer required.
 - **Knowledge graph** — RDF triples/quads on the same file, **and the property graph readable as RDF**: everything extraction and `upsert_entities` write answers SPARQL, inference and SHACL as read-only triples (`cxn:` nodes, `cxt:` types, `cxr:` relations, `cxp:` properties) with no copy to keep in sync. **RDF 1.2**: triple terms `<<( s p o )>>`, reified triples and `{| |}` annotations, so a statement about a fact — who said it, how sure — is itself queryable; base-directed literals. SPARQL 1.1 and 1.2 — queries, updates with graph management (`ADD`/`COPY`/`MOVE`/`CLEAR`/`DROP`), every property path, results as JSON/XML/CSV/TSV, and `SERVICE` through a handler the application sets — passing the W3C test suites on both backends: RDF 1.2 and RDF/XML in full, SPARQL 1.2 269/269, SPARQL 1.1 query 329/331 (the two are a deliberate leniency: `"1" + "2"` is 3), update 157/157, results formats and federation in full. Semi-naive materialized inference over RDFS and the OWL 2 RL rules — `inverseOf`, symmetric, transitive, `equivalentClass`/`equivalentProperty`, `sameAs`, **keys** (`FunctionalProperty` / `InverseFunctionalProperty` / `hasKey` derive `sameAs`: the same e-mail is the same person), **property chains**, and class expressions (`someValuesFrom`, `allValuesFrom`, `hasValue`, `intersectionOf`, `unionOf`, `oneOf`, max cardinality) — kept current **automatically** as facts change (delete-and-rederive, asynchronous, `WaitForInference` to read your own writes), every inferred triple explainable. Contradictions (`disjointWith` and `AllDisjointClasses`, disjoint properties, two values of a functional property, `differentFrom` and `AllDifferent` against a derived `sameAs`, irreflexive and asymmetric properties, negative property assertions, `complementOf`, `owl:Nothing`, a cardinality of 0) are reported with the conflicting triples, never resolved by guessing. **SHACL Core in full** — every property path, qualified value shapes, `sh:lessThan`, implicit class targets; the W3C Core suite passes 98/98 — and **SHACL-SPARQL** (`sh:sparql` constraints and SPARQL-based constraint components, with pre-binding; 21 of 22, the optional `$shapesGraph` aside), and **SHACL-AF rules** (`sh:TripleRule` with conditions, order and node expressions, run to a fixpoint, results explainable). **Read-only Cypher / GQL** over the property graph (`graph_cypher_query`: MATCH / OPTIONAL MATCH / WITH / variable-length paths up to 6 hops / aggregation; 0 wrong answers across 3,897 openCypher TCK scenarios — what it cannot do, it refuses). N-Triples/N-Quads/Turtle/TriG/JSON-LD I/O and RDF/XML import (how most OWL ontologies are published), where JSON-LD never fetches a remote context; property-graph `apply_inference` materializes two-hop relation compositions with provenance; entities track asserting documents, and `delete_document_graph` is deletion shaped like ingest.
 - **Ontology (Palantir-style)** — typed object/link/interface types with primary keys and cardinality, an object-set algebra (union / intersect / filter / `search_around`), governed **action types** with audit trail, generated typed agent tools, and a breaking-change schema diff; `strict` or `vocabulary` enforcement.
+- **History** — every version of an entity, relation, triple or schema, and which one is in effect: `graph_history` (one line per subject and predicate, with an `in_effect` reason on each current version), `knowledge_graph_history` and `as_of` on the SPARQL, find, expand and Cypher tools, `ontology_history` with `version` / `as_of` / `from_version` on the ontology tools. The live view has an entity timeline, an As of pin and an ontology version list. See History below.
 - **Pipelines** — `memoryflow` (transcript → recall → wake-up → promotion), `graphflow` (corpus → graph → HTML report), `importflow` (CSV / SQL dumps / live Postgres-MySQL → RAG + KG), `connector` (PII masking, signed plans, reversible vault, CDC sync).
 - **Tools & MCP** — 100+ tools with the same names in-process and over MCP, plus `render_graph_html`, an interactive graph view, `serve_graph_3d`, a live 3D view you can search across the whole store, ask, query with Cypher and expand node by node (read-only, phone-friendly, every view a shareable link: `?focus=`, `?ask=`, `?cypher=`) or walk as a library of memories shelved by project, `import_agent_memory`, which brings in what Claude Code and Codex already remember (memory notes, `CLAUDE.md` / `AGENTS.md`, Codex's memories, and past sessions distilled on request), and paged bulk listings (`memory_list_all`, `graph_list_all`) — `graph_list_all` defaults to the most-connected core; `order: "id"` walks the whole graph instead, returning `next_cursor` page by page like `memory_list_all` does.
 - **Questions about the whole store** — retrieval says what is relevant to a query; these say what is there. A *range* search returns everything within a distance of the query and nothing outside it, which is the honest answer when a top-K would invent a K (`search_vector_range`, and the response says when a cap hid matches). `Aggregate` counts, sums and groups by a metadata field (`aggregate_metadata`). And `VectorAggregate` reduces the vectors themselves — centroid, geometric median, and the **medoid**, the stored record closest to all the others in its group, which answers "which of these near-duplicates is canonical" and "what is this cluster about" arithmetically, with no model in the loop (`representative_records`). All identical on both backends, with one test body per behaviour run against each.
@@ -463,7 +464,7 @@ diff, err := db.DiffOntologySchema(ctx, cortexdb.OntologyDiffRequest{SchemaID: "
 
 Breaking: a removed object or link type, a removed property, a changed property data type, a property that became required, a new required property, a changed primary key, a retargeted link side, and a cardinality tightened from `MANY` to `ONE`. Non-breaking additions and relaxations are reported too, flagged as safe. Both sides are expanded through their shared properties first, so retyping a shared property is visible.
 
-Tools: `ontology_save`, `ontology_get`, `ontology_list`, `ontology_delete`, `ontology_diff`, `ontology_draft`, `ontology_action_list`, `ontology_action_apply`, `object_set_resolve`.
+Tools: `ontology_save`, `ontology_get`, `ontology_list`, `ontology_delete`, `ontology_diff`, `ontology_history`, `ontology_draft`, `ontology_action_list`, `ontology_action_apply`, `object_set_resolve`.
 
 ### Current limitations
 
@@ -472,6 +473,126 @@ Tools: `ontology_save`, `ontology_get`, `ontology_list`, `ontology_delete`, `ont
 - **`modify_object` does not rewrite the node's display title.** Changing the title property through a modify rule updates the property but leaves the stored title, so name-based endpoint resolution still finds the pre-rename name.
 - **Deliberately not modelled:** Foundry's function runtime, branches and proposals, dynamic row-level security, and backing datasources. Those need a platform CortexDB is not trying to be.
 
+## History — every version, and which one is in effect
+
+A fact that changes is not overwritten. Each layer keeps what it replaced, and
+a read can ask for the versions, for the state at an instant, and for the reason
+the version in effect is the one in effect. None of it involves a model.
+
+**Entities and relations.** Nodes and edges are bitemporal: `valid_from` /
+`valid_to` say when a fact held in the world, `recorded_at` / `retracted_at`
+when the brain came to hold it and stopped. A version that closes moves to
+`graph_node_history` / `graph_edge_history` with its `reason` (`superseded`,
+`retracted`, `merged`, `document_deleted`, `orphaned`, `pruned`),
+`superseded_by` and `producer`. `graph_snapshot` and `graph_diff` read the graph
+at one instant and between two.
+
+`graph_history` (`db.GraphHistory`) is the log of one entity, oldest version
+first. Its input is `entity` (a node id, or a name matched exactly or after
+normalisation), and optionally `relation`, a `from` / `to` window, `as_of`,
+`limit` (lines per page), `max_versions` (versions per line, the newest kept)
+and `cursor`. The answer groups the entity's edges, in both directions, into
+**lines** by subject, predicate and direction: "Leo lives_in Beijing" followed by
+"Leo lives_in Chengdu" is two edge ids and one line of two versions. Each
+version carries its valid interval, `recorded_at` / `retracted_at`, `status`
+(`current`, `superseded`, `retracted`, `merged`, `ended`), `reason`,
+`superseded_by`, `producer`, the schema id and version that decided its closure,
+and its provenance (document, chunks, rule, source). A page is a number of
+lines; `next_cursor` continues it.
+
+Each version in effect, now or at `as_of`, carries `in_effect`, which says why
+it is the one that holds:
+
+| `kind` | meaning |
+| --- | --- |
+| `only_version` | nothing else has been asserted |
+| `replaced` | it took over from an earlier value, by a named rule: a single-valued link in schema vN, an explicit supersede by a producer, a retraction |
+| `revised` | the same edge was rewritten in place, by a correction or a document re-ingest |
+| `merge_survivor` | the entity it belongs to absorbed another |
+| `several_in_effect` | several values are live for this link; the answer lists them and says what the schema thinks of that (`multi_valued`, `no_opinion` or `single_valued_unenforced`), and names no winner |
+
+**Write-time supersession.** When the active ontology gives a link a `ONE` side,
+`upsert_relations` and graphflow close the old value in the transaction that
+writes the new one (`reason: superseded`, `superseded_by` the new edge, the
+schema id and version recorded on the closed row). Where the schema says
+nothing about a link, nothing is closed. Relations extracted from documents are
+not superseded at write time: both values stay live, and `graph_history` reports
+them as `several_in_effect` with a `single_valued_unenforced` or `no_opinion`
+note. `verify_claims` and `graph_health` flag the same pairs.
+
+**Triples.** `kg_triples` holds the triples in effect. A delete, a SPARQL Update
+or an inference refresh that drops a triple moves it to `kg_triples_history`
+with the time, the reason and the producer, in the transaction that deletes it.
+Inferred triples are kept too, with their rule and support, so a past read gives
+what the store said then. An optional `as_of` (RFC 3339) on `knowledge_graph_query`
+(SPARQL), `knowledge_graph_find`, `expand_graph` and `graph_cypher_query` reads
+the graph as it stood: a triple deleted at T is returned for an instant before T
+and absent from T on. A SPARQL Update, or any write, under `as_of` is refused.
+`knowledge_graph_history` lists the versions of the triples of a `subject`
+(required), oldest first, narrowed by `predicate`, `object`, `inferred`, `from`,
+`to`, with `limit` and `cursor`.
+In Go, `cortexdb.AsOf(ctx, t)` puts the instant on the context. A malformed
+`as_of` is an error on every tool, never read as now. `vacuum_graph` is the one
+call that destroys history, and it purges triple history together with the rest
+(`PurgeReport.Triples`).
+
+**Ontology versions.** Every save of a schema appends to `ontology_schema_versions`
+(the definition, `saved_at`, who saved it and a summary of what it changed against
+the previous version); `ontology_activations` records the intervals during which
+a schema at a version was the active validator, and who switched it. Saving never
+destroys an earlier version, and a deleted schema keeps its versions. To roll
+back, save the old definition: that appends a new version equal to the old one.
+`ontology_history` lists the versions (newest first, `oldest_first` reverses; `limit`,
+`offset`) with their change summaries, the active marker and the activation
+intervals. `ontology_get` takes `version` or `as_of` (the schema that was active
+then). `ontology_diff` takes `from_version` and `to_version` to compare two stored
+versions instead of a candidate. `ontology_action_audit` rows carry the schema id
+and version the action ran under.
+
+**Facts know the schema they were judged under.** A closure decided by an
+ontology records the schema id and version on its history row, and `in_effect`
+cites that version. A later schema change does not rewrite the explanation.
+
+**Live view.** Select a node in the graph page and press History: a vertical
+timeline with one rail per relation and direction, each version a commit with its
+valid interval, status, what replaced it, its provenance and, on the versions in
+effect, the `in_effect` reason in words; "several values in effect" is marked.
+The As of field on the graph page pins the whole page to an instant (a banner
+says it is showing the past and Now returns), and find and expand follow it. The
+ontology page links to `/ontology-history`: the versions of a schema with saved_at,
+saved_by, change summary and activation intervals, and a diff between any two.
+The pages read through `/api/history` (`entity`, `relation`, `as_of`, `from`, `to`,
+`limit`, `max_versions`, `cursor`), `/api/find` and `/api/expand` (`as_of`),
+`/api/ontology/history` (`schema`, `limit`, `offset`, `oldest_first`) and
+`/api/ontology/diff` (`schema`, `from`, `to`). All of them only read; a malformed
+instant is a 400.
+
+**gRPC and REST.** The history tools are ordinary tools, so they go through
+`ToolsService.CallTool` like the rest. A read-only key may call
+`graph_history`, `knowledge_graph_history` and `ontology_history`; a write
+under `as_of` is refused. A key confined to a collection or a user is refused all
+three, because the history tables are not confined by any scope field.
+
+**Limits.**
+
+- Relations extracted from documents keep both values (see above); only
+  `upsert_relations` and graphflow supersede.
+- Triples written before this release have no `recorded_at` and read as "since
+  before the beginning". An ontology schema saved before it has one version, with
+  no change summary and no saver.
+- An inferred triple's membership at an instant is exact; the rule and support
+  shown are the latest ones.
+- An as-of read of a partly bound RDF 1.2 triple-term pattern (`<<( ?s :p ?o )>>`)
+  misses a triple term that no current triple uses.
+- In the graph page, find under a pin matches names as they are today and keeps
+  the nodes that existed at the instant, so a node that was named differently then
+  is not found by its old name. `/api/graph` answers a malformed `as_of` with a
+  200 whose payload says the pin was refused and the page keeps showing now;
+  the other history routes answer 400.
+- `saved_by` and `activated_by` are empty when the server runs without keys.
+- The views need a brain that has these tools; against an older shared brain the
+  history panel shows the error it returned.
+
 ## Tools, MCP & Plugin
 
 ```go
@@ -479,7 +600,7 @@ tools := db.GraphRAGTools()                             // in-process tool calli
 server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 ```
 
-Tool groups (100+ tools, same names in-process and over MCP): GraphRAG (`ingest_document`, `search_text`, `build_context`, `expand_graph`, `search_paths`, `find_nodes`, `delete_document_graph`), unified retrieval (`cortex_query`), knowledge/memory (`knowledge_save`, `memory_search`, …), KnowledgeMemory (`knowledge_memory_recall`, `_reflect`, `_consolidate`, `extract_conversation`), KG (`knowledge_graph_query`, `_shacl_validate`, `apply_inference`), ontology (`ontology_save`, `ontology_action_apply`, `object_set_resolve`), media (`ingest_media`, `search_media`), and maintenance (`vector_dimension_repair`, `sweep_expired`). The `cortexdb-mcp-stdio` binary adds `render_graph_html` (an interactive knowledge-graph view), `serve_graph_3d`, `side_graph_*`, `import_agent_memory`, and in local mode `global_search` / `build_community_hierarchy`; `db.NewMCPServer` serves the facade's tools only. `memoryflow`/`graphflow`/`importflow`/`connector` expose their own toolboxes too.
+Tool groups (100+ tools, same names in-process and over MCP): GraphRAG (`ingest_document`, `search_text`, `build_context`, `expand_graph`, `search_paths`, `find_nodes`, `delete_document_graph`), unified retrieval (`cortex_query`), knowledge/memory (`knowledge_save`, `memory_search`, …), KnowledgeMemory (`knowledge_memory_recall`, `_reflect`, `_consolidate`, `extract_conversation`), KG (`knowledge_graph_query`, `_shacl_validate`, `apply_inference`), ontology (`ontology_save`, `ontology_history`, `ontology_action_apply`, `object_set_resolve`), history (`graph_history`, `knowledge_graph_history`), media (`ingest_media`, `search_media`), and maintenance (`vector_dimension_repair`, `sweep_expired`). The `cortexdb-mcp-stdio` binary adds `render_graph_html` (an interactive knowledge-graph view), `serve_graph_3d`, `side_graph_*`, `import_agent_memory`, and in local mode `global_search` / `build_community_hierarchy`; `db.NewMCPServer` serves the facade's tools only. `memoryflow`/`graphflow`/`importflow`/`connector` expose their own toolboxes too.
 
 ### Expiry and the sweep
 

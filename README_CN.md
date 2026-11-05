@@ -76,6 +76,7 @@ haiku 用的是 Claude Code 自己的模型额度，不需要 API key。语言�
 - 变更事件流：每次已提交的写入，按顺序、恰好一次
 - 可观测性：request id 和 W3C 链路（`traceparent`）从 MCP 经 gRPC 贯穿到 trace 和召回日志，召回能解释自己、降级时直说，`/metrics` 和 `/healthz` 里有向量服务的健康状况，可选开启的召回日志带 `/recalls` 页面
 - 图片、录音和视频（`ingest_media`）：凭说明文字、图中文字和转写稿用文字问题找到，命中会说出在文件的哪个时间点；有没有嵌入模型都行；配上 CLIP 类媒体嵌入模型后还能按画面内容找，也能以图搜图（`search_media`）
+- 图谱和 ontology 的历史：任何实体、关系、三元组或 schema，都能看到它的每个版本、什么时候因为什么改的、现在哪个版本生效以及为什么（`graph_history`、`knowledge_graph_history`、`ontology_history`）；SPARQL、查找、展开和 Cypher 都支持 `as_of`；实时视图里有实体时间线、As of 固定时刻和 ontology 版本列表
 - 默认 SQLite，换成 `postgres://` DSN 就跑在 PostgreSQL + pgvector 上
 
 ## 环境变量

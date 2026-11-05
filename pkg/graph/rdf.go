@@ -302,6 +302,9 @@ func (g *GraphStore) UpsertTriple(ctx context.Context, triple *RDFTriple) error 
 	if triple == nil {
 		return fmt.Errorf("triple is required")
 	}
+	if err := errIfAsOf(ctx); err != nil {
+		return err
+	}
 	if err := g.InitGraphSchema(ctx); err != nil {
 		return err
 	}
@@ -341,6 +344,9 @@ func (g *GraphStore) UpsertTriple(ctx context.Context, triple *RDFTriple) error 
 func (g *GraphStore) UpsertTriplesBatch(ctx context.Context, triples []*RDFTriple) (*BatchResult, error) {
 	if len(triples) == 0 {
 		return &BatchResult{}, nil
+	}
+	if err := errIfAsOf(ctx); err != nil {
+		return nil, err
 	}
 
 	if err := g.InitGraphSchema(ctx); err != nil {
@@ -406,6 +412,7 @@ func (g *GraphStore) GetTriple(ctx context.Context, id string) (*RDFTriple, erro
 	if strings.HasPrefix(id, projectedTripleIDPrefix) {
 		return g.getProjectedTriple(ctx, id)
 	}
+	src, srcArgs := g.TripleSource(ctx)
 	row := g.queryRow(ctx, `
 		SELECT
 			id, graph_kind, graph_value,
@@ -413,9 +420,9 @@ func (g *GraphStore) GetTriple(ctx context.Context, id string) (*RDFTriple, erro
 			predicate_value,
 			object_kind, object_value, object_datatype, object_language,
 			inferred, inference_rule, support_ids
-		FROM kg_triples
+		FROM `+src+`
 		WHERE id = ?
-	`, id)
+	`, append(srcArgs, id)...)
 	triple, err := scanTriple(row)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("triple not found: %s", id)
@@ -473,7 +480,9 @@ func (g *GraphStore) findStoredTriples(ctx context.Context, pattern TriplePatter
 	}
 
 	var conditions []string
+	src, srcArgs := g.TripleSource(ctx)
 	args := make([]any, 0, 12)
+	args = append(args, srcArgs...)
 
 	if pattern.Subject != nil {
 		subject, err := g.normalizeTerm(ctx, *pattern.Subject, rdfPositionSubject)
@@ -536,7 +545,7 @@ func (g *GraphStore) findStoredTriples(ctx context.Context, pattern TriplePatter
 			predicate_value,
 			object_kind, object_value, object_datatype, object_language,
 			inferred, inference_rule, support_ids
-		FROM kg_triples
+		FROM ` + src + `
 	`
 	if len(conditions) > 0 {
 		query += " WHERE " + strings.Join(conditions, " AND ")
@@ -584,6 +593,9 @@ func (g *GraphStore) DeleteTripleCounted(ctx context.Context, triple RDFTriple) 
 // which is zero for a triple that was never there. Callers that count
 // deletions count this, not their own calls.
 func (g *GraphStore) deleteTriple(ctx context.Context, triple RDFTriple) (int, error) {
+	if err := errIfAsOf(ctx); err != nil {
+		return 0, err
+	}
 	if err := g.InitGraphSchema(ctx); err != nil {
 		return 0, err
 	}
@@ -604,6 +616,11 @@ func (g *GraphStore) deleteTriple(ctx context.Context, triple RDFTriple) (int, e
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// The row goes to history first, in this transaction: a triple deleted
+	// with no record of it is a fact that vanished (rdf_history.go).
+	if err := g.archiveTriplesTx(ctx, tx, `id = ?`, []any{normalized.ID}, g.clock.now(), tripleDeletion(ctx, ProducerRDFDelete)); err != nil {
+		return 0, err
+	}
 	result, err := g.txExec(ctx, tx, `DELETE FROM kg_triples WHERE id = ?`, normalized.ID)
 	if err != nil {
 		return 0, fmt.Errorf("delete kg triple: %w", err)
@@ -635,6 +652,9 @@ func (g *GraphStore) deleteTriple(ctx context.Context, triple RDFTriple) (int, e
 // how many were removed. A pattern that matches a projected triple fails
 // before anything is removed.
 func (g *GraphStore) DeleteTriples(ctx context.Context, pattern TriplePattern) (int, error) {
+	if err := errIfAsOf(ctx); err != nil {
+		return 0, err
+	}
 	triples, err := g.FindTriples(ctx, pattern)
 	if err != nil {
 		return 0, err
@@ -688,6 +708,9 @@ func (g *GraphStore) ExportRDF(ctx context.Context, writer io.Writer, format RDF
 
 // ImportRDF parses and stores triples from supported RDF serializations.
 func (g *GraphStore) ImportRDF(ctx context.Context, reader io.Reader, format RDFFormat) (int, error) {
+	if err := errIfAsOf(ctx); err != nil {
+		return 0, err
+	}
 	switch format {
 	case RDFFormatNTriples:
 		return g.importLineStatements(ctx, reader, false)
@@ -1180,9 +1203,9 @@ func (g *GraphStore) upsertPreparedTripleTx(ctx context.Context, tx *sql.Tx, tri
 			subject_kind, subject_value,
 			predicate_value,
 			object_kind, object_value, object_datatype, object_language,
-			inferred, inference_rule, support_ids
+			inferred, inference_rule, support_ids, recorded_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			graph_kind = excluded.graph_kind,
 			graph_value = excluded.graph_value,
@@ -1210,6 +1233,7 @@ func (g *GraphStore) upsertPreparedTripleTx(ctx context.Context, tx *sql.Tx, tri
 		boolToInt(triple.Inferred),
 		nullIfEmpty(triple.Rule),
 		supportIDsJSON,
+		g.clock.now(),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert kg triple: %w", err)

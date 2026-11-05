@@ -681,7 +681,16 @@ func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRel
 	if err != nil {
 		return nil, err
 	}
-	if err := t.db.validateRelationInputs(ctx, req.Relations); err != nil {
+	// Where the active schema says a link holds one value, a new value closes
+	// the old one inside the write's own transaction; where it says nothing,
+	// nothing is closed. Validation is told, so it does not refuse a second
+	// value for a link this write is about to resolve.
+	rule := t.db.singleValuedSupersession(ctx)
+	vctx := ctx
+	if rule != nil {
+		vctx = withSupersedingWrite(ctx)
+	}
+	if err := t.db.validateRelationInputs(vctx, req.Relations); err != nil {
 		return nil, err
 	}
 
@@ -756,7 +765,11 @@ func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRel
 
 	response := &ToolUpsertRelationsResponse{EdgeIDs: edgeIDs}
 	if len(edges) > 0 {
-		result, err := t.db.graph.UpsertEdgesBatch(ctx, edges)
+		wctx := ctx
+		if rule != nil {
+			wctx = graph.WithSupersession(ctx, *rule)
+		}
+		result, err := t.db.graph.UpsertEdgesBatch(wctx, edges)
 		if err != nil {
 			return nil, fmt.Errorf("upsert relation edges: %w", err)
 		}

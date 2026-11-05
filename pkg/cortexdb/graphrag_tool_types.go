@@ -208,6 +208,8 @@ type ToolExpandGraphRequest struct {
 	// keeps the best rather than the first found, and Scores is returned.
 	// Unset, expansion is exactly what it was.
 	RelationPolicies graph.RelationPolicies `json:"relation_policies,omitempty"`
+	// AsOf expands the graph as it stood at this RFC 3339 instant.
+	AsOf string `json:"as_of,omitempty"`
 }
 
 // ToolExpandGraphResponse returns a subgraph around the requested nodes.

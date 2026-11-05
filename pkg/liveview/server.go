@@ -265,6 +265,11 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 	mux.HandleFunc("/api/expand", s.handleExpand)
 	mux.HandleFunc("/api/ask", s.handleAsk)
 	mux.HandleFunc("/api/cypher", s.handleCypher)
+	// History: git log for the graph and the ontology. See history.go.
+	mux.HandleFunc("/api/history", s.handleHistory)
+	mux.HandleFunc("/ontology-history", s.handleOntologyHistoryPage)
+	mux.HandleFunc("/api/ontology/history", s.handleOntologyHistory)
+	mux.HandleFunc("/api/ontology/diff", s.handleOntologyDiff)
 	mux.HandleFunc("/recalls", s.handleRecallsPage)
 	mux.HandleFunc("/api/recalls", s.handleRecalls)
 	mux.HandleFunc("/api/recalls/get", s.handleRecall)

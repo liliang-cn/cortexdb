@@ -315,6 +315,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 					"node_types":        toolStringArraySchema("Optional node type filter."),
 					"limit":             toolIntegerSchema("Optional node result limit."),
 					"relation_policies": toolRelationPoliciesSchema(),
+					"as_of":             toolStringSchema("Expand the graph as it stood at this RFC 3339 instant: edges retracted since are still followed."),
 				},
 			),
 		},
@@ -544,6 +545,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 	// --- end execution graph ---
 	// --- point-in-time reads (pkg/cortexdb/temporal_tooldefs.go) ---
 	definitions = append(definitions, temporalToolDefinitions()...)
+	definitions = append(definitions, knowledgeGraphHistoryToolDefinitions()...)
 	definitions = append(definitions, expiryToolDefinitions()...)
 	definitions = append(definitions, mediaToolDefinitions()...)
 	// --- end point-in-time reads ---
@@ -569,6 +571,9 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 	// --- end execution graph ---
 	// --- point-in-time reads (pkg/cortexdb/temporal_tooldefs.go) ---
 	if resp, handled, err := t.callTemporalTool(ctx, name, input); handled {
+		return resp, err
+	}
+	if resp, handled, err := t.callKnowledgeGraphHistoryTool(ctx, name, input); handled {
 		return resp, err
 	}
 	if resp, handled, err := t.callExpiryTool(ctx, name, input); handled {
