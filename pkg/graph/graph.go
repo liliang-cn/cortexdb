@@ -409,7 +409,11 @@ func (g *GraphStore) createGraphSchema(ctx context.Context) error {
 	// Last, and guarded the same way: the bitemporal columns and the history
 	// tables. A brain written before this release gains them here, with every
 	// existing row reading as current.
-	return g.createTemporalSchema(ctx)
+	if err := g.createTemporalSchema(ctx); err != nil {
+		return err
+	}
+	// And the triples' own history (rdf_history.go).
+	return g.createTripleHistorySchema(ctx)
 }
 
 // UpsertNode inserts or updates a node in the graph.

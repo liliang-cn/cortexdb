@@ -979,7 +979,7 @@ func (g *GraphStore) upsertInferredTx(ctx context.Context, tx *sql.Tx, triples [
 	for start := 0; start < len(triples); start += 400 {
 		chunk := triples[start:min(start+400, len(triples))]
 		values := make([]string, 0, len(chunk))
-		args := make([]any, 0, 12*len(chunk))
+		args := make([]any, 0, 13*len(chunk))
 		for _, triple := range chunk {
 			var graphKind, graphValue any
 			if triple.Graph != nil {
@@ -993,16 +993,16 @@ func (g *GraphStore) upsertInferredTx(ctx context.Context, tx *sql.Tx, triples [
 				}
 				supports = string(payload)
 			}
-			values = append(values, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)")
+			values = append(values, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)")
 			args = append(args, triple.ID, graphKind, graphValue, triple.Subject.Kind, triple.Subject.Value, triple.Predicate.Value,
 				triple.Object.Kind, triple.Object.Value, nullIfEmpty(triple.Object.Datatype), nullIfEmpty(triple.Object.Language),
-				nullIfEmpty(triple.Rule), supports)
+				nullIfEmpty(triple.Rule), supports, g.clock.now())
 		}
 		rows, err := tx.QueryContext(ctx, g.dialect.Rebind(`
 			INSERT INTO kg_triples (
 				id, graph_kind, graph_value, subject_kind, subject_value, predicate_value,
 				object_kind, object_value, object_datatype, object_language,
-				inferred, inference_rule, support_ids
+				inferred, inference_rule, support_ids, recorded_at
 			) VALUES `+strings.Join(values, ", ")+`
 			ON CONFLICT (id) DO UPDATE SET
 				inference_rule = excluded.inference_rule,
@@ -1144,6 +1144,11 @@ func (g *GraphStore) deleteInferredTx(ctx context.Context, tx *sql.Tx, ids []str
 		if _, err := g.txExec(ctx, tx, `DELETE FROM graph_edges WHERE id IN (
 			SELECT id FROM kg_triples WHERE id IN (`+placeholders+`) AND (inferred + 0) = 1 AND `+notSHACLRule+`)`, args...); err != nil {
 			return fmt.Errorf("delete inferred mirror edges: %w", err)
+		}
+		where, whereArgs := inferredIDWhere(chunk, true)
+		if err := g.archiveTriplesTx(ctx, tx, where, whereArgs, g.clock.now(),
+			Invalidation{Reason: ReasonUnderived, Producer: ProducerInferenceMaintain}); err != nil {
+			return err
 		}
 		if _, err := g.txExec(ctx, tx, `DELETE FROM kg_triples WHERE id IN (`+placeholders+`) AND (inferred + 0) = 1 AND `+notSHACLRule, args...); err != nil {
 			return fmt.Errorf("delete inferred triples: %w", err)

@@ -113,12 +113,19 @@ func (g *GraphStore) RefreshRDFSInferences(ctx context.Context) (*RDFSInferenceR
 // RefreshRDFSInferencesWithOptions is RefreshRDFSInferences with the options
 // spelled out.
 func (g *GraphStore) RefreshRDFSInferencesWithOptions(ctx context.Context, opts InferenceOptions) (*RDFSInferenceRefreshResult, error) {
+	if err := errIfAsOf(ctx); err != nil {
+		return nil, err
+	}
 	if err := g.InitGraphSchema(ctx); err != nil {
 		return nil, err
 	}
 	if err := g.clearInferredTriples(ctx); err != nil {
 		return nil, err
 	}
+	// Whatever happens next, the rows the clear archived are settled before
+	// returning: re-derived triples take their recorded_at back, the rest
+	// become ReasonUnderived history (rdf_history.go).
+	defer func() { _ = g.reconcileInferenceRefresh(context.WithoutCancel(ctx)) }()
 
 	explicitOnly := false
 	explicitTriples, err := g.FindTriples(ctx, TriplePattern{Inferred: &explicitOnly})
@@ -151,6 +158,9 @@ func (g *GraphStore) RefreshRDFSInferencesIncremental(ctx context.Context, chang
 // RefreshRDFSInferencesIncrementalWithOptions is RefreshRDFSInferencesIncremental
 // with the options spelled out.
 func (g *GraphStore) RefreshRDFSInferencesIncrementalWithOptions(ctx context.Context, changedTriples []RDFTriple, opts InferenceOptions) (*RDFSInferenceRefreshResult, error) {
+	if err := errIfAsOf(ctx); err != nil {
+		return nil, err
+	}
 	if err := g.InitGraphSchema(ctx); err != nil {
 		return nil, err
 	}
@@ -176,10 +186,12 @@ func (g *GraphStore) RefreshRDFSInferencesIncrementalWithOptions(ctx context.Con
 	affectedExplicit := expandRDFSExplicitNeighborhood(explicitTriples, normalizedSeeds)
 	impactedInferredIDs := collectImpactedInferredTripleIDs(inferredTriples, normalizedSeeds, affectedExplicit)
 
-	removed, err := g.deleteInferredTriplesByID(ctx, impactedInferredIDs)
+	removed, err := g.deleteInferredTriplesByIDWith(ctx, impactedInferredIDs,
+		Invalidation{Reason: reasonInferenceRefreshing, Producer: ProducerInferenceRefresh})
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = g.reconcileInferenceRefresh(context.WithoutCancel(ctx)) }()
 
 	outcome := computeInferenceOutcome(affectedExplicit, opts)
 	inferredCount, err := g.persistInferredRecords(ctx, outcome.records)
@@ -858,6 +870,12 @@ func isStructuralInferencePredicate(value string) bool {
 }
 
 func (g *GraphStore) deleteInferredTriplesByID(ctx context.Context, ids []string) (int, error) {
+	return g.deleteInferredTriplesByIDWith(ctx, ids, Invalidation{Reason: ReasonUnderived, Producer: ProducerSHACLRules})
+}
+
+// deleteInferredTriplesByIDWith deletes the named inferred triples, recording
+// each in history under inv.
+func (g *GraphStore) deleteInferredTriplesByIDWith(ctx context.Context, ids []string, inv Invalidation) (int, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
@@ -884,6 +902,9 @@ func (g *GraphStore) deleteInferredTriplesByID(ctx context.Context, ids []string
 			return deleted, fmt.Errorf("count inferred graph edge delete: %w", err)
 		}
 
+		if err := g.archiveTriplesTx(ctx, tx, fmt.Sprintf(`inferred = 1 AND id IN (%s)`, placeholders), args, g.clock.now(), inv); err != nil {
+			return deleted, err
+		}
 		result, err = g.txExec(ctx, tx, fmt.Sprintf(`DELETE FROM kg_triples WHERE inferred = 1 AND id IN (%s)`, placeholders), args...)
 		if err != nil {
 			return deleted, fmt.Errorf("delete inferred triple: %w", err)
@@ -978,6 +999,10 @@ func (g *GraphStore) clearInferredTriples(ctx context.Context) error {
 
 	if _, err := g.txExec(ctx, tx, `DELETE FROM graph_edges WHERE id IN (SELECT id FROM kg_triples WHERE inferred = 1)`); err != nil {
 		return fmt.Errorf("delete inferred graph edges: %w", err)
+	}
+	if err := g.archiveTriplesTx(ctx, tx, `inferred = 1`, nil, g.clock.now(),
+		Invalidation{Reason: reasonInferenceRefreshing, Producer: ProducerInferenceRefresh}); err != nil {
+		return err
 	}
 	if _, err := g.txExec(ctx, tx, `DELETE FROM kg_triples WHERE inferred = 1`); err != nil {
 		return fmt.Errorf("delete inferred triples: %w", err)

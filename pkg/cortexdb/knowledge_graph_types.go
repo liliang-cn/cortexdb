@@ -86,6 +86,8 @@ type KnowledgeGraphUpsertResponse struct {
 // KnowledgeGraphFindRequest queries triples/quads by pattern.
 type KnowledgeGraphFindRequest struct {
 	Pattern KnowledgeGraphTriplePattern `json:"pattern"`
+	// AsOf reads the triples that held at this RFC 3339 instant.
+	AsOf string `json:"as_of,omitempty"`
 }
 
 // KnowledgeGraphFindResponse returns matched triples/quads.
@@ -131,6 +133,9 @@ type KnowledgeGraphExportResponse struct {
 // KnowledgeGraphQueryRequest carries a SPARQL 1.1 query or update for QueryKnowledgeGraph.
 type KnowledgeGraphQueryRequest struct {
 	Query string `json:"query"`
+	// AsOf answers a query as of this RFC 3339 instant. An update under it
+	// is refused: reading the past is read-only.
+	AsOf string `json:"as_of,omitempty"`
 }
 
 // KnowledgeGraphQueryResponse returns the SPARQL execution result.

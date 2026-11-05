@@ -425,9 +425,10 @@ func projectionNodeFilter() string {
 }
 
 func (g *GraphStore) projectNodes(ctx context.Context, plan projectionPlan, emit func(RDFTriple) bool) error {
-	from := "graph_nodes n"
+	nodeSrc, nodeArgs := g.NodeSource(ctx)
+	from := nodeSrc + " n"
 	conditions := []string{projectionNodeFilter()}
-	args := make([]any, 0, 4)
+	args := append(make([]any, 0, 4+len(nodeArgs)), nodeArgs...)
 
 	if plan.subjectID != "" {
 		conditions = append(conditions, "n.id = ?")
@@ -709,7 +710,8 @@ func (g *GraphStore) projectEdges(ctx context.Context, plan projectionPlan, limi
 		"COALESCE(e.edge_type, '') <> ''",
 		g.dialect.JSONFlag("e.properties", "rdf") + " = 0",
 	}
-	args := make([]any, 0, 4)
+	edgeSrc, edgeArgs := g.EdgeSource(ctx)
+	args := append(make([]any, 0, 4+len(edgeArgs)), edgeArgs...)
 	if plan.subjectID != "" {
 		conditions = append(conditions, "e.from_node_id = ?")
 		args = append(args, plan.subjectID)
@@ -726,7 +728,7 @@ func (g *GraphStore) projectEdges(ctx context.Context, plan projectionPlan, limi
 		conditions = append(conditions, "e.id = ?")
 		args = append(args, plan.edgeID)
 	}
-	query := "SELECT e.id, e.from_node_id, e.to_node_id, e.edge_type FROM graph_edges e WHERE " +
+	query := "SELECT e.id, e.from_node_id, e.to_node_id, e.edge_type FROM " + edgeSrc + " e WHERE " +
 		strings.Join(conditions, " AND ") + " ORDER BY e.id"
 	if limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", limit)

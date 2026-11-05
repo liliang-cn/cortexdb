@@ -61,6 +61,10 @@ func (db *DB) UpsertKnowledgeGraph(ctx context.Context, req KnowledgeGraphUpsert
 
 // FindKnowledgeGraph queries triples/quads from the embedded knowledge graph.
 func (db *DB) FindKnowledgeGraph(ctx context.Context, req KnowledgeGraphFindRequest) (*KnowledgeGraphFindResponse, error) {
+	ctx, err := asOfContext(ctx, req.AsOf)
+	if err != nil {
+		return nil, err
+	}
 	triples, err := db.graph.FindTriples(ctx, graph.TriplePattern(req.Pattern))
 	if err != nil {
 		return nil, err
@@ -145,6 +149,10 @@ func (db *DB) ExportKnowledgeGraph(ctx context.Context, req KnowledgeGraphExport
 func (db *DB) QueryKnowledgeGraph(ctx context.Context, req KnowledgeGraphQueryRequest) (*KnowledgeGraphQueryResponse, error) {
 	if strings.TrimSpace(req.Query) == "" {
 		return nil, ErrEmptyText
+	}
+	ctx, err := asOfContext(ctx, req.AsOf)
+	if err != nil {
+		return nil, err
 	}
 	result, err := db.graph.ExecuteSPARQL(ctx, req.Query)
 	if err != nil {

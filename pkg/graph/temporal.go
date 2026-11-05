@@ -781,10 +781,12 @@ func (g *GraphStore) RetractNodes(ctx context.Context, nodeIDs []string) (nodes 
 
 // PurgeReport is what Purge reclaimed.
 type PurgeReport struct {
-	Nodes  int       `json:"nodes"`
-	Edges  int       `json:"edges"`
-	Before time.Time `json:"before"`
-	DryRun bool      `json:"dry_run,omitempty"`
+	Nodes int `json:"nodes"`
+	Edges int `json:"edges"`
+	// Triples is the RDF triple history removed (rdf_history.go).
+	Triples int       `json:"triples"`
+	Before  time.Time `json:"before"`
+	DryRun  bool      `json:"dry_run,omitempty"`
 }
 
 // Purge physically removes history rows that closed before `before`.
@@ -840,6 +842,11 @@ func (g *GraphStore) Purge(ctx context.Context, before time.Time, dryRun bool) (
 			*t.count = int(n)
 		}
 	}
+	n, err := g.purgeTripleHistory(ctx, cutoff, dryRun)
+	if err != nil {
+		return nil, err
+	}
+	report.Triples = n
 	return report, nil
 }
 

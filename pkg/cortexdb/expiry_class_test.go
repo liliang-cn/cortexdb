@@ -57,6 +57,7 @@ var readToolsAndTheExpiry = map[string]string{
 	"graph_statistics":                    "the whole graph",
 	"knowledge_graph_export":              "the whole graph",
 	"knowledge_graph_find":                "the whole graph",
+	"knowledge_graph_history":             "the whole graph",
 	"knowledge_graph_infer_explain":       "the whole graph",
 	"knowledge_graph_infer_explain_match": "the whole graph",
 	"knowledge_graph_infer_summary":       "the whole graph",

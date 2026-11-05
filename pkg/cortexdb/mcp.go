@@ -56,6 +56,7 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 	// --- end decision ledger ---
 	// --- point-in-time reads (pkg/cortexdb/temporal_tooldefs.go) ---
 	addTemporalMCPTools(server, definitions, db)
+	addKnowledgeGraphHistoryMCPTool(server, definitions, db)
 	addExpiryMCPTools(server, definitions, db)
 	addMediaMCPTools(server, definitions, toolbox)
 	// --- end point-in-time reads ---

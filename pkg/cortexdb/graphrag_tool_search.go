@@ -288,6 +288,10 @@ func widerChunkWalkPool(pool int) int {
 
 // ExpandGraph expands a graph neighborhood and returns a materialized subgraph.
 func (t *GraphRAGToolbox) ExpandGraph(ctx context.Context, req ToolExpandGraphRequest) (*ToolExpandGraphResponse, error) {
+	ctx, err := asOfContext(ctx, req.AsOf)
+	if err != nil {
+		return nil, err
+	}
 	if len(req.NodeIDs) == 0 {
 		return &ToolExpandGraphResponse{}, nil
 	}

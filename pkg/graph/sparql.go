@@ -289,6 +289,21 @@ func (g *GraphStore) ExecuteSPARQL(ctx context.Context, query string) (*SPARQLRe
 }
 
 func (g *GraphStore) executeParsedSPARQL(ctx context.Context, parsed *sparqlQuery) (*SPARQLResult, error) {
+	if sparqlQueryTypeMutates(parsed.QueryType) {
+		// Reading the past is read-only: an update under an as-of context
+		// would change the present while the caller believes it is working
+		// at another instant.
+		if err := errIfAsOf(ctx); err != nil {
+			return nil, err
+		}
+		// Whatever an update deletes goes to history under this producer,
+		// unless the caller already named one.
+		if InvalidationFrom(ctx).Producer == "" {
+			inv := InvalidationFrom(ctx)
+			inv.Producer = ProducerSPARQLUpdate
+			ctx = WithInvalidation(ctx, inv)
+		}
+	}
 	execOptions := buildSPARQLExecOptions(parsed)
 	if parsed.runtime != nil {
 		parsed.runtime.ctx = ctx

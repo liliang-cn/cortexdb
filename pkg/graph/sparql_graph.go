@@ -76,8 +76,9 @@ func (g *GraphStore) sparqlNamedGraphs(ctx context.Context, opts sparqlExecOptio
 	if err := g.InitGraphSchema(ctx); err != nil {
 		return nil, err
 	}
-	rows, err := g.query(ctx, `SELECT DISTINCT graph_kind, graph_value FROM kg_triples
-		WHERE COALESCE(graph_value, '') <> '' ORDER BY graph_kind, graph_value`)
+	src, srcArgs := g.TripleSource(ctx)
+	rows, err := g.query(ctx, `SELECT DISTINCT graph_kind, graph_value FROM `+src+`
+		WHERE COALESCE(graph_value, '') <> '' ORDER BY graph_kind, graph_value`, srcArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("list named graphs: %w", err)
 	}
