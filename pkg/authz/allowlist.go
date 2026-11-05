@@ -285,7 +285,10 @@ var confinedTools = map[string]toolRule{
 	"knowledge_memory_expand_entity_context": {stores: storeKnowledge | storeMemory, facade: true,
 		args: []string{"entity_ids", "entity_names", "max_hops", "edge_types", "node_types", "limit", "top_k_chunks", "max_context_chunks", "max_context_chars", "per_document_limit", "chunk_window", "retrieval_mode", "disable_graph", "graph_light", "max_entities_per_chunk"}},
 	"expand_graph": {stores: storeKnowledge | storeMemory, facade: true,
-		args: []string{"node_ids", "max_hops", "edge_types", "node_types", "limit", "relation_policies.*"}},
+		args: []string{"node_ids", "max_hops", "edge_types", "node_types", "limit", "relation_policies.*"},
+		denied: map[string]string{
+			"as_of": "reads the graph as it stood, which the scope check does not follow into history",
+		}},
 	"get_nodes":  {stores: storeKnowledge | storeMemory, facade: true, args: []string{"node_ids"}},
 	"find_nodes": {stores: storeKnowledge | storeMemory, facade: true, args: []string{"names", "node_types", "limit", "skip_chunks"}},
 	"knowledge_memory_neighbors": {stores: storeKnowledge | storeMemory, facade: true,

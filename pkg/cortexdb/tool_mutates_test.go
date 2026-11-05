@@ -159,7 +159,9 @@ var toolWrites = map[string]bool{
 	// otherwise be able to erase the record it exists to audit.
 	"graph_snapshot": false,
 	"graph_diff":     false,
-	"changes_since":  false,
+	// A triple's versions, read from kg_triples and kg_triples_history.
+	"knowledge_graph_history": false,
+	"changes_since":           false,
 	// The recall log reads its own table; feedback writes a mark into it.
 	"recall_log_list":        false,
 	"recall_log_get":         false,

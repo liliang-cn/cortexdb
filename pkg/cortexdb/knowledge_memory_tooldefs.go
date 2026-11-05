@@ -142,6 +142,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 				nil,
 				map[string]any{
 					"pattern": toolKnowledgeGraphTriplePatternSchema(),
+					"as_of":   toolStringSchema("Find the triples that held at this RFC 3339 instant, deleted ones included."),
 				},
 			),
 		},
@@ -194,6 +195,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 				[]string{"query"},
 				map[string]any{
 					"query": toolStringSchema("SPARQL 1.1/1.2 query text. SPARQL 1.2: triple term patterns <<( ?s ?p ?o )>> (matched, bound, constructed, and in VALUES and BIND), reified triples << s p o ~ ?r >>, annotations s p o ~ ?r {| q z |} in patterns and CONSTRUCT/INSERT templates, functions TRIPLE, isTRIPLE, SUBJECT, PREDICATE, OBJECT, LANGDIR, hasLANG, hasLANGDIR, STRLANGDIR, literals with a base direction (\"x\"@en--ltr), VERSION. Also blank nodes _:b and [ ... ], collections ( ... ), and several update operations separated by ';'. Supports PREFIX, BASE; SELECT (DISTINCT, REDUCED, (expr AS ?v)), ASK, CONSTRUCT (GRAPH blocks in the template produce quads), DESCRIBE; FROM and FROM NAMED; INSERT DATA, INSERT ... WHERE, DELETE DATA, DELETE WHERE, DELETE ... INSERT ... WHERE, WITH, USING, USING NAMED, ADD, COPY, MOVE, CLEAR, DROP, CREATE; GRAPH, OPTIONAL, UNION, MINUS, VALUES, BIND, FILTER, EXISTS, NOT EXISTS, subqueries; every property path (^p, p/q, p|q, p+, p*, p?, !(p|^q), grouped); XSD casts xsd:string/boolean/integer/decimal/float/double/dateTime(?x); IN, NOT IN, arithmetic, && || !; functions BOUND, IF, COALESCE, sameTerm, isIRI, isBlank, isLiteral, isNumeric, STR, LANG, LANGMATCHES, DATATYPE, IRI, BNODE, STRDT, STRLANG, UUID, STRUUID, STRLEN, SUBSTR, UCASE, LCASE, STRSTARTS, STRENDS, CONTAINS, STRBEFORE, STRAFTER, ENCODE_FOR_URI, CONCAT, REGEX, REPLACE, ABS, ROUND, CEIL, FLOOR, RAND, NOW, YEAR, MONTH, DAY, HOURS, MINUTES, SECONDS, TIMEZONE, TZ, MD5, SHA1, SHA256, SHA384, SHA512; aggregates COUNT, SUM, AVG, MIN, MAX, SAMPLE, GROUP_CONCAT (all with DISTINCT); GROUP BY, HAVING, ORDER BY ASC/DESC on expressions and aliases, LIMIT, OFFSET. Without FROM the default graph is the unnamed graph plus the property-graph projection. SERVICE answers only if the embedding application set a service handler; LOAD is refused (the store never fetches)."),
+					"as_of": toolStringSchema("Answer as of this RFC 3339 instant: triples deleted since are still seen, ones added since are not. Reading the past is read-only, so SPARQL Update is refused with as_of."),
 				},
 			),
 		},

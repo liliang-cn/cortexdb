@@ -50,7 +50,7 @@ func TestTheGraphWalksAreOpenToAConfinedKeyAndConfinedByTheFacade(t *testing.T) 
 		}
 	}
 	// The table says how they are confined.
-	if row := "| `expand_graph` | (by id only) | knowledge and memory |  | by the facade (CallerScope) |  |"; !strings.Contains(ConfinedToolsTable(), row) {
+	if row := "| `expand_graph` | (by id only) | knowledge and memory |  | by the facade (CallerScope) | `as_of` |"; !strings.Contains(ConfinedToolsTable(), row) {
 		t.Errorf("the table lacks the row %s", row)
 	}
 	// knowledge_get keeps its store: a key confined on a memory field is
