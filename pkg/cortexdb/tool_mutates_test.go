@@ -158,6 +158,7 @@ var toolWrites = map[string]bool{
 	// otherwise be able to erase the record it exists to audit.
 	"graph_snapshot": false,
 	"graph_diff":     false,
+	"graph_history":  false,
 	"changes_since":  false,
 	// The recall log reads its own table; feedback writes a mark into it.
 	"recall_log_list":        false,
@@ -187,7 +188,7 @@ var toolWrites = map[string]bool{
 // table so that a tool added without a decision cannot slip through by sharing
 // a name with one already listed, and so that a tool quietly disappearing is
 // noticed too. Change it in the same commit that adds the tool and its row.
-const toolCount = 108
+const toolCount = 109
 
 // TestEveryToolDeclaresWhetherItWrites is the test the Mutates doc comment
 // promises: it makes forgetting impossible rather than merely unlikely.

@@ -113,15 +113,23 @@ func SaveTemporalFact(ctx context.Context, db *cortexdb.DB, fact TemporalFact) e
 	}
 
 	supersede := fact.Supersede
+	decidedBySchema := false
 	if !supersede {
 		supersede = shouldAutoSupersede(ctx, db, fact, typ, validFrom)
+		decidedBySchema = supersede
 	}
 	if supersede {
 		// The new fact's edge id, as UpsertRelations below will write it, so
 		// the closed fact's history names what replaced it.
 		newID := fmt.Sprintf("edge:relation:%s:%s:%s",
 			cortexdb.EntityNodeID(fact.From), cortexdb.EntityNodeID(fact.To), typ)
-		if _, err := SupersedeFactWith(ctx, db, fact.From, typ, validFrom, SupersedeOptions{SupersededBy: newID}); err != nil {
+		opts := SupersedeOptions{SupersededBy: newID}
+		if decidedBySchema {
+			// The ontology decided this closure, so the closed fact records the
+			// schema version that did.
+			opts.SchemaID, opts.SchemaVersion, _ = db.ActiveOntologyRef(ctx)
+		}
+		if _, err := SupersedeFactWith(ctx, db, fact.From, typ, validFrom, opts); err != nil {
 			return err
 		}
 	}
@@ -220,6 +228,10 @@ type SupersedeOptions struct {
 	SupersededBy string
 	// Producer names the caller; empty records ProducerTemporal.
 	Producer string
+	// SchemaID and SchemaVersion name the ontology schema that decided the
+	// closure, when one did; they are recorded on the history row.
+	SchemaID      string
+	SchemaVersion int
 }
 
 // ProducerTemporal is recorded on history rows closed by supersession.
@@ -280,9 +292,11 @@ func SupersedeFactWith(ctx context.Context, db *cortexdb.DB, from, typ string, a
 		producer = ProducerTemporal
 	}
 	wctx := graph.WithInvalidation(ctx, graph.Invalidation{
-		Reason:       graph.ReasonSuperseded,
-		SupersededBy: strings.TrimSpace(opts.SupersededBy),
-		Producer:     producer,
+		Reason:        graph.ReasonSuperseded,
+		SupersededBy:  strings.TrimSpace(opts.SupersededBy),
+		Producer:      producer,
+		SchemaID:      strings.TrimSpace(opts.SchemaID),
+		SchemaVersion: opts.SchemaVersion,
 	})
 	edges, err := db.Graph().GetEdgesBatch(ctx, ids)
 	if err != nil {

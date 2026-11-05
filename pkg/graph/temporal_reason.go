@@ -74,11 +74,27 @@ type Invalidation struct {
 	Reason       string `json:"reason,omitempty"`
 	SupersededBy string `json:"superseded_by,omitempty"`
 	Producer     string `json:"producer,omitempty"`
+	// SchemaID and SchemaVersion name the ontology schema that decided the
+	// closure, when one did — a single-valued link closing the old value. They
+	// are recorded on the row, not looked up at read time, so a later schema
+	// change cannot rewrite why an old fact ended.
+	SchemaID      string `json:"schema_id,omitempty"`
+	SchemaVersion int    `json:"schema_version,omitempty"`
+}
+
+// columnArgs binds the five invalidation columns in invalidationColumnList
+// order. Empty values are stored as NULL, which reads back as "not stated".
+func (inv Invalidation) columnArgs() []any {
+	var version any
+	if inv.SchemaVersion > 0 {
+		version = inv.SchemaVersion
+	}
+	return []any{inv.Reason, nullIfEmpty(inv.SupersededBy), inv.Producer, nullIfEmpty(inv.SchemaID), version}
 }
 
 // IsZero reports whether nothing is known about the change.
 func (inv Invalidation) IsZero() bool {
-	return inv.Reason == "" && inv.SupersededBy == "" && inv.Producer == ""
+	return inv.Reason == "" && inv.SupersededBy == "" && inv.Producer == "" && inv.SchemaID == ""
 }
 
 type invalidationKey struct{}
@@ -93,6 +109,7 @@ func WithInvalidation(ctx context.Context, inv Invalidation) context.Context {
 	inv.Reason = strings.TrimSpace(inv.Reason)
 	inv.SupersededBy = strings.TrimSpace(inv.SupersededBy)
 	inv.Producer = strings.TrimSpace(inv.Producer)
+	inv.SchemaID = strings.TrimSpace(inv.SchemaID)
 	return context.WithValue(ctx, invalidationKey{}, inv)
 }
 
@@ -135,29 +152,36 @@ var invalidationColumns = []string{
 	`ALTER TABLE graph_node_history ADD COLUMN reason TEXT`,
 	`ALTER TABLE graph_node_history ADD COLUMN superseded_by TEXT`,
 	`ALTER TABLE graph_node_history ADD COLUMN producer TEXT`,
+	`ALTER TABLE graph_node_history ADD COLUMN schema_id TEXT`,
+	`ALTER TABLE graph_node_history ADD COLUMN schema_version INTEGER`,
 	`ALTER TABLE graph_edge_history ADD COLUMN reason TEXT`,
 	`ALTER TABLE graph_edge_history ADD COLUMN superseded_by TEXT`,
 	`ALTER TABLE graph_edge_history ADD COLUMN producer TEXT`,
+	`ALTER TABLE graph_edge_history ADD COLUMN schema_id TEXT`,
+	`ALTER TABLE graph_edge_history ADD COLUMN schema_version INTEGER`,
 }
 
 // invalidationColumnList is appended to the history INSERT column lists. It is
 // deliberately not part of nodeColumns/edgeColumns: those are shared with the
 // live tables for the as-of UNION, and the live tables have no reason to give.
-const invalidationColumnList = `reason, superseded_by, producer`
+const invalidationColumnList = `reason, superseded_by, producer, schema_id, schema_version`
+
+// invalidationPlaceholders is one `?` per column in invalidationColumnList.
+const invalidationPlaceholders = `?, ?, ?, ?, ?`
 
 // archiveNodeVersionArgs and archiveEdgeVersionArgs bind archive*VersionSQL in
 // its textual parameter order: the closing instant, the invalidation, then the
 // WHERE clause, whose last two parameters are keepsAPartBefore's.
 func archiveNodeVersionArgs(ctx context.Context, at, recorded time.Time, id, content, nodeType, properties string) []any {
 	inv := versionFrom(ctx, id)
-	return []any{at, inv.Reason, nullIfEmpty(inv.SupersededBy), inv.Producer, id, content, nodeType, properties,
-		backdated(at, recorded), at}
+	args := append([]any{at}, inv.columnArgs()...)
+	return append(args, id, content, nodeType, properties, backdated(at, recorded), at)
 }
 
 func archiveEdgeVersionArgs(ctx context.Context, at, recorded time.Time, id, from, to, edgeType string, weight float64, properties string) []any {
 	inv := versionFrom(ctx, id)
-	return []any{at, inv.Reason, nullIfEmpty(inv.SupersededBy), inv.Producer, id, from, to, edgeType, weight, properties,
-		backdated(at, recorded), at}
+	args := append([]any{at}, inv.columnArgs()...)
+	return append(args, id, from, to, edgeType, weight, properties, backdated(at, recorded), at)
 }
 
 // backdated is keepsAPartBefore's flag: 1 when the write opens its version
@@ -197,7 +221,8 @@ func (g *GraphStore) NodeHistory(ctx context.Context, id string) ([]NodeHistoryE
 	rows, err := g.query(ctx, `
 		SELECT id, COALESCE(content, ''), COALESCE(node_type, ''), COALESCE(properties, ''),
 		       valid_from, valid_to, recorded_at, retracted_at,
-		       COALESCE(reason, ''), COALESCE(superseded_by, ''), COALESCE(producer, '')
+		       COALESCE(reason, ''), COALESCE(superseded_by, ''), COALESCE(producer, ''),
+		       COALESCE(schema_id, ''), COALESCE(schema_version, 0)
 		FROM graph_node_history WHERE id = ?
 		ORDER BY recorded_at, valid_from`, id)
 	if err != nil {
@@ -210,7 +235,7 @@ func (g *GraphStore) NodeHistory(ctx context.Context, id string) ([]NodeHistoryE
 		var tt temporalScan
 		if err := rows.Scan(&e.ID, &e.Content, &e.NodeType, &e.Properties,
 			&tt.validFrom, &tt.validTo, &tt.recordedAt, &tt.retractedAt,
-			&e.Reason, &e.SupersededBy, &e.Producer); err != nil {
+			&e.Reason, &e.SupersededBy, &e.Producer, &e.SchemaID, &e.SchemaVersion); err != nil {
 			return nil, fmt.Errorf("cortexdb/graph: node history: %w", err)
 		}
 		e.ValidFrom, e.ValidTo = nullTime(tt.validFrom), nullTime(tt.validTo)
@@ -228,7 +253,8 @@ func (g *GraphStore) EdgeHistory(ctx context.Context, id string) ([]EdgeHistoryE
 	rows, err := g.query(ctx, `
 		SELECT id, from_node_id, to_node_id, COALESCE(edge_type, ''), COALESCE(weight, 0), COALESCE(properties, ''),
 		       valid_from, valid_to, recorded_at, retracted_at,
-		       COALESCE(reason, ''), COALESCE(superseded_by, ''), COALESCE(producer, '')
+		       COALESCE(reason, ''), COALESCE(superseded_by, ''), COALESCE(producer, ''),
+		       COALESCE(schema_id, ''), COALESCE(schema_version, 0)
 		FROM graph_edge_history WHERE id = ?
 		ORDER BY recorded_at, valid_from`, id)
 	if err != nil {
@@ -241,7 +267,7 @@ func (g *GraphStore) EdgeHistory(ctx context.Context, id string) ([]EdgeHistoryE
 		var tt temporalScan
 		if err := rows.Scan(&e.ID, &e.From, &e.To, &e.EdgeType, &e.Weight, &e.Properties,
 			&tt.validFrom, &tt.validTo, &tt.recordedAt, &tt.retractedAt,
-			&e.Reason, &e.SupersededBy, &e.Producer); err != nil {
+			&e.Reason, &e.SupersededBy, &e.Producer, &e.SchemaID, &e.SchemaVersion); err != nil {
 			return nil, fmt.Errorf("cortexdb/graph: edge history: %w", err)
 		}
 		e.ValidFrom, e.ValidTo = nullTime(tt.validFrom), nullTime(tt.validTo)

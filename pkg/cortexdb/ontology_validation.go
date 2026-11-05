@@ -447,13 +447,24 @@ func (db *DB) validateOntologyRelation(ctx context.Context, compiled *compiledOn
 	if err != nil {
 		return err
 	}
-	return db.checkOntologyCardinality(ctx, linkType, fromID, fromSide, toID, toSide)
+	// A link the schema calls single-valued from this subject is not refused
+	// when the write is one that supersedes: the new value takes over and the
+	// old one is closed in the same transaction, which is the point of saying
+	// the link holds one value. Only the subject's own end is relaxed; a second
+	// edge into a ONE side that is the object is still refused.
+	supersedes := false
+	if supersessionEnabled(ctx) {
+		if schema, err := db.loadActiveOntologySchema(ctx); err == nil && schema != nil {
+			supersedes, _ = schemaSubjectSingleValued(schema, linkType.APIName, fromType)
+		}
+	}
+	return db.checkOntologyCardinality(ctx, linkType, fromID, fromSide, toID, toSide, supersedes)
 }
 
 // checkOntologyCardinality refuses a second edge into a side declared ONE.
 // The check runs against edges already in the graph; a batch that violates
 // cardinality within itself is caught on the second relation.
-func (db *DB) checkOntologyCardinality(ctx context.Context, linkType OntologyLinkType, fromID string, fromSide OntologyLinkSide, toID string, toSide OntologyLinkSide) error {
+func (db *DB) checkOntologyCardinality(ctx context.Context, linkType OntologyLinkType, fromID string, fromSide OntologyLinkSide, toID string, toSide OntologyLinkSide, fromSideSupersedes bool) error {
 	// An edge from A to B occupies one slot on B's side as seen from A, and
 	// vice versa. A ONE side means the *other* endpoint may hold at most one
 	// edge of this link type.
@@ -467,7 +478,7 @@ func (db *DB) checkOntologyCardinality(ctx context.Context, linkType OntologyLin
 				linkType.APIName, toSide.APIName, toID, linkType.APIName)
 		}
 	}
-	if fromSide.Cardinality == OntologyCardinalityOne {
+	if fromSide.Cardinality == OntologyCardinalityOne && !fromSideSupersedes {
 		count, err := db.countOntologyLinks(ctx, linkType.APIName, fromID, toID)
 		if err != nil {
 			return err
