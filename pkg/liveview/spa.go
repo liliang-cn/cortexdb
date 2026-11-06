@@ -9,7 +9,7 @@ package liveview
 // /api/ that no route claimed.
 //
 //   - The index is never cached, and carries the one tag the server rewrites:
-//     <base href="/" data-cortexdb-base>. The view can be mounted under a
+//     the <base> marked data-cortexdb-base. The view can be mounted under a
 //     prefix of another mux (http.StripPrefix and a trailing slash); the
 //     browser resolves every URL the app uses against that base, so telling it
 //     the prefix is the whole of supporting one.
@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -46,8 +47,26 @@ func embeddedUI() fs.FS {
 	return sub
 }
 
-// baseTag is the one tag of the index the server rewrites.
-const baseTag = `<base href="/" data-cortexdb-base>`
+// baseTag finds the one tag of the index the server rewrites: the <base> that
+// carries the data-cortexdb-base marker. It is found by the marker rather than
+// by a literal spelling because the spelling is the build tool's to choose —
+// Vite writes the tag back self-closed (`<base href="/" data-cortexdb-base />`),
+// and a literal match that missed it would leave a view mounted under a prefix
+// asking the root for its bundle and its API.
+var baseTag = regexp.MustCompile(`<base\b[^>]*\bdata-cortexdb-base\b[^>]*>`)
+
+// rebase points the index's base tag at the mount prefix.
+func rebase(index []byte, prefix string) []byte {
+	loc := baseTag.FindIndex(index)
+	if loc == nil {
+		return index
+	}
+	tag := `<base href="` + html.EscapeString(prefix) + `/" data-cortexdb-base>`
+	out := make([]byte, 0, len(index)+len(prefix))
+	out = append(out, index[:loc[0]]...)
+	out = append(out, tag...)
+	return append(out, index[loc[1]:]...)
+}
 
 // spaRoutes are the app's own paths. Each answers with the index.
 var spaRoutes = map[string]bool{"/": true, "/changes": true, "/entity": true, "/activity": true}
@@ -80,8 +99,7 @@ func (s *Server) handleSPA(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the live view's frontend is not built into this binary", http.StatusNotFound)
 		return
 	}
-	base := `<base href="` + html.EscapeString(mountPrefix(r)) + `/" data-cortexdb-base>`
-	index = bytes.Replace(index, []byte(baseTag), []byte(base), 1)
+	index = rebase(index, mountPrefix(r))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	// A rebuilt binary must never be shadowed by a stale index in the browser:
 	// the index is the one file that names the hashed bundle to load.

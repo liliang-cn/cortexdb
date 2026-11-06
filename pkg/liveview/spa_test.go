@@ -212,17 +212,37 @@ func TestAnAppThatWasNeverBuiltSaysSoInsteadOfServingNothing(t *testing.T) {
 	}
 }
 
-// The placeholder that keeps the package building must itself be a valid
-// index for the rewrite, so a binary without a frontend build still serves
-// something that names its mount.
-func TestTheEmbeddedPlaceholderCarriesTheBaseTag(t *testing.T) {
+// The index the build actually produced must carry a tag the rewrite finds,
+// or a view mounted under a prefix loads its bundle and its API from the root.
+func TestTheEmbeddedIndexCarriesTheBaseTag(t *testing.T) {
 	index, err := embeddedUI().Open("index.html")
 	if err != nil {
 		t.Fatalf("no embedded index: %v", err)
 	}
 	defer index.Close()
 	body, _ := io.ReadAll(index)
-	if !strings.Contains(string(body), baseTag) {
-		t.Errorf("the embedded index has no %s", baseTag)
+	if !baseTag.Match(body) {
+		t.Fatalf("the embedded index has no <base ... data-cortexdb-base> tag")
+	}
+	if got := string(rebase(body, "/graph")); !strings.Contains(got, `<base href="/graph/" data-cortexdb-base>`) {
+		t.Errorf("the embedded index was not rebased onto /graph")
+	}
+}
+
+// The build tool owns the tag's spelling. Vite writes it back self-closed, and
+// the rewrite must find it however it is spelled.
+func TestTheBaseTagIsRewrittenHoweverTheBuildSpellsIt(t *testing.T) {
+	for _, tag := range []string{
+		`<base href="/" data-cortexdb-base>`,
+		`<base href="/" data-cortexdb-base />`,
+		`<base data-cortexdb-base href="/">`,
+		`<base href="./" data-cortexdb-base="">`,
+	} {
+		app := fstest.MapFS{"index.html": {Data: []byte(`<!doctype html><html><head>` + tag + `<title>app</title></head></html>`)}}
+		ts := serveApp(t, app, "/graph")
+		_, body := fetch(t, ts.URL+"/graph/changes", nil)
+		if !strings.Contains(body, `<base href="/graph/" data-cortexdb-base><title>`) {
+			t.Errorf("%s: not rebased: %q", tag, body)
+		}
 	}
 }
