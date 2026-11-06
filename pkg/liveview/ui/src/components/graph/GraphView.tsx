@@ -10,6 +10,7 @@ import { useEffect, useRef } from "react";
 import { ChevronDown, ChevronUp, Layers, Loader2, Radio, Route, SlidersHorizontal, ScanSearch, X } from "lucide-react";
 import { Empty } from "@/components/Page";
 import { Button } from "@/components/ui/button";
+import { hoverIntent } from "@/lib/graph/hover";
 import { GraphScene } from "@/lib/graph/scene";
 import { setMode } from "@/lib/theme";
 import { useCapabilities, useLive } from "@/live";
@@ -46,15 +47,50 @@ export default function GraphView() {
     const l = labels.current;
     if (!c || !l) return;
     const ui = () => useGraphUI.getState();
+    // A hover is taken once the pointer rests (lib/graph/hover.ts), and not at
+    // all while a button is down: dragging the camera sweeps nodes under a
+    // pointer that is not pointing at any of them.
+    const nodeHover = hoverIntent<string>((id) => ui().set({ hovered: id }), () => ui().hovered);
+    const edgeHover = hoverIntent<string>((key) => ui().set({ hoverEdge: key }), () => ui().hoverEdge);
+    let dragging = false;
+    let under: { node: string | null; edge: string | null } = { node: null, edge: null };
+    const onDown = () => {
+      dragging = true;
+      nodeHover.cancel();
+      edgeHover.cancel();
+    };
+    const onUp = () => {
+      if (!dragging) return;
+      dragging = false;
+      if (!isNarrow()) nodeHover.point(under.node);
+      edgeHover.point(under.edge);
+    };
+    // The scene reports what is under the pointer only while the pointer moves
+    // over it, so a pointer that leaves the canvas in one stride would leave
+    // its last hover standing.
+    const onLeave = () => {
+      under = { node: null, edge: null };
+      if (dragging) return;
+      nodeHover.point(null);
+      edgeHover.point(null);
+    };
+    c.addEventListener("pointerdown", onDown);
+    c.addEventListener("pointerleave", onLeave);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
     const scene = new GraphScene(c, l, {
       onNodeClick,
       onNodeHover: (id) => {
-        if (!isNarrow()) ui().set({ hovered: id });
+        under = { ...under, node: id };
+        if (!dragging && !isNarrow()) nodeHover.point(id);
       },
       onLinkClick: (key) => {
         if (ui().pick === "off") selectEdge(key);
       },
-      onLinkHover: (key) => ui().set({ hoverEdge: key }),
+      onLinkHover: (key) => {
+        under = { ...under, edge: key };
+        if (!dragging) edgeHover.point(key);
+      },
       onBackgroundClick: () => {
         if (ui().pick !== "off") return;
         const s = ui();
@@ -71,6 +107,12 @@ export default function GraphView() {
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__graph = { scene, ui: useGraphUI, live: useLive };
     const unbind = bindScene(scene);
     return () => {
+      nodeHover.cancel();
+      edgeHover.cancel();
+      c.removeEventListener("pointerdown", onDown);
+      c.removeEventListener("pointerleave", onLeave);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
       unbind();
       setScene(null);
       scene.dispose();
