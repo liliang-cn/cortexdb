@@ -280,62 +280,6 @@ func TestLiveServerReportsAFailedContractReadWithoutFailingTheRequest(t *testing
 
 /* ---- the panel ---- */
 
-// It behaves like its neighbours or it is a second design in one page: the
-// same fold, the same remembered fold, the same one-switch-one-URL-option rule.
-func TestTheContractPanelIsAUrlOptionLikeEveryOtherSwitch(t *testing.T) {
-	if !strings.Contains(pageHTML, `OPTS.contract !== "0"`) {
-		t.Error("the contract panel cannot be turned off from the URL, so an embedder cannot suppress it")
-	}
-	if !strings.Contains(pageHTML, "?contract=0") {
-		t.Error("the option is not documented beside the others it belongs with")
-	}
-}
-
-// Same reason the stream is relative: the page is mounted behind other
-// applications' proxies, and an absolute path leaves the mount point.
-func TestTheContractPanelAsksForItsDataRelatively(t *testing.T) {
-	if strings.Contains(pageHTML, `fetch("/api/`) {
-		t.Error("the contract is fetched at an absolute path, so the panel breaks under a prefix")
-	}
-	if !strings.Contains(pageHTML, `fetch("api/contract"`) {
-		t.Error("the panel never asks for the contract")
-	}
-}
-
-// One store, one word for how often it is read. A page that drifted from the
-// constant would be polling at a cadence nothing in Go describes.
-func TestTheContractPanelPollsAtTheIntervalGoDeclares(t *testing.T) {
-	want := fmt.Sprintf("var CONTRACT_MS = %d;", ContractInterval.Milliseconds())
-	if !strings.Contains(pageHTML, want) {
-		t.Errorf("the page does not poll at ContractInterval (%s); expected %q", ContractInterval, want)
-	}
-}
-
-// Untagged is a producer writing nothing and unknown is a producer writing
-// something wrong. They are different findings and must not be drawn alike.
-func TestTheContractPanelDrawsUnknownDifferentlyFromUntagged(t *testing.T) {
-	for _, rule := range []string{".gr.untagged .gn{", ".gr.unknown .gn{", ".gr.unknown .gn::before{"} {
-		if !strings.Contains(pageHTML, rule) {
-			t.Errorf("the page has no %s rule, so a producer bug looks like a producer's silence", rule)
-		}
-	}
-	// Nodes and edges share a bar and a hue but must stay separable in it.
-	if !strings.Contains(pageHTML, "class='ge'") {
-		t.Error("the bar never distinguishes edges from nodes")
-	}
-}
-
-// The most likely state on a real machine, and the one a reader most needs the
-// truth about.
-func TestTheContractPanelSaysSoWhenNothingIsGraded(t *testing.T) {
-	if !strings.Contains(pageHTML, "not one of them carries a grade") {
-		t.Error("an ungraded store has no plain sentence to render, so it would draw empty bars")
-	}
-	if !strings.Contains(pageHTML, "This view cannot read the knowledge contract") {
-		t.Error("a source with no contract has nothing to say, and would be shown as an ungraded store")
-	}
-}
-
 /* ---- the local reader, against a real store ---- */
 
 // graded builds the metadata a producer writes onto a record it puts here.

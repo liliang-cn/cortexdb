@@ -158,9 +158,6 @@ func TestAPinIsRefusedInWordsWhenTheSourceHasNoPast(t *testing.T) {
 	if len(pinned.Nodes) != 1 {
 		t.Errorf("a refused pin left the page with %+v instead of the live graph", pinned.Nodes)
 	}
-	if !strings.Contains(pageHTML, "still showing now — ") {
-		t.Error("the page does not say that a refused pin left it on the present")
-	}
 
 	// An unparseable instant is refused the same way, and never as "now".
 	var bad Payload
@@ -210,24 +207,6 @@ func TestAPinnedPayloadIsMarkedAsThePast(t *testing.T) {
 		t.Error("a pinned payload claimed to be watching calls")
 	}
 
-	// And the page has somewhere to say it, unfoldably.
-	for _, want := range []string{
-		`<div id="past">`,
-		"Showing the graph as it stood at",
-		"this is the past, and it is not updating",
-		`t.textContent = !connected ? "reconnecting" :`,
-	} {
-		if !strings.Contains(pageHTML, want) {
-			t.Errorf("the page never says it is showing the past: missing %q", want)
-		}
-	}
-	// The banner is not one of the foldable panels; a reader must not be
-	// able to put it away while it is still true.
-	start := strings.Index(pageHTML, `<div id="past">`)
-	end := strings.Index(pageHTML[start:], "</div>")
-	if banner := pageHTML[start : start+end]; strings.Contains(banner, `class="fold"`) || strings.Contains(banner, "data-label") {
-		t.Error("the past banner became a foldable panel, so it can be hidden while it is still true")
-	}
 }
 
 // Live updates stop while pinned, and stop on the server rather than on trust:
@@ -287,24 +266,6 @@ func TestAPinnedStreamGetsNoUpdatesAndALiveOneStillDoes(t *testing.T) {
 			t.Fatalf("the pinned stream received a %q frame; it must receive nothing but heartbeats", f.event)
 		}
 	case <-time.After(150 * time.Millisecond):
-	}
-
-	// And the page refuses to apply one even if it somehow arrived.
-	if !strings.Contains(pageHTML, "if(gen !== streamGen || pinnedAt) return;") {
-		t.Error("the page would apply a delta to a graph pinned in the past")
-	}
-	if !strings.Contains(pageHTML, `return pinnedAt ? "api/stream?as_of=" + pinnedAt : "api/stream";`) {
-		t.Error("the page does not pin its own stream, so the server could not know to stop sending")
-	}
-}
-
-// The tally counts the store as it is now. Under a scene pinned to an instant
-// in the past the two read as one answer, which is the quiet disagreement this
-// page exists to surface rather than create.
-func TestTheContractPanelDoesNotCountThePresentUnderAPinnedScene(t *testing.T) {
-	if !strings.Contains(pageHTML, "so it is not ") ||
-		!strings.Contains(pageHTML, "read while the scene is showing then") {
-		t.Error("the contract panel would go on counting the present under a picture of the past")
 	}
 }
 

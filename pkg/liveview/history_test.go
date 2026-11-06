@@ -436,7 +436,7 @@ func TestTheHistoryPagesAreWiredAndAskRelatively(t *testing.T) {
 			t.Errorf("the versions page lacks %q", want)
 		}
 	}
-	for _, p := range []string{ontologyHistoryHTML, pageHTML} {
+	for _, p := range []string{ontologyHistoryHTML} {
 		if strings.Contains(p, `fetch("/api/`) || strings.Contains(p, `getJSON("/api/`) {
 			t.Error("a page fetches an absolute path, so it breaks under a mount prefix")
 		}
@@ -444,10 +444,7 @@ func TestTheHistoryPagesAreWiredAndAskRelatively(t *testing.T) {
 	if !strings.Contains(ontologyHTML, `href="ontology-history"`) {
 		t.Error("the ontology page cannot reach the version list")
 	}
-	if !strings.Contains(pageHTML, `id="hist"`) || !strings.Contains(pageHTML, `"api/history?entity="`) || !strings.Contains(pageHTML, "several values in effect") {
-		t.Error("the scene page has no entity history view")
-	}
-	if !strings.Contains(pageHTML, `data-mode="light"`) || !strings.Contains(ontologyHistoryHTML, `"light"`) {
+	if !strings.Contains(ontologyHistoryHTML, `"light"`) {
 		t.Error("the new views must default to the light theme")
 	}
 }

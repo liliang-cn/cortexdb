@@ -1,17 +1,75 @@
-// Package liveview serves a knowledge graph as a live, rotatable 3D page.
+// Package liveview serves a knowledge graph as a live page.
 //
 // A rendered file is true for the instant it was taken. This serves a page
-// instead — a WebGL scene on 127.0.0.1 that keeps up with the graph on its own,
-// so a graph being written can be watched rather than re-rendered.
+// instead — on 127.0.0.1 — that keeps up with the graph on its own, so a graph
+// being written can be watched rather than re-rendered.
+//
+// # The app
+//
+// The page is a single-page app (pkg/liveview/ui: Vite, React, TypeScript,
+// Tailwind, shadcn) built into pkg/liveview/dist, which is committed and
+// embedded, so installing the module needs no Node. Go serves only /api/*, the
+// app's hashed build files under /assets/ (cached for good, compressed once),
+// and the app's own routes (/, /changes, /entity, /activity), which all answer
+// with the index. The index is never cached and carries one tag the server
+// rewrites, <base href="/" data-cortexdb-base>: when the view is mounted under
+// a prefix of another mux, the prefix the mux stripped becomes the base, and
+// since every URL the app uses is resolved against it, that is all a mount
+// takes. An unknown /api/ path is a 404 and never the index. The older pages
+// (/ontology, /library, /recalls, /ontology-history) are Go pages still, served
+// as they were.
+//
+// # The stream
+//
+// /api/stream is one server-sent-event connection per open page:
+//
+//   - snapshot — the whole graph, with `cursor` (the change feed's head when
+//     the subscription was taken, 0 when the source has no feed) and `changes`
+//     (whether this source emits change events at all).
+//   - delta — nodes and relations appearing or disappearing; what moves the graph.
+//   - activity — a tool call, observed where it was handled.
+//   - change — one readable [ChangeItem] per row of the store's change feed:
+//     the kind, the op (added, updated, superseded, retracted, merged,
+//     deleted), the sentence ("Leo lives_in Chengdu"), the reason and
+//     producer, what a closed row was replaced by, what a new one replaced,
+//     and the schema version the decision was made under. Made by [ChangeItems]
+//     from the feed's events, the graph the view holds and labels the store
+//     resolved for the page in one batch, so the cost does not grow with the
+//     page. Updates that moved only usage accounting (a recall bumping a
+//     memory's counters) are left out, decided by comparing the row before and
+//     after. Change frames, and only they, carry `id: <seq>`.
+//   - reset — the page's cursor cannot be replayed from (older than retention,
+//     from a brain further along, or too far behind); a fresh snapshot follows
+//     on the same connection and the stream continues from the head.
+//   - ping — keepalive.
+//
+// A connection that names where it stopped, by Last-Event-ID (which the browser
+// sends on its own) or ?after=, is answered from the feed's log: the snapshot,
+// then the changes after the cursor up to the snapshot's own cursor, oldest
+// first, then live. The hub hands out the cursor under the lock that registers
+// the subscription, so the replay and the live tail neither leave a gap nor
+// repeat an event. A page that stops draining its stream is closed rather than
+// left listening to a stream with holes in it; the browser reconnects and
+// resumes. A page pinned to an instant (?as_of=) receives one snapshot and no
+// live events, as before.
+//
+// /api/changes pages the same feed backwards for the timeline, newest first
+// with `before`, filtered by kind, op, producer and entity; /api/entity groups
+// one node's relations by predicate from the graph the view already holds.
+// Both read through [Source.ChangeLog], which is the same call on a local file
+// and on a shared brain (the changes_since tool) and is nil for a source with no
+// feed.
+//
+// # What moves
 //
 // Two things move on the page, and they arrive by different routes:
 //
 //   - Structure — nodes and relations appearing or disappearing. Found by
-//     asking the store's change feed every couple of seconds whether any node
-//     or edge changed, and re-reading and diffing the graph only when one did
-//     (and once a minute regardless) — it can be written by any process
-//     sharing it. Only the difference is sent, so the layout keeps every node
-//     that did not change exactly where it had settled.
+//     asking the store's change feed every couple of seconds what was written,
+//     and re-reading and diffing the graph only when a node or edge was (and
+//     once a minute regardless) — it can be written by any process sharing it.
+//     Only the difference is sent, so the layout keeps every node that did not
+//     change exactly where it had settled.
 //   - Activity — a query running, something being saved, a relation drawn.
 //     A query changes nothing in the graph, so no amount of polling can show
 //     one. These are reported by whoever handled the call, through

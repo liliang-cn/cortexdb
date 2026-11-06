@@ -55,16 +55,14 @@ func startTestServer(t *testing.T, f *fakeSource, activity bool) *Server {
 	return sv
 }
 
-func TestLiveServerServesPageAndGraph(t *testing.T) {
+func TestLiveServerServesTheAppAndGraph(t *testing.T) {
 	f := &fakeSource{}
 	f.set([]Node{{ID: "entity:a", Label: "A", Type: "entity"}}, nil)
 	sv := startTestServer(t, f, true)
 
 	page := httpGet(t, sv.URL()+"/")
-	for _, want := range []string{"ForceGraph3D", "UnrealBloomPass", "new EventSource(streamURL())"} {
-		if !strings.Contains(page, want) {
-			t.Errorf("page is missing %q", want)
-		}
+	if !strings.Contains(page, `<base href="/" data-cortexdb-base>`) {
+		t.Errorf("the index does not carry the base tag: %q", page)
 	}
 
 	var payload Payload
@@ -197,10 +195,12 @@ func TestLiveServerSurvivesAFailedRead(t *testing.T) {
 }
 
 // A tab that stopped reading must not be able to stall the MCP server that is
-// also answering the agent.
-func TestLiveHubDropsUpdatesForAStalledSubscriber(t *testing.T) {
+// also answering the agent, and must not go on listening to a stream with
+// holes in it: the hub closes it, and the browser resumes from its last
+// change id.
+func TestLiveHubClosesAStalledSubscriberInsteadOfLosingUpdatesSilently(t *testing.T) {
 	h := NewHub()
-	ch, _, _ := h.subscribe()
+	ch, _, _, _ := h.subscribe()
 	defer h.unsubscribe(ch)
 
 	done := make(chan struct{})
@@ -215,22 +215,39 @@ func TestLiveHubDropsUpdatesForAStalledSubscriber(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("publishing blocked on a subscriber that never read")
 	}
-	if h.subscriberCount() != 1 {
-		t.Errorf("subscriber count = %d, want the stalled reader still registered", h.subscriberCount())
+	if h.subscriberCount() != 0 {
+		t.Errorf("subscriber count = %d, want the stalled reader closed", h.subscriberCount())
+	}
+	drained := 0
+	for range ch {
+		drained++
+	}
+	if drained != subscriberBuffer {
+		t.Errorf("the stalled reader was handed %d messages before it was closed, want its buffer of %d", drained, subscriberBuffer)
 	}
 }
 
 /* ---- helpers ---- */
 
-type sseFrame struct{ event, data string }
+type sseFrame struct{ id, event, data string }
 
 func openStream(t *testing.T, url string) (<-chan sseFrame, func()) {
+	t.Helper()
+	return openStreamWith(t, url, nil)
+}
+
+// openStreamWith opens a stream with extra request headers, as a browser
+// reconnecting with Last-Event-ID does.
+func openStreamWith(t *testing.T, url string, header map[string]string) (<-chan sseFrame, func()) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		cancel()
 		t.Fatalf("build stream request: %v", err)
+	}
+	for k, v := range header {
+		req.Header.Set(k, v)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -251,6 +268,8 @@ func openStream(t *testing.T, url string) (<-chan sseFrame, func()) {
 		for sc.Scan() {
 			line := sc.Text()
 			switch {
+			case strings.HasPrefix(line, "id: "):
+				cur.id = strings.TrimPrefix(line, "id: ")
 			case strings.HasPrefix(line, "event: "):
 				cur.event = strings.TrimPrefix(line, "event: ")
 			case strings.HasPrefix(line, "data: "):
@@ -354,98 +373,5 @@ func TestCloseDoesNotWaitOnAnOpenStream(t *testing.T) {
 	}
 	if _, err := http.Get(url + "/api/graph"); err == nil {
 		t.Error("the listener is still accepting after Close")
-	}
-}
-
-// The page is embedded behind reverse proxies — an application putting an
-// authenticated front door on a view that has none of its own. An absolute
-// stream path would leave the mount point and land on whatever the host serves
-// at /api, so the page must ask for the stream relative to itself.
-func TestThePageAsksForItsStreamRelatively(t *testing.T) {
-	if strings.Contains(pageHTML, `EventSource("/api/`) || strings.Contains(pageHTML, `= "/api/stream`) {
-		t.Error("the page opens its stream at an absolute path, so it cannot be mounted under a prefix")
-	}
-	// The URL is composed rather than written once, because a pinned page asks
-	// the same endpoint for a different instant. Both spellings have to stay
-	// relative, so both are named here.
-	if !strings.Contains(pageHTML, `return pinnedAt ? "api/stream?as_of=" + pinnedAt : "api/stream";`) {
-		t.Error("the page does not open a relative stream")
-	}
-	if !strings.Contains(pageHTML, "new EventSource(streamURL())") {
-		t.Error("the page does not open its stream through streamURL, so a pin could not reach it")
-	}
-}
-
-// The canvas is a fixed pixel buffer and does not reflow with its container the
-// way the HUD does. Without this the frame grows around a picture that stays
-// the size the window was when the page loaded.
-func TestThePageFollowsItsContainer(t *testing.T) {
-	if !strings.Contains(pageHTML, "ResizeObserver") {
-		t.Error("the page does not observe its container, so an embedded view never resizes")
-	}
-	if !strings.Contains(pageHTML, ".width(w).height(h)") {
-		t.Error("the renderer is never resized")
-	}
-	if !strings.Contains(pageHTML, "setSize(w, h)") {
-		t.Error("the bloom pass is never resized, so the glow stays at the old resolution")
-	}
-	// Sizing the bloom pass to the window would be wrong for an embedded page,
-	// whose frame is routinely a fraction of the window it sits in.
-	if strings.Contains(pageHTML, "new Vector2(window.innerWidth, window.innerHeight)") {
-		t.Error("the bloom pass is sized to the window rather than the container")
-	}
-}
-
-// EventSource has close(), not Close(). This was broken by a rename applied
-// across the package's Go files, which reached into the JavaScript in this one
-// — the reconnect path then threw instead of closing the stream, and nothing
-// compiled differently to say so.
-func TestTheStreamIsClosedWithAMethodThatExists(t *testing.T) {
-	for _, wrong := range []string{"es.Close()", ".Close();"} {
-		if strings.Contains(pageHTML, wrong) {
-			t.Errorf("the page calls %s — JavaScript has no such method here", wrong)
-		}
-	}
-	if !strings.Contains(pageHTML, "es.close()") {
-		t.Error("the reconnect path does not close the stream it is replacing")
-	}
-}
-
-// Every panel sits on top of the scene it describes — the four in the corners
-// and the contract panel on the bottom centre line. In a narrow window — a
-// phone, or the graph framed inside another application — they meet in the
-// middle and cover the graph, so each has to be foldable, and the fold has to
-// survive a reload. A panel that folded differently from its neighbours would
-// be a second design in one page.
-func TestEveryCornerPanelFolds(t *testing.T) {
-	for _, id := range []string{"head", "tools", "explore", "legend", "feed", "contract"} {
-		if !strings.Contains(pageHTML, `id="`+id+`" data-label=`) {
-			t.Errorf("panel %q has no data-label, so folded it would name nothing", id)
-		}
-		// The folded rules are written per id on purpose: each panel sets its
-		// own width, padding and display through an id selector, and a bare
-		// .panel.folded can never outrank one of those.
-		if !strings.Contains(pageHTML, "#"+id+".folded>.bd") {
-			t.Errorf("panel %q has no id-level rule hiding its body when folded", id)
-		}
-	}
-	if strings.Count(pageHTML, `class="fold"`) != 6 {
-		t.Error("expected exactly six fold buttons, one per panel that covers the scene")
-	}
-	if !strings.Contains(pageHTML, "localStorage.setItem(FOLD_KEY") {
-		t.Error("folding is not remembered, so it has to be redone on every load")
-	}
-}
-
-// An application embedding this page has its own search box, and searching it
-// is asking about the same things these nodes are. It cannot reach into this
-// document — different origin, behind the embedder's proxy — so it sends a
-// message instead.
-func TestThePageTakesAHighlightFromItsEmbedder(t *testing.T) {
-	if !strings.Contains(pageHTML, `"cortexdb:highlight"`) {
-		t.Error("the page does not listen for a highlight from its embedder")
-	}
-	if !strings.Contains(pageHTML, `addEventListener("message"`) {
-		t.Error("no message listener at all")
 	}
 }

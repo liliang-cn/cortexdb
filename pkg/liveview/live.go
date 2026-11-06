@@ -344,30 +344,97 @@ type Hub struct {
 	seq    int64
 	recent []Event
 	subs   map[chan Message]struct{}
+	// cursor is the change feed's seq up to which every change has been
+	// published to the subscribers. A new subscriber learns it under the lock
+	// that adds it, so "replay the log up to the cursor, then take the live
+	// channel" has neither a gap nor a duplicate: everything at or below it
+	// was published before the subscription existed, everything above it will
+	// arrive on the channel.
+	cursor int64
 }
 
-// Message is one server-sent event: exactly one of the two is set.
+// Message is one server-sent event: exactly one of the fields is set.
 type Message struct {
-	Delta *Delta `json:"delta,omitempty"`
-	Event *Event `json:"event,omitempty"`
+	Delta  *Delta       `json:"delta,omitempty"`
+	Event  *Event       `json:"event,omitempty"`
+	Change *ChangeItem  `json:"change,omitempty"`
+	Reset  *ResetNotice `json:"reset,omitempty"`
+}
+
+// ResetNotice tells a page its change cursor can no longer be trusted: it fell
+// behind what the feed retains, so the page must rebuild its state from the
+// snapshot that follows and continue from Head.
+type ResetNotice struct {
+	// Reason is "pruned" when the cursor is older than retention, "behind"
+	// when too much happened for one replay, "ahead" when the cursor is from a
+	// brain further along than this one, and "unavailable" when the feed could
+	// not be read to replay.
+	Reason        string `json:"reason"`
+	PrunedThrough int64  `json:"pruned_through"`
+	Head          int64  `json:"head"`
 }
 
 const recentEventsCap = 60
+
+// subscriberBuffer is how many messages a page may fall behind by.
+const subscriberBuffer = 256
 
 func NewHub() *Hub {
 	return &Hub{subs: make(map[chan Message]struct{})}
 }
 
-// subscribe returns a channel of updates plus the snapshot and backlog they
-// follow, taken under the same lock so a page cannot miss an update that landed
-// between reading the graph and being wired up.
-func (h *Hub) subscribe() (chan Message, Snapshot, []Event) {
-	ch := make(chan Message, 64)
+// subscribe returns a channel of updates plus the snapshot, backlog and change
+// cursor they follow, taken under the same lock so a page cannot miss an update
+// that landed between reading the graph and being wired up.
+func (h *Hub) subscribe() (chan Message, Snapshot, []Event, int64) {
+	ch := make(chan Message, subscriberBuffer)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.subs[ch] = struct{}{}
 	backlog := append([]Event(nil), h.recent...)
-	return ch, h.snap, backlog
+	return ch, h.snap, backlog, h.cursor
+}
+
+// changeCursor is the seq the change feed has been published up to.
+func (h *Hub) changeCursor() int64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.cursor
+}
+
+// setCursor moves the cursor without publishing, for the head taken at start.
+func (h *Hub) setCursor(c int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if c > h.cursor {
+		h.cursor = c
+	}
+}
+
+// publishChanges fans out change items in order and moves the cursor to the
+// seq the poller has read up to, which can be past the last item: events the
+// view does not show (bookkeeping) still advance it. Items and cursor change
+// under one lock, which is what subscribe's guarantee rests on.
+func (h *Hub) publishChanges(items []ChangeItem, cursor int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i := range items {
+		h.broadcastLocked(Message{Change: &items[i]})
+	}
+	if cursor > h.cursor {
+		h.cursor = cursor
+	}
+}
+
+// publishReset tells every page to rebuild: the feed was pruned past the point
+// the poller had read, so changes between were never published.
+func (h *Hub) publishReset(r ResetNotice) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if r.Head > h.cursor {
+		h.cursor = r.Head
+	}
+	h.broadcastLocked(Message{Reset: &r})
 }
 
 func (h *Hub) unsubscribe(ch chan Message) {
@@ -420,11 +487,22 @@ func (h *Hub) publishEvent(ev Event) {
 func (h *Hub) broadcast(msg Message) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.broadcastLocked(msg)
+}
+
+func (h *Hub) broadcastLocked(msg Message) {
 	for ch := range h.subs {
 		select {
 		case ch <- msg:
 		default:
-			// Dropped: this page is not draining. It will re-sync on reload.
+			// This page is not draining. It used to lose the message and go on
+			// listening, which for a delta meant a graph quietly out of step
+			// and for a change meant a hole in a log whose point is having
+			// none. The stream is closed instead: the browser reconnects by
+			// itself, and a connection that resumes from its last change id
+			// is made whole again.
+			delete(h.subs, ch)
+			close(ch)
 		}
 	}
 }

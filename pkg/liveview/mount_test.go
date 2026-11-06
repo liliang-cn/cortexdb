@@ -3,10 +3,12 @@ package liveview
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 )
 
@@ -38,6 +40,35 @@ func TestTheViewCanBeMountedUnderAPrefixOfSomebodyElsesMux(t *testing.T) {
 	defer page.Body.Close()
 	if page.StatusCode != http.StatusOK {
 		t.Fatalf("page under a prefix: %d", page.StatusCode)
+	}
+	// The app resolves every URL it uses against its <base>, so naming the
+	// mount there is the whole of supporting one.
+	index, _ := io.ReadAll(page.Body)
+	if !strings.Contains(string(index), `<base href="/graph/" data-cortexdb-base>`) {
+		t.Fatalf("the index is not based at the mount prefix: %s", index)
+	}
+	if cc := page.Header.Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("index Cache-Control = %q", cc)
+	}
+
+	// A build file is reachable under the prefix too, and unknown API paths
+	// stay 404s there.
+	sv.ui = fstest.MapFS{"assets/app-1.js": {Data: []byte("1")}, "index.html": {Data: []byte("x")}}
+	asset, err := http.Get(ts.URL + "/graph/assets/app-1.js")
+	if err != nil {
+		t.Fatalf("asset: %v", err)
+	}
+	asset.Body.Close()
+	if asset.StatusCode != http.StatusOK || !strings.Contains(asset.Header.Get("Cache-Control"), "immutable") {
+		t.Fatalf("asset under a prefix: %d %q", asset.StatusCode, asset.Header.Get("Cache-Control"))
+	}
+	missing, err := http.Get(ts.URL + "/graph/api/nope")
+	if err != nil {
+		t.Fatalf("api 404: %v", err)
+	}
+	missing.Body.Close()
+	if missing.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown API under a prefix: %d", missing.StatusCode)
 	}
 
 	api, err := http.Get(ts.URL + "/graph/api/graph")

@@ -58,18 +58,31 @@ func graphChanges(ask changesFunc) func(ctx context.Context, after int64) (int64
 	}
 }
 
-// localChanges reads the feed of a database this process holds open.
-func localChanges(db *cortexdb.DB) func(ctx context.Context, after int64) (int64, bool, error) {
-	return graphChanges(func(ctx context.Context, req cortexdb.ChangesSinceRequest) (*cortexdb.ChangesSinceResponse, error) {
+// ChangeLog reads one page of a brain's change feed: the oldest events after
+// a cursor, or with Before set the newest ones below it, optionally explained
+// from the graph history (see cortexdb.ChangesSinceRequest). It is the same
+// call on a local file and a shared brain, and a Source whose brain has no feed
+// leaves it nil.
+type ChangeLog = changesFunc
+
+// localChangeLog reads the feed of a database this process holds open.
+func localChangeLog(db *cortexdb.DB) ChangeLog {
+	return func(ctx context.Context, req cortexdb.ChangesSinceRequest) (*cortexdb.ChangesSinceResponse, error) {
 		return db.ChangesSince(ctx, req)
-	})
+	}
 }
 
-// remoteChanges reads the feed of a shared brain through changes_since. A
-// brain too old to have the tool answers with an error, and the poller falls
-// back to re-reading on every tick, as before.
-func remoteChanges(addr, token string) func(ctx context.Context, after int64) (int64, bool, error) {
-	return graphChanges(func(ctx context.Context, req cortexdb.ChangesSinceRequest) (*cortexdb.ChangesSinceResponse, error) {
+// localChanges reads the feed of a database this process holds open.
+func localChanges(db *cortexdb.DB) func(ctx context.Context, after int64) (int64, bool, error) {
+	return graphChanges(localChangeLog(db))
+}
+
+// remoteChangeLog reads the feed of a shared brain through changes_since. A
+// brain too old to have the tool answers with an error; one that has it but
+// predates Before and Explain ignores them, which readers of a backward page
+// notice by the events arriving oldest first.
+func remoteChangeLog(addr, token string) ChangeLog {
+	return func(ctx context.Context, req cortexdb.ChangesSinceRequest) (*cortexdb.ChangesSinceResponse, error) {
 		conn, err := dial(addr, token)
 		if err != nil {
 			return nil, err
@@ -89,5 +102,12 @@ func remoteChanges(addr, token string) func(ctx context.Context, after int64) (i
 			return nil, fmt.Errorf("decode changes_since: %w", err)
 		}
 		return &out, nil
-	})
+	}
+}
+
+// remoteChanges reads the feed of a shared brain through changes_since. A
+// brain too old to have the tool answers with an error, and the poller falls
+// back to re-reading on every tick, as before.
+func remoteChanges(addr, token string) func(ctx context.Context, after int64) (int64, bool, error) {
+	return graphChanges(remoteChangeLog(addr, token))
 }

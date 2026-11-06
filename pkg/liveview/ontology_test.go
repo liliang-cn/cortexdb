@@ -488,8 +488,8 @@ func TestTheOntologyPageHasItsOwnPathAndDoesNotTakeTheRoot(t *testing.T) {
 	if strings.Contains(page, "ForceGraph3D") {
 		t.Error("the ontology page pulls in the scene's renderer")
 	}
-	if !strings.Contains(httpGet(t, sv.URL()+"/"), "ForceGraph3D") {
-		t.Error("the scene page no longer owns the root")
+	if !strings.Contains(httpGet(t, sv.URL()+"/"), "data-cortexdb-base") {
+		t.Error("the app no longer owns the root")
 	}
 	resp, err := http.Get(sv.URL() + "/ontologyz")
 	if err != nil {
@@ -502,20 +502,6 @@ func TestTheOntologyPageHasItsOwnPathAndDoesNotTakeTheRoot(t *testing.T) {
 }
 
 /* ---- the page ---- */
-
-// Both directions, and both relative. The pages are mounted behind other
-// applications' proxies, and an absolute /ontology would leave the mount point.
-func TestTheTwoPagesReachEachOther(t *testing.T) {
-	if !strings.Contains(pageHTML, `<a href="ontology"`) {
-		t.Error("the scene page has no way to reach the ontology")
-	}
-	if strings.Contains(pageHTML, `href="/ontology"`) {
-		t.Error("the link is absolute, so it leaves the mount point")
-	}
-	if !strings.Contains(ontologyHTML, `<a href="."`) {
-		t.Error("the ontology page has no way back to the scene")
-	}
-}
 
 // Same reason the stream and the contract are relative.
 func TestTheOntologyPageAsksForItsDataRelatively(t *testing.T) {
