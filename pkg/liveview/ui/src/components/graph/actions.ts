@@ -8,7 +8,7 @@ import { useLive } from "@/live";
 import { tracePath } from "@/lib/graph/model";
 import { mergedGraph } from "./bind";
 import { getScene } from "./controller";
-import { OPTS, isNarrow, useGraphUI, type ExploreMode } from "./state";
+import { OPTS, isNarrow, readOptions, useGraphUI, type ExploreMode } from "./state";
 import { edgeKey } from "@/lib/graph/model";
 
 const ui = () => useGraphUI.getState();
@@ -245,11 +245,25 @@ export function shareLink(pairs: Array<[string, string]>): void {
 // ---- opening actions ----------------------------------------------------
 
 let opened = false;
+// The history entry the options were last read for (react-router keeps its
+// key in history.state), so each entry is read once, StrictMode or not.
+let openedFor: string | null = null;
 
 /** The URL options that open the page somewhere, run once, after the first picture exists. */
 export function runOpeningActions(): void {
-  if (opened) return;
+  const entry = (history.state as { key?: string } | null)?.key ?? null;
+  if (opened) {
+    // OPTS holds the URL the app was loaded with. Entered again from another
+    // page without a reload (a recall's "replay on graph"), the page reads
+    // what that link carries from the current URL instead.
+    if (entry !== openedFor) {
+      openedFor = entry;
+      runLinkOptions(location.search);
+    }
+    return;
+  }
   opened = true;
+  openedFor = entry;
   const g = mergedGraph();
   if (OPTS.type) {
     const hidden = new Set<string>();
@@ -283,6 +297,16 @@ export function runOpeningActions(): void {
         .catch((err) => toast(messageOf(err)));
     }
   }
+}
+
+/** The options a link from another page of the app carries: a colouring, a recall to replay, a node to open on. */
+function runLinkOptions(search: string): void {
+  const q = new URLSearchParams(search);
+  const o = readOptions(search);
+  if (q.has("color")) ui().set({ colorMode: o.color });
+  if (!useLive.getState().caps.explore) return;
+  if (o.replay) void replayRecall(o.replay);
+  if (o.focus && (mergedGraph().nodes.has(o.focus) || o.focus.indexOf(":") > 0)) void focusNode(o.focus, o.hops);
 }
 
 interface RecallDetail {
