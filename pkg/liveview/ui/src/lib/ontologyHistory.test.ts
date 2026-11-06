@@ -307,9 +307,10 @@ describe("the words a version says", () => {
     expect(sameMinute(Date.parse("2026-11-06T09:07:59Z"), Date.parse("2026-11-06T09:08:00Z"))).toBe(false);
   });
 
-  it("reads the route's no-history error as an empty history", () => {
-    expect(isNoHistory('ontology schema "nope" has no history: embedding not found')).toBe(true);
-    expect(isNoHistory("ontology schema \"people\" has no version 40: not found")).toBe(false);
+  it("reads the route's 404 as an empty history and anything else as a failure", () => {
+    expect(isNoHistory(404)).toBe(true);
+    expect(isNoHistory(502)).toBe(false);
+    expect(isNoHistory(0)).toBe(false);
     expect(isNoHistory(null)).toBe(false);
   });
 });

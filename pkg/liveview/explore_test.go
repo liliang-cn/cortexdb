@@ -6,11 +6,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
@@ -336,5 +341,30 @@ func TestExpandOfANodeWithNoRelationsReturnsTheNode(t *testing.T) {
 	}
 	if nb, err = Expand(ctx, localCaller(db), "entity:no_such_node", 0); err != nil || len(nb.Nodes) != 0 {
 		t.Fatalf("a missing id should expand to nothing, got %+v, %v", nb, err)
+	}
+}
+
+// A tool's "not there" is the request's answer, whichever brain gave it: a
+// local brain's error wraps core.ErrNotFound, a shared brain's arrives as
+// codes.NotFound. Anything else the brain failed at stays a bad gateway.
+func TestANotFoundAnswerIsA404FromEitherBrain(t *testing.T) {
+	for name, tc := range map[string]struct {
+		err  error
+		want int
+	}{
+		"local":        {fmt.Errorf("ontology schema %q has no history: %w", "x", core.ErrNotFound), http.StatusNotFound},
+		"shared":       {fmt.Errorf("call: %w", status.Error(codes.NotFound, `ontology schema "x" has no history`)), http.StatusNotFound},
+		"failed":       {status.Error(codes.Unavailable, "connection refused"), http.StatusBadGateway},
+		"unexplorable": {errNotExplorable, http.StatusNotImplemented},
+	} {
+		rec := httptest.NewRecorder()
+		writeExplore(rec, nil, tc.err)
+		if rec.Code != tc.want {
+			t.Errorf("%s: %d, want %d", name, rec.Code, tc.want)
+		}
+		var body map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body["error"] == "" {
+			t.Errorf("%s: the error is not in the body: %q", name, rec.Body.String())
+		}
 	}
 }

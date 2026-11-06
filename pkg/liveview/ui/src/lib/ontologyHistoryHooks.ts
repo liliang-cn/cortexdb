@@ -4,7 +4,7 @@
 // the answers to those rules.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { isAbort } from "@/api";
+import { ApiError, isAbort } from "@/api";
 import { ontologyHistoryApi, type OntologyDiff, type OntologySchemaIndex } from "@/api/ontologyHistory";
 import { useLive } from "@/live";
 import {
@@ -151,7 +151,8 @@ export function useVersionHistory(schema: string, beforeRefresh?: () => void): V
       .catch((err: unknown) => {
         if (isAbort(err) || gen !== generation.current) return;
         const text = message(err);
-        setState({ status: isNoHistory(text) ? "missing" : "error", list: null, error: text, baseline: 0 });
+        const missing = isNoHistory(err instanceof ApiError ? err.status : null);
+        setState({ status: missing ? "missing" : "error", list: null, error: text, baseline: 0 });
       });
     return () => ctl.abort();
   }, [schema, nonce]);

@@ -50,6 +50,9 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
@@ -681,13 +684,13 @@ func writeExplore(w http.ResponseWriter, v any, err error) {
 		switch {
 		case errors.Is(err, errNotExplorable):
 			code = http.StatusNotImplemented
-		case errors.Is(err, core.ErrNotFound):
+		case errors.Is(err, core.ErrNotFound), status.Code(err) == codes.NotFound:
 			// The brain answered, and what it said is that the thing asked
 			// about is not there (a schema with no saved versions, a recall
 			// the log no longer holds). That is the request's fault, not an
 			// upstream failure, and a page shows it as an empty state rather
-			// than an error. A shared brain's answer arrives as text and
-			// stays a 502: its tools service does not carry the sentinel.
+			// than an error. A local brain's tools return the sentinel; a
+			// shared brain's tools service sends it as codes.NotFound.
 			code = http.StatusNotFound
 		}
 		w.WriteHeader(code)

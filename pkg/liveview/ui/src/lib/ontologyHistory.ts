@@ -353,9 +353,10 @@ export function newestSchemaChange(changes: ReadonlyArray<Pick<ChangeItem, "seq"
 
 /**
  * Whether a failed history read means the schema has no versions at all. The
- * route answers that with the tool's own error ("ontology schema "x" has no
- * history: ..."), not with a 404, and it is an empty state, not a failure.
+ * route answers that with a 404 (the tool said the schema is not there), and
+ * it is an empty state, not a failure. Read from the status, never from the
+ * wording of the error, which is the tool's to change.
  */
-export function isNoHistory(message: string | null | undefined): boolean {
-  return !!message && /\bhas no history\b/.test(message);
+export function isNoHistory(status: number | null | undefined): boolean {
+  return status === 404;
 }
