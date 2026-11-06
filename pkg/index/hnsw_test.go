@@ -295,6 +295,12 @@ func BenchmarkHNSWSearch(b *testing.B) {
 func TestHNSWLevelsThinOutByAFactorOfM(t *testing.T) {
 	const m, n = 16, 20000
 	h := NewHNSW(m, 200, EuclideanDistance)
+	// A fixed draw. NewHNSW seeds from the clock, and the bounds below are
+	// probabilistic: a fresh draw every run crosses the max-level bound about
+	// once in a thousand runs (20000 · 16⁻⁶), which is a CI failure that says
+	// nothing about the code. The distribution is what is under test, and one
+	// fixed sample of 20000 still tells 1/M from a coin flip.
+	h.rng = rand.New(rand.NewSource(1))
 	counts := map[int]int{}
 	maxLevel := 0
 	for i := 0; i < n; i++ {
