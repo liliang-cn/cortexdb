@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Edge, Node } from "@/api";
 import {
   NO_FILTERS,
+  activityTargets,
   buildAdjacency,
   computeFocus,
   diffGraph,
@@ -216,5 +217,21 @@ describe("matching tool-call terms", () => {
   it("finds a node by name, then by id", () => {
     expect(findNodeByName(nodes, "chengdu")).toBe("3");
     expect(findNodeByName(nodes, "nothing")).toBeNull();
+  });
+});
+
+describe("what an activity event lights", () => {
+  const nodes = nodeMap(n("machine:1", "machine", "辊锻机"), n("machine:10", "machine", "压力机"), n("card:7", "card", "工艺卡 GY-0312"));
+  const adj = buildAdjacency([]);
+  it("lights nodes named by id exactly, never their namesakes by substring", () => {
+    expect(activityTargets(nodes, adj, { nodes: ["machine:1"] }).nodes).toEqual(["machine:1"]);
+  });
+  it("puts ids before terms, without lighting a node twice, and skips ids it does not hold", () => {
+    const got = activityTargets(nodes, adj, { nodes: ["card:7", "gone:1", "card:7"], terms: ["工艺卡 GY-0312", "辊锻机"] });
+    expect(got.nodes).toEqual(["card:7", "machine:1"]);
+  });
+  it("lights a short name only by its whole label when it comes as a term", () => {
+    expect(activityTargets(nodes, adj, { terms: ["辊锻"] }).nodes).toEqual([]);
+    expect(activityTargets(nodes, adj, { terms: ["辊锻机"] }).nodes).toEqual(["machine:1"]);
   });
 });

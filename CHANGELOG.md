@@ -90,6 +90,12 @@ All notable changes to this project will be documented in this file.
   Library speak Chinese and English (`?lang=`, otherwise the browser's
   language). The four load when first visited, so the first page is no
   heavier.
+- `liveview.Event.Nodes`: node ids an observed event lights exactly, for a
+  host that reads its store through the Go API rather than tools and builds
+  its own events for `Server.Observe` (#135). Unlike `Terms`, which are matched
+  loosely against names, they are joined on identity: `machine:1` does not
+  light `machine:10`, and a two-character name still lights its node. The
+  graph and the library both read them.
 - `changes_since` reads backwards and explains (#127). `before` returns the
   newest events below a seq, newest first (negative: from the head), with
   `next_cursor` the `before` of the next older page. `explain` adds to node

@@ -152,6 +152,33 @@ func TestLiveServerStreamsActivity(t *testing.T) {
 	}
 }
 
+// A host that reads its store through the Go API, not through tools, has no
+// tool call to classify. It builds the event itself and names what it read by
+// id, and the ids reach the page as they were given.
+func TestLiveServerStreamsAHostsOwnEventWithNodeIDs(t *testing.T) {
+	f := &fakeSource{}
+	f.set([]Node{{ID: "machine:1", Label: "辊锻机"}, {ID: "machine:10", Label: "压力机"}}, nil)
+	sv := startTestServer(t, f, true)
+
+	frames, stop := openStream(t, sv.URL()+"/api/stream")
+	defer stop()
+	nextFrame(t, frames, "snapshot")
+
+	sv.Observe(Event{Kind: KindQuery, Tool: "assistant", Text: "助手查询：辊锻机", Nodes: []string{"machine:1"}})
+
+	var got Event
+	mustJSON(t, nextFrame(t, frames, "activity").data, &got)
+	if got.Seq == 0 || got.At == 0 {
+		t.Errorf("event was not stamped: %+v", got)
+	}
+	if len(got.Nodes) != 1 || got.Nodes[0] != "machine:1" {
+		t.Errorf("nodes = %v, want exactly [machine:1]", got.Nodes)
+	}
+	if got.Tool != "assistant" || got.Text != "助手查询：辊锻机" {
+		t.Errorf("event = %+v, want the host's own tool and text", got)
+	}
+}
+
 // A page that opens after some activity should still see what it missed.
 func TestLiveServerReplaysRecentActivity(t *testing.T) {
 	f := &fakeSource{}

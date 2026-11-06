@@ -141,6 +141,12 @@ type Event struct {
 	// tool's arguments name things the way a person does ("CortexDB"), and the
 	// graph keys them the way a database does ("entity:CortexDB").
 	Terms []string `json:"terms,omitempty"`
+	// Nodes are node ids to light exactly. They are for a caller that knows
+	// what it read by id (a host that queried the store through the Go API
+	// rather than a tool) and are joined on identity, so "machine:1" never
+	// lights "machine:10" and a two-character name still lights its node.
+	// An id the page does not hold lights nothing.
+	Nodes []string `json:"nodes,omitempty"`
 	// Links are from/to pairs to draw a pulse along, for relation writes.
 	Links  [][2]string `json:"links,omitempty"`
 	Failed bool        `json:"failed,omitempty"`

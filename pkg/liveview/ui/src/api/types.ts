@@ -34,6 +34,8 @@ export interface ActivityEvent {
   text: string;
   /** Strings to light nodes up by, matched loosely against labels and ids. */
   terms?: string[];
+  /** Node ids to light exactly, joined on identity rather than matched. */
+  nodes?: string[];
   /** from/to pairs a relation write pulses along. */
   links?: [string, string][];
   failed?: boolean;

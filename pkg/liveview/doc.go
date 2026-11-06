@@ -74,7 +74,11 @@
 //   - Activity — a query running, something being saved, a relation drawn.
 //     A query changes nothing in the graph, so no amount of polling can show
 //     one. These are reported by whoever handled the call, through
-//     [Server.Observe], and light up the nodes they named.
+//     [Server.Observe], and light up the nodes they named. An MCP server
+//     builds each [Event] from the call with [ClassifyToolCall]; a host that
+//     reads its store through the Go API builds its own and names what it
+//     read in [Event.Nodes], by id, which the page lights exactly, where
+//     [Event.Terms] are matched loosely against names.
 //
 // What is drawn is coloured by node type, which answers "what is in here". The
 // other question a person brings to a picture of a brain is which of it anybody

@@ -267,6 +267,9 @@ describe("reading the room back", () => {
     // "qi" is too short to mean anything on its own.
     expect(booksRead(lay.books, { terms: ["qi"] })).toEqual([]);
     expect(booksRead(lay.books, {})).toEqual([]);
+    // Named by id: exactly that book, first, whatever the terms add after it.
+    expect(ids(booksRead(lay.books, { nodes: ["memory:alchemy-1"] }))).toEqual(["memory:alchemy-1"]);
+    expect(ids(booksRead(lay.books, { nodes: ["memory:dsh-2", "memory:nowhere"], terms: ["DSH"] }))).toEqual(["memory:dsh-2", "memory:dsh-0", "memory:dsh-1"]);
     expect(booksRead(lay.books, { terms: ["loose"] })).toHaveLength(12);
   });
 });
