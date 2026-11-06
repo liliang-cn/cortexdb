@@ -124,6 +124,33 @@ type ChangeEvent struct {
 	// embedded as JSON, not as strings.
 	Before json.RawMessage `json:"before,omitempty"`
 	After  json.RawMessage `json:"after,omitempty"`
+
+	// The fields below are filled only by ReadChanges with Explain, from the
+	// graph history, so that a reader can say what a change meant without a
+	// query per event.
+	//
+	// SupersededBy is what took the place of a closed node or edge version: the
+	// edge that replaced it, or the entity it was merged into. It is absent for
+	// a version rewritten in place, whose replacement is itself.
+	SupersededBy *ChangeRef `json:"superseded_by,omitempty"`
+	// Replaces is the older edge an inserted edge closed, a single-valued link
+	// being given a new value.
+	Replaces *ChangeRef `json:"replaces,omitempty"`
+	// SchemaID and SchemaVersion name the ontology schema the closure was
+	// decided under, as the history row recorded it.
+	SchemaID      string `json:"schema_id,omitempty"`
+	SchemaVersion int    `json:"schema_version,omitempty"`
+}
+
+// ChangeRef names another row an event refers to, with enough of it to be
+// summarised: an edge by its endpoints and type, a node by its content.
+type ChangeRef struct {
+	ID   string `json:"id"`
+	From string `json:"from,omitempty"`
+	To   string `json:"to,omitempty"`
+	Type string `json:"type,omitempty"`
+	// Content is a node's text, clipped.
+	Content string `json:"content,omitempty"`
 }
 
 // ErrChangesPruned is returned for a cursor older than what retention kept.
@@ -795,12 +822,71 @@ func (g *GraphStore) prunedThrough(ctx context.Context, q rowQuerier) (int64, er
 // the read cannot remove events between the check and the read and leave a
 // hole the caller would never know about.
 func (g *GraphStore) Changes(ctx context.Context, after int64, limit int) ([]ChangeEvent, error) {
+	page, err := g.ReadChanges(ctx, ChangesQuery{After: after, Limit: limit})
+	if err != nil {
+		return nil, err
+	}
+	return page.Events, nil
+}
+
+// ChangesQuery is one read of the change log.
+type ChangesQuery struct {
+	// After is the cursor of the last event already handled. Forward reads
+	// (Before == 0) return what committed after it, oldest first, and fail with
+	// ChangesPrunedError when retention has overtaken it. A backward read uses
+	// it as an exclusive lower bound and never fails for retention: what was
+	// pruned is simply not there to be listed.
+	After int64
+	// Before turns the read around. Positive: the newest events with a seq
+	// below it, newest first. Negative: the newest events there are, newest
+	// first, which is how a reader that does not know the head yet asks for
+	// the first page (the same convention After uses for "the head").
+	Before int64
+	// Limit caps the events read. Default 1000.
+	Limit int
+	// Kinds keeps only these kinds. A forward read filters after reading, so
+	// the caller's cursor still advances past what was skipped (see Scanned);
+	// a backward read filters in the query, because a page of the newest
+	// events of one kind should not cost a scan of everything between them.
+	Kinds []string
+	// Explain fills in what the history tables say about each node and edge
+	// event — what replaced a closed version, what an added edge replaced, the
+	// schema the decision was made under — and names the endpoints of edge
+	// events, each in one batched query per table, never one per event.
+	Explain bool
+}
+
+// ChangesPage is the answer to a ChangesQuery.
+type ChangesPage struct {
+	// Events are in commit order for a forward read and newest first for a
+	// backward one.
+	Events []ChangeEvent
+	// Scanned is how many events the read looked at before Kinds dropped any,
+	// and LastScanned the seq of the last of them (the oldest, for a backward
+	// read). A forward reader advances its cursor to LastScanned, not to the
+	// last event it kept.
+	Scanned     int
+	LastScanned int64
+	// More says whether a backward read left older events unread.
+	More bool
+	// PrunedThrough is how far retention has pruned; 0 when it never has.
+	PrunedThrough int64
+	// Labels names the nodes the events refer to by id — the endpoints of edge
+	// events and of what replaced or was replaced — by their current content.
+	// Present only with Explain.
+	Labels map[string]string
+}
+
+// ReadChanges reads the change log as described by q. See ChangesQuery.
+func (g *GraphStore) ReadChanges(ctx context.Context, q ChangesQuery) (*ChangesPage, error) {
 	if err := g.EnsureChangeFeed(ctx); err != nil {
 		return nil, err
 	}
+	limit := q.Limit
 	if limit <= 0 {
 		limit = 1000
 	}
+	backward := q.Before != 0
 	opts := &sql.TxOptions{ReadOnly: true}
 	if g.isPostgres() {
 		opts.Isolation = sql.LevelRepeatableRead
@@ -815,9 +901,26 @@ func (g *GraphStore) Changes(ctx context.Context, after int64, limit int) ([]Cha
 	if g.isPostgres() {
 		at = `to_char(at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
 	}
+	where, order, args, fetch := "seq > ?", "seq", []any{q.After}, limit
+	if backward {
+		where, order = "seq > ?", "seq DESC"
+		if q.Before > 0 {
+			where += " AND seq < ?"
+			args = append(args, q.Before)
+		}
+		if len(q.Kinds) > 0 {
+			where += " AND kind IN (" + strings.TrimSuffix(strings.Repeat("?, ", len(q.Kinds)), ", ") + ")"
+			for _, k := range q.Kinds {
+				args = append(args, k)
+			}
+		}
+		// One more than asked, to know whether anything older is left.
+		fetch = limit + 1
+	}
+	args = append(args, fetch)
 	rows, err := tx.QueryContext(ctx, g.dialect.Rebind(`SELECT seq, `+at+`, kind, op, entity_id,
 		COALESCE(reason, ''), COALESCE(producer, ''), before_state, after_state
-		FROM change_log WHERE seq > ? ORDER BY seq LIMIT ?`), after, limit)
+		FROM change_log WHERE `+where+` ORDER BY `+order+` LIMIT ?`), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -841,6 +944,12 @@ func (g *GraphStore) Changes(ctx context.Context, after int64, limit int) ([]Cha
 	}
 	_ = rows.Close()
 
+	page := &ChangesPage{}
+	if backward && len(events) > limit {
+		page.More = true
+		events = events[:limit]
+	}
+
 	if !g.isPostgres() {
 		if err := g.lookupInvalidations(ctx, tx, events); err != nil {
 			return nil, err
@@ -854,10 +963,35 @@ func (g *GraphStore) Changes(ctx context.Context, after int64, limit int) ([]Cha
 	if err != nil {
 		return nil, err
 	}
-	if after < pruned {
-		return nil, &ChangesPrunedError{After: after, PrunedThrough: pruned}
+	page.PrunedThrough = pruned
+	if !backward && q.After < pruned {
+		return nil, &ChangesPrunedError{After: q.After, PrunedThrough: pruned}
 	}
-	return events, nil
+
+	page.Scanned = len(events)
+	if len(events) > 0 {
+		page.LastScanned = events[len(events)-1].Seq
+	}
+	if !backward && len(q.Kinds) > 0 {
+		keep := make(map[string]bool, len(q.Kinds))
+		for _, k := range q.Kinds {
+			keep[k] = true
+		}
+		kept := events[:0:0]
+		for _, ev := range events {
+			if keep[ev.Kind] {
+				kept = append(kept, ev)
+			}
+		}
+		events = kept
+	}
+	if q.Explain {
+		if page.Labels, err = g.explainChanges(ctx, tx, events); err != nil {
+			return nil, err
+		}
+	}
+	page.Events = events
+	return page, nil
 }
 
 // lookupInvalidations fills in the reason and producer of node and edge

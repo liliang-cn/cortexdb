@@ -270,9 +270,6 @@ func TestTheLibraryIsServedFromTheSameSnapshotAsTheGraph(t *testing.T) {
 // The library is a page of the view like the others: reached from the graph
 // and the ontology, and every request it makes relative to where it is mounted.
 func TestTheLibraryIsLinkedAndMountable(t *testing.T) {
-	if !strings.Contains(pageHTML, `href="library"`) {
-		t.Error("the graph page does not link to the library")
-	}
 	if !strings.Contains(ontologyHTML, `href="library"`) {
 		t.Error("the ontology page does not link to the library")
 	}

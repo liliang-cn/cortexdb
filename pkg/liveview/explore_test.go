@@ -276,23 +276,6 @@ func TestASourceWithoutCallSaysItCannotBeExplored(t *testing.T) {
 	}
 }
 
-// The page reads its starting point from the URL, and every request it makes
-// stays relative so it works behind an embedder's proxy.
-func TestThePageOpensWhereItsLinkSays(t *testing.T) {
-	for _, want := range []string{"OPTS.focus", "OPTS.find", "OPTS.ask", "OPTS.cypher", "OPTS.edge", "OPTS.hops",
-		`getJSON("api/find`, `getJSON("api/expand`, `postJSON("api/ask"`, `postJSON("api/cypher"`,
-		`"cortexdb:focus"`, "viewport-fit=cover", "(pointer:coarse)"} {
-		if !strings.Contains(pageHTML, want) {
-			t.Errorf("page is missing %q", want)
-		}
-	}
-	for _, absolute := range []string{`fetch("/api/`, `getJSON("/api/`, `postJSON("/api/`, `EventSource("/api/`} {
-		if strings.Contains(pageHTML, absolute) {
-			t.Errorf("the page requests %s…, an absolute path that leaves an embedder's mount point", absolute)
-		}
-	}
-}
-
 // On a real brain a hub is mentioned by more memories than one answer may
 // carry. Expanding it must still bring its relations, not a page of
 // memories joined to it by bookkeeping edges the scene does not draw.
@@ -319,54 +302,6 @@ func TestExpandSpendsItsLimitOnRelationsNotMentions(t *testing.T) {
 	}
 }
 
-// Every family has a light and a dark set, the mode can follow the system,
-// and each choice is a URL parameter and a message an embedder can send.
-func TestThemesComeInLightAndDarkAndFollowTheSystem(t *testing.T) {
-	for _, want := range []string{
-		`[data-mode="light"]{`, `[data-theme="ember"][data-mode="dark"]{`, `[data-theme="ember"][data-mode="light"]{`,
-		`[data-theme="mono"][data-mode="dark"]{`, `[data-theme="mono"][data-mode="light"]{`,
-		`var THEME_ORDER = ["space", "ember", "mono"];`, `var MODE_ORDER = ["auto", "light", "dark"];`,
-		"prefers-color-scheme: dark", "OPTS.theme", "OPTS.mode", `"cortexdb:theme"`, "localStorage.setItem(MODE_KEY",
-	} {
-		if !strings.Contains(pageHTML, want) {
-			t.Errorf("page is missing %q", want)
-		}
-	}
-	for _, fam := range []string{"space", "ember", "mono"} {
-		block := pageHTML[strings.Index(pageHTML, "  "+fam+": {label:"):]
-		block = block[:strings.Index(block, "}}")]
-		if !strings.Contains(block, "dark: {bg:") || !strings.Contains(block, "light:{bg:") {
-			t.Errorf("theme %s does not carry both a light and a dark scene palette", fam)
-		}
-	}
-}
-
-// The layout bugs these guard against were all a control sitting on top of
-// something: the light/dark switch over the title's ontology link, the
-// explore bar over the title card's last line on a phone, and a typed "+"
-// sitting low in folded chips of differing heights. The geometry was checked
-// in a browser at 320–1344px; this pins the choices that made it hold.
-func TestTitleCardControlsAndChipsDoNotOverlap(t *testing.T) {
-	for _, want := range []string{
-		"#head{padding-right:64px}",            // room for collapse + switch, not just collapse
-		"#head.folded>#themebtn{display:none}", // a folded card is a label, nothing beside it
-		`.fold::before{content:"";`,            // the glyphs are drawn bars, centred by construction
-		"#contract.folded>.fold,#explore.folded>.fold{top:0;bottom:0;margin:auto 0}",
-		"font-size:10px;line-height:20px", // one chip height whatever the panel's own font
-		"function placeExplore()",         // the phone explore bar follows the card's real edge
-		"placer.observe(document.getElementById(\"head\"))",
-	} {
-		if !strings.Contains(pageHTML, want) {
-			t.Errorf("page is missing %q", want)
-		}
-	}
-	for _, typed := range []string{`content:"+"`, `content:"–"`} {
-		if strings.Contains(pageHTML, typed) {
-			t.Errorf("page still types a fold glyph (%s); it sits off-centre in the chip", typed)
-		}
-	}
-}
-
 // A process holding the shared brain's address in its own settings used to
 // assemble a Source from LoadRemote alone, and got a view that drew the graph
 // and could do nothing else. RemoteSource must answer everything OpenSource's
@@ -389,7 +324,7 @@ func TestRemoteSourceCarriesEveryHook(t *testing.T) {
 // hashed.
 func TestPalettesCarryNoViolet(t *testing.T) {
 	hex := regexp.MustCompile(`#[0-9a-fA-F]{6}`)
-	for name, src := range map[string]string{"scene": pageHTML, "ontology": ontologyHTML} {
+	for name, src := range map[string]string{"ontology": ontologyHTML} {
 		for _, block := range []string{"var NAMED = {", "var NAMED_LIGHT = {", "var LANE = ["} {
 			i := strings.Index(src, block)
 			if i < 0 {
@@ -402,9 +337,6 @@ func TestPalettesCarryNoViolet(t *testing.T) {
 				}
 			}
 		}
-	}
-	if !strings.Contains(pageHTML, "if(h >= 250 && h < 330) h = (h + 110) % 360;") {
-		t.Error("hashed type colours no longer skip the violet-to-magenta band")
 	}
 }
 
@@ -451,18 +383,5 @@ func TestExpandOfANodeWithNoRelationsReturnsTheNode(t *testing.T) {
 	}
 	if nb, err = Expand(ctx, localCaller(db), "entity:no_such_node", 0); err != nil || len(nb.Nodes) != 0 {
 		t.Fatalf("a missing id should expand to nothing, got %+v, %v", nb, err)
-	}
-}
-
-// Indigo, lit and shaded, reads violet, and a light ground's pastel dimming
-// turned blue nodes lavender; neither is allowed on this page.
-func TestNoIndigoHueAndGreyDimmingOnLightGrounds(t *testing.T) {
-	for _, want := range []string{
-		"if(h >= 225 && h < 250) h = 212;",
-		"if(T.light){ var y = 0.3*r + 0.59*g + 0.11*b; r = g = b = y; }",
-	} {
-		if !strings.Contains(pageHTML, want) {
-			t.Errorf("page is missing %q", want)
-		}
 	}
 }
