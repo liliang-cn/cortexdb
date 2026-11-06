@@ -116,7 +116,7 @@ func TestTheRecallsRoutesReadTheLogAndTakeMarksFromThePage(t *testing.T) {
 func TestTheRecallsRoutesSayWhenTheLogIsOff(t *testing.T) {
 	_, h := recallsServer(t)
 	var out map[string]string
-	if code := get(t, h, "/api/recalls", &out); code == 200 || !strings.Contains(out["error"], "recall log is off") {
+	if code := get(t, h, "/api/recalls", &out); code != http.StatusConflict || !strings.Contains(out["error"], "recall log is off") {
 		t.Fatalf("an off log: %d %v", code, out)
 	}
 }

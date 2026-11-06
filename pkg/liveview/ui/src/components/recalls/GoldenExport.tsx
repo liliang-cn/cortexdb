@@ -1,6 +1,6 @@
 import { useEffect, useState, type MouseEvent } from "react";
 import { Download, Loader2 } from "lucide-react";
-import { apiUrl } from "@/api";
+import { ApiError, apiUrl } from "@/api";
 import { GOLDEN_PATH, recallsApi } from "@/api/recalls";
 import { Button } from "@/components/ui/button";
 import { countCases, goldenFileName, isLogOff } from "@/lib/recalls";
@@ -48,7 +48,8 @@ export function GoldenExport({ source, t }: { source: string; t: RecallsText }) 
       setState({ kind: "said", text: t.goldenDone(n) });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setState({ kind: "said", text: isLogOff(message) ? t.offTitle : t.goldenFailed(message), bad: true });
+      const off = isLogOff(err instanceof ApiError ? err.status : null);
+      setState({ kind: "said", text: off ? t.offTitle : t.goldenFailed(message), bad: true });
     }
   };
 

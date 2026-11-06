@@ -27,7 +27,7 @@ export function LogOff({ t }: { t: RecallsText }) {
  * readable from this kind of source, or the server's own sentence.
  */
 export function ReadFailure({ error, title, t, onRetry }: { error: Failure; title: string; t: RecallsText; onRetry: () => void }) {
-  if (isLogOff(error.message)) return <LogOff t={t} />;
+  if (isLogOff(error.status)) return <LogOff t={t} />;
   // 501 is the server saying this source has no tools to run (errNotExplorable).
   if (error.status === 501) return <Empty title={t.noSourceTitle}>{t.noSourceBody}</Empty>;
   return (

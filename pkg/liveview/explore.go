@@ -692,6 +692,12 @@ func writeExplore(w http.ResponseWriter, v any, err error) {
 			// than an error. A local brain's tools return the sentinel; a
 			// shared brain's tools service sends it as codes.NotFound.
 			code = http.StatusNotFound
+		case errors.Is(err, cortexdb.ErrRecallLogOff), status.Code(err) == codes.FailedPrecondition:
+			// The brain is fine and the request needs something it was not
+			// started with: the recall log, or a condition a write did not
+			// meet. 409, so a page can say so in its own words without
+			// reading the sentence.
+			code = http.StatusConflict
 		}
 		w.WriteHeader(code)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})

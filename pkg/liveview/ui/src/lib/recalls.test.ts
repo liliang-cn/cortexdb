@@ -289,8 +289,9 @@ describe("the records view", () => {
 
 describe("errors", () => {
   it("knows the server's sentence for a log that is off", () => {
-    expect(isLogOff("the recall log is off on this brain: start it with CORTEXDB_RECALL_LOG=1 (it stores queries; see CORTEXDB_RECALL_LOG_DAYS)")).toBe(true);
-    expect(isLogOff("recall \"x\" not found")).toBe(false);
+    expect(isLogOff(409)).toBe(true);
+    expect(isLogOff(404)).toBe(false);
+    expect(isLogOff(502)).toBe(false);
     expect(isLogOff(null)).toBe(false);
   });
 });

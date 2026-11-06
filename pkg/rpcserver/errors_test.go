@@ -2,6 +2,8 @@ package rpcserver
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"google.golang.org/grpc/codes"
@@ -45,5 +47,18 @@ func TestToStatusMapsOntologyRejectionToInvalidArgument(t *testing.T) {
 	}
 	if got := status.Convert(err).Message(); got != `object type "Airport" must declare primary_key` {
 		t.Fatalf("message should reach the caller unchanged, got %q", got)
+	}
+}
+
+// A recall-log tool on a brain without the log is a precondition the caller
+// can act on, never an internal fault, and the sentence that says how to turn
+// the log on reaches the caller whole.
+func TestToStatusMapsRecallLogOffToFailedPrecondition(t *testing.T) {
+	err := toStatus(fmt.Errorf("recall_log_list: %w", cortexdb.ErrRecallLogOff))
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("expected FailedPrecondition, got %s (%v)", status.Code(err), err)
+	}
+	if got := status.Convert(err).Message(); !strings.Contains(got, "CORTEXDB_RECALL_LOG=1") {
+		t.Fatalf("the way to turn the log on was lost: %q", got)
 	}
 }

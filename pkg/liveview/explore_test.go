@@ -344,10 +344,11 @@ func TestExpandOfANodeWithNoRelationsReturnsTheNode(t *testing.T) {
 	}
 }
 
-// A tool's "not there" is the request's answer, whichever brain gave it: a
-// local brain's error wraps core.ErrNotFound, a shared brain's arrives as
-// codes.NotFound. Anything else the brain failed at stays a bad gateway.
-func TestANotFoundAnswerIsA404FromEitherBrain(t *testing.T) {
+// A tool's "not there" and "not on this brain" are the request's answer,
+// whichever brain gave it: a local brain's error wraps the sentinel, a shared
+// brain's arrives as its gRPC code. Anything else the brain failed at stays a
+// bad gateway.
+func TestARequestsOwnAnswerIsNotABadGatewayFromEitherBrain(t *testing.T) {
 	for name, tc := range map[string]struct {
 		err  error
 		want int

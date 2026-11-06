@@ -386,7 +386,7 @@ func (db *DB) recallLogReadable(ctx context.Context) error {
 	}
 	var n int
 	if err := db.queryRow(ctx, `SELECT COUNT(*) FROM recall_log WHERE 1 = 0`).Scan(&n); err != nil {
-		return errRecallLogOff
+		return ErrRecallLogOff
 	}
 	return nil
 }
@@ -403,9 +403,11 @@ func (db *DB) recallLogRetention() time.Duration {
 // errBadTraceID refuses a trace filter that is not a trace id.
 var errBadTraceID = errors.New("trace_id must be a W3C trace id: 32 lowercase hex characters")
 
-// errRecallLogOff is what the recall-log tools answer on a brain that does
-// not keep one.
-var errRecallLogOff = errors.New("the recall log is off on this brain: start it with CORTEXDB_RECALL_LOG=1 (it stores queries; see CORTEXDB_RECALL_LOG_DAYS)")
+// ErrRecallLogOff is what the recall-log tools answer on a brain that does
+// not keep one. A caller tells it from a failure with errors.Is; over gRPC it
+// is codes.FailedPrecondition, since the brain is fine and only the request
+// needs something it was not started with.
+var ErrRecallLogOff = errors.New("the recall log is off on this brain: start it with CORTEXDB_RECALL_LOG=1 (it stores queries; see CORTEXDB_RECALL_LOG_DAYS)")
 
 // recallLogScope is the key filter for a reader: a confined key reads its
 // own recalls only; any other caller reads every recall, or the ones of the

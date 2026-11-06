@@ -315,9 +315,14 @@ export function windowDays(since: string, now: number): number {
 
 // ---- errors ---------------------------------------------------------------
 
-/** The server's way of saying this brain keeps no recall log. */
-export function isLogOff(message: string | null | undefined): boolean {
-  return /recall log is off/i.test(message ?? "");
+/**
+ * Whether a failed read means the brain keeps no recall log. The routes answer
+ * that with a 409 (the brain is fine; the request needs a log it was not
+ * started with), read from the status and never from the sentence, which the
+ * page shows in its own words with the setting to turn it on.
+ */
+export function isLogOff(status: number | null | undefined): boolean {
+  return status === 409;
 }
 
 // ---- golden export --------------------------------------------------------
