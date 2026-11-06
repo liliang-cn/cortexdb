@@ -119,6 +119,17 @@ All notable changes to this project will be documented in this file.
   this still answers `Internal`, and the Recalls page shows its sentence.
 - The graph page reads `?replay=`, `?focus=` and `?color=` again when a link
   is followed inside the app, not only on a full load.
+- The live view's graph no longer flickers while it is handled (#133). A hover
+  centres the view once the pointer has rested on a node for about 0.1 s and
+  lets go once it has been off for about 0.2 s, never while the camera is
+  being dragged, and lets go when the pointer leaves the canvas; moving from
+  one node to the next passes straight between them. What a focus dims eases
+  in and out over about 0.2 s (at once under reduced motion). A name already
+  on the canvas keeps its place against one that drifts into it, names fade
+  in and out, and a node near the size at which it is named no longer gains
+  and loses its name as the camera moves. The labels of parallel relations
+  between two nodes each get their own line; every one after the first used
+  to be taken for an overlap and was never drawn.
 
 ## [2.145.0] - 2026-11-03
 

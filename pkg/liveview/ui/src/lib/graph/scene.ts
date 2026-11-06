@@ -34,6 +34,7 @@ import {
 import type { Edge, Node } from "@/api";
 import { grade as gradeSemantic } from "@/lib/semantics";
 import { CO_OCCURS, heatColor, mixHex, predicateColor, typeColor } from "./colors";
+import { EMPHASIS_TAU_MS, approach } from "./ease";
 import { aimOffset, coveredInsets, type Insets } from "./insets";
 import { LabelLayer, type LabelHost } from "./labels";
 import {
@@ -88,7 +89,9 @@ interface RNode {
   radius: number;
   base: Color;
   dimmed: Color;
+  /** Whether it is outside the focus, and how far it has dimmed towards that (0 to 1). */
   dim: boolean;
+  dimT: number;
   hidden: boolean;
   mesh: Mesh;
   mat: MeshLambertMaterial;
@@ -110,7 +113,12 @@ interface RLink {
   grade: string;
   base: Color;
   dimmed: Color;
+  /** Outside the focus, and how far it has dimmed (0 to 1). */
   dim: boolean;
+  dimT: number;
+  /** Inside a focus, drawn at full strength, and how far it has risen to that (0 to 1). */
+  lift: boolean;
+  liftT: number;
   hidden: boolean;
   hover: boolean;
   arrow: boolean;
@@ -134,6 +142,10 @@ const ARROW_LENGTH = 8;
 const LINK_WIDTH = 1;
 const FADE_OUT_MS = 1400;
 const MAX_PULSES = 40;
+/** A node is named for being near once its sphere is this many pixels across, and stays named down to the second. */
+const NEAR_ENTER_PX = 7;
+const NEAR_KEEP_PX = 5;
+const NEAR_HELD_BIAS = 1.25;
 
 const nodeGeometry = new SphereGeometry(1, 18, 14);
 const dotGeometry = new SphereGeometry(1, 8, 6);
@@ -197,6 +209,11 @@ export class GraphScene {
   private lastFrame = 0;
   private disposed = false;
   private readonly resizer: ResizeObserver;
+  /** How fast emphasis follows the focus; 0 (at once) when the person asks for reduced motion. */
+  private readonly reduced = typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null;
+  private get tau(): number {
+    return this.reduced?.matches ? 0 : EMPHASIS_TAU_MS;
+  }
   private readonly tmp = new Color();
   private nearCache = { at: 0, ids: [] as string[] };
   private hubCache = { at: 0, ids: [] as string[] };
@@ -380,6 +397,7 @@ export class GraphScene {
       base: new Color("#94a3b8"),
       dimmed: new Color("#cbd5e1"),
       dim: false,
+      dimT: 0,
       hidden: false,
       mesh,
       mat,
@@ -401,6 +419,9 @@ export class GraphScene {
       base: new Color("#94a3b8"),
       dimmed: new Color("#cbd5e1"),
       dim: false,
+      dimT: 0,
+      lift: false,
+      liftT: 0,
       hidden: false,
       hover: false,
       arrow: false,
@@ -489,6 +510,7 @@ export class GraphScene {
     for (const n of this.nodes.values()) {
       n.hidden = !nodeShown(this.filters, n.src);
       n.dim = focused && !f.nodes.has(n.id);
+      this.toward(n);
       const hex = this.nodeBase(n);
       n.base.set(hex);
       n.dimmed.set(mixHex(hex, bg, p.dark ? 0.78 : 0.82));
@@ -499,6 +521,8 @@ export class GraphScene {
     for (const l of this.links.values()) {
       l.hidden = !edgeShown(this.filters, l.src, nodeView);
       l.dim = focused && !f.edges.has(l.key);
+      l.lift = focused && !l.dim;
+      this.toward(l);
       const hex = this.linkBase(l);
       l.base.set(hex);
       l.dimmed.set(mixHex(hex, bg, 0.9));
@@ -522,9 +546,10 @@ export class GraphScene {
   private paintNode(n: RNode, now: number): void {
     const p = this.palette;
     if (!p) return;
-    let opacity = n.dim ? 0.4 : 1;
-    let scale = n.dim ? n.radius * 0.72 : n.radius;
-    const c = this.tmp.copy(n.dim ? n.dimmed : n.base);
+    const d = n.dimT;
+    let opacity = 1 - 0.6 * d;
+    let scale = n.radius * (1 - 0.28 * d);
+    const c = this.tmp.copy(n.base).lerp(n.dimmed, d);
     let haloOpacity = 0;
     let haloScale = 0;
     if (n.glow) {
@@ -561,9 +586,11 @@ export class GraphScene {
     if (!p) return;
     const dark = p.dark;
     const quiet = l.label === CO_OCCURS;
-    let opacity = l.dim ? 0.07 : this.focus.kind === "none" ? (quiet ? 0.3 : dark ? 0.8 : 0.75) : 1;
+    const rest = quiet ? 0.3 : dark ? 0.8 : 0.75;
+    let opacity = rest + (1 - rest) * l.liftT;
+    opacity += (0.07 - opacity) * l.dimT;
     if (l.hover) opacity = 1;
-    const c = this.tmp.copy(l.dim ? l.dimmed : l.base);
+    const c = this.tmp.copy(l.base).lerp(l.dimmed, l.dimT);
     if (l.glow) {
       const k = 1 - (now - l.glow.start) / l.glow.span;
       if (k <= 0) {
@@ -588,6 +615,25 @@ export class GraphScene {
     }
   }
 
+  /** Whether an item's emphasis has reached what the focus asks of it. */
+  private settled(item: RNode | RLink): boolean {
+    if (item.dimT !== (item.dim ? 1 : 0)) return false;
+    return "radius" in item || item.liftT === (item.lift ? 1 : 0);
+  }
+
+  /**
+   * After a restyle has set an item's targets: let the frame loop ease it
+   * there, or put it there at once when motion is reduced.
+   */
+  private toward(item: RNode | RLink): void {
+    if (this.tau <= 0) {
+      item.dimT = item.dim ? 1 : 0;
+      if (!("radius" in item)) item.liftT = item.lift ? 1 : 0;
+      return;
+    }
+    if (!this.settled(item)) this.active.add(item);
+  }
+
   private endGlow(item: RNode | RLink): void {
     const g = item.glow;
     if (!g) return;
@@ -596,7 +642,7 @@ export class GraphScene {
       g.halo.material.dispose();
     }
     item.glow = null;
-    this.active.delete(item);
+    if (this.settled(item)) this.active.delete(item);
     // A link that was lit gave up its arrowhead when the glow ended.
     if (!("radius" in item) && !item.arrow) this.restyleIn = Math.max(this.restyleIn, 2);
     else if (!("radius" in item)) this.restyleIn = Math.max(this.restyleIn, 2);
@@ -708,6 +754,7 @@ export class GraphScene {
         this.endGlow(n);
         n.mat.dispose();
         this.nodes.delete(id);
+        this.active.delete(n);
         removed = true;
       }
     }
@@ -717,6 +764,7 @@ export class GraphScene {
       if (ended || orphan) {
         l.mat.dispose();
         this.links.delete(k);
+        this.active.delete(l);
         removed = true;
       }
     }
@@ -740,9 +788,16 @@ export class GraphScene {
 
     let dyingDue = false;
     for (const item of this.active) {
-      if ("radius" in item) this.paintNode(item, now);
-      else this.paintLink(item, now);
+      if ("radius" in item) {
+        item.dimT = approach(item.dimT, item.dim ? 1 : 0, dt, this.tau);
+        this.paintNode(item, now);
+      } else {
+        item.dimT = approach(item.dimT, item.dim ? 1 : 0, dt, this.tau);
+        item.liftT = approach(item.liftT, item.lift ? 1 : 0, dt, this.tau);
+        this.paintLink(item, now);
+      }
       if (item.dying && now - item.dying.start >= item.dying.span) dyingDue = true;
+      else if (!item.glow && !item.dying && this.settled(item)) this.active.delete(item);
     }
     if (dyingDue) this.finishDying(now);
     if (this.pulses.length) this.tickPulses(now);
@@ -801,10 +856,17 @@ export class GraphScene {
     return this.hubCache.ids;
   }
 
-  /** Nodes the camera has come close enough to that their sphere is a few pixels across, largest first. */
+  /**
+   * Nodes the camera has come close enough to that their sphere is a few
+   * pixels across, largest first. A node already named keeps its place down to
+   * a smaller size than a newcomer needs, and ranks a little ahead of one the
+   * same size, so a node near the line is not named and unnamed by turns as
+   * the camera drifts.
+   */
   private nearIds(): string[] {
     const now = performance.now();
     if (now - this.nearCache.at < 200) return this.nearCache.ids;
+    const before = new Set(this.nearCache.ids);
     const cam = this.G.camera();
     const d = cam.getWorldDirection(this.tmpVec);
     const w = this.el.clientWidth;
@@ -816,10 +878,11 @@ export class GraphScene {
       const along = (n.x - cam.position.x) * d.x + (n.y - cam.position.y) * d.y + (n.z - cam.position.z) * d.z;
       if (along <= 1) continue;
       const px = (n.radius * focal) / along;
-      if (px < 7) continue;
+      const held = before.has(n.id);
+      if (px < (held ? NEAR_KEEP_PX : NEAR_ENTER_PX)) continue;
       const s = this.G.graph2ScreenCoords(n.x, n.y, n.z);
       if (s.x < 0 || s.y < 0 || s.x > w || s.y > h) continue;
-      found.push([px, n.id]);
+      found.push([held ? px * NEAR_HELD_BIAS : px, n.id]);
     }
     found.sort((a, b) => b[0] - a[0]);
     this.nearCache = { at: now, ids: found.slice(0, 36).map((x) => x[1]) };
