@@ -387,6 +387,13 @@ func TestTheOntologyHistoryRouteListsEveryVersionAndPages(t *testing.T) {
 		t.Errorf("the first page is two and has more: %+v", first)
 	}
 
+	// A schema nobody saved is not there, which is not the brain failing.
+	var missing map[string]string
+	if code := getStatus(t, ts.URL+"/api/ontology/history?schema=nobody-saved-this", &missing); code != http.StatusNotFound ||
+		!strings.Contains(missing["error"], "has no history") {
+		t.Errorf("an unknown schema answered %d %v, want 404 saying it has no history", code, missing)
+	}
+
 	for _, q := range []string{"", "schema=people&limit=-1", "schema=people&offset=x"} {
 		if code := getStatus(t, ts.URL+"/api/ontology/history?"+q, nil); code != http.StatusBadRequest {
 			t.Errorf("?%s answered %d, want 400", q, code)
@@ -425,26 +432,5 @@ func TestTheHistoryToolsAreOnTheViewsReadOnlyList(t *testing.T) {
 		if !exploreAllowed(name) {
 			t.Errorf("%s is not a tool the view may run", name)
 		}
-	}
-}
-
-func TestTheHistoryPagesAreWiredAndAskRelatively(t *testing.T) {
-	_, ts := historyBrain(t)
-	page := httpGet(t, ts.URL+"/ontology-history")
-	for _, want := range []string{"Ontology versions", `getJSON("api/ontology/history?`, `getJSON("api/ontology/diff?`, `data-mode`} {
-		if !strings.Contains(page, want) {
-			t.Errorf("the versions page lacks %q", want)
-		}
-	}
-	for _, p := range []string{ontologyHistoryHTML} {
-		if strings.Contains(p, `fetch("/api/`) || strings.Contains(p, `getJSON("/api/`) {
-			t.Error("a page fetches an absolute path, so it breaks under a mount prefix")
-		}
-	}
-	if !strings.Contains(ontologyHTML, `href="ontology-history"`) {
-		t.Error("the ontology page cannot reach the version list")
-	}
-	if !strings.Contains(ontologyHistoryHTML, `"light"`) {
-		t.Error("the new views must default to the light theme")
 	}
 }

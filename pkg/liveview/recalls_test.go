@@ -62,7 +62,7 @@ func get(t *testing.T, h http.Handler, path string, out any) int {
 	return rec.Code
 }
 
-func TestTheRecallsPageReadsTheLogAndTakesMarksFromItself(t *testing.T) {
+func TestTheRecallsRoutesReadTheLogAndTakeMarksFromThePage(t *testing.T) {
 	db, h := recallsServer(t, cortexdb.WithRecallLog(cortexdb.RecallLogOptions{}))
 	ctx := context.Background()
 	if _, err := db.SaveMemory(ctx, cortexdb.MemorySaveRequest{MemoryID: "m1", Scope: "global", Content: "the brain's VIP is 192.168.123.253"}); err != nil {
@@ -70,12 +70,6 @@ func TestTheRecallsPageReadsTheLogAndTakesMarksFromItself(t *testing.T) {
 	}
 	if _, err := db.KnowledgeMemory().Recall(ctx, cortexdb.KnowledgeMemoryRecallRequest{Query: "brain VIP"}); err != nil {
 		t.Fatal(err)
-	}
-
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("GET", "/recalls", nil))
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"recalls `+"\\u003c"+`test`+"\\u003e"+`"`) || strings.Contains(rec.Body.String(), "__SOURCE__") {
-		t.Fatalf("page: %d, source not injected safely: %q", rec.Code, rec.Body.String()[:200])
 	}
 
 	var list cortexdb.RecallLogListResponse
@@ -111,7 +105,7 @@ func TestTheRecallsPageReadsTheLogAndTakesMarksFromItself(t *testing.T) {
 	if code := mark("http://example.com", "application/json"); code != 200 {
 		t.Fatalf("a mark from the page: %d", code)
 	}
-	rec = httptest.NewRecorder()
+	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/recalls/golden", nil))
 	if !strings.Contains(rec.Body.String(), `"expected":["m1"]`) || !strings.Contains(rec.Header().Get("Content-Disposition"), "golden") {
 		t.Fatalf("golden: %q", rec.Body.String())
@@ -122,14 +116,13 @@ func TestTheRecallsPageReadsTheLogAndTakesMarksFromItself(t *testing.T) {
 func TestTheRecallsRoutesSayWhenTheLogIsOff(t *testing.T) {
 	_, h := recallsServer(t)
 	var out map[string]string
-	if code := get(t, h, "/api/recalls", &out); code == 200 || !strings.Contains(out["error"], "recall log is off") {
+	if code := get(t, h, "/api/recalls", &out); code != http.StatusConflict || !strings.Contains(out["error"], "recall log is off") {
 		t.Fatalf("an off log: %d %v", code, out)
 	}
 }
 
-// /api/recalls?trace= keeps the timeline to one flow; the page reads ?trace
-// from its own URL and shows the trace a recall ran in.
-func TestTheRecallsPageFiltersByTrace(t *testing.T) {
+// /api/recalls?trace= keeps the timeline to one flow.
+func TestTheRecallsRouteFiltersByTrace(t *testing.T) {
 	db, h := recallsServer(t, cortexdb.WithRecallLog(cortexdb.RecallLogOptions{}))
 	const traceID = "4bf92f3577b34da6a3ce929d0e0e4736"
 	flow := observability.WithTraceparent(context.Background(), "00-"+traceID+"-00f067aa0ba902b7-01", "")
@@ -147,13 +140,5 @@ func TestTheRecallsPageFiltersByTrace(t *testing.T) {
 	}
 	if code := get(t, h, "/api/recalls?trace=not-a-trace", nil); code == http.StatusOK {
 		t.Fatal("a malformed trace filter was accepted")
-	}
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("GET", "/recalls?trace="+traceID, nil))
-	body := rec.Body.String()
-	for _, want := range []string{`Q.get("trace")`, `p.set("trace", state.trace)`, "r.trace_id"} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("page lacks %q", want)
-		}
 	}
 }

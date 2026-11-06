@@ -494,12 +494,6 @@ func libraryDocs(ctx context.Context, call Caller) ([]LibraryDoc, error) {
 	return docs, nil
 }
 
-func (s *Server) handleLibraryPage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte(libraryHTML))
-}
-
 // handleLibrary answers the library page's opening frame.
 func (s *Server) handleLibrary(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")

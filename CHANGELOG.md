@@ -75,10 +75,21 @@ All notable changes to this project will be documented in this file.
   default, node types get distinct hues by how common they are, and a page
   opened on a node frames it in the part of the screen the panels leave
   uncovered. The view can be mounted under a prefix of another mux
-  (`http.StripPrefix`); the server tells the app its base. The ontology,
-  versions, recalls and library pages are unchanged and are linked from the
-  app's top bar. The graph's three colour presets (`?theme=space|ember|mono`)
-  are gone: the app has one palette, light or dark (`?mode=`).
+  (`http.StripPrefix`); the server tells the app its base. The graph's three
+  colour presets (`?theme=space|ember|mono`) are gone: the app has one
+  palette, light or dark (`?mode=`).
+- The live view's other four pages are in the app too (#131), at the same paths
+  and with the same query options, so `serve_graph_3d`'s `library_url` and
+  `/recalls?trace=` links still land; Go now writes no HTML of its own.
+  **Ontology** draws the schema as lanes, with its findings, the draft review
+  and its threshold, and reads itself again when a schema is saved;
+  **Versions** (`/ontology-history`) keeps the compared pair in the link
+  (`?schema=&from=&to=`) and shows a new version as it is saved; **Recalls**
+  picks up a new recall as it is logged; **Library** is the same reading room,
+  lit by its windows in the light theme and by lamps in the dark. Recalls and
+  Library speak Chinese and English (`?lang=`, otherwise the browser's
+  language). The four load when first visited, so the first page is no
+  heavier.
 - `changes_since` reads backwards and explains (#127). `before` returns the
   newest events below a seq, newest first (negative: from the head), with
   `next_cursor` the `before` of the next older page. `explain` adds to node
@@ -96,6 +107,18 @@ All notable changes to this project will be documented in this file.
   (`media_score` on a hit), past a cosine floor (`WithMediaScoreFloor`,
   0.2) and 85% of the best media hit. New tool `search_media` searches it by
   text or by an image. An unchanged file is not embedded again.
+
+### Fixed
+
+- The live view answers a request's own not-found with 404, not 502, from a
+  local file and from a shared brain (`codes.NotFound`): an unknown schema on
+  `/api/ontology/history` is a 404 that says it has no history. A brain
+  without the recall log returns `cortexdb.ErrRecallLogOff`, which
+  `cortexdb-grpc` sends as `FailedPrecondition` and the view as 409, and the
+  page reads the status rather than the message. A shared brain older than
+  this still answers `Internal`, and the Recalls page shows its sentence.
+- The graph page reads `?replay=`, `?focus=` and `?color=` again when a link
+  is followed inside the app, not only on a full load.
 
 ## [2.145.0] - 2026-11-03
 

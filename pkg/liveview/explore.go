@@ -50,6 +50,10 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 	rpcv1 "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1"
@@ -677,8 +681,23 @@ func writeExplore(w http.ResponseWriter, v any, err error) {
 	w.Header().Set("Cache-Control", "no-store")
 	if err != nil {
 		code := http.StatusBadGateway
-		if errors.Is(err, errNotExplorable) {
+		switch {
+		case errors.Is(err, errNotExplorable):
 			code = http.StatusNotImplemented
+		case errors.Is(err, core.ErrNotFound), status.Code(err) == codes.NotFound:
+			// The brain answered, and what it said is that the thing asked
+			// about is not there (a schema with no saved versions, a recall
+			// the log no longer holds). That is the request's fault, not an
+			// upstream failure, and a page shows it as an empty state rather
+			// than an error. A local brain's tools return the sentinel; a
+			// shared brain's tools service sends it as codes.NotFound.
+			code = http.StatusNotFound
+		case errors.Is(err, cortexdb.ErrRecallLogOff), status.Code(err) == codes.FailedPrecondition:
+			// The brain is fine and the request needs something it was not
+			// started with: the recall log, or a condition a write did not
+			// meet. 409, so a page can say so in its own words without
+			// reading the sentence.
+			code = http.StatusConflict
 		}
 		w.WriteHeader(code)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})

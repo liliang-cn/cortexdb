@@ -35,6 +35,11 @@ func toStatus(err error) error {
 	if errors.Is(err, cortexdb.ErrConflictingConditions) {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
+	// A recall-log tool on a brain started without the log: nothing failed,
+	// the request needs a log this brain does not keep.
+	if errors.Is(err, cortexdb.ErrRecallLogOff) {
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
 	msg := err.Error()
 	lower := strings.ToLower(msg)
 	switch {

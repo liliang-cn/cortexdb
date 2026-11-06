@@ -265,26 +265,16 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 	}
 
 	mux := http.NewServeMux()
-	// The single-page app: its four client routes answer with the embedded
-	// index, its hashed build files with immutable assets, and everything else
+	// The single-page app: its client routes answer with the embedded index, its hashed build files with immutable assets, and everything else
 	// that is not a page of the old kind or an API is a 404. See spa.go.
 	mux.HandleFunc("/", s.handleSPA)
 	mux.HandleFunc("/assets/", s.handleAssets)
 	mux.HandleFunc("/api/", handleUnknownAPI)
 	mux.HandleFunc("/api/changes", s.handleChanges)
 	mux.HandleFunc("/api/entity", s.handleEntity)
-	// The ontology is a second page rather than a mode of the first. It draws
-	// a different graph — tens of declared types, not thousands of instances —
-	// with a different layout, a different cadence and different honesty
-	// states, and a switch on one page would have had to carry all of that
-	// while pretending the two were views of one thing.
-	mux.HandleFunc("/ontology", s.handleOntologyPage)
 	// The library is the same brain as the graph page, laid out as a reading
-	// room: a memory is a book on its project's shelf. A page of its own for
-	// the reason the ontology is one — a different layout with its own
-	// interactions — but drawn from the same snapshot, so the two never
-	// disagree about what is in the brain.
-	mux.HandleFunc("/library", s.handleLibraryPage)
+	// room: a memory is a book on its project's shelf, drawn from the same
+	// snapshot, so the two never disagree about what is in the brain.
 	mux.HandleFunc("/api/library", s.handleLibrary)
 	mux.HandleFunc("/api/library/card", s.handleLibraryCard)
 	mux.HandleFunc("/api/library/book", s.handleLibraryBook)
@@ -299,10 +289,8 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 	mux.HandleFunc("/api/cypher", s.handleCypher)
 	// History: git log for the graph and the ontology. See history.go.
 	mux.HandleFunc("/api/history", s.handleHistory)
-	mux.HandleFunc("/ontology-history", s.handleOntologyHistoryPage)
 	mux.HandleFunc("/api/ontology/history", s.handleOntologyHistory)
 	mux.HandleFunc("/api/ontology/diff", s.handleOntologyDiff)
-	mux.HandleFunc("/recalls", s.handleRecallsPage)
 	mux.HandleFunc("/api/recalls", s.handleRecalls)
 	mux.HandleFunc("/api/recalls/get", s.handleRecall)
 	mux.HandleFunc("/api/recalls/stats", s.handleRecallStats)
@@ -687,14 +675,6 @@ func (s *Server) handleContract(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	_ = json.NewEncoder(w).Encode(rep)
-}
-
-// handleOntologyPage serves the second page: what this brain is allowed to
-// talk about, rather than what is in it.
-func (s *Server) handleOntologyPage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte(ontologyHTML))
 }
 
 // handleOntology answers the ontology page.

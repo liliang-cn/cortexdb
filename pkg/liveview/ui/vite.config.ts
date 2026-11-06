@@ -23,10 +23,12 @@ export default defineConfig({
       output: {
         codeSplitting: {
           groups: [
-            // three is pinned, large, and only the Graph page loads it. It is
-            // pure ESM with no dependencies, so in a chunk of its own nothing
-            // else's hash leaks into its file name: the name changes only when
-            // three does, and a browser keeps it cached across app releases.
+            // three is pinned, large, and only the Graph and Library pages load
+            // it. It is pure ESM with no dependencies, so in a chunk of its own
+            // nothing else's hash leaks into its file name: the name changes
+            // only when three does, or when the app starts using a part of it
+            // it did not before, and a browser keeps it cached across the app
+            // releases in between.
             // The force-graph libraries stay with the page: one of them is
             // CommonJS, and the interop helpers it needs live in the app's
             // chunk, whose name changes with every build.

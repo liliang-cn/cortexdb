@@ -10,14 +10,15 @@
 // Tailwind, shadcn) built into pkg/liveview/dist, which is committed and
 // embedded, so installing the module needs no Node. Go serves only /api/*, the
 // app's hashed build files under /assets/ (cached for good, compressed once),
-// and the app's own routes (/, /changes, /entity, /activity), which all answer
-// with the index. The index is never cached and carries one tag the server
-// rewrites, <base href="/" data-cortexdb-base>: when the view is mounted under
-// a prefix of another mux, the prefix the mux stripped becomes the base, and
-// since every URL the app uses is resolved against it, that is all a mount
-// takes. An unknown /api/ path is a 404 and never the index. The older pages
-// (/ontology, /library, /recalls, /ontology-history) are Go pages still, served
-// as they were.
+// and the app's own routes (/, /changes, /entity, /activity, /recalls,
+// /library, /ontology, /ontology-history), which all answer with the index.
+// The index is never cached and carries one tag the server rewrites,
+// <base href="/" data-cortexdb-base>: when the view is mounted under a prefix
+// of another mux, the prefix the mux stripped becomes the base, and since
+// every URL the app uses is resolved against it, that is all a mount takes. An
+// unknown /api/ path is a 404 and never the index. Go writes no HTML of its
+// own: the last four routes were pages in Go strings until the app took them
+// over, at the same paths and with the same query options.
 //
 // # The stream
 //
@@ -132,7 +133,7 @@
 // about — tens of declared object types with link types between them, read
 // back through [Source.Ontology] as an [OntologyReport]. It is drawn as a
 // deterministic 2D diagram rather than in the scene next door, for the reason
-// spelled out over ontologyHTML: an ontology is tens of named nodes with
+// spelled out over the page (ui/src/pages/OntologyPage.tsx): an ontology is tens of named nodes with
 // declared structure — interfaces, link direction, a foreign key on one side —
 // and a force layout can only express distance.
 //

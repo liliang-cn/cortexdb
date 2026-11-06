@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -471,141 +471,16 @@ func TestTheOntologyEndpointPassesItsOptionsThroughToTheSource(t *testing.T) {
 	}
 }
 
-// A second page, not a second app: it lives on the same loopback listener, and
-// the root still belongs to the scene.
-func TestTheOntologyPageHasItsOwnPathAndDoesNotTakeTheRoot(t *testing.T) {
-	sv := startOntologyServer(t, func(context.Context, OntologyQuery) (OntologyReport, error) {
-		return buildOntologyReport(nil, "", nil), nil
-	})
-	if !strings.HasPrefix(sv.URL(), "http://127.0.0.1:") {
-		t.Fatalf("listening on %s, want 127.0.0.1 — the second page must not widen the bind", sv.URL())
-	}
-
-	page := httpGet(t, sv.URL()+"/ontology")
-	if !strings.Contains(page, "CortexDB — ontology") {
-		t.Error("/ontology does not serve the ontology page")
-	}
-	if strings.Contains(page, "ForceGraph3D") {
-		t.Error("the ontology page pulls in the scene's renderer")
-	}
-	if !strings.Contains(httpGet(t, sv.URL()+"/"), "data-cortexdb-base") {
-		t.Error("the app no longer owns the root")
-	}
-	resp, err := http.Get(sv.URL() + "/ontologyz")
-	if err != nil {
-		t.Fatalf("GET: %v", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("an unknown path answered %d, want 404", resp.StatusCode)
-	}
-}
-
-/* ---- the page ---- */
-
-// Same reason the stream and the contract are relative.
-func TestTheOntologyPageAsksForItsDataRelatively(t *testing.T) {
-	if strings.Contains(ontologyHTML, `fetch("/api/`) {
-		t.Error("the ontology is fetched at an absolute path, so the page breaks under a prefix")
-	}
-	if !strings.Contains(ontologyHTML, `fetch("api/ontology"`) {
-		t.Error("the page never asks for the ontology")
-	}
-}
-
 // One store, one word for how often it is read. A page that drifted from the
 // constant would be polling at a cadence nothing in Go describes.
 func TestTheOntologyPagePollsAtTheIntervalGoDeclares(t *testing.T) {
-	want := fmt.Sprintf("var ONTOLOGY_MS = %d;", OntologyInterval.Milliseconds())
-	if !strings.Contains(ontologyHTML, want) {
+	src, err := os.ReadFile("ui/src/lib/ontology.ts")
+	if err != nil {
+		t.Fatalf("the ontology page's cadence is no longer where this test reads it: %v", err)
+	}
+	want := fmt.Sprintf("export const ONTOLOGY_MS = %d;", OntologyInterval.Milliseconds())
+	if !strings.Contains(string(src), want) {
 		t.Errorf("the page does not poll at OntologyInterval (%s); expected %q", OntologyInterval, want)
-	}
-}
-
-// Every switch is also a URL option, because an embedder cannot press a
-// button — the rule the scene page's options block states and this page
-// inherits.
-func TestTheOntologyPageSwitchesAreAlsoUrlOptions(t *testing.T) {
-	for opt, expr := range map[string]string{
-		"?gap=0":     `OPTS.gap !== "0"`,
-		"?strays=0":  `OPTS.strays !== "0"`,
-		"?panels=0":  `OPTS.panels === "0"`,
-		"?schema=ID": `OPTS.schema`,
-	} {
-		if !strings.Contains(ontologyHTML, expr) {
-			t.Errorf("%s is not read from the URL (expected %s)", opt, expr)
-		}
-		if !strings.Contains(ontologyHTML, opt) {
-			t.Errorf("%s is not documented beside the others it belongs with", opt)
-		}
-	}
-}
-
-// Four states, four sentences. A page that branched on a list length instead
-// would render "nobody asked", "nothing is saved" and "you turned the count
-// off" as the same empty diagram.
-func TestTheOntologyPageHasADistinctSentenceForEachState(t *testing.T) {
-	for state, sentence := range map[string]string{
-		OntologyUnreadable: "This view cannot be asked for an ontology.",
-		OntologyAbsent:     "No ontology is saved in this store.",
-		OntologyUnused:     "An ontology is saved, and nothing in the store uses it.",
-		OntologyLive:       "The gap was not measured",
-	} {
-		if !strings.Contains(ontologyHTML, sentence) {
-			t.Errorf("state %q has no sentence of its own; expected %q", state, sentence)
-		}
-		if !strings.Contains(ontologyHTML, `"`+state+`"`) {
-			t.Errorf("the page never tests for state %q, so Go's decision is not the one drawn", state)
-		}
-	}
-}
-
-// The three things only readable from raw JSON today, and the reason the page
-// exists. Each has to be drawn, not merely carried in the payload.
-func TestTheOntologyPageDrawsTheGapTheCardinalityAndTheInterfaces(t *testing.T) {
-	for what, mark := range map[string]string{
-		// A declared type with nothing under it, dashed and labelled — and
-		// never confused with one whose count was not taken.
-		"a declaration nothing uses": `"unused"`,
-		"a count nobody took":        `"not counted"`,
-		// Per side, with the foreign key marked on the side that declares it.
-		"the ONE side":       `side.cardinality === "ONE" ? "1"`,
-		"the foreign key":    "side.foreign_key ?",
-		"the undeclared":     "undeclared_nodes",
-		"the interface lane": "data-iface",
-	} {
-		if !strings.Contains(ontologyHTML, mark) {
-			t.Errorf("the page does not draw %s (expected %s)", what, mark)
-		}
-	}
-}
-
-// ?panels=0 means "the diagram alone" here, the way it means "the graph alone"
-// next door. It hides chrome an embedder can do without — and the diagram, the
-// finding above it and the band below it are not chrome, they are the answer.
-func TestTheOntologyPageKeepsItsAnswerWhenTheChromeIsTurnedOff(t *testing.T) {
-	if !strings.Contains(ontologyHTML, `<div class="card" id="canvas">`) ||
-		!strings.Contains(ontologyHTML, `<div class="card" id="say">`) {
-		t.Error("the diagram and the finding are panels, so ?panels=0 blanks the page")
-	}
-	if !strings.Contains(ontologyHTML, ".bare .panel") {
-		t.Error("?panels=0 hides nothing")
-	}
-}
-
-// The layout is a deliberate departure from the scene next door and the reason
-// is written above the constant. If the page ever pulls in the force graph,
-// that reasoning has been quietly reversed.
-func TestTheOntologyPageIsNotTheSceneAgain(t *testing.T) {
-	for _, wrong := range []string{"ForceGraph3D", "UnrealBloomPass", "3d-force-graph"} {
-		if strings.Contains(ontologyHTML, wrong) {
-			t.Errorf("the ontology page uses %s; tens of named types are not a force layout's problem", wrong)
-		}
-	}
-	// And it reaches no CDN at all: the diagram is a few hundred lines of SVG
-	// and a third-party script would be a way for it to fail.
-	if strings.Contains(ontologyHTML, "https://") {
-		t.Error("the ontology page loads something off the network")
 	}
 }
 
