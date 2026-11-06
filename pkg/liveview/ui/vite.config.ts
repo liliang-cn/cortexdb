@@ -23,10 +23,14 @@ export default defineConfig({
       output: {
         codeSplitting: {
           groups: [
-            // three is pinned and only the Graph page loads it. In a chunk of
-            // its own its hash outlives app releases, so a browser keeps the
-            // bulk of the 3D stack cached across upgrades.
-            { name: (id: string) => (/node_modules[\\/](three|3d-force-graph|three-[^\\/]+)[\\/]/.test(id) ? "three" : null) },
+            // three is pinned, large, and only the Graph page loads it. It is
+            // pure ESM with no dependencies, so in a chunk of its own nothing
+            // else's hash leaks into its file name: the name changes only when
+            // three does, and a browser keeps it cached across app releases.
+            // The force-graph libraries stay with the page: one of them is
+            // CommonJS, and the interop helpers it needs live in the app's
+            // chunk, whose name changes with every build.
+            { name: "three", test: /node_modules[\\/]three[\\/]/ },
           ],
         },
       },
