@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.146.0] - 2026-11-06
+
 ### Added
 
 - `ingest_media` (`GraphRAGToolbox.IngestMedia`): images, recordings and
