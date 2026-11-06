@@ -474,6 +474,48 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 
 工具分组（100+ 个工具，进程内与 MCP 同名）：GraphRAG（`ingest_document`、`search_text`、`build_context`、`expand_graph`、`search_paths`、`find_nodes`、`delete_document_graph`）、统一检索（`cortex_query`）、knowledge/memory（`knowledge_save`、`memory_search` …）、KnowledgeMemory（`knowledge_memory_recall`、`_reflect`、`_consolidate`、`extract_conversation`）、KG（`knowledge_graph_query`、`_shacl_validate`、`apply_inference`）、ontology（`ontology_save`、`ontology_history`、`ontology_action_apply`、`object_set_resolve`）、历史（`graph_history`、`knowledge_graph_history`）、媒体（`ingest_media`、`search_media`）、维护（`vector_dimension_repair`、`sweep_expired`）。`cortexdb-mcp-stdio` 这个二进制额外提供 `render_graph_html`（交互式知识图谱视图）、`serve_graph_3d`、`side_graph_*`、`import_agent_memory`，本地模式下还有 `global_search` / `build_community_hierarchy`；`db.NewMCPServer` 只提供 facade 自己的工具。`memoryflow`/`graphflow`/`importflow`/`connector` 各自也暴露自己的 toolbox。
 
+### 实时视图
+
+`serve_graph_3d` 在大脑之上提供一个网页应用；在 shell 里用
+`cortexdb-mcp-stdio --graph-3d`，或在自己的程序里用 `liveview.New`，效果相同。
+默认浅色主题，可切换深色，手机和桌面都能用。
+
+- **Graph**：3D 图谱。关系带方向、按谓词着色；`co_occurs` 只说明两个名字一起出现过，
+  显示为灰色且默认隐藏。查找、提问、Cypher 和展开都面向整个库。带 `?focus=<id>` 的链接
+  打开时选中该节点，并把它放在面板没有遮住的那块屏幕正中。
+- **Changes**：每一条被新增、取代、撤回或合并的事实，最新的在前，用文字写出来
+  （"Leo lives_in Chengdu, replaced Beijing"），并标出决定取代的 schema。可按类型、操作、
+  写入者和实体筛选；新变化提交后即时出现。
+- **Entity**（`/entity?id=<id>`）：一个实体的关系，按谓词分组，分进和出两侧。每个当前值
+  写明它为什么生效，下面列出它取代的旧版本，最后是它最近的变化。
+- **Activity**：大脑处理的工具调用，每次读了什么、写了什么、连了什么。只有由 MCP server
+  提供视图时才有，因为只有它能看到调用。
+
+Ontology、Versions、Recalls、Library 是原有页面，从顶栏进入。
+
+应用由一条 Server-Sent Events 流 `/api/stream` 驱动。连接后先发 `snapshot`，带着拍快照时
+变更日志的游标；之后发 `delta`（图变了）、`activity` 和 `change` 事件，`change` 用自己的
+seq 作 SSE 事件 id。浏览器重连时带上 `Last-Event-ID`（脚本可以传 `?after=<seq>`），服务端
+从变更日志里补发这之后的变化，每条一次，然后转为实时；服务端重启也不会丢。日志补不上时先发
+`reset` 说明原因，再发一份新快照：`pruned`（游标早于保留期）、`behind`（一次补发不完）、
+`ahead`（游标来自更新的大脑）或 `unavailable`。用 `as_of` 固定在某个时刻的流不接收实时事件。
+
+页面读的是 `/api/changes`（最新在前；`before` 往前翻页，`kind`、`op`、`producer`、`entity`
+筛选，都可重复）和 `/api/entity?id=`，都只读。底下是 `changes_since` 的 `before`（从某个 seq
+往回读）和 `explain`（补上 `superseded_by`、`replaces`、schema id 和版本，以及事件涉及节点的
+名字），任何客户端都能调用同一个工具。
+
+要在别的程序里提供这个视图，把它的 handler 挂在一个前缀下：
+
+```go
+sv, _ := liveview.New(ctx, src, 2*time.Second, false)
+mux.Handle("/graph/", http.StripPrefix("/graph", sv.Handler()))
+```
+
+服务端会把应用的 `<base>` 改写成这个前缀，静态资源、API 和事件流都在 `/graph/` 下解析。
+前端源码在 `pkg/liveview/ui`，构建结果提交在 `pkg/liveview/dist` 并嵌入二进制，所以
+`go install` 不需要 Node。
+
 ### 过期与清理
 
 `ingest_document`、`knowledge_save`、`knowledge_update` 接受 `expires_at`（RFC 3339 时间）。过了这个时间，文档不再出现在任何搜索、分块工具、图遍历和统计里，但仍可按 id 读到（`knowledge_get`）。不传这个字段会保留原来的过期时间，所以从源头重新同步不会解除保留期限；传空值则去掉过期时间。引擎把它存在自己的 metadata 键 `_expires_at` 下；名为 `expires_at` 的 metadata 键属于调用方，引擎从不读取。

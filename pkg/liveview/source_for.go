@@ -22,15 +22,16 @@ func SourceFor(db *cortexdb.DB, describe string) *Source {
 			var handle *sql.DB = db.SQL()
 			return LoadLocal(ctx, handle)
 		},
-		Grades:   true,
-		Changes:  localChanges(db),
-		ReadAsOf: localReadAsOf(db),
-		Record:   localRecord(db),
-		Contract: localContract(db),
-		Ontology: localOntology(db),
-		Draft:    localDraft(db),
-		Call:     localCaller(db),
-		Close:    func() error { return nil },
+		Grades:    true,
+		Changes:   localChanges(db),
+		ChangeLog: localChangeLog(db),
+		ReadAsOf:  localReadAsOf(db),
+		Record:    localRecord(db),
+		Contract:  localContract(db),
+		Ontology:  localOntology(db),
+		Draft:     localDraft(db),
+		Call:      localCaller(db),
+		Close:     func() error { return nil },
 	}
 }
 
@@ -50,12 +51,13 @@ func RemoteSource(addr, token string) *Source {
 		Read: func(ctx context.Context) ([]Node, []Edge, error) {
 			return LoadRemote(ctx, addr, token, 0, true)
 		},
-		Changes:  remoteChanges(addr, token),
-		Record:   callerRecord(call),
-		Call:     call,
-		Contract: remoteContract(addr, token),
-		Ontology: remoteOntology(addr, token),
-		Draft:    remoteDraft(addr, token),
-		Close:    func() error { return nil },
+		Changes:   remoteChanges(addr, token),
+		ChangeLog: remoteChangeLog(addr, token),
+		Record:    callerRecord(call),
+		Call:      call,
+		Contract:  remoteContract(addr, token),
+		Ontology:  remoteOntology(addr, token),
+		Draft:     remoteDraft(addr, token),
+		Close:     func() error { return nil },
 	}
 }

@@ -237,6 +237,19 @@ type ChangesSinceRequest struct {
 	// Kinds keeps only these kinds (node, edge, triple, memory, knowledge,
 	// ontology_schema). The cursor still advances past the rest.
 	Kinds []string `json:"kinds,omitempty"`
+	// Before reads backwards: the newest events with a seq below it, newest
+	// first, with After as an exclusive lower bound. A negative value starts at
+	// the head, the way a negative After does, which is how a reader that does
+	// not know the head yet asks for the newest page. Kinds is applied in the
+	// query rather than after the read, and NextCursor is then the Before for
+	// the next, older page (the oldest seq returned). A cursor older than
+	// retention is not an error here: what was pruned is not listed.
+	Before int64 `json:"before,omitempty"`
+	// Explain adds what the history tables say about each node and edge event
+	// (superseded_by, replaces, the schema it was decided under) and Labels for
+	// the nodes they name, in a fixed number of queries per page. See
+	// graph.ChangesQuery.
+	Explain bool `json:"explain,omitempty"`
 }
 
 // ChangesSinceResponse is one page of the change log.
@@ -255,6 +268,8 @@ type ChangesSinceResponse struct {
 	PrunedThrough int64 `json:"pruned_through,omitempty"`
 	// InferenceAppliedSeq is how far inferred triples have caught up.
 	InferenceAppliedSeq int64 `json:"inference_applied_seq"`
+	// Labels names the nodes the events refer to, by id, when Explain was set.
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 // ChangesSince answers changes_since.
@@ -276,11 +291,32 @@ func (db *DB) ChangesSince(ctx context.Context, req ChangesSinceRequest) (*Chang
 	}
 	resp := &ChangesSinceResponse{Events: []graph.ChangeEvent{}, Head: head, InferenceAppliedSeq: applied}
 	after := req.After
+	if req.Before != 0 {
+		// Newest first. A negative After here is not "start at the head" but
+		// nothing worth reading below; read from the beginning.
+		page, err := db.graph.ReadChanges(ctx, graph.ChangesQuery{
+			After: max(after, 0), Before: req.Before, Limit: limit, Kinds: req.Kinds, Explain: req.Explain,
+		})
+		if err != nil {
+			return nil, err
+		}
+		resp.Events, resp.More, resp.PrunedThrough, resp.Labels = page.Events, page.More, page.PrunedThrough, page.Labels
+		if resp.Events == nil {
+			resp.Events = []graph.ChangeEvent{}
+		}
+		resp.NextCursor = req.Before
+		if n := len(resp.Events); n > 0 {
+			resp.NextCursor = resp.Events[n-1].Seq
+		} else if req.Before < 0 {
+			resp.NextCursor = head + 1
+		}
+		return resp, nil
+	}
 	if after < 0 {
 		resp.NextCursor = head
 		return resp, nil
 	}
-	events, err := db.graph.Changes(ctx, after, limit)
+	page, err := db.graph.ReadChanges(ctx, graph.ChangesQuery{After: after, Limit: limit, Kinds: req.Kinds, Explain: req.Explain})
 	var pruned *graph.ChangesPrunedError
 	if errors.As(err, &pruned) {
 		resp.Pruned, resp.PrunedThrough, resp.NextCursor = true, pruned.PrunedThrough, pruned.PrunedThrough
@@ -291,18 +327,13 @@ func (db *DB) ChangesSince(ctx context.Context, req ChangesSinceRequest) (*Chang
 		return nil, err
 	}
 	resp.NextCursor = after
-	if len(events) > 0 {
-		resp.NextCursor = events[len(events)-1].Seq
+	if page.Scanned > 0 {
+		resp.NextCursor = page.LastScanned
 	}
-	resp.More = len(events) == limit && resp.NextCursor < head
-	keep := make(map[string]bool, len(req.Kinds))
-	for _, kind := range req.Kinds {
-		keep[kind] = true
-	}
-	for _, ev := range events {
-		if len(keep) == 0 || keep[ev.Kind] {
-			resp.Events = append(resp.Events, ev)
-		}
+	resp.More = page.Scanned == limit && resp.NextCursor < head
+	resp.Events, resp.Labels = page.Events, page.Labels
+	if resp.Events == nil {
+		resp.Events = []graph.ChangeEvent{}
 	}
 	return resp, nil
 }
@@ -316,9 +347,11 @@ func changeToolDefinitions() []ToolDefinition {
 			"event, or the next_cursor of the previous page to continue; a cursor never skips an event and never repeats one. " +
 			"inference_applied_seq says how far inferred triples have caught up with the log. Reads only.",
 		InputSchema: toolObjectSchema(nil, map[string]any{
-			"after": toolIntegerSchema("Cursor: the seq of the last event already handled. 0 = oldest retained; negative = start at the head."),
-			"limit": toolIntegerSchema("Events to scan for this page (default 100, max 1000)."),
-			"kinds": toolStringArraySchema("Only these kinds: node, edge, triple, memory, knowledge, ontology_schema. The cursor still advances past the rest."),
+			"after":   toolIntegerSchema("Cursor: the seq of the last event already handled. 0 = oldest retained; negative = start at the head."),
+			"limit":   toolIntegerSchema("Events to scan for this page (default 100, max 1000)."),
+			"kinds":   toolStringArraySchema("Only these kinds: node, edge, triple, memory, knowledge, ontology_schema. The cursor still advances past the rest."),
+			"before":  toolIntegerSchema("Read backwards: the newest events with a seq below this, newest first (negative = from the head). after is then a lower bound and next_cursor is the before for the next older page."),
+			"explain": map[string]any{"type": "boolean", "description": "Add superseded_by, replaces and schema_id/schema_version to node and edge events, and labels for the nodes they name."},
 		}),
 	}}
 }
@@ -364,17 +397,23 @@ type changeEventMCP struct {
 	Producer string    `json:"producer,omitempty"`
 	Before   any       `json:"before,omitempty"`
 	After    any       `json:"after,omitempty"`
+
+	SupersededBy  *graph.ChangeRef `json:"superseded_by,omitempty"`
+	Replaces      *graph.ChangeRef `json:"replaces,omitempty"`
+	SchemaID      string           `json:"schema_id,omitempty"`
+	SchemaVersion int              `json:"schema_version,omitempty"`
 }
 
 // changesSinceMCPResponse is ChangesSinceResponse with changeEventMCP events.
 type changesSinceMCPResponse struct {
-	Events              []changeEventMCP `json:"events"`
-	NextCursor          int64            `json:"next_cursor"`
-	Head                int64            `json:"head"`
-	More                bool             `json:"more"`
-	Pruned              bool             `json:"pruned,omitempty"`
-	PrunedThrough       int64            `json:"pruned_through,omitempty"`
-	InferenceAppliedSeq int64            `json:"inference_applied_seq"`
+	Events              []changeEventMCP  `json:"events"`
+	NextCursor          int64             `json:"next_cursor"`
+	Head                int64             `json:"head"`
+	More                bool              `json:"more"`
+	Pruned              bool              `json:"pruned,omitempty"`
+	PrunedThrough       int64             `json:"pruned_through,omitempty"`
+	InferenceAppliedSeq int64             `json:"inference_applied_seq"`
+	Labels              map[string]string `json:"labels,omitempty"`
 }
 
 func newChangesSinceMCPResponse(resp *ChangesSinceResponse) changesSinceMCPResponse {
@@ -386,11 +425,14 @@ func newChangesSinceMCPResponse(resp *ChangesSinceResponse) changesSinceMCPRespo
 		Pruned:              resp.Pruned,
 		PrunedThrough:       resp.PrunedThrough,
 		InferenceAppliedSeq: resp.InferenceAppliedSeq,
+		Labels:              resp.Labels,
 	}
 	for _, ev := range resp.Events {
 		wire := changeEventMCP{
 			Seq: ev.Seq, At: ev.At, Kind: ev.Kind, Op: ev.Op, ID: ev.ID,
 			Reason: ev.Reason, Producer: ev.Producer,
+			SupersededBy: ev.SupersededBy, Replaces: ev.Replaces,
+			SchemaID: ev.SchemaID, SchemaVersion: ev.SchemaVersion,
 		}
 		if len(ev.Before) > 0 {
 			wire.Before = ev.Before

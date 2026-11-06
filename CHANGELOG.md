@@ -51,6 +51,41 @@ All notable changes to this project will be documented in this file.
   (`/api/history`, `/api/ontology/history`, `/api/ontology/diff`). A key
   confined to a collection or user is refused the three history tools; a
   read-only key may call them through `CallTool`.
+- The live view is a new app (#127): Vite, React, TypeScript, Tailwind and
+  shadcn, built into `pkg/liveview/dist` and embedded, so `go install` still
+  needs no Node. Light by default, a dark theme on the toggle, laid out for a
+  phone as well as a desktop. It updates over one Server-Sent Events stream,
+  `/api/stream`: a `snapshot` with the cursor it was taken at, then `delta`,
+  `activity` and `change` events, each `change` carrying its seq as the event
+  id. A page that reconnects sends `Last-Event-ID` (or `?after=`) and gets the
+  changes it missed exactly once. A page the feed cannot catch up that way
+  gets a `reset` with the reason and a fresh snapshot: `pruned` (its cursor is
+  older than retention), `behind` (too much happened for one replay), `ahead`
+  (its cursor is from a brain further along) or `unavailable` (the feed could
+  not be read). New pages: **Changes**, every fact
+  added, replaced, retracted or merged, newest first, in words ("Leo lives_in
+  Chengdu, replaced Beijing"), filtered by kind, op, producer and entity, live
+  as they happen (`/api/changes`: `before`, `after`, `limit`, `kind`, `op`,
+  `producer`, `entity`); **Entity**, one entity's relations grouped by
+  predicate and direction, each current value with why it is in effect and the
+  versions it replaced, and its recent changes (`/api/entity?id=`); and
+  **Activity**, the tool calls the brain handles, when the view is served by
+  the MCP server (`serve_graph_3d`). On the graph, relations are
+  directed and coloured by predicate, `co_occurs` is grey and hidden by
+  default, node types get distinct hues by how common they are, and a page
+  opened on a node frames it in the part of the screen the panels leave
+  uncovered. The view can be mounted under a prefix of another mux
+  (`http.StripPrefix`); the server tells the app its base. The ontology,
+  versions, recalls and library pages are unchanged and are linked from the
+  app's top bar. The graph's three colour presets (`?theme=space|ember|mono`)
+  are gone: the app has one palette, light or dark (`?mode=`).
+- `changes_since` reads backwards and explains (#127). `before` returns the
+  newest events below a seq, newest first (negative: from the head), with
+  `next_cursor` the `before` of the next older page. `explain` adds to node
+  and edge events what the history tables say: `superseded_by`, `replaces`,
+  `schema_id` and `schema_version`, and `labels` for the nodes they name, in
+  a fixed number of queries per page (`ChangesSinceRequest.Before`,
+  `.Explain`; `graph.ChangesQuery`).
 - Media vectors (#103): with `WithMediaEmbedder` (a CLIP, SigLIP or CLAP
   model; `media.NewOpenAIMediaEmbedder` for infinity's `/embeddings` with a
   `modality`, `CORTEXDB_MEDIA_EMBED_*`) images, video frames and, for a model

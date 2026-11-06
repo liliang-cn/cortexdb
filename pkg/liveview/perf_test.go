@@ -63,43 +63,6 @@ func TestTheStreamIsNotCompressed(t *testing.T) {
 	}
 }
 
-// The page loads its 3D stack from the binary, one copy of three, no CDN.
-func TestThePageLoadsTheEmbeddedBundle(t *testing.T) {
-	f := &fakeSource{}
-	sv := startTestServer(t, f, false)
-	page := httpGet(t, sv.URL()+"/")
-	if !strings.Contains(page, `<script src="`+graph3dPath+`"></script>`) {
-		t.Fatalf("page does not load %s", graph3dPath)
-	}
-	for _, gone := range []string{"unpkg.com", "importmap", `import("three`} {
-		if strings.Contains(page, gone) {
-			t.Errorf("page still has %q", gone)
-		}
-	}
-	resp := rawGet(t, sv.URL()+"/"+graph3dPath, true)
-	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Encoding") != "gzip" ||
-		!strings.Contains(resp.Header.Get("Cache-Control"), "immutable") {
-		t.Fatalf("bundle: %d, encoding %q, cache %q", resp.StatusCode, resp.Header.Get("Content-Encoding"), resp.Header.Get("Cache-Control"))
-	}
-	zr, _ := gzip.NewReader(resp.Body)
-	body, _ := io.ReadAll(zr)
-	for _, want := range []string{"ForceGraph3D", "CortexDBGraph3D", "UnrealBloomPass"} {
-		if !strings.Contains(string(body), want) {
-			t.Errorf("bundle is missing %q", want)
-		}
-	}
-}
-
-// Light unless the reader picks otherwise, whatever the operating system says.
-func TestThePageOpensLight(t *testing.T) {
-	if !strings.Contains(pageHTML, `<html lang="en" data-theme="space" data-mode="light">`) {
-		t.Error("the page does not start in light mode before its script runs")
-	}
-	if !strings.Contains(pageHTML, `return MODE_ORDER.indexOf(v) >= 0; }) || "light");`) {
-		t.Error("the page does not default its mode to light")
-	}
-}
-
 // feedSource is a graph whose change feed the test controls.
 type feedSource struct {
 	fakeSource

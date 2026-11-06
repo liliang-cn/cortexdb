@@ -297,6 +297,18 @@ func (g *GraphStore) createTemporalSchema(ctx context.Context) error {
 			return fmt.Errorf("cortexdb/graph: history invalidation migration: %w", err)
 		}
 	}
+	// Created after the columns, because a table from before they existed has
+	// none to index until the loop above adds them. The change feed reads
+	// "which edge did this one close" for every page it explains, and without
+	// the index that is a scan of the whole history.
+	for _, stmt := range []string{
+		`CREATE INDEX IF NOT EXISTS idx_node_history_superseded_by ON graph_node_history(superseded_by)`,
+		`CREATE INDEX IF NOT EXISTS idx_edge_history_superseded_by ON graph_edge_history(superseded_by)`,
+	} {
+		if _, err := g.exec(ctx, stmt); err != nil {
+			return fmt.Errorf("cortexdb/graph: history index: %w", err)
+		}
+	}
 	return nil
 }
 

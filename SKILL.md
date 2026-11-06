@@ -1203,9 +1203,24 @@ Everything it runs is on a fixed list of read-only tools (`liveview.ExploreTools
 held against the catalogue's `Mutates` by a test); SPARQL is not on it, because
 `knowledge_graph_query` also runs updates. A view opens wherever its link says —
 `?focus=ID|name&hops=N`, `?find=`, `?ask=`, `?cypher=`, `?q=`, `?type=`,
-`?edge=`, `?explore=0`, `?theme=space|ember|mono`, `?mode=light|dark|auto` — and embedders can drive it with `postMessage`
+`?edge=`, `?explore=0`, `?mode=light|dark|auto` (light by default) — and embedders can drive it with `postMessage`
 (`cortexdb:focus`, `cortexdb:find`, `cortexdb:ask`, `cortexdb:cypher`). On a
-phone the inspector is a bottom sheet and the other panels start folded. The same server draws the brain as a library (`library_url` in the result, or `view=library`): each memory is a book on the shelf of the project it names, shelves group into wings by their projects' relations, an entity is an index card listing every book that mentions it, and a book opens on a lectern with its text, index and see-also.
+phone the inspector is a bottom sheet and the other panels start folded; a
+focused node is framed in the part of the screen the panels leave uncovered.
+Relations are directed and coloured by predicate; `co_occurs` is grey and hidden
+by default. Beside the graph, **Changes** lists every fact added, replaced,
+retracted or merged, newest first and in words, filtered by kind, op, producer
+and entity (`/api/changes`), and **Entity** (`/entity?id=`) shows one entity's
+relations by predicate, why each current value is in effect and what it
+replaced (`/api/entity`); **Activity** shows the tool calls when the MCP server
+serves the view. All of it updates over one SSE stream, `/api/stream`
+(`snapshot`, `delta`, `activity`, `change` with its seq as the event id); a page
+that reconnects sends `Last-Event-ID` and is replayed what it missed from the
+change log, exactly once, or told to `reset` (`pruned`, `behind`, `ahead`,
+`unavailable`) and sent a fresh snapshot. The view mounts under a prefix of
+another mux (`http.StripPrefix`), and `changes_since` takes `before` (read
+backwards) and `explain` (add `superseded_by`, `replaces` and the schema to node
+and edge events). The same server draws the brain as a library (`library_url` in the result, or `view=library`): each memory is a book on the shelf of the project it names, shelves group into wings by their projects' relations, an entity is an index card listing every book that mentions it, and a book opens on a lectern with its text, index and see-also.
 
 `import_agent_memory` brings in the memory a person already has, so a new brain does not start empty. By default it imports Claude Code's memory notes (`~/.claude/projects/*/memory/*.md`), `CLAUDE.md` / `AGENTS.md`, and Codex's own memories (`~/.codex/memories_1.sqlite` and the notes in `~/.codex/memories`). With `sources: ["claude_sessions", "codex_sessions", "dsh_sessions"]` it also distils past transcripts into memories (DeepSeek Harness sessions are read from `$DSH_HOME`, default `~/.dsh`), the way a session is captured when it ends. Each transcript is a model call (`CORTEXDB_LLM_*`), so one call does `max_sessions` (default 5) and says how many are left; `since` limits the window (`30d`, `2026-09-01`), and `~/.cortexdb/imported-sessions.json` keeps a transcript from being read twice. Like `render_graph_html` it runs where the MCP server runs, because that is where the files are, and writes to whichever brain the server uses, local or shared. `dry_run` counts first; ids are stable, so running it again refreshes rather than duplicates. From a shell: `cortexdb-mcp --import-agent-memory [--sessions] [--since 30d] [--max N] [--dry-run]`.
 

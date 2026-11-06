@@ -72,7 +72,7 @@ Haiku runs on Claude Code's own model access, so no API key is needed. Language:
 - RDF 1.2 knowledge graph: SPARQL 1.1/1.2, RDFS + OWL 2 RL inference, SHACL Core + SHACL-SPARQL, RDF/XML import — passing the W3C SPARQL 1.1/1.2, RDF 1.2 (Turtle, TriG, N-Triples, N-Quads, RDF/XML) and SHACL test suites; RDFS and OWL 2 RL are covered by the repo's own tests — and read-only Cypher
 - Palantir-style ontology with governed actions
 - 100+ tools, in-process or over MCP
-- `serve_graph_3d`: a live 3D view to find, ask, query and expand, on desktop or phone — or the same brain as a library, each memory a book on its project's shelf
+- `serve_graph_3d`: a live 3D view to find, ask, query and expand, on desktop or phone, with a Changes page that says in words what was added, replaced or retracted as it happens, and an Entity page with each relation, why its value is in effect and what it replaced; or the same brain as a library, each memory a book on its project's shelf
 - `import_agent_memory`: bring in what Claude Code, Codex and DeepSeek Harness already remember — memory notes, `CLAUDE.md` / `AGENTS.md`, Codex's memories, and optionally past sessions distilled into memories — into a local or shared brain
 - Change feed: every committed write, in order, exactly once
 - Observability: a request id and a W3C trace (`traceparent`) from MCP through gRPC to the trace and the recall log, recalls that explain themselves and say when they were degraded, embedder health in `/metrics` and `/healthz`, and an opt-in recall log with a `/recalls` page

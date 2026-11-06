@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <base href="/" data-cortexdb-base />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>CortexDB</title>
+    <link rel="icon" type="image/svg+xml" href="/src/assets/favicon.svg" />
+    <script>
+      // Pick the theme before first paint so there is no flash of the wrong
+      // one. Light unless a person chose otherwise; "auto" is never the default.
+      (function () {
+        var mode = "light";
+        try {
+          var q = new URLSearchParams(location.search).get("mode");
+          var s = localStorage.getItem("cortexdb.liveview.mode");
+          var pick = q || s;
+          if (pick === "dark" || pick === "auto" || pick === "light") mode = pick;
+        } catch (e) {}
+        var dark = mode === "dark" || (mode === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+        if (dark) document.documentElement.classList.add("dark");
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

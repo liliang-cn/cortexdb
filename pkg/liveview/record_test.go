@@ -40,12 +40,6 @@ func TestTheInspectorIsNilSafeAndSaysWhichAnswerItIsGiving(t *testing.T) {
 	if detail.Found {
 		t.Error("a source that cannot be asked reported that it found something")
 	}
-	if !strings.Contains(pageHTML, "cannot look a record up") {
-		t.Error("the page never says the source cannot look a record up")
-	}
-	if !strings.Contains(pageHTML, "not the same as a record that carries nothing") {
-		t.Error("the page does not distinguish 'cannot ask' from 'carries nothing'")
-	}
 }
 
 // The third answer, which is neither of the other two: the source looked, and
@@ -67,9 +61,6 @@ func TestTheInspectorTellsAMissingRecordFromASourceThatCannotAsk(t *testing.T) {
 	}
 	if detail.Found {
 		t.Fatal("a record that is gone was reported as found")
-	}
-	if !strings.Contains(pageHTML, "is not on the shelf") {
-		t.Error("the page never says a record on screen is no longer in the store")
 	}
 }
 
@@ -188,38 +179,6 @@ func TestTheInspectorCarriesTheReasonAHeldRecordMustHave(t *testing.T) {
 	}
 	if got.Why != "two sources disagree on the figure" {
 		t.Errorf("_why = %q, want the reason its producer gave", got.Why)
-	}
-	if !strings.Contains(pageHTML, "the contract requires one for") {
-		t.Error("the page does not mark a held record that came with no reason")
-	}
-}
-
-// Every field naming another record is a link, because the reason to open
-// provenance is to walk from a fact to what disagrees with it or to the
-// decision that stands against it — not to read one field and retype an id.
-func TestTheInspectorsPanelLinksTheIdsItShows(t *testing.T) {
-	for _, want := range []string{
-		"function inspectById(id)",
-		"function dlink(id)",
-		`html += "<div class='sub'>Contradicts</div>";`,
-		`html += "<div class='sub'>Drawn from</div>";`,
-		`html += "<div class='sub'>Decided</div>"`,
-		`html += "<div class='sub'>Rests on</div>"`,
-	} {
-		if !strings.Contains(pageHTML, want) {
-			t.Errorf("the inspector never draws %s", want)
-		}
-	}
-	// A relation is a record too, and until the inspector there was nothing on
-	// this page that could open one.
-	if !strings.Contains(pageHTML, ".onLinkClick(onLinkClick)") {
-		t.Error("an edge cannot be selected, so half the records on screen have no panel")
-	}
-	if !strings.Contains(pageHTML, `fetch("api/record?id=" + encodeURIComponent(id)`) {
-		t.Error("the inspector does not fetch relative to the page, so it breaks under a mount prefix")
-	}
-	if strings.Contains(pageHTML, `fetch("/api/record`) {
-		t.Error("the inspector fetches at an absolute path")
 	}
 }
 

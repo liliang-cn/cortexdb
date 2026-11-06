@@ -154,6 +154,36 @@ jobs:
           npm test
           npm run build
 
+  # The live view's frontend is embedded into the Go binary from the committed
+  # pkg/liveview/dist, so `go install` needs no Node. This job keeps that copy
+  # honest: a source change that was not rebuilt fails here.
+  liveview-ui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pkg/liveview/ui
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Type check, test and build
+        run: |
+          npm ci --ignore-scripts
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Committed dist matches the source
+        working-directory: .
+        run: |
+          git add -N pkg/liveview/dist
+          git diff --exit-code --stat -- pkg/liveview/dist
+
   release:
     needs: test
     if: startsWith(github.ref, 'refs/tags/v')

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -66,6 +67,16 @@ type Source struct {
 	// Optional: nil, or an error (a brain older than the feed), means the
 	// poller re-reads on every tick, as it did before the feed existed.
 	Changes func(ctx context.Context, after int64) (cursor int64, changed bool, err error)
+	// ChangeLog reads the change feed itself, a page at a time, in both
+	// directions and explained from the graph history. It is what the stream's
+	// `change` events, /api/changes and a resumed connection's replay are made
+	// of; Changes only answers "did a node or edge change".
+	//
+	// Optional: nil is a legitimate answer for a source with no feed — a side
+	// graph assembled in memory, a brain older than changes_since. The page is
+	// told (snapshot.changes is false) and shows its Changes view as
+	// unavailable rather than empty, and the poller falls back to Changes.
+	ChangeLog ChangeLog
 	// ReadAsOf reads the graph as it stood at an instant, for the page pinned
 	// to a moment in the past.
 	//
@@ -156,15 +167,16 @@ func OpenSource(ctx context.Context) (*Source, error) {
 		Read: func(ctx context.Context) ([]Node, []Edge, error) {
 			return LoadLocal(ctx, db.SQL())
 		},
-		Grades:   true,
-		Changes:  localChanges(db),
-		ReadAsOf: localReadAsOf(db),
-		Record:   localRecord(db),
-		Contract: localContract(db),
-		Ontology: localOntology(db),
-		Draft:    localDraft(db),
-		Call:     localCaller(db),
-		Close:    db.Close,
+		Grades:    true,
+		Changes:   localChanges(db),
+		ChangeLog: localChangeLog(db),
+		ReadAsOf:  localReadAsOf(db),
+		Record:    localRecord(db),
+		Contract:  localContract(db),
+		Ontology:  localOntology(db),
+		Draft:     localDraft(db),
+		Call:      localCaller(db),
+		Close:     db.Close,
 	}, nil
 }
 
@@ -180,6 +192,10 @@ type Server struct {
 	// mux is the routes, kept so a view built by New can hand them to a mux it
 	// does not own. Start wraps the same mux in its own http.Server.
 	mux *http.ServeMux
+	// ui is where the built single-page app is read from: the embedded dist in
+	// a build, whatever a test puts there otherwise.
+	ui     fs.FS
+	assets assetCache
 	// activity reports whether tool calls are being observed. A view started
 	// from the command line polls a database and sees structure only; one
 	// started from inside the MCP server sees the calls too. The page says
@@ -221,15 +237,24 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 		src:      src,
 		interval: interval,
 		activity: activity,
+		ui:       embeddedUI(),
 	}
 
 	// The feed's head is taken before the first read, so a change landing
 	// between the two is seen as a change rather than missed.
 	s.cursor = -1
-	if src.Changes != nil {
+	switch {
+	case src.ChangeLog != nil:
+		if r, err := src.ChangeLog(ctx, cortexdb.ChangesSinceRequest{After: -1}); err == nil {
+			s.cursor = r.NextCursor
+		}
+	case src.Changes != nil:
 		if c, _, err := src.Changes(ctx, -1); err == nil {
 			s.cursor = c
 		}
+	}
+	if s.cursor > 0 {
+		s.hub.setCursor(s.cursor)
 	}
 	// One read before serving, so the first page load draws a graph instead of
 	// an empty scene that fills in a poll later.
@@ -240,7 +265,14 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", s.handlePage)
+	// The single-page app: its four client routes answer with the embedded
+	// index, its hashed build files with immutable assets, and everything else
+	// that is not a page of the old kind or an API is a 404. See spa.go.
+	mux.HandleFunc("/", s.handleSPA)
+	mux.HandleFunc("/assets/", s.handleAssets)
+	mux.HandleFunc("/api/", handleUnknownAPI)
+	mux.HandleFunc("/api/changes", s.handleChanges)
+	mux.HandleFunc("/api/entity", s.handleEntity)
 	// The ontology is a second page rather than a mode of the first. It draws
 	// a different graph — tens of declared types, not thousands of instances —
 	// with a different layout, a different cadence and different honesty
@@ -277,7 +309,6 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 	mux.HandleFunc("/api/recalls/heat", s.handleRecallHeat)
 	mux.HandleFunc("/api/recalls/feedback", s.handleRecallFeedback)
 	mux.HandleFunc("/api/recalls/golden", s.handleRecallGolden)
-	mux.HandleFunc("/"+graph3dPath, handleGraph3D)
 	s.mux = mux
 
 	go s.poll(ctx)
@@ -386,7 +417,42 @@ func (s *Server) poll(ctx context.Context) {
 			return
 		case <-ticker.C:
 		}
-		if s.src.Changes != nil {
+		// batch is what this tick read from the feed, when the source has one
+		// to read; it is published after the graph, so the labels of what
+		// changed are the ones the graph now has.
+		var batch *feedBatch
+		switch {
+		case s.src.ChangeLog != nil:
+			if cursor < 0 {
+				if r, err := s.src.ChangeLog(ctx, cortexdb.ChangesSinceRequest{After: -1}); err == nil {
+					cursor = r.NextCursor
+					s.hub.setCursor(cursor)
+				}
+			}
+			if cursor >= 0 {
+				b, err := s.readFeed(ctx, cursor)
+				switch {
+				case err == nil:
+					feedFailing = false
+					batch = b
+					if b.pruned != nil {
+						// What was written while the poller was away is gone
+						// from the feed. Pages are told to rebuild, and the
+						// graph is read below like any other change.
+						s.hub.publishReset(*b.pruned)
+						cursor = b.cursor
+						batch = nil
+					} else if !b.structural && time.Since(lastRead) < fullReadEvery {
+						s.hub.publishChanges(ChangeItems(b.events, s.hub.snapshot(), b.labels), b.cursor)
+						cursor = b.cursor
+						continue
+					}
+				case !feedFailing:
+					fmt.Fprintf(os.Stderr, "cortexdb: live view: change feed: %v; re-reading on every tick\n", err)
+					feedFailing = true
+				}
+			}
+		case s.src.Changes != nil:
 			if cursor < 0 {
 				if c, _, err := s.src.Changes(ctx, -1); err == nil {
 					cursor = c
@@ -414,27 +480,22 @@ func (s *Server) poll(ctx context.Context) {
 				fmt.Fprintf(os.Stderr, "cortexdb: live view: read graph: %v\n", err)
 				failing = true
 			}
+			// The changes stay unpublished and the cursor where it was, so the
+			// next tick reads them again rather than reporting writes the
+			// graph does not show yet.
 			continue
 		}
 		failing = false
 		s.hub.publishSnapshot(Snapshot{Nodes: nodes, Edges: edges})
+		if batch != nil {
+			s.hub.publishChanges(ChangeItems(batch.events, s.hub.snapshot(), batch.labels), batch.cursor)
+			cursor = batch.cursor
+		}
 	}
 }
 
 // observe is the hook the MCP middleware calls for every handled tool call.
 func (s *Server) Observe(ev Event) { s.hub.publishEvent(ev) }
-
-func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	// The page is regenerated on every load rather than cached, so a rebuilt
-	// binary is never shadowed by a stale copy in the browser.
-	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte(pageHTML))
-}
 
 // Payload is the page's opening state: everything needed to draw,
 // plus what the header reports about where it came from.
@@ -461,6 +522,13 @@ type Payload struct {
 	// this source (see explore.go).
 	Explore bool `json:"explore,omitempty"`
 
+	// Cursor is the change feed's head when this payload was taken, 0 when the
+	// source has no feed; a page resumes from it. Changes says whether this
+	// source emits `change` events at all, so a page can tell "nothing
+	// happened" from "this brain cannot say".
+	Cursor  int64 `json:"cursor"`
+	Changes bool  `json:"changes"`
+
 	// AsOf is the instant this payload describes, unix milliseconds, and zero
 	// for the live graph. Pinned is not derivable from it — a page can ask for
 	// an instant a source cannot answer — so the two are separate, and the
@@ -474,7 +542,12 @@ type Payload struct {
 
 func (s *Server) payload() Payload {
 	snap := s.hub.snapshot()
-	backlog := s.hub.recentEvents()
+	return s.openPayload(snap, s.hub.recentEvents(), s.hub.changeCursor())
+}
+
+// openPayload is the opening frame: the graph, the activity backlog and the
+// change cursor the stream continues from.
+func (s *Server) openPayload(snap Snapshot, backlog []Event, cursor int64) Payload {
 	return Payload{
 		Version:  snap.Version,
 		Nodes:    snap.Nodes,
@@ -487,6 +560,8 @@ func (s *Server) payload() Payload {
 		Records:  s.src.Record != nil,
 		Temporal: s.src.ReadAsOf != nil,
 		Explore:  s.src.Call != nil,
+		Cursor:   cursor,
+		Changes:  s.src.ChangeLog != nil,
 	}
 }
 
@@ -533,6 +608,10 @@ func (s *Server) pinnedPayload(ctx context.Context, raw string) Payload {
 	// exists to prevent, so a pinned frame claims nothing about liveness.
 	base.Activity = false
 	base.Events = nil
+	// Nor does it claim a place in the change feed: a pinned stream never
+	// receives change events, so a cursor would invite a resume that has
+	// nothing to resume.
+	base.Cursor, base.Changes = 0, false
 	return base
 }
 
@@ -763,26 +842,43 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ch, snap, backlog := s.hub.subscribe()
+	after, resuming := resumeCursor(r)
+	ch, snap, backlog, head := s.hub.subscribe()
 	defer s.hub.unsubscribe(ch)
 
-	// The opening frame is the whole graph, taken with the subscription under
-	// one lock, so the page starts from a state no update can have slipped past.
-	open := Payload{
-		Version:  snap.Version,
-		Nodes:    snap.Nodes,
-		Edges:    snap.Edges,
-		Events:   backlog,
-		Source:   s.src.Describe,
-		Activity: s.activity,
-		Interval: s.interval.Milliseconds(),
-		Grades:   s.src.Grades,
-		Records:  s.src.Record != nil,
-		Temporal: s.src.ReadAsOf != nil,
-		Explore:  s.src.Call != nil,
+	// The opening frame is the whole graph, taken with the subscription and
+	// the change cursor under one lock, so the page starts from a state no
+	// update can have slipped past.
+	open := s.openPayload(snap, backlog, head)
+
+	// A reconnect that names where it stopped is answered from the log, up to
+	// the cursor the subscription was taken at; everything after that arrives
+	// on the channel. The first page is read before anything is written,
+	// because a cursor older than retention changes what the opening frame
+	// is: a reset, then a snapshot, rather than a snapshot and a replay.
+	var first *cortexdb.ChangesSinceResponse
+	var reset *ResetNotice
+	if resuming && s.src.ChangeLog != nil && after != head {
+		reset, first = s.probeResume(r.Context(), after, head)
 	}
-	if !writeSSE(w, flusher, "snapshot", open) {
-		return
+	if reset != nil {
+		if !writeSSE(w, flusher, "reset", reset) || !writeSSE(w, flusher, "snapshot", open) {
+			return
+		}
+	} else {
+		if !writeSSE(w, flusher, "snapshot", open) {
+			return
+		}
+		if first != nil {
+			if rn := s.replay(r.Context(), w, flusher, first, head); rn != nil {
+				if rn == errStreamClosed {
+					return
+				}
+				if !writeSSE(w, flusher, "reset", rn) || !writeSSE(w, flusher, "snapshot", open) {
+					return
+				}
+			}
+		}
 	}
 
 	// Without traffic a stream looks identical to a dead one, to the browser
@@ -810,6 +906,19 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 				}
 			case msg.Event != nil:
 				if !writeSSE(w, flusher, "activity", msg.Event) {
+					return
+				}
+			case msg.Change != nil:
+				if !writeSSEID(w, flusher, msg.Change.Seq, "change", msg.Change) {
+					return
+				}
+			case msg.Reset != nil:
+				// The poller found the feed pruned past what it had read, so
+				// changes were lost to everyone; the page rebuilds from the
+				// graph as it stands.
+				snap := s.hub.snapshot()
+				if !writeSSE(w, flusher, "reset", msg.Reset) ||
+					!writeSSE(w, flusher, "snapshot", s.openPayload(snap, s.hub.recentEvents(), msg.Reset.Head)) {
 					return
 				}
 			}
@@ -841,6 +950,13 @@ func (s *Server) holdPinned(w http.ResponseWriter, flusher http.Flusher, r *http
 
 // writeSSE emits one frame, reporting whether the connection is still good.
 func writeSSE(w http.ResponseWriter, f http.Flusher, event string, v any) bool {
+	return writeSSEID(w, f, -1, event, v)
+}
+
+// writeSSEID is writeSSE with an event id, which the browser keeps as its
+// Last-Event-ID and sends back on reconnect. Only change frames carry one, so
+// that id is always the last change seq the page saw; a negative id writes none.
+func writeSSEID(w http.ResponseWriter, f http.Flusher, id int64, event string, v any) bool {
 	body, err := json.Marshal(v)
 	if err != nil {
 		return true
@@ -849,7 +965,13 @@ func writeSSE(w http.ResponseWriter, f http.Flusher, event string, v any) bool {
 	// the stream. JSON encoding already escapes them; this is the guard that
 	// says so out loud.
 	body = []byte(strings.ReplaceAll(string(body), "\n", " "))
-	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, body); err != nil {
+	var err2 error
+	if id >= 0 {
+		_, err2 = fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", id, event, body)
+	} else {
+		_, err2 = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, body)
+	}
+	if err2 != nil {
 		return false
 	}
 	f.Flush()

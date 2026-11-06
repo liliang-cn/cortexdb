@@ -602,6 +602,62 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 
 Tool groups (100+ tools, same names in-process and over MCP): GraphRAG (`ingest_document`, `search_text`, `build_context`, `expand_graph`, `search_paths`, `find_nodes`, `delete_document_graph`), unified retrieval (`cortex_query`), knowledge/memory (`knowledge_save`, `memory_search`, …), KnowledgeMemory (`knowledge_memory_recall`, `_reflect`, `_consolidate`, `extract_conversation`), KG (`knowledge_graph_query`, `_shacl_validate`, `apply_inference`), ontology (`ontology_save`, `ontology_history`, `ontology_action_apply`, `object_set_resolve`), history (`graph_history`, `knowledge_graph_history`), media (`ingest_media`, `search_media`), and maintenance (`vector_dimension_repair`, `sweep_expired`). The `cortexdb-mcp-stdio` binary adds `render_graph_html` (an interactive knowledge-graph view), `serve_graph_3d`, `side_graph_*`, `import_agent_memory`, and in local mode `global_search` / `build_community_hierarchy`; `db.NewMCPServer` serves the facade's tools only. `memoryflow`/`graphflow`/`importflow`/`connector` expose their own toolboxes too.
 
+### The live view
+
+`serve_graph_3d` serves a web app over the brain; so do
+`cortexdb-mcp-stdio --graph-3d` from a shell and `liveview.New` in your own
+program. It is light by default with a dark theme on the toggle, and works on a
+phone as well as a desktop.
+
+- **Graph**: the 3D graph. Relations are directed and coloured by predicate;
+  `co_occurs`, which only says two names appeared together, is grey and hidden
+  until you ask for it. Find, ask, Cypher and expand run against the whole
+  store. A link with `?focus=<id>` opens on that node and frames it in the part
+  of the screen the panels leave uncovered.
+- **Changes**: every fact added, replaced, retracted or merged, newest first,
+  in words ("Leo lives_in Chengdu, replaced Beijing"), with the schema that
+  decided a replacement. Filter by kind, op, producer and entity; new changes
+  arrive as they are committed.
+- **Entity** (`/entity?id=<id>`): one entity's relations grouped by predicate,
+  incoming and outgoing. Each current value says why it is in effect, the
+  versions it replaced are listed under it, and its recent changes follow.
+- **Activity**: the tool calls the brain handles, what each read, wrote and
+  linked. It is there when the MCP server serves the view, which sees the calls.
+
+Ontology, Versions, Recalls and Library are the earlier pages, linked from the
+top bar.
+
+The app is fed by one Server-Sent Events stream, `/api/stream`. It opens with a
+`snapshot` that carries the change-log cursor it was taken at, then sends
+`delta` (the graph changed), `activity` and `change` events; a `change` carries
+its seq as the SSE event id. A browser that reconnects sends `Last-Event-ID`
+(a script can pass `?after=<seq>`), and the server replays the changes after it
+from the change log, each once, before going live; a restart of the server
+loses nothing. When the log cannot catch a page up it sends `reset` with a
+reason, then a fresh snapshot: `pruned` (the cursor is older than retention),
+`behind` (too much happened for one replay), `ahead` (the cursor is from a
+brain further along) or `unavailable`. A stream pinned with `as_of` gets no
+live events.
+
+The pages read through `/api/changes` (newest first; `before` pages back, and
+`kind`, `op`, `producer` and `entity` filter, each repeatable) and
+`/api/entity?id=`. Both only read. Under them is `changes_since` with `before`
+(read backwards from a seq) and `explain` (add `superseded_by`, `replaces`, the
+schema id and version, and labels for the nodes an event names), the same tool
+any client can call.
+
+To serve the view inside another program, mount its handler under a prefix:
+
+```go
+sv, _ := liveview.New(ctx, src, 2*time.Second, false)
+mux.Handle("/graph/", http.StripPrefix("/graph", sv.Handler()))
+```
+
+The server rewrites the app's `<base>` to the prefix, so assets, the API and the
+stream all resolve under `/graph/`. The frontend's source is in
+`pkg/liveview/ui`; its build is committed to `pkg/liveview/dist` and embedded, so
+`go install` needs no Node.
+
 ### Expiry and the sweep
 
 `ingest_document`, `knowledge_save` and `knowledge_update` take `expires_at`, an

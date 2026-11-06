@@ -1599,6 +1599,19 @@ func (db *DB) recordMemoryRecalls(ctx context.Context, hits []MemorySearchHit) {
 	db.recordMemoryRecallsTimes(ctx, hits, 1)
 }
 
+// The metadata a recall writes into the memory it returned. They are usage
+// accounting, not content: every search that finds a memory rewrites them, so a
+// reader of the change feed that lists writes (the live view's Changes page)
+// must be able to tell an update that only moved these from one that edited the
+// memory. MemoryBookkeepingKeys is that answer, kept beside the writer.
+const (
+	MetaRecallCount    = "recall_count"
+	MetaLastRecalledAt = "last_recalled_at"
+)
+
+// MemoryBookkeepingKeys are the metadata keys a recall writes; see MetaRecallCount.
+var MemoryBookkeepingKeys = []string{MetaRecallCount, MetaLastRecalledAt}
+
 // recordMemoryRecallsTimes counts each hit as recalled times times: the
 // requests a shared search answered at once (memory_search_coalesce.go) are
 // each a recall, and writing "seen count + 1" once per request would count
@@ -1629,8 +1642,8 @@ func (db *DB) recordMemoryRecallsTimes(ctx context.Context, hits []MemorySearchH
 		for k, v := range hit.Memory.Metadata {
 			metadata[k] = v
 		}
-		metadata["recall_count"] = memoryRecallCount(hit.Memory.Metadata) + times
-		metadata["last_recalled_at"] = now
+		metadata[MetaRecallCount] = memoryRecallCount(hit.Memory.Metadata) + times
+		metadata[MetaLastRecalledAt] = now
 
 		encoded, err := json.Marshal(metadata)
 		if err != nil {
