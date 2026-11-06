@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useCounts, useLinkView } from "@/live";
 import { cn } from "@/lib/utils";
+import { PaletteButton } from "./CommandPalette";
 import { ConnectionPill } from "./ConnectionPill";
 import { APP_NAV, PAGE_LINKS } from "./nav";
 import { ThemeToggle } from "./ThemeToggle";
@@ -58,6 +59,7 @@ export function TopBar() {
 
       <div className="ml-auto flex items-center gap-2">
         <Counts className="hidden md:block" />
+        <PaletteButton />
         <ConnectionPill />
         <ThemeToggle />
         <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Menu" onClick={() => setOpen(true)}>

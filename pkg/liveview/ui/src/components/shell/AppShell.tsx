@@ -1,6 +1,7 @@
 import { Outlet } from "react-router";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { LiveConnection } from "@/live";
+import { CommandPalette } from "./CommandPalette";
 import { TopBar } from "./TopBar";
 
 /**
@@ -11,6 +12,7 @@ export function AppShell() {
   return (
     <TooltipProvider delayDuration={200}>
       <LiveConnection />
+      <CommandPalette />
       <div className="flex h-dvh flex-col">
         <TopBar />
         <main className="min-h-0 flex-1 overflow-auto">

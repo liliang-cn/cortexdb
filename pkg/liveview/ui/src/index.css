@@ -200,6 +200,17 @@
   --color-link-wait: var(--link-wait);
   --color-link-pinned: var(--link-pinned);
   --color-link-off: var(--link-off);
+
+  /* A row that just arrived: a wash of the accent that fades out. */
+  --animate-arrive: arrive 2.6s ease-out;
+  @keyframes arrive {
+    from {
+      background-color: color-mix(in oklab, var(--primary) 18%, transparent);
+    }
+    to {
+      background-color: transparent;
+    }
+  }
 }
 
 @layer base {
