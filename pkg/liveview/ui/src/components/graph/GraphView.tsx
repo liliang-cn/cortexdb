@@ -191,7 +191,7 @@ function InspectorCard() {
   const selectedEdge = useGraphUI((s) => s.selectedEdge);
   if (!selected && !selectedEdge) return null;
   return (
-    <Card className="min-h-0 flex-1">
+    <Card occludes="left" className="min-h-0 flex-1">
       <CardHeader title={selected ? <NodeTitle id={selected} /> : "Relation"} onClose={clearSelection} />
       {selected ? <NodeInspector id={selected} /> : selectedEdge ? <EdgeInspector edgeKey={selectedEdge} /> : null}
     </Card>
@@ -248,7 +248,7 @@ function DesktopChrome() {
       <div className="flex min-h-0 items-stretch gap-3">
         <div className="self-start"><Toolbar /></div>
         {panels.rail && (
-          <Card className="h-full w-80 shrink-0">
+          <Card occludes="right" className="h-full w-80 shrink-0">
             <CardHeader title="Live" icon={<Radio />}><LiveDot /></CardHeader>
             <RailContent />
           </Card>
@@ -274,7 +274,7 @@ function MobileChrome() {
   return (
     <div className="pointer-events-none absolute inset-0">
       {showExplore && (
-        <div className="absolute inset-x-3 top-3 z-10">
+        <div data-occludes="top" className="absolute inset-x-3 top-3 z-10">
           <Card><ExploreBar compact /></Card>
         </div>
       )}

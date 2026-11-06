@@ -4,6 +4,7 @@ import { useSyncExternalStore, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { Side } from "@/lib/graph/insets";
 import { cn } from "@/lib/utils";
 
 const NARROW = "(max-width: 767px)";
@@ -21,10 +22,14 @@ export function useIsNarrow(): boolean {
   );
 }
 
-/** A floating card: the chrome every desktop panel on the canvas shares. */
-export function Card({ className, children }: { className?: string; children: ReactNode }) {
+/**
+ * A floating card: the chrome every desktop panel on the canvas shares.
+ * occludes names the side of the stage it covers, so the camera aims clear of it.
+ */
+export function Card({ className, children, occludes }: { className?: string; children: ReactNode; occludes?: Side }) {
   return (
     <section
+      data-occludes={occludes}
       className={cn(
         "pointer-events-auto flex min-h-0 flex-col overflow-hidden rounded-xl border bg-card/92 text-card-foreground shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_-12px_rgb(0_0_0/0.18)] backdrop-blur-md",
         className,
@@ -57,6 +62,7 @@ export function BottomSheet({ open, onClose, title, icon, tall, children }: { op
     <section
       role="dialog"
       aria-label={typeof title === "string" ? title : undefined}
+      data-occludes="bottom"
       className={cn(
         "pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex flex-col overflow-hidden rounded-t-2xl border-x border-t bg-card text-card-foreground shadow-[0_-12px_32px_-12px_rgb(0_0_0/0.28)]",
         "animate-in slide-in-from-bottom-6 duration-200",

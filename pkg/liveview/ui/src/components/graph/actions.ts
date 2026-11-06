@@ -29,7 +29,14 @@ const messageOf = (err: unknown) => (err instanceof Error ? err.message : String
 
 export function selectNode(id: string, opts: { fly?: boolean } = {}): void {
   ui().set({ selected: id, selectedEdge: null, mobile: "inspector", resultsOpen: false });
-  if (opts.fly !== false) getScene()?.flyTo(id, 900, isNarrow());
+  // Fly once the inspector this opens has been laid out, so the camera aims
+  // clear of it (a phone's bottom sheet, a desktop's side card).
+  if (opts.fly !== false) afterLayout(() => getScene()?.flyTo(id, 900));
+}
+
+/** Runs fn after the next layout: one frame for React to commit, one for the browser to lay it out. */
+function afterLayout(fn: () => void): void {
+  requestAnimationFrame(() => requestAnimationFrame(fn));
 }
 
 export function selectEdge(key: string): void {

@@ -34,6 +34,7 @@ import {
 import type { Edge, Node } from "@/api";
 import { grade as gradeSemantic } from "@/lib/semantics";
 import { CO_OCCURS, heatColor, mixHex, predicateColor, typeColor } from "./colors";
+import { aimOffset, coveredInsets, type Insets } from "./insets";
 import { LabelLayer, type LabelHost } from "./labels";
 import {
   NO_FILTERS,
@@ -864,8 +865,12 @@ export class GraphScene {
     });
   }
 
-  /** Aim the camera at a node from a fixed distance along the current line of sight. */
-  flyTo(id: string, ms: number, lowered = false): boolean {
+  /**
+   * Aim the camera at a node from a fixed distance along the current line of
+   * sight, so that it lands in the middle of the part of the stage the panels
+   * over it leave uncovered (by default, those marked data-occludes).
+   */
+  flyTo(id: string, ms: number, insets: Insets = coveredInsets(this.el.parentElement)): boolean {
     const n = this.nodes.get(id);
     if (!n || n.x === undefined || n.y === undefined || n.z === undefined) return false;
     const cam = this.G.cameraPosition();
@@ -873,10 +878,10 @@ export class GraphScene {
     const dy = cam.y - n.y;
     const dz = cam.z - n.z;
     const d = Math.hypot(dx, dy, dz) || 1;
-    const D = lowered ? 300 : 240;
-    const up = this.G.camera().up;
-    const off = lowered ? 0.11 * D : 0;
-    const look = { x: n.x - up.x * off, y: n.y - up.y * off, z: n.z - up.z * off };
+    const D = 240;
+    const camera = this.G.camera() as PerspectiveCamera;
+    const off = aimOffset({ x: -dx / d, y: -dy / d, z: -dz / d }, camera.up, camera.fov, this.el.clientHeight, D, insets);
+    const look = { x: n.x + off.x, y: n.y + off.y, z: n.z + off.z };
     this.G.cameraPosition({ x: look.x + (dx / d) * D, y: look.y + (dy / d) * D, z: look.z + (dz / d) * D }, look, ms);
     return true;
   }
@@ -890,13 +895,19 @@ export class GraphScene {
   private followStep(): void {
     const n = this.followId ? this.nodes.get(this.followId) : undefined;
     if (!n || n.x === undefined || n.y === undefined || n.z === undefined) return;
-    const target = this.G.controls() as unknown as { target: { x: number; y: number; z: number } };
-    const dx = n.x - target.target.x;
-    const dy = n.y - target.target.y;
-    const dz = n.z - target.target.z;
-    if (Math.hypot(dx, dy, dz) < 0.5) return;
+    const target = (this.G.controls() as unknown as { target: { x: number; y: number; z: number } }).target;
     const c = this.G.cameraPosition();
-    this.G.cameraPosition({ x: c.x + dx, y: c.y + dy, z: c.z + dz }, { x: n.x, y: n.y, z: n.z }, 350);
+    const dist = Math.hypot(c.x - target.x, c.y - target.y, c.z - target.z) || 1;
+    // Aim where flyTo would, so following does not drag the node back under a panel.
+    const camera = this.G.camera() as PerspectiveCamera;
+    const forward = { x: (target.x - c.x) / dist, y: (target.y - c.y) / dist, z: (target.z - c.z) / dist };
+    const off = aimOffset(forward, camera.up, camera.fov, this.el.clientHeight, dist, coveredInsets(this.el.parentElement));
+    const aim = { x: n.x + off.x, y: n.y + off.y, z: n.z + off.z };
+    const dx = aim.x - target.x;
+    const dy = aim.y - target.y;
+    const dz = aim.z - target.z;
+    if (Math.hypot(dx, dy, dz) < 0.5) return;
+    this.G.cameraPosition({ x: c.x + dx, y: c.y + dy, z: c.z + dz }, aim, 350);
   }
 
   /** Where a node is on screen, relative to the canvas; null when it has no place yet or is behind the camera. */
