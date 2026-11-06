@@ -58,12 +58,12 @@ export interface InEffectView {
 export function describeInEffect(ie: InEffect | undefined): InEffectView | null {
   if (!ie) return null;
   const notes: string[] = [];
+  // The server's sentence already states the rule, the schema version and the
+  // schema's opinion (pkg/cortexdb/graph_history.go composes it from the same
+  // fields), so those are not repeated here. The opinion is written out only
+  // when the server sent no sentence at all.
   const opinion = ie.schema_opinion ? OPINION[ie.schema_opinion] : undefined;
-  if (opinion) notes.push(opinion);
-  // The server's sentence often already names the rule and the schema.
-  const said = ie.summary.toLowerCase();
-  if (ie.rule && !said.includes(ie.rule.replaceAll("_", "-")) && !said.includes(ie.rule.replaceAll("_", " "))) notes.push(`Rule: ${ie.rule.replaceAll("_", " ")}.`);
-  if (ie.schema_id && !said.includes(`schema ${ie.schema_id.toLowerCase()}`)) notes.push(`Decided under schema ${ie.schema_id}${ie.schema_version ? ` v${ie.schema_version}` : ""}.`);
+  if (opinion && !ie.summary) notes.push(opinion);
   if (ie.also_asserted_by && ie.also_asserted_by.length > 0) {
     const n = ie.also_asserted_by.length;
     notes.push(`Also stated by ${n} other record${n === 1 ? "" : "s"}.`);

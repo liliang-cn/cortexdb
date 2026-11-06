@@ -30,17 +30,22 @@ describe("co_occurs", () => {
 
 describe("in effect, in words", () => {
   it("explains a single-valued decision with the schema version", () => {
-    const v = describeInEffect({ kind: "replaced", summary: "Chengdu replaced Beijing.", rule: "single_valued", schema_id: "people", schema_version: 2 });
-    expect(describeInEffect({ kind: "replaced", summary: "lives_in is single-valued in schema people v2", rule: "single_valued", schema_id: "people" })?.notes).toEqual([]);
+    const v = describeInEffect({ kind: "replaced", summary: "Replaced Beijing: lives_in is single-valued in schema people v2.", rule: "single_valued", schema_id: "people", schema_version: 2 });
     expect(v?.title).toBe("Replaced an earlier value");
-    expect(v?.notes).toEqual(["Rule: single valued.", "Decided under schema people v2."]);
+    expect(v?.summary).toContain("schema people v2");
+    // The server's sentence carries the rule and the schema; nothing is repeated.
+    expect(v?.notes).toEqual([]);
     expect(v?.several).toBe(false);
   });
 
-  it("says several values are in effect because the schema has no opinion", () => {
-    const v = describeInEffect({ kind: "several_in_effect", summary: "Two values hold.", schema_opinion: "no_opinion" });
+  it("says several values are in effect, in the server's words, without repeating the opinion", () => {
+    const v = describeInEffect({ kind: "several_in_effect", summary: "Leo knows Ann is one of 2 values in effect (also: Bob); the schema has no opinion.", schema_opinion: "no_opinion" });
     expect(v?.several).toBe(true);
-    expect(v?.notes[0]).toContain("no opinion");
+    expect(v?.notes).toEqual([]);
+  });
+
+  it("writes the schema's opinion out when the server sent no sentence", () => {
+    expect(describeInEffect({ kind: "several_in_effect", summary: "", schema_opinion: "no_opinion" })?.notes[0]).toContain("no opinion");
   });
 
   it("counts other records that state the same thing", () => {
