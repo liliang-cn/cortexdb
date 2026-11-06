@@ -50,6 +50,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 	rpcv1 "github.com/liliang-cn/cortexdb/v2/pkg/rpc/v1"
@@ -677,8 +678,17 @@ func writeExplore(w http.ResponseWriter, v any, err error) {
 	w.Header().Set("Cache-Control", "no-store")
 	if err != nil {
 		code := http.StatusBadGateway
-		if errors.Is(err, errNotExplorable) {
+		switch {
+		case errors.Is(err, errNotExplorable):
 			code = http.StatusNotImplemented
+		case errors.Is(err, core.ErrNotFound):
+			// The brain answered, and what it said is that the thing asked
+			// about is not there (a schema with no saved versions, a recall
+			// the log no longer holds). That is the request's fault, not an
+			// upstream failure, and a page shows it as an empty state rather
+			// than an error. A shared brain's answer arrives as text and
+			// stays a 502: its tools service does not carry the sentinel.
+			code = http.StatusNotFound
 		}
 		w.WriteHeader(code)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})

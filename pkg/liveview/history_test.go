@@ -387,6 +387,13 @@ func TestTheOntologyHistoryRouteListsEveryVersionAndPages(t *testing.T) {
 		t.Errorf("the first page is two and has more: %+v", first)
 	}
 
+	// A schema nobody saved is not there, which is not the brain failing.
+	var missing map[string]string
+	if code := getStatus(t, ts.URL+"/api/ontology/history?schema=nobody-saved-this", &missing); code != http.StatusNotFound ||
+		!strings.Contains(missing["error"], "has no history") {
+		t.Errorf("an unknown schema answered %d %v, want 404 saying it has no history", code, missing)
+	}
+
 	for _, q := range []string{"", "schema=people&limit=-1", "schema=people&offset=x"} {
 		if code := getStatus(t, ts.URL+"/api/ontology/history?"+q, nil); code != http.StatusBadRequest {
 			t.Errorf("?%s answered %d, want 400", q, code)
