@@ -115,6 +115,41 @@ func TestChangesSinceExplainsASupersededEdgeAndTheEdgeThatReplacedIt(t *testing.
 	}
 }
 
+// Moving back writes the same edge id a second time. Only the insert that
+// closed something replaces it: the first Beijing insert replaced nothing,
+// even though a later insert of that very id closed Chengdu.
+func TestOnlyTheInsertThatClosedAnEdgeSaysItReplacedIt(t *testing.T) {
+	for _, b := range changeBrains(t) {
+		t.Run(b.name, func(t *testing.T) {
+			leoMoves(t, b.db)
+			time.Sleep(20 * time.Millisecond)
+			if _, err := b.db.GraphRAGTools().UpsertRelations(context.Background(), ToolUpsertRelationsRequest{
+				Relations: []ToolRelationInput{{From: "Leo", To: "Beijing", Type: "lives_in"}},
+			}); err != nil {
+				t.Fatalf("move back: %v", err)
+			}
+			resp := callChangesSince(t, b.db, ChangesSinceRequest{After: 0, Limit: 1000, Explain: true, Kinds: []string{graph.ChangeKindEdge}})
+			var inserts []graph.ChangeEvent
+			for _, ev := range resp.Events {
+				if ev.Op == graph.ChangeOpInsert {
+					inserts = append(inserts, ev)
+				}
+			}
+			if len(inserts) != 3 {
+				t.Fatalf("%d inserts, want Beijing, Chengdu, Beijing", len(inserts))
+			}
+			if inserts[0].Replaces != nil {
+				t.Errorf("the first Beijing insert replaced nothing, got %+v", inserts[0].Replaces)
+			}
+			for i, want := range map[int]string{1: "entity:city:beijing", 2: "entity:city:chengdu"} {
+				if inserts[i].Replaces == nil || inserts[i].Replaces.To != want {
+					t.Errorf("insert %d replaces %+v, want the edge to %s", i, inserts[i].Replaces, want)
+				}
+			}
+		})
+	}
+}
+
 // The explained fields survive the tool's wire form, which is how a shared
 // brain's view receives them, and the tool's output schema accepts them.
 func TestExplainedEventsSurviveTheToolsWireForm(t *testing.T) {

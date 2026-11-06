@@ -113,7 +113,7 @@ func (g *GraphStore) explainChanges(ctx context.Context, q rowQuerier, events []
 				want(ev.SupersededBy.From)
 				want(ev.SupersededBy.To)
 			}
-			if c, ok := closures[ev.ID]; ok {
+			if c := closureOf(closures[ev.ID], ev.After); c != nil {
 				ref := c.ref
 				ev.Replaces = &ref
 				if ev.SchemaID == "" {
@@ -280,14 +280,21 @@ type closure struct {
 	ref           ChangeRef
 	schemaID      string
 	schemaVersion int
+	// validTo is when the closed version ended. A supersession ends the old
+	// value where the new one begins, so it is the new version's valid_from.
+	validTo string
 }
 
-// closuresCaused finds, for each newly inserted edge, the older edge it closed.
-func (g *GraphStore) closuresCaused(ctx context.Context, q rowQuerier, ids []string) (map[string]closure, error) {
-	out := make(map[string]closure)
+// closuresCaused finds, for each newly inserted edge id, the older edges its
+// versions closed. An id is not a version: a relation written, replaced and
+// written again (Leo lives_in Beijing, then Chengdu, then Beijing) inserts the
+// same edge id twice, and only the second insert closed anything. Which
+// closure belongs to which insert is settled by closureOf.
+func (g *GraphStore) closuresCaused(ctx context.Context, q rowQuerier, ids []string) (map[string][]closure, error) {
+	out := make(map[string][]closure)
 	err := forChunks(ids, func(chunk []string) error {
 		rows, err := q.QueryContext(ctx, g.dialect.Rebind(`SELECT superseded_by, id, from_node_id, to_node_id, COALESCE(edge_type, ''),
-			COALESCE(schema_id, ''), COALESCE(schema_version, 0) FROM graph_edge_history
+			COALESCE(schema_id, ''), COALESCE(schema_version, 0), CAST(valid_to AS TEXT) FROM graph_edge_history
 			WHERE superseded_by IN (`+inList(len(chunk))+`) AND reason = 'superseded' AND id <> superseded_by ORDER BY id`), anyArgs(chunk)...)
 		if err != nil {
 			return err
@@ -295,15 +302,44 @@ func (g *GraphStore) closuresCaused(ctx context.Context, q rowQuerier, ids []str
 		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var by string
+			var to *string
 			var c closure
-			if err := rows.Scan(&by, &c.ref.ID, &c.ref.From, &c.ref.To, &c.ref.Type, &c.schemaID, &c.schemaVersion); err != nil {
+			if err := rows.Scan(&by, &c.ref.ID, &c.ref.From, &c.ref.To, &c.ref.Type, &c.schemaID, &c.schemaVersion, &to); err != nil {
 				return err
 			}
-			out[by] = c
+			if to != nil {
+				c.validTo = *to
+			}
+			out[by] = append(out[by], c)
 		}
 		return rows.Err()
 	})
 	return out, err
+}
+
+// closureOf picks the closure an insert event caused: the closed version that
+// ended at the instant the inserted version began. None matching means this
+// insert closed nothing, even when another version of the same id did; saying
+// nothing is right there, and naming that other closure would be false. (A
+// value stated as true from before the old one began closes it at the
+// recording instant instead, which the event does not carry, so such an
+// insert is left without a `replaces` rather than given a guess.)
+func closureOf(cs []closure, after json.RawMessage) *closure {
+	if len(cs) == 0 {
+		return nil
+	}
+	var row struct {
+		ValidFrom *string `json:"valid_from"`
+	}
+	if err := json.Unmarshal(after, &row); err != nil || row.ValidFrom == nil {
+		return nil
+	}
+	for i := range cs {
+		if cs[i].validTo != "" && sameInstant(cs[i].validTo, *row.ValidFrom) {
+			return &cs[i]
+		}
+	}
+	return nil
 }
 
 // edgeRefs reads edges by id: from the live table, and for those since closed
