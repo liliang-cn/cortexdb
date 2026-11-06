@@ -9,6 +9,7 @@ import {
   oklchToRgb,
   predicateColor,
   predicateSlot,
+  rankTypes,
   typeColor,
 } from "./colors";
 
@@ -91,6 +92,36 @@ describe("type colours", () => {
   it("are stable per type name", () => {
     expect(typeColor("project", false)).toBe(typeColor("project", false));
     expect(typeColor("project", false)).not.toBe(typeColor("memory", false));
+  });
+  it("give the commonest types hues far apart, so they never share a colour", () => {
+    // The demo brain's seven commonest types, four of which a hash put on one green.
+    const rows = ["entity", "project", "feature", "software", "workspace", "Node", "tool"].map((key, i) => ({ key, count: 100 - i }));
+    rankTypes(rows);
+    const hexes = rows.map((r) => typeColor(r.key, false));
+    expect(new Set(hexes).size).toBe(rows.length);
+    const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    for (let i = 0; i < hexes.length; i++) {
+      for (let j = i + 1; j < hexes.length; j++) {
+        const a = rgb(hexes[i]!);
+        const b = rgb(hexes[j]!);
+        const d = Math.hypot(a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!);
+        expect(d, `${rows[i]!.key} vs ${rows[j]!.key}`).toBeGreaterThan(50);
+      }
+    }
+  });
+  it("say whether the ranking changed, so drawn colours can be repainted", () => {
+    const rows = [{ key: "a", count: 2 }, { key: "b", count: 1 }];
+    rankTypes(rows);
+    expect(rankTypes(rows)).toBe(false);
+    expect(rankTypes([{ key: "b", count: 3 }, { key: "a", count: 1 }])).toBe(true);
+  });
+  it("keep a rare type muted, so it cannot pass for a common one", () => {
+    rankTypes([{ key: "entity", count: 10 }]);
+    const chroma = (hex: string) => {
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+      return Math.max(r!, g!, b!) - Math.min(r!, g!, b!);
+    };
+    expect(chroma(typeColor("rare_type", false))).toBeLessThan(chroma(typeColor("entity", false)));
   });
   it("have a grey for no type", () => {
     expect(typeColor("", false)).toBe("#94a3b8");

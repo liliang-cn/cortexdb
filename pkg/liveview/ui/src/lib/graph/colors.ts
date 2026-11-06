@@ -90,17 +90,54 @@ export function predicateColor(predicate: string): string {
   return PREDICATE_PALETTE[predicateSlot(predicate)] ?? CO_OCCURS_COLOR;
 }
 
+// Node types are coloured by rank, not by hash. A hash of twelve or so hues
+// puts two of a store's seven commonest types on the same hue more often than
+// not (on the demo brain entity, project, software and Node all came out
+// green), and the type colour is the first thing a reader of the graph uses.
+// So the commonest types take TYPE_HUES in order, each far from the last, and
+// every rarer type gets a hashed hue at low chroma: it can never pass for one
+// of the common ones. The ranking is the page's own, set from the graph it
+// draws (rankTypes), so the scene, the key and the inspector agree.
+//
+// The hues were picked greedily, each as far (in sRGB, in both themes) from
+// those before it as any candidate allowed: the first six are at least 70
+// apart, the seventh 55, the eighth 37. Past eight, a further hue would sit
+// too close to one already used to be told apart, so the tail goes muted.
+// Candidates skip the indigo the shell uses for selection (262–302) and the
+// yellow-green band that turns olive at the depth a filled sphere needs.
+const TYPE_HUES = [250, 75, 340, 150, 190, 25, 305, 135] as const;
+
+let typeRank = new Map<string, number>();
+let typeRankKey = "";
+
+/**
+ * Sets which types count as the commonest, from rows sorted by count (as
+ * typeCounts returns them). Returns whether the ranking changed, so a caller
+ * holding drawn colours knows to repaint.
+ */
+export function rankTypes(byCount: readonly { key: string; count: number }[]): boolean {
+  const top = byCount
+    .filter((t) => t.key && t.key !== "(untyped)")
+    .slice(0, TYPE_HUES.length)
+    .map((t) => t.key);
+  const key = top.join("\u0000");
+  if (key === typeRankKey) return false;
+  typeRankKey = key;
+  typeRank = new Map(top.map((t, i) => [t, i]));
+  return true;
+}
+
 /**
  * A node type's colour. Unlike a predicate, a type is drawn as a filled
  * sphere, so it is lighter on a dark ground and deeper on a light one.
  */
 export function typeColor(type: string, dark: boolean): string {
   if (!type) return dark ? "#7c8ba1" : "#94a3b8";
-  const hue = (hash32(`type:${type}`) % 360 + 0) % 360;
-  // Skip the narrow band that reads as the selection indigo of the shell.
-  // And the yellow-green band, which turns to olive at the depth a sphere needs.
-  const h = hue >= 262 && hue < 292 ? (hue + 36) % 360 : hue >= 80 && hue < 135 ? hue + 55 : hue;
-  return rgbToHex(oklchToRgb(dark ? 0.76 : 0.56, dark ? 0.13 : 0.14, h));
+  const rank = typeRank.get(type);
+  if (rank !== undefined) {
+    return rgbToHex(oklchToRgb(dark ? 0.76 : 0.56, dark ? 0.13 : 0.15, TYPE_HUES[rank] ?? 0));
+  }
+  return rgbToHex(oklchToRgb(dark ? 0.72 : 0.64, 0.045, hash32(`type:${type}`) % 360));
 }
 
 /** Cool (reached once) to hot (reached most) on a log scale; 0 is the ground's grey. */

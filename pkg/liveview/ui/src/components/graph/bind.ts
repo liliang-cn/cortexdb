@@ -15,10 +15,12 @@ import {
   edgeShown,
   mergeExplored,
   activityTargets,
+  typeCounts,
   type Adjacency,
   type EdgeMap,
   type NodeMap,
 } from "@/lib/graph/model";
+import { rankTypes } from "@/lib/graph/colors";
 import { readPalette } from "@/lib/graph/palette";
 import type { GraphScene } from "@/lib/graph/scene";
 import { useGraphUI } from "./state";
@@ -78,6 +80,8 @@ export function bindScene(scene: GraphScene): () => void {
   const pushStructure = () => {
     const g = mergedGraph();
     noteRefs(g.edges);
+    // Rank before syncing: sync ends in a restyle, which then paints with it.
+    rankTypes(typeCounts(g.nodes.values()));
     scene.sync(g.nodes, g.edges);
   };
 

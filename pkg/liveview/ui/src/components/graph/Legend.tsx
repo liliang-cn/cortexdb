@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CO_OCCURS, heatColor, predicateColor, typeColor } from "@/lib/graph/colors";
+import { CO_OCCURS, heatColor, predicateColor, rankTypes, typeColor } from "@/lib/graph/colors";
 import { predicateCounts, predicateShown, typeCounts } from "@/lib/graph/model";
 import { GRADES, GRADE_ORDER, grade } from "@/lib/semantics";
 import { useCapabilities } from "@/live";
@@ -54,7 +54,13 @@ function EntityKey() {
   const caps = useCapabilities();
   const dark = useDark();
   const [all, setAll] = useState(false);
-  const types = useMemo(() => typeCounts(g.nodes.values()), [g.nodes]);
+  const types = useMemo(() => {
+    const rows = typeCounts(g.nodes.values());
+    // The same ranking the scene paints with; idempotent, so the key can set
+    // it too and never draw a swatch from a stale one.
+    rankTypes(rows);
+    return rows;
+  }, [g.nodes]);
   const byGrade = useMemo(() => {
     const m = new Map<string, number>();
     for (const n of g.nodes.values()) m.set(grade(n.grade).key, (m.get(grade(n.grade).key) ?? 0) + 1);
