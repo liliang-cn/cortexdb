@@ -356,9 +356,30 @@ export function edgesBetween(adj: Adjacency, a: string, b: string): Edge[] {
   return [...(adj.out.get(a) ?? []).filter((e) => e.target === b), ...(adj.out.get(b) ?? []).filter((e) => e.target === a)];
 }
 
-/** What an activity event names in the current graph: nodes by term, edges by the pairs it linked. */
-export function activityTargets(nodes: NodeMap, adj: Adjacency, ev: Pick<ActivityEvent, "terms" | "links">): { nodes: string[]; edges: string[] } {
-  const ids = matchTerms(nodes, ev.terms);
+/** The most nodes one event lights by id. */
+const EXACT_NODE_CAP = 200;
+
+/**
+ * What an activity event names in the current graph: nodes by id and by term,
+ * edges by the pairs it linked. Ids come first and are taken as they are; the
+ * terms add what they match beyond them.
+ */
+export function activityTargets(nodes: NodeMap, adj: Adjacency, ev: Pick<ActivityEvent, "terms" | "nodes" | "links">): { nodes: string[]; edges: string[] } {
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const id of ev.nodes ?? []) {
+    if (ids.length >= EXACT_NODE_CAP) break;
+    if (nodes.has(id) && !seen.has(id)) {
+      seen.add(id);
+      ids.push(id);
+    }
+  }
+  for (const id of matchTerms(nodes, ev.terms)) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      ids.push(id);
+    }
+  }
   const edges: string[] = [];
   for (const [from, to] of ev.links ?? []) {
     const a = findNodeByName(nodes, from);

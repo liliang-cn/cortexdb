@@ -547,15 +547,26 @@ export function recallTerms(ev: Pick<ActivityEvent, "terms">): string[] {
 }
 
 /**
- * The books a call read, by its terms. Matched loosely against titles and ids,
- * because a tool's arguments name things the way a person does and the graph
- * keys them the way a database does (see Event.Terms in live.go).
+ * The books a call read: those it named by id, then those its terms match.
+ * Terms are matched loosely against titles and ids, because a tool's arguments
+ * name things the way a person does and the graph keys them the way a
+ * database does (see Event.Terms and Event.Nodes in live.go).
  */
-export function booksRead(books: readonly BookSpot[], ev: Pick<ActivityEvent, "terms">, limit = 12): BookSpot[] {
+export function booksRead(books: readonly BookSpot[], ev: Pick<ActivityEvent, "terms" | "nodes">, limit = 12): BookSpot[] {
   const terms = recallTerms(ev);
-  if (!terms.length) return [];
+  const exact = new Set(ev.nodes ?? []);
+  if (!terms.length && !exact.size) return [];
   const out: BookSpot[] = [];
+  // A book named by id is read whatever the terms say, and before them.
+  if (exact.size) {
+    for (const b of books) {
+      if (exact.has(b.id)) out.push(b);
+      if (out.length >= limit) return out;
+    }
+  }
+  if (!terms.length) return out;
   for (const b of books) {
+    if (exact.has(b.id)) continue;
     const s = `${b.label} ${b.id}`.toLowerCase();
     if (terms.some((t) => s.includes(t))) out.push(b);
     if (out.length >= limit) break;
