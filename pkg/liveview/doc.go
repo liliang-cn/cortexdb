@@ -10,14 +10,15 @@
 // Tailwind, shadcn) built into pkg/liveview/dist, which is committed and
 // embedded, so installing the module needs no Node. Go serves only /api/*, the
 // app's hashed build files under /assets/ (cached for good, compressed once),
-// and the app's own routes (/, /changes, /entity, /activity), which all answer
-// with the index. The index is never cached and carries one tag the server
-// rewrites, <base href="/" data-cortexdb-base>: when the view is mounted under
-// a prefix of another mux, the prefix the mux stripped becomes the base, and
-// since every URL the app uses is resolved against it, that is all a mount
-// takes. An unknown /api/ path is a 404 and never the index. The older pages
-// (/ontology, /library, /recalls, /ontology-history) are Go pages still, served
-// as they were.
+// and the app's own routes (/, /changes, /entity, /activity, /recalls,
+// /library, /ontology, /ontology-history), which all answer with the index.
+// The index is never cached and carries one tag the server rewrites,
+// <base href="/" data-cortexdb-base>: when the view is mounted under a prefix
+// of another mux, the prefix the mux stripped becomes the base, and since
+// every URL the app uses is resolved against it, that is all a mount takes. An
+// unknown /api/ path is a 404 and never the index. Go writes no HTML of its
+// own: the last four routes were pages in Go strings until the app took them
+// over, at the same paths and with the same query options.
 //
 // # The stream
 //
