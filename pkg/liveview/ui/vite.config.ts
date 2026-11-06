@@ -19,6 +19,21 @@ export default defineConfig({
     emptyOutDir: true,
     assetsDir: "assets",
     sourcemap: false,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            // three is pinned and only the Graph page loads it. In a chunk of
+            // its own its hash outlives app releases, so a browser keeps the
+            // bulk of the 3D stack cached across upgrades.
+            { name: (id: string) => (/node_modules[\\/](three|3d-force-graph|three-[^\\/]+)[\\/]/.test(id) ? "three" : null) },
+          ],
+        },
+      },
+    },
+    // That chunk is the one past Vite's 500 kB default: large by nature,
+    // loaded lazily, and cached for good.
+    chunkSizeWarningLimit: 800,
   },
   test: { environment: "node", include: ["src/**/*.test.ts"] },
 });

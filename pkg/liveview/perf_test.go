@@ -63,25 +63,6 @@ func TestTheStreamIsNotCompressed(t *testing.T) {
 	}
 }
 
-// The 3D stack is served from the binary, one copy of three, no CDN, cached
-// for good and compressed.
-func TestTheEmbeddedBundleIsServedImmutableAndCompressed(t *testing.T) {
-	f := &fakeSource{}
-	sv := startTestServer(t, f, false)
-	resp := rawGet(t, sv.URL()+"/"+graph3dPath, true)
-	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Encoding") != "gzip" ||
-		!strings.Contains(resp.Header.Get("Cache-Control"), "immutable") {
-		t.Fatalf("bundle: %d, encoding %q, cache %q", resp.StatusCode, resp.Header.Get("Content-Encoding"), resp.Header.Get("Cache-Control"))
-	}
-	zr, _ := gzip.NewReader(resp.Body)
-	body, _ := io.ReadAll(zr)
-	for _, want := range []string{"ForceGraph3D", "CortexDBGraph3D", "UnrealBloomPass"} {
-		if !strings.Contains(string(body), want) {
-			t.Errorf("bundle is missing %q", want)
-		}
-	}
-}
-
 // feedSource is a graph whose change feed the test controls.
 type feedSource struct {
 	fakeSource

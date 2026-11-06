@@ -309,7 +309,6 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 	mux.HandleFunc("/api/recalls/heat", s.handleRecallHeat)
 	mux.HandleFunc("/api/recalls/feedback", s.handleRecallFeedback)
 	mux.HandleFunc("/api/recalls/golden", s.handleRecallGolden)
-	mux.HandleFunc("/"+graph3dPath, handleGraph3D)
 	s.mux = mux
 
 	go s.poll(ctx)
