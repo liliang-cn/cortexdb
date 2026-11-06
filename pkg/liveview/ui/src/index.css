@@ -1,0 +1,250 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design tokens. Light is the default; .dark on <html> is the second option.
+ *
+ * Surfaces are a calm cool neutral with one indigo accent. Every colour that
+ * carries a meaning (change op, activity kind, knowledge-contract grade) is one
+ * solid per theme; its tinted background and readable ink are derived below
+ * with color-mix, so a meaning is defined once and both themes stay in step.
+ * Pages never pick these colours by hand: they go through lib/semantics.ts.
+ */
+:root {
+  --radius: 0.5rem;
+
+  --background: #f6f7f9;
+  --foreground: #12161d;
+  --card: #ffffff;
+  --card-foreground: #12161d;
+  --popover: #ffffff;
+  --popover-foreground: #12161d;
+  --primary: #4f46e5;
+  --primary-foreground: #ffffff;
+  --secondary: #eceef2;
+  --secondary-foreground: #1d2330;
+  --muted: #eceef2;
+  --muted-foreground: #5d6678;
+  --accent: #e8eafd;
+  --accent-foreground: #3730a3;
+  --destructive: #dc2626;
+  --border: #e1e4ea;
+  --input: #d5d9e1;
+  --ring: #6d65f0;
+
+  /* Change ops */
+  --op-added: #15803d;
+  --op-updated: #2563eb;
+  --op-superseded: #c2410c;
+  --op-retracted: #e11d48;
+  --op-merged: #7c3aed;
+  --op-deleted: #64748b;
+
+  /* Activity kinds */
+  --kind-query: #4f46e5;
+  --kind-write: #0f766e;
+  --kind-relate: #a21caf;
+  --kind-failed: #dc2626;
+
+  /* Knowledge-contract grades: the contract's own light palette (grade.go). */
+  --grade-verified: #047857;
+  --grade-self-consistent: #0e7490;
+  --grade-asserted: #8f9bb0;
+  --grade-held: #b45309;
+  --grade-refused: #b42318;
+  --grade-untagged: #c4cad6;
+  --grade-unknown: #e11d48;
+
+  /* Connection states */
+  --link-live: #15803d;
+  --link-wait: #b45309;
+  --link-pinned: #4f46e5;
+  --link-off: #b42318;
+}
+
+.dark {
+  --background: #0d1016;
+  --foreground: #e8ebf1;
+  --card: #151922;
+  --card-foreground: #e8ebf1;
+  --popover: #151922;
+  --popover-foreground: #e8ebf1;
+  --primary: #8b85f7;
+  --primary-foreground: #0d1016;
+  --secondary: #1d2230;
+  --secondary-foreground: #e8ebf1;
+  --muted: #1b202c;
+  --muted-foreground: #98a2b5;
+  --accent: #232845;
+  --accent-foreground: #c7c4ff;
+  --destructive: #f87171;
+  --border: #252b3a;
+  --input: #2f3647;
+  --ring: #8b85f7;
+
+  --op-added: #4ade80;
+  --op-updated: #60a5fa;
+  --op-superseded: #fb923c;
+  --op-retracted: #fb7185;
+  --op-merged: #a78bfa;
+  --op-deleted: #94a3b8;
+
+  --kind-query: #8b85f7;
+  --kind-write: #2dd4bf;
+  --kind-relate: #e879f9;
+  --kind-failed: #f87171;
+
+  /* The lifted palette the 3D scene already uses on a dark ground. */
+  --grade-verified: #34d399;
+  --grade-self-consistent: #38bdf8;
+  --grade-asserted: #94a3b8;
+  --grade-held: #fbbf24;
+  --grade-refused: #f87171;
+  --grade-untagged: #3f4d66;
+  --grade-unknown: #fb7185;
+
+  --link-live: #4ade80;
+  --link-wait: #fbbf24;
+  --link-pinned: #8b85f7;
+  --link-off: #f87171;
+}
+
+@theme inline {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --radius-sm: calc(var(--radius) - 3px);
+  --radius-md: calc(var(--radius) - 1px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* name, name-soft (tinted background), name-ink (text on that background) */
+  --color-op-added: var(--op-added);
+  --color-op-added-soft: color-mix(in oklab, var(--op-added) 13%, var(--card));
+  --color-op-added-ink: color-mix(in oklab, var(--op-added) 78%, var(--foreground));
+  --color-op-updated: var(--op-updated);
+  --color-op-updated-soft: color-mix(in oklab, var(--op-updated) 13%, var(--card));
+  --color-op-updated-ink: color-mix(in oklab, var(--op-updated) 78%, var(--foreground));
+  --color-op-superseded: var(--op-superseded);
+  --color-op-superseded-soft: color-mix(in oklab, var(--op-superseded) 13%, var(--card));
+  --color-op-superseded-ink: color-mix(in oklab, var(--op-superseded) 78%, var(--foreground));
+  --color-op-retracted: var(--op-retracted);
+  --color-op-retracted-soft: color-mix(in oklab, var(--op-retracted) 13%, var(--card));
+  --color-op-retracted-ink: color-mix(in oklab, var(--op-retracted) 78%, var(--foreground));
+  --color-op-merged: var(--op-merged);
+  --color-op-merged-soft: color-mix(in oklab, var(--op-merged) 13%, var(--card));
+  --color-op-merged-ink: color-mix(in oklab, var(--op-merged) 78%, var(--foreground));
+  --color-op-deleted: var(--op-deleted);
+  --color-op-deleted-soft: color-mix(in oklab, var(--op-deleted) 13%, var(--card));
+  --color-op-deleted-ink: color-mix(in oklab, var(--op-deleted) 78%, var(--foreground));
+
+  --color-kind-query: var(--kind-query);
+  --color-kind-query-soft: color-mix(in oklab, var(--kind-query) 13%, var(--card));
+  --color-kind-query-ink: color-mix(in oklab, var(--kind-query) 78%, var(--foreground));
+  --color-kind-write: var(--kind-write);
+  --color-kind-write-soft: color-mix(in oklab, var(--kind-write) 13%, var(--card));
+  --color-kind-write-ink: color-mix(in oklab, var(--kind-write) 78%, var(--foreground));
+  --color-kind-relate: var(--kind-relate);
+  --color-kind-relate-soft: color-mix(in oklab, var(--kind-relate) 13%, var(--card));
+  --color-kind-relate-ink: color-mix(in oklab, var(--kind-relate) 78%, var(--foreground));
+  --color-kind-failed: var(--kind-failed);
+  --color-kind-failed-soft: color-mix(in oklab, var(--kind-failed) 13%, var(--card));
+  --color-kind-failed-ink: color-mix(in oklab, var(--kind-failed) 78%, var(--foreground));
+
+  --color-grade-verified: var(--grade-verified);
+  --color-grade-verified-soft: color-mix(in oklab, var(--grade-verified) 13%, var(--card));
+  --color-grade-verified-ink: color-mix(in oklab, var(--grade-verified) 78%, var(--foreground));
+  --color-grade-self-consistent: var(--grade-self-consistent);
+  --color-grade-self-consistent-soft: color-mix(in oklab, var(--grade-self-consistent) 13%, var(--card));
+  --color-grade-self-consistent-ink: color-mix(in oklab, var(--grade-self-consistent) 78%, var(--foreground));
+  --color-grade-asserted: var(--grade-asserted);
+  --color-grade-asserted-soft: color-mix(in oklab, var(--grade-asserted) 16%, var(--card));
+  --color-grade-asserted-ink: color-mix(in oklab, var(--grade-asserted) 60%, var(--foreground));
+  --color-grade-held: var(--grade-held);
+  --color-grade-held-soft: color-mix(in oklab, var(--grade-held) 13%, var(--card));
+  --color-grade-held-ink: color-mix(in oklab, var(--grade-held) 78%, var(--foreground));
+  --color-grade-refused: var(--grade-refused);
+  --color-grade-refused-soft: color-mix(in oklab, var(--grade-refused) 13%, var(--card));
+  --color-grade-refused-ink: color-mix(in oklab, var(--grade-refused) 78%, var(--foreground));
+  --color-grade-untagged: var(--grade-untagged);
+  --color-grade-untagged-soft: color-mix(in oklab, var(--grade-untagged) 18%, var(--card));
+  --color-grade-untagged-ink: color-mix(in oklab, var(--muted-foreground) 100%, var(--foreground));
+  --color-grade-unknown: var(--grade-unknown);
+  --color-grade-unknown-soft: color-mix(in oklab, var(--grade-unknown) 13%, var(--card));
+  --color-grade-unknown-ink: color-mix(in oklab, var(--grade-unknown) 78%, var(--foreground));
+
+  --color-link-live: var(--link-live);
+  --color-link-wait: var(--link-wait);
+  --color-link-pinned: var(--link-pinned);
+  --color-link-off: var(--link-off);
+
+  /* A row that just arrived: a wash of the accent that fades out. */
+  --animate-arrive: arrive 2.6s ease-out;
+  @keyframes arrive {
+    from {
+      background-color: color-mix(in oklab, var(--primary) 18%, transparent);
+    }
+    to {
+      background-color: transparent;
+    }
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  /* The value itself is the page-level change signal; see live/hooks. */
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* One shared fade for "this just changed" rows and marks. */
+@keyframes touched-fade {
+  from {
+    background-color: color-mix(in oklab, var(--touched, var(--primary)) 22%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+@utility animate-touched {
+  animation: touched-fade 2.4s ease-out both;
+}
