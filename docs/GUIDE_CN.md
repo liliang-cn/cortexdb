@@ -491,7 +491,17 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 - **Activity**：大脑处理的工具调用，每次读了什么、写了什么、连了什么。只有由 MCP server
   提供视图时才有，因为只有它能看到调用。
 
-Ontology、Versions、Recalls、Library 是原有页面，从顶栏进入。
+- **Recalls**（`/recalls`）：召回日志，见下文"可观测性"一节。新的召回记下来就出现在列表里。
+- **Library**（`/library`）：同一张图画成阅览室。记忆是它所属项目书架上的一本书，实体是一张
+  索引卡，书在阅读台上打开。
+- **Ontology**（`/ontology`）：把当前生效的 schema 按接口分成一条条泳道画出来，再对照记录
+  实际带的类型；没有被声明的类型列在模型之外。`?draft=1` 改画一份从库里已有词汇推出来的
+  schema 草稿供审阅，页面上不会保存它。有 schema 保存时页面会自己重读。
+- **Versions**（`/ontology-history`）：一个 schema 保存过的各个版本；任选两个比较，这一对版本
+  会写进链接（`?schema=&from=&to=`）。
+
+Recalls 和 Library 支持中文和英文，按 `?lang=`，否则按浏览器语言。这四个页面在第一次打开时
+才加载。
 
 应用由一条 Server-Sent Events 流 `/api/stream` 驱动。连接后先发 `snapshot`，带着拍快照时
 变更日志的游标；之后发 `delta`（图变了）、`activity` 和 `change` 事件，`change` 用自己的

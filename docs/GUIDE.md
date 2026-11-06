@@ -624,8 +624,21 @@ phone as well as a desktop.
 - **Activity**: the tool calls the brain handles, what each read, wrote and
   linked. It is there when the MCP server serves the view, which sees the calls.
 
-Ontology, Versions, Recalls and Library are the earlier pages, linked from the
-top bar.
+- **Recalls** (`/recalls`): the recall log, described under "Observability" below.
+  A new recall joins the list as it is logged.
+- **Library** (`/library`): the same graph as a reading room. A memory is a
+  book on its project's shelf, an entity is an index card, and a book opens on
+  a lectern.
+- **Ontology** (`/ontology`): the active schema drawn as lanes, one per
+  interface, held against what the records are actually typed as; the types
+  nothing declares are listed outside the model. `?draft=1` draws instead a
+  schema derived from the store's own vocabulary, for review; nothing on the
+  page saves it. The page reads itself again when a schema is saved.
+- **Versions** (`/ontology-history`): a schema's saved versions; pick two to
+  compare, and the pair stays in the link (`?schema=&from=&to=`).
+
+Recalls and Library speak Chinese and English, by `?lang=` or else the
+browser's language. These four load when first visited.
 
 The app is fed by one Server-Sent Events stream, `/api/stream`. It opens with a
 `snapshot` that carries the change-log cursor it was taken at, then sends
