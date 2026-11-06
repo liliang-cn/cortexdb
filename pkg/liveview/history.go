@@ -199,14 +199,3 @@ func (s *Server) handleOntologyDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	writeExplore(w, res, err)
 }
-
-// handleOntologyHistoryPage serves the version list.
-//
-// A page of its own, flat like the others so that every relative fetch in it
-// resolves under a mount prefix: "ontology/versions" would put its "api/..."
-// requests one directory down.
-func (s *Server) handleOntologyHistoryPage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte(ontologyHistoryHTML))
-}

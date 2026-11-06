@@ -427,24 +427,3 @@ func TestTheHistoryToolsAreOnTheViewsReadOnlyList(t *testing.T) {
 		}
 	}
 }
-
-func TestTheHistoryPagesAreWiredAndAskRelatively(t *testing.T) {
-	_, ts := historyBrain(t)
-	page := httpGet(t, ts.URL+"/ontology-history")
-	for _, want := range []string{"Ontology versions", `getJSON("api/ontology/history?`, `getJSON("api/ontology/diff?`, `data-mode`} {
-		if !strings.Contains(page, want) {
-			t.Errorf("the versions page lacks %q", want)
-		}
-	}
-	for _, p := range []string{ontologyHistoryHTML} {
-		if strings.Contains(p, `fetch("/api/`) || strings.Contains(p, `getJSON("/api/`) {
-			t.Error("a page fetches an absolute path, so it breaks under a mount prefix")
-		}
-	}
-	if !strings.Contains(ontologyHTML, `href="ontology-history"`) {
-		t.Error("the ontology page cannot reach the version list")
-	}
-	if !strings.Contains(ontologyHistoryHTML, `"light"`) {
-		t.Error("the new views must default to the light theme")
-	}
-}

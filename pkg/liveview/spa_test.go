@@ -65,7 +65,7 @@ func fetch(t *testing.T, url string, header map[string]string) (*http.Response, 
 
 func TestTheIndexIsServedOnEveryClientRouteAndNeverCached(t *testing.T) {
 	ts := serveApp(t, theApp, "")
-	for _, route := range []string{"/", "/changes", "/entity", "/activity"} {
+	for _, route := range []string{"/", "/changes", "/entity", "/activity", "/recalls", "/library", "/ontology", "/ontology-history"} {
 		resp, body := fetch(t, ts.URL+route, nil)
 		if resp.StatusCode != 200 || !strings.Contains(body, "<title>app</title>") {
 			t.Errorf("%s: %d %q", route, resp.StatusCode, body)
@@ -84,7 +84,7 @@ func TestTheIndexIsServedOnEveryClientRouteAndNeverCached(t *testing.T) {
 
 func TestTheIndexIsBasedAtTheMountPrefix(t *testing.T) {
 	ts := serveApp(t, theApp, "/graph")
-	for _, route := range []string{"/", "/changes", "/entity", "/activity"} {
+	for _, route := range []string{"/", "/changes", "/entity", "/activity", "/recalls", "/library", "/ontology", "/ontology-history"} {
 		_, body := fetch(t, ts.URL+"/graph"+route, nil)
 		if !strings.Contains(body, `<base href="/graph/" data-cortexdb-base>`) {
 			t.Errorf("/graph%s: base not rewritten to the mount prefix: %q", route, body)
@@ -100,7 +100,7 @@ func TestTheIndexIsBasedAtTheMountPrefix(t *testing.T) {
 
 func TestOnlyTheAppsOwnRoutesGetTheIndexAndUnknownPathsAre404(t *testing.T) {
 	ts := serveApp(t, theApp, "")
-	for _, path := range []string{"/nope", "/changes/extra", "/index.html"} {
+	for _, path := range []string{"/nope", "/changes/extra", "/index.html", "/ontologyz", "/recalls/extra", "/library/"} {
 		resp, body := fetch(t, ts.URL+path, nil)
 		if resp.StatusCode != 404 || strings.Contains(body, "data-cortexdb-base") {
 			t.Errorf("%s answered %d with %q", path, resp.StatusCode, body)
@@ -185,21 +185,6 @@ func TestAssetsThatAreNotBuildFilesAre404(t *testing.T) {
 			if resp.StatusCode/100 != 3 {
 				t.Errorf("%s answered %d", path, resp.StatusCode)
 			}
-		}
-	}
-}
-
-func TestTheOldPagesAreServedUnchangedBesideTheApp(t *testing.T) {
-	ts := serveApp(t, theApp, "")
-	for path, marker := range map[string]string{
-		"/ontology":         "CortexDB — ontology",
-		"/ontology-history": "Ontology versions",
-		"/library":          "library",
-		"/recalls":          "recall",
-	} {
-		resp, body := fetch(t, ts.URL+path, nil)
-		if resp.StatusCode != 200 || !strings.Contains(strings.ToLower(body), strings.ToLower(marker)) || strings.Contains(body, "data-cortexdb-base") {
-			t.Errorf("%s: %d, no %q", path, resp.StatusCode, marker)
 		}
 	}
 }

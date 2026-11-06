@@ -132,7 +132,7 @@
 // about — tens of declared object types with link types between them, read
 // back through [Source.Ontology] as an [OntologyReport]. It is drawn as a
 // deterministic 2D diagram rather than in the scene next door, for the reason
-// spelled out over ontologyHTML: an ontology is tens of named nodes with
+// spelled out over the page (ui/src/pages/OntologyPage.tsx): an ontology is tens of named nodes with
 // declared structure — interfaces, link direction, a foreign key on one side —
 // and a force layout can only express distance.
 //

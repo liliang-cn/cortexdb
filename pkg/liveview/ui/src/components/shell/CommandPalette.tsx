@@ -6,7 +6,7 @@ import { entityPath } from "@/components/feed/EntityLink";
 import { Button } from "@/components/ui/button";
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { APP_NAV, PAGE_LINKS } from "./nav";
+import { APP_NAV } from "./nav";
 import { PALETTE_EVENT, openPalette } from "./palette";
 
 /** The top bar's button; the shortcut itself lives in CommandPalette. */
@@ -87,7 +87,6 @@ export function CommandPalette() {
 
   const q = query.trim().toLowerCase();
   const pages = APP_NAV.filter((p) => q === "" || p.label.toLowerCase().includes(q));
-  const others = PAGE_LINKS.filter((p) => q === "" || p.label.toLowerCase().includes(q));
 
   return (
     <Dialog open={open} onOpenChange={close}>
@@ -100,7 +99,7 @@ export function CommandPalette() {
         <Command shouldFilter={false}>
       <CommandInput value={query} onValueChange={setQuery} placeholder="Find an entity or go to a page" />
       <CommandList>
-        {!searching && results.length === 0 && pages.length === 0 && others.length === 0 && (
+        {!searching && results.length === 0 && pages.length === 0 && (
           <div className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing matches that.</div>
         )}
         {results.length > 0 && (
@@ -114,23 +113,11 @@ export function CommandPalette() {
           </CommandGroup>
         )}
         {searching && results.length === 0 && <div className="px-3 py-3 text-sm text-muted-foreground">Searching...</div>}
-        {(pages.length > 0 || others.length > 0) && (
+        {pages.length > 0 && (
           <CommandGroup heading="Pages">
             {pages.map(({ to, label, icon: Icon }) => (
               <CommandItem key={to} value={`page ${label}`} onSelect={() => go(to)}>
                 <Icon aria-hidden /> {label}
-              </CommandItem>
-            ))}
-            {others.map(({ href, label }) => (
-              <CommandItem
-                key={href}
-                value={`page ${label}`}
-                onSelect={() => {
-                  close(false);
-                  window.location.assign(new URL(href, document.baseURI));
-                }}
-              >
-                <span className="size-5" aria-hidden /> {label}
               </CommandItem>
             ))}
           </CommandGroup>

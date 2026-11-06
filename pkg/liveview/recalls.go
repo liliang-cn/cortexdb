@@ -47,14 +47,6 @@ const (
 	feedbackBodySize = 4 << 10
 )
 
-func (s *Server) handleRecallsPage(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	// json.Marshal escapes < and >, so the name cannot close the script.
-	name, _ := json.Marshal(s.src.Describe)
-	_, _ = w.Write([]byte(strings.Replace(recallsHTML, "__SOURCE__", string(name), 1)))
-}
-
 // handleRecalls answers a page of the timeline.
 func (s *Server) handleRecalls(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()

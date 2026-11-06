@@ -5,7 +5,11 @@ import { ActivityPage } from "@/pages/ActivityPage";
 import { ChangesPage } from "@/pages/ChangesPage";
 import { EntityPage } from "@/pages/EntityPage";
 import { GraphPage } from "@/pages/GraphPage";
+import { LibraryPage } from "@/pages/LibraryPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
+import { OntologyHistoryPage } from "@/pages/OntologyHistoryPage";
+import { OntologyPage } from "@/pages/OntologyPage";
+import { RecallsPage } from "@/pages/RecallsPage";
 
 export function App() {
   // The page may be mounted under a prefix of another mux; the server writes it
@@ -18,6 +22,10 @@ export function App() {
           <Route path="changes" element={<ChangesPage />} />
           <Route path="entity" element={<EntityPage />} />
           <Route path="activity" element={<ActivityPage />} />
+          <Route path="recalls" element={<RecallsPage />} />
+          <Route path="library" element={<LibraryPage />} />
+          <Route path="ontology" element={<OntologyPage />} />
+          <Route path="ontology-history" element={<OntologyHistoryPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

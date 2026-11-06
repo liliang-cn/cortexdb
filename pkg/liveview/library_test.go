@@ -238,13 +238,6 @@ func TestTheLibraryIsServedFromTheSameSnapshotAsTheGraph(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = sv.Close() })
 
-	page := httpGet(t, sv.URL()+"/library")
-	for _, want := range []string{`getJSON("api/library")`, `"api/library/card?id="`, `"api/library/book?id="`, `new EventSource("api/stream")`} {
-		if !strings.Contains(page, want) {
-			t.Errorf("library page is missing %s", want)
-		}
-	}
-
 	var lib Library
 	decodeGet(t, sv.URL()+"/api/library", &lib)
 	if len(lib.Wings) != 2 || lib.Source != "test brain" || !lib.Records {
@@ -264,24 +257,5 @@ func TestTheLibraryIsServedFromTheSameSnapshotAsTheGraph(t *testing.T) {
 	decodeGet(t, sv.URL()+"/api/library/book?id=memory:drbd-0", &book)
 	if book.Record.Content != "the text of memory:drbd-0" || len(book.Index) != 3 {
 		t.Errorf("served book = %+v", book)
-	}
-}
-
-// The library is a page of the view like the others: reached from the graph
-// and the ontology, and every request it makes relative to where it is mounted.
-func TestTheLibraryIsLinkedAndMountable(t *testing.T) {
-	if !strings.Contains(ontologyHTML, `href="library"`) {
-		t.Error("the ontology page does not link to the library")
-	}
-	for _, absolute := range []string{`fetch("/`, `getJSON("/`, `EventSource("/`, `href="/`} {
-		if strings.Contains(libraryHTML, absolute) {
-			t.Errorf("the library requests %s…, an absolute path that leaves an embedder's mount point", absolute)
-		}
-	}
-	// no violet in the leathers: the palette is walnut, oak, parchment, brass
-	for _, hex := range []string{"#8b5cf6", "#a855f7", "#7c3aed", "#c084fc"} {
-		if strings.Contains(libraryHTML, hex) {
-			t.Errorf("the library uses %s", hex)
-		}
 	}
 }
