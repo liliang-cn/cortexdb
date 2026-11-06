@@ -89,7 +89,15 @@ export default function GraphView() {
   useEffect(() => {
     if (!ready || fitted.current || nodeCount === 0) return;
     fitted.current = true;
-    const timers = FIT_AT.map((ms) => setTimeout(() => { if (!moved.current) getScene()?.fit(700); }, ms));
+    // A page opened on a node (?focus=, a shared link, the palette) is about
+    // that node, so the settling fits frame it rather than the whole brain.
+    const frame = () => {
+      if (moved.current) return;
+      const sel = useGraphUI.getState().selected;
+      if (sel && getScene()?.flyTo(sel, 700)) return;
+      getScene()?.fit(700);
+    };
+    const timers = FIT_AT.map((ms) => setTimeout(frame, ms));
     if (OPTS.spin > 0) timers.push(setTimeout(() => { if (!moved.current) useGraphUI.getState().set({ orbit: true }); }, (FIT_AT.at(-1) ?? 0) + 900));
     return () => timers.forEach(clearTimeout);
   }, [ready, nodeCount]);

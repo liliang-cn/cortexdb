@@ -1,12 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowDownLeft, ArrowUpRight, Expand, History, Link2, Maximize } from "lucide-react";
 import { Link } from "react-router";
-import type { Edge } from "@/api";
+import { api, isAbort, type ChangeItem, type Edge } from "@/api";
 import { OpChip, GradeChip } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { CO_OCCURS, predicateColor, typeColor } from "@/lib/graph/colors";
 import { edgeKey, predicateShown, type Adjacency, type NodeMap } from "@/lib/graph/model";
-import { useCapabilities, useEntityChanges } from "@/live";
+import { useCapabilities } from "@/live";
+import { useRecentChanges } from "@/lib/useEntityData";
 import { formatRelative } from "@/lib/time";
 import { useNow } from "@/lib/useNow";
 import { cn } from "@/lib/utils";
@@ -128,9 +129,24 @@ function Relations({ id, adj, nodes }: { id: string; adj: Adjacency; nodes: Node
 }
 
 function Changes({ id }: { id: string }) {
-  const items = useEntityChanges(id);
+  const caps = useCapabilities();
+  // The live ring only holds what arrived since the page opened; a node picked
+  // after a reload would otherwise look as if nothing ever happened to it.
+  const [fetched, setFetched] = useState<{ id: string; items: ChangeItem[] }>({ id: "", items: [] });
+  useEffect(() => {
+    if (!caps.changes) return;
+    const ctl = new AbortController();
+    api
+      .changes({ entity: [id], limit: 6 }, { signal: ctl.signal })
+      .then((p) => setFetched({ id, items: p.items }))
+      .catch((err) => {
+        if (!isAbort(err)) setFetched({ id, items: [] });
+      });
+    return () => ctl.abort();
+  }, [id, caps.changes]);
+  const items = useRecentChanges(id, fetched.id === id ? fetched.items : [], 6);
   const now = useNow(5000);
-  if (!items.length) return <Hint>No recent changes to this entity in this session.</Hint>;
+  if (!items.length) return <Hint>{caps.changes ? "No changes to this entity in the change log." : "This source keeps no change log."}</Hint>;
   return (
     <ul className="space-y-1">
       {items.slice(0, 6).map((c) => (
