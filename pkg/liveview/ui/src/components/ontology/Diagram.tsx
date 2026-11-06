@@ -101,8 +101,28 @@ function LinkCurve({ r, pal, chosen, onSelect }: { r: LinkRoute; pal: OntologyPa
       {/* A wide invisible stroke, so a thin curve can be hit with a finger. */}
       <path d={r.d} fill="none" stroke="transparent" strokeWidth={14} />
       <path d={r.d} fill="none" stroke={stroke} strokeWidth={chosen ? 2.6 : r.live ? 1.6 : 1.2} strokeDasharray={r.live ? undefined : "5 4"} strokeOpacity={0.9} />
+    </g>
+  );
+}
+
+/**
+ * A link's two end glyphs, drawn in a layer of their own above every name.
+ * Each says one side's multiplicity, and the foreign key; a short curve has
+ * no room on it where its name misses its own ends, so the glyph is lifted
+ * over the name rather than hidden under it.
+ */
+function LinkEnds({ r, pal, onSelect }: { r: LinkRoute; pal: OntologyPalette; onSelect: Props["onSelect"] }) {
+  const stroke = r.live ? pal.link : pal.linkIdle;
+  return (
+    <g
+      className="cursor-pointer"
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect({ kind: "link", name: r.lt.api_name });
+      }}
+    >
       {r.ends.map((e) => (
-        <g key={e.side}>
+        <g key={e.side} data-end={`${r.lt.api_name}.${e.side}`}>
           <title>{`${e.end.api_name || `side ${e.side.toUpperCase()}`}: reaches ${cardinalityWord(e.end.cardinality)} ${e.end.object_type}${e.fk ? `; carries the foreign key ${e.end.foreign_key}` : ""}`}</title>
           <circle cx={e.x} cy={e.y} r={8} stroke={stroke} fill={e.fk ? pal.fk : undefined} className={cn(!e.fk && "fill-card")} data-fk={e.fk ? "1" : undefined} />
           <text x={e.x} y={e.y + 4} fontSize={11} textAnchor="middle" fill={e.fk ? pal.fkInk : undefined} className={cn(!e.fk && "fill-muted-foreground")}>
@@ -239,6 +259,9 @@ export function Diagram({ rep, pal, sel, onSelect }: Props) {
           ))}
           {L.links.map((r) => (
             <LinkLabel key={r.lt.api_name} r={r} pal={pal} onSelect={onSelect} />
+          ))}
+          {L.links.map((r) => (
+            <LinkEnds key={r.lt.api_name} r={r} pal={pal} onSelect={onSelect} />
           ))}
         </svg>
       )}
