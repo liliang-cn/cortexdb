@@ -217,8 +217,13 @@ export function headerOf(rep: OntologyAnswer): Header {
   }
   const pills: Pill[] = [
     rep.active ? { label: "active", tone: "on", title: "This schema decides what writes are allowed" } : { label: "inactive", tone: "cold", title: "Saved, and not the one in effect" },
-    { label: rep.enforcement || "strict", tone: rep.enforcement === "strict" ? "on" : "warn", title: "What an active schema does to a write that does not conform" },
   ];
+  // CortexDB's own sources always say which enforcement a stored schema has,
+  // the strict default included. An empty one comes from a host's own source
+  // that declared none, and a badge would claim a rule nobody stated.
+  if (rep.enforcement) {
+    pills.push({ label: rep.enforcement, tone: rep.enforcement === "strict" ? "on" : "warn", title: "What an active schema does to a write that does not conform" });
+  }
   if (rep.strict_actions) pills.push({ label: "strict actions", tone: "warn" });
   if (rep.action_types) pills.push({ label: `${num(rep.action_types)} ${plural(rep.action_types, "action", "actions")}`, tone: "cold" });
   if (rep.object_sets) pills.push({ label: `${num(rep.object_sets)} object ${plural(rep.object_sets, "set", "sets")}`, tone: "cold" });

@@ -158,6 +158,13 @@ describe("the header", () => {
     expect(strict.pills.map((p) => p.label)).toEqual(["inactive", "strict", "strict actions", "2 actions", "1 object set"]);
   });
 
+  it("claims no enforcement a source did not declare", () => {
+    // A host's own Source.Ontology that leaves Enforcement empty.
+    const h = headerOf(transit({ enforcement: undefined }));
+    expect(h.pills.map((p) => p.label)).toEqual(["active"]);
+    expect(headerOf(transit({ enforcement: "" })).pills.map((p) => p.label)).toEqual(["active"]);
+  });
+
   it("tells nobody-asked from nothing-saved", () => {
     expect(headerOf(absent()).detail).toBe("no schema saved");
     expect(headerOf(absent({ state: "unreadable" })).detail).toBe("no answer from this source");

@@ -276,11 +276,16 @@ type OntologyReport struct {
 	Saved   bool                `json:"saved"`
 	Schemas []OntologySchemaRef `json:"schemas"`
 
-	SchemaID      string `json:"schema_id,omitempty"`
-	Name          string `json:"name,omitempty"`
-	Description   string `json:"description,omitempty"`
-	Version       int    `json:"version,omitempty"`
-	Active        bool   `json:"active,omitempty"`
+	SchemaID    string `json:"schema_id,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+	Version     int    `json:"version,omitempty"`
+	Active      bool   `json:"active,omitempty"`
+	// Enforcement is what an active schema does to a write that does not
+	// conform ("strict", "vocabulary"). CortexDB's own sources always fill it,
+	// the strict default included; a host's own Source.Ontology leaves it
+	// empty when its store has no such rule, and the page then shows no
+	// enforcement badge rather than guessing one.
 	Enforcement   string `json:"enforcement,omitempty"`
 	StrictActions bool   `json:"strict_actions,omitempty"`
 	// Actions and ObjectSets are counted, not listed: they describe how the
