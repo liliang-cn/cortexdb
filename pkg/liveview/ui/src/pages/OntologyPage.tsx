@@ -30,6 +30,7 @@ import { drawsDiagram, type Selection } from "@/lib/ontologyLayout";
 import type { OntologyPalette } from "@/lib/ontologyPalette";
 import { useOntology } from "@/lib/useOntology";
 import { cn } from "@/lib/utils";
+import { pageShown } from "@/lib/pages";
 
 function PillBadge({ p, pal }: { p: Pill; pal: OntologyPalette }) {
   const style =
@@ -108,12 +109,14 @@ export function OntologyPage() {
             title="Ontology"
             description={<HeaderLine rep={rep} pal={pal} />}
             actions={
-              <Button variant="outline" size="sm" asChild>
-                <Link to={versionsPath(rep)} title="Every saved version of this schema, when it was in effect, and what changed between them">
-                  <History aria-hidden />
-                  Versions
-                </Link>
-              </Button>
+              pageShown("/ontology-history") && (
+                <Button variant="outline" size="sm" asChild>
+                  <Link to={versionsPath(rep)} title="Every saved version of this schema, when it was in effect, and what changed between them">
+                    <History aria-hidden />
+                    Versions
+                  </Link>
+                </Button>
+              )
             }
           />
         )}

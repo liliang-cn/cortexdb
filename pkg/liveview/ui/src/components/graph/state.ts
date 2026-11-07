@@ -7,6 +7,7 @@ import type { AskAnswer, CypherAnswer, Edge, FindResult, Node } from "@/api";
 import { NO_FILTERS, type Filters } from "@/lib/graph/model";
 import type { ColorMode } from "@/lib/graph/scene";
 import type { Targets } from "@/lib/graph/rail";
+import { pageShown } from "@/lib/pages";
 
 export type ExploreMode = "find" | "ask" | "cypher";
 
@@ -67,7 +68,7 @@ export function readOptions(search: string) {
     flow: flag("flow"),
     fit: q.get("fit") !== "0",
     spin: Number.isFinite(spin) && spin > 0 ? spin : 0,
-    color: (q.get("color") === "grade" || q.get("color") === "recalls" ? q.get("color") : "type") as ColorMode,
+    color: (q.get("color") === "grade" || (q.get("color") === "recalls" && pageShown("/recalls")) ? q.get("color") : "type") as ColorMode,
     bg: /^[0-9a-f]{6}$/i.test(q.get("bg") ?? "") ? `#${q.get("bg")}` : null,
     q: q.get("q") ?? "",
     type: q.get("type") ?? "",
@@ -77,7 +78,10 @@ export function readOptions(search: string) {
     find: q.get("find") ?? "",
     ask: q.get("ask") ?? "",
     cypher: q.get("cypher") ?? "",
-    replay: q.get("replay") ?? "",
+    // Colouring by recalls and replaying one read the recall log, which goes
+    // with the Recalls page when a host leaves it out; a link that asks for
+    // either opens the graph without it.
+    replay: pageShown("/recalls") ? (q.get("replay") ?? "") : "",
   };
 }
 

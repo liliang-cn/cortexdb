@@ -204,6 +204,8 @@ type Server struct {
 	// cursor is where the change feed was last read; -1 when the source has
 	// no feed or it has not answered yet.
 	cursor int64
+	// hidden is the pages the host left out; see pages.go.
+	hidden map[Page]bool
 }
 
 // fullReadEvery bounds how stale the view can be when the feed says nothing
@@ -225,9 +227,15 @@ const fullReadEvery = time.Minute
 // The pages fetch their APIs by relative path ("api/graph", href="ontology"),
 // so the handler can be mounted under a prefix — with http.StripPrefix and a
 // trailing slash on the mount — and the browser resolves the rest.
-func New(ctx context.Context, src *Source, interval time.Duration, activity bool) (*Server, error) {
+//
+// Options shape what the view serves: WithoutPages leaves pages out.
+func New(ctx context.Context, src *Source, interval time.Duration, activity bool, opts ...Option) (*Server, error) {
 	if src == nil {
 		return nil, fmt.Errorf("live view: a source is required")
+	}
+	hidden, err := hiddenPages(opts)
+	if err != nil {
+		return nil, err
 	}
 	if interval <= 0 {
 		interval = DefaultInterval
@@ -238,6 +246,7 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 		interval: interval,
 		activity: activity,
 		ui:       embeddedUI(),
+		hidden:   hidden,
 	}
 
 	// The feed's head is taken before the first read, so a change landing
@@ -275,13 +284,16 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 	// The library is the same brain as the graph page, laid out as a reading
 	// room: a memory is a book on its project's shelf, drawn from the same
 	// snapshot, so the two never disagree about what is in the brain.
-	mux.HandleFunc("/api/library", s.handleLibrary)
-	mux.HandleFunc("/api/library/card", s.handleLibraryCard)
-	mux.HandleFunc("/api/library/book", s.handleLibraryBook)
+	//
+	// A route wrapped in s.serves is read by the named pages alone, and answers
+	// 404 when the host leaves all of them out; see pages.go.
+	mux.HandleFunc("/api/library", s.serves(s.handleLibrary, PageLibrary))
+	mux.HandleFunc("/api/library/card", s.serves(s.handleLibraryCard, PageLibrary))
+	mux.HandleFunc("/api/library/book", s.serves(s.handleLibraryBook, PageLibrary))
 	mux.HandleFunc("/api/graph", s.handleGraph)
 	mux.HandleFunc("/api/record", s.handleRecord)
 	mux.HandleFunc("/api/contract", s.handleContract)
-	mux.HandleFunc("/api/ontology", s.handleOntology)
+	mux.HandleFunc("/api/ontology", s.serves(s.handleOntology, PageOntology, PageVersions))
 	mux.HandleFunc("/api/stream", s.handleStream)
 	mux.HandleFunc("/api/find", s.handleFind)
 	mux.HandleFunc("/api/expand", s.handleExpand)
@@ -289,14 +301,16 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 	mux.HandleFunc("/api/cypher", s.handleCypher)
 	// History: git log for the graph and the ontology. See history.go.
 	mux.HandleFunc("/api/history", s.handleHistory)
-	mux.HandleFunc("/api/ontology/history", s.handleOntologyHistory)
-	mux.HandleFunc("/api/ontology/diff", s.handleOntologyDiff)
-	mux.HandleFunc("/api/recalls", s.handleRecalls)
-	mux.HandleFunc("/api/recalls/get", s.handleRecall)
-	mux.HandleFunc("/api/recalls/stats", s.handleRecallStats)
-	mux.HandleFunc("/api/recalls/heat", s.handleRecallHeat)
-	mux.HandleFunc("/api/recalls/feedback", s.handleRecallFeedback)
-	mux.HandleFunc("/api/recalls/golden", s.handleRecallGolden)
+	mux.HandleFunc("/api/ontology/history", s.serves(s.handleOntologyHistory, PageVersions))
+	mux.HandleFunc("/api/ontology/diff", s.serves(s.handleOntologyDiff, PageVersions))
+	// The recall log. The graph reads it too (colour by recalls, replaying a
+	// recall), and those go with the page: leaving Recalls out leaves the log out.
+	mux.HandleFunc("/api/recalls", s.serves(s.handleRecalls, PageRecalls))
+	mux.HandleFunc("/api/recalls/get", s.serves(s.handleRecall, PageRecalls))
+	mux.HandleFunc("/api/recalls/stats", s.serves(s.handleRecallStats, PageRecalls))
+	mux.HandleFunc("/api/recalls/heat", s.serves(s.handleRecallHeat, PageRecalls))
+	mux.HandleFunc("/api/recalls/feedback", s.serves(s.handleRecallFeedback, PageRecalls))
+	mux.HandleFunc("/api/recalls/golden", s.serves(s.handleRecallGolden, PageRecalls))
 	s.mux = mux
 
 	go s.poll(ctx)
@@ -309,9 +323,10 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 func (s *Server) Handler() http.Handler { return withGzip(s.mux) }
 
 // Start reads the graph once, starts serving on its own loopback listener,
-// and starts polling. It returns as soon as the URL is usable.
-func Start(ctx context.Context, src *Source, port int, interval time.Duration, activity bool) (*Server, error) {
-	s, err := New(ctx, src, interval, activity)
+// and starts polling. It returns as soon as the URL is usable. It takes the
+// same options as New.
+func Start(ctx context.Context, src *Source, port int, interval time.Duration, activity bool, opts ...Option) (*Server, error) {
+	s, err := New(ctx, src, interval, activity, opts...)
 	if err != nil {
 		return nil, err
 	}

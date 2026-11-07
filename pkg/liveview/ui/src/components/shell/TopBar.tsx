@@ -8,7 +8,7 @@ import { useCounts, useLinkView } from "@/live";
 import { cn } from "@/lib/utils";
 import { PaletteButton } from "./CommandPalette";
 import { ConnectionPill } from "./ConnectionPill";
-import { NAV_GROUPS } from "./nav";
+import { visibleNav } from "./nav";
 import { ThemeToggle } from "./ThemeToggle";
 
 const linkBase =
@@ -29,6 +29,7 @@ function Counts({ className }: { className?: string }) {
 export function TopBar() {
   const [open, setOpen] = useState(false);
   const link = useLinkView();
+  const NAV = visibleNav();
 
   return (
     <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 border-b bg-card/90 px-3 backdrop-blur sm:px-4">
@@ -37,7 +38,7 @@ export function TopBar() {
       </Link>
 
       <nav aria-label="Pages" className="hidden items-center lg:flex">
-        {NAV_GROUPS.map((group, i) => (
+        {NAV.map((group, i) => (
           <Fragment key={i}>
             {i > 0 && <span aria-hidden className="mx-2 h-4 w-px bg-border" />}
             {group.map(({ to, label, end }) => (
@@ -73,7 +74,7 @@ export function TopBar() {
             <SheetDescription className="sr-only">Navigation</SheetDescription>
           </SheetHeader>
           <nav aria-label="Pages" className="flex flex-col p-2">
-            {NAV_GROUPS.map((group, i) => (
+            {NAV.map((group, i) => (
               <Fragment key={i}>
                 {i > 0 && <div className="my-2 h-px bg-border" />}
                 {group.map(({ to, label, icon: Icon, end }) => (

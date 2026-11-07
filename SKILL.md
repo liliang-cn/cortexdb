@@ -1218,7 +1218,9 @@ serves the view. All of it updates over one SSE stream, `/api/stream`
 that reconnects sends `Last-Event-ID` and is replayed what it missed from the
 change log, exactly once, or told to `reset` (`pruned`, `behind`, `ahead`,
 `unavailable`) and sent a fresh snapshot. The view mounts under a prefix of
-another mux (`http.StripPrefix`), and `changes_since` takes `before` (read
+another mux (`http.StripPrefix`), a host can leave pages out of it
+(`liveview.WithoutPages`: gone from the navigation and router, their paths and
+the API routes only they read answer 404), and `changes_since` takes `before` (read
 backwards) and `explain` (add `superseded_by`, `replaces` and the schema to node
 and edge events). The same server draws the brain as a library (`library_url` in the result, or `view=library`): each memory is a book on the shelf of the project it names, shelves group into wings by their projects' relations, an entity is an index card listing every book that mentions it, and a book opens on a lectern with its text, index and see-also.
 

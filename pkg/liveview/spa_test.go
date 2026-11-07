@@ -24,13 +24,13 @@ var theApp = fstest.MapFS{
 }
 
 // serveApp serves a view whose app is files, at the root or under prefix
-// ("" or "/graph").
-func serveApp(t *testing.T, files fstest.MapFS, prefix string) *httptest.Server {
+// ("" or "/graph"), built with opts.
+func serveApp(t *testing.T, files fstest.MapFS, prefix string, opts ...Option) *httptest.Server {
 	t.Helper()
 	f := &fakeSource{}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	sv, err := New(ctx, f.source(), 40*time.Millisecond, false)
+	sv, err := New(ctx, f.source(), 40*time.Millisecond, false, opts...)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestTheEmbeddedIndexCarriesTheBaseTag(t *testing.T) {
 	if !baseTag.Match(body) {
 		t.Fatalf("the embedded index has no <base ... data-cortexdb-base> tag")
 	}
-	if got := string(rebase(body, "/graph")); !strings.Contains(got, `<base href="/graph/" data-cortexdb-base>`) {
+	if got := string(rebase(body, "/graph", nil)); !strings.Contains(got, `<base href="/graph/" data-cortexdb-base>`) {
 		t.Errorf("the embedded index was not rebased onto /graph")
 	}
 }

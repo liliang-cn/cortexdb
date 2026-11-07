@@ -20,6 +20,12 @@
 // own: the last four routes were pages in Go strings until the app took them
 // over, at the same paths and with the same query options.
 //
+// A host can leave pages out ([WithoutPages]): the server writes their names
+// into the index beside the base tag (<meta name="cortexdb-hidden-pages">),
+// the app drops them from its navigation, palette, router and links, and the
+// server answers 404 for their paths and for the API routes only they read.
+// The graph and the entity page cannot be left out.
+//
 // # The stream
 //
 // /api/stream is one server-sent-event connection per open page:

@@ -523,6 +523,22 @@ mux.Handle("/graph/", http.StripPrefix("/graph", sv.Handler()))
 ```
 
 服务端会把应用的 `<base>` 改写成这个前缀，静态资源、API 和事件流都在 `/graph/` 下解析。
+
+宿主不需要全部页面时，可以去掉其中一些：
+
+```go
+sv, _ := liveview.New(ctx, src, 2*time.Second, false,
+	liveview.WithoutPages(liveview.PageRecalls, liveview.PageLibrary, liveview.PageOntology, liveview.PageVersions))
+```
+
+去掉的页面不出现在导航、命令面板和路由里，其他页面也不会再链接到它，访问它的路径返回 404。
+只有它读的 API 也一起返回 404：去掉 Recalls 时是 `/api/recalls*`（图谱的"按召回着色"和召回回放
+也一起去掉），去掉 Library 时是 `/api/library*`，去掉 Versions 时是 `/api/ontology/history` 和
+`/api/ontology/diff`，Ontology 和 Versions 都去掉时才去掉 `/api/ontology`。去掉 Changes 时
+`/api/changes` 保留，因为图谱的检查面板和实体页要读它。可以去掉的页面是 `PageChanges`、
+`PageActivity`、`PageRecalls`、`PageLibrary`、`PageOntology` 和 `PageVersions`；图谱和实体页
+不能去掉，传其他名字时 `New` 会报错。`Start` 接受同样的选项。
+
 前端源码在 `pkg/liveview/ui`，构建结果提交在 `pkg/liveview/dist` 并嵌入二进制，所以
 `go install` 不需要 Node。
 
