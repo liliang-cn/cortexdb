@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.147.0] - 2026-11-07
+
 ### Added
 
 - `liveview.WithoutPages`: a host that mounts the live view leaves pages out
