@@ -6,6 +6,7 @@ import { useCapabilities, useLive } from "@/live";
 import { Hint, SectionTitle, Segmented } from "./primitives";
 import { useGraphUI } from "./state";
 import type { ColorMode } from "@/lib/graph/scene";
+import { pageShown } from "@/lib/pages";
 
 /** The local date-time field takes wall-clock time; the wire takes unix milliseconds. The two meet only here. */
 function localValue(ms: number): string {
@@ -81,7 +82,8 @@ export function ControlsContent() {
         options={[
           { value: "type", label: "Type" },
           { value: "grade", label: "Grade", title: "How each record is known: the knowledge contract's grade" },
-          { value: "recalls", label: "Recalls", title: "How often recalls reached each node (needs the recall log)" },
+          // Colouring by recalls reads the recall log, which goes with the Recalls page when a host leaves it out.
+          ...(pageShown("/recalls") ? [{ value: "recalls" as const, label: "Recalls", title: "How often recalls reached each node (needs the recall log)" }] : []),
         ]}
       />
       {colorMode === "grade" && !caps.grades && <p className="mt-1.5"><Hint tone="bad">This source does not report grades.</Hint></p>}

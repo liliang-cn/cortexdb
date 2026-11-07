@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- `liveview.WithoutPages`: a host that mounts the live view leaves pages out
+  of it (`PageChanges`, `PageActivity`, `PageRecalls`, `PageLibrary`,
+  `PageOntology`, `PageVersions`), as an option to `New` and `Start` (#137).
+  A page left out is gone from the navigation, the command palette and the
+  router, no page links to it, and its path and the API routes only it reads
+  answer 404; leaving out Recalls also takes the graph's colour-by-recalls
+  mode and recall replay. `/api/ontology` goes only once both Ontology and Versions
+  are out, and `/api/changes` stays, since the graph's inspector and the
+  entity page read it. The graph and the entity page cannot be left out, and
+  `New` refuses an unknown name. `Server.HiddenPages` reports the set.
+
 ## [2.146.0] - 2026-11-06
 
 ### Added

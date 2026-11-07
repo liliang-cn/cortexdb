@@ -6,7 +6,7 @@ import { entityPath } from "@/components/feed/EntityLink";
 import { Button } from "@/components/ui/button";
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { APP_NAV } from "./nav";
+import { visibleNav } from "./nav";
 import { PALETTE_EVENT, openPalette } from "./palette";
 
 /** The top bar's button; the shortcut itself lives in CommandPalette. */
@@ -86,7 +86,7 @@ export function CommandPalette() {
   };
 
   const q = query.trim().toLowerCase();
-  const pages = APP_NAV.filter((p) => q === "" || p.label.toLowerCase().includes(q));
+  const pages = visibleNav().flat().filter((p) => q === "" || p.label.toLowerCase().includes(q));
 
   return (
     <Dialog open={open} onOpenChange={close}>

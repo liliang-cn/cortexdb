@@ -15,6 +15,7 @@ import { useEntityData, useRecentChanges } from "@/lib/useEntityData";
 import { formatClock } from "@/lib/time";
 import { useNow } from "@/lib/useNow";
 import { useNode, useTouch } from "@/live";
+import { pageShown } from "@/lib/pages";
 
 function CopyId({ id }: { id: string }) {
   const [done, setDone] = useState(false);
@@ -218,9 +219,11 @@ export function EntityPage() {
           </div>
           <div className="mt-1.5"><CopyId id={id} /></div>
         </div>
-        <Button variant="outline" size="sm" asChild>
-          <Link to={`/changes?entity=${encodeURIComponent(id)}`}>All changes</Link>
-        </Button>
+        {pageShown("/changes") && (
+          <Button variant="outline" size="sm" asChild>
+            <Link to={`/changes?entity=${encodeURIComponent(id)}`}>All changes</Link>
+          </Button>
+        )}
       </header>
 
       {data.error && <p className="mt-4 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm">{data.error}</p>}

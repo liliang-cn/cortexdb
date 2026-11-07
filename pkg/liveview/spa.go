@@ -59,13 +59,14 @@ func embeddedUI() fs.FS {
 // asking the root for its bundle and its API.
 var baseTag = regexp.MustCompile(`<base\b[^>]*\bdata-cortexdb-base\b[^>]*>`)
 
-// rebase points the index's base tag at the mount prefix.
-func rebase(index []byte, prefix string) []byte {
+// rebase points the index's base tag at the mount prefix, and writes beside it
+// the pages the host left out (see pages.go).
+func rebase(index []byte, prefix string, hidden []Page) []byte {
 	loc := baseTag.FindIndex(index)
 	if loc == nil {
 		return index
 	}
-	tag := `<base href="` + html.EscapeString(prefix) + `/" data-cortexdb-base>`
+	tag := `<base href="` + html.EscapeString(prefix) + `/" data-cortexdb-base>` + hiddenPagesMeta(hidden)
 	out := make([]byte, 0, len(index)+len(prefix))
 	out = append(out, index[:loc[0]]...)
 	out = append(out, tag...)
@@ -94,7 +95,7 @@ func mountPrefix(r *http.Request) string {
 }
 
 func (s *Server) handleSPA(w http.ResponseWriter, r *http.Request) {
-	if !spaRoutes[r.URL.Path] {
+	if !spaRoutes[r.URL.Path] || !s.pageShown(r.URL.Path) {
 		http.NotFound(w, r)
 		return
 	}
@@ -106,7 +107,7 @@ func (s *Server) handleSPA(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the live view's frontend is not built into this binary", http.StatusNotFound)
 		return
 	}
-	index = rebase(index, mountPrefix(r))
+	index = rebase(index, mountPrefix(r), s.HiddenPages())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	// A rebuilt binary must never be shadowed by a stale index in the browser:
 	// the index is the one file that names the hashed bundle to load.

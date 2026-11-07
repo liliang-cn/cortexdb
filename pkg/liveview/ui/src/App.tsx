@@ -9,6 +9,7 @@ import { EntityPage } from "@/pages/EntityPage";
 import { GraphPage } from "@/pages/GraphPage";
 import { LibraryPage } from "@/pages/LibraryPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
+import { pageShown } from "@/lib/pages";
 
 // The recalls, ontology and versions pages are each a few hundred lines that
 // most visits never open, so they load when they are first visited rather
@@ -37,19 +38,21 @@ function Loading({ children }: { children: ReactNode }) {
 
 export function App() {
   // The page may be mounted under a prefix of another mux; the server writes it
-  // into <base href>, and the router follows it.
+  // into <base href>, and the router follows it. A page the host left out has
+  // no route, so a link that still reaches it lands on the not-found page.
+  const shown = (path: string) => pageShown(path);
   return (
     <BrowserRouter basename={routerBasename()}>
       <Routes>
         <Route element={<AppShell />}>
           <Route index element={<GraphPage />} />
-          <Route path="changes" element={<ChangesPage />} />
+          {shown("/changes") && <Route path="changes" element={<ChangesPage />} />}
           <Route path="entity" element={<EntityPage />} />
-          <Route path="activity" element={<ActivityPage />} />
-          <Route path="recalls" element={<Loading><RecallsPage /></Loading>} />
-          <Route path="library" element={<LibraryPage />} />
-          <Route path="ontology" element={<Loading><OntologyPage /></Loading>} />
-          <Route path="ontology-history" element={<Loading><OntologyHistoryPage /></Loading>} />
+          {shown("/activity") && <Route path="activity" element={<ActivityPage />} />}
+          {shown("/recalls") && <Route path="recalls" element={<Loading><RecallsPage /></Loading>} />}
+          {shown("/library") && <Route path="library" element={<LibraryPage />} />}
+          {shown("/ontology") && <Route path="ontology" element={<Loading><OntologyPage /></Loading>} />}
+          {shown("/ontology-history") && <Route path="ontology-history" element={<Loading><OntologyHistoryPage /></Loading>} />}
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

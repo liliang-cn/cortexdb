@@ -34,6 +34,7 @@ import {
 import { useSchemaIndex, useVersionDiff, useVersionHistory } from "@/lib/ontologyHistoryHooks";
 import { useNow } from "@/lib/useNow";
 import { useCapabilities, useLive } from "@/live";
+import { pageShown } from "@/lib/pages";
 
 function ListSkeleton() {
   return (
@@ -357,7 +358,7 @@ export function OntologyHistoryPage() {
           schema ? (
             <div className="flex flex-wrap items-center gap-2">
               <SchemaPicker value={schema} options={options} onChange={changeSchema} />
-              {saved && (
+              {saved && pageShown("/ontology") && (
                 <Button asChild variant="outline" size="sm">
                   <Link to={{ pathname: "/ontology", search: `?schema=${encodeURIComponent(schema)}` }}>
                     <Shapes aria-hidden />

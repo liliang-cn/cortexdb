@@ -667,7 +667,28 @@ mux.Handle("/graph/", http.StripPrefix("/graph", sv.Handler()))
 ```
 
 The server rewrites the app's `<base>` to the prefix, so assets, the API and the
-stream all resolve under `/graph/`. The frontend's source is in
+stream all resolve under `/graph/`.
+
+A host that does not want every page leaves some out:
+
+```go
+sv, _ := liveview.New(ctx, src, 2*time.Second, false,
+	liveview.WithoutPages(liveview.PageRecalls, liveview.PageLibrary, liveview.PageOntology, liveview.PageVersions))
+```
+
+A page left out is gone from the navigation, the command palette and the
+router, no other page links to it, and its path answers 404. So do the API
+routes only it reads: `/api/recalls*` with Recalls (which also takes the graph's
+colour-by-recalls mode and recall replay), `/api/library*` with Library,
+`/api/ontology/history` and `/api/ontology/diff` with Versions, and
+`/api/ontology` once both Ontology and Versions are out. `/api/changes` stays
+when Changes is left out, because the graph's inspector and the entity page
+read it. The pages that can be left out are `PageChanges`, `PageActivity`,
+`PageRecalls`, `PageLibrary`, `PageOntology` and `PageVersions`; the graph and
+the entity page cannot be, and `New` refuses any other name. `Start` takes the
+same options.
+
+The frontend's source is in
 `pkg/liveview/ui`; its build is committed to `pkg/liveview/dist` and embedded, so
 `go install` needs no Node.
 

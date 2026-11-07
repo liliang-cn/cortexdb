@@ -1,4 +1,5 @@
 import { Activity, GitCommitHorizontal, History, Library, Network, ScanSearch, Shapes, type LucideIcon } from "lucide-react";
+import { hiddenPages, pageShown } from "@/lib/pages";
 
 export interface NavItem {
   to: string;
@@ -26,4 +27,7 @@ export const NAV_GROUPS: NavItem[][] = [
   ],
 ];
 
-export const APP_NAV: NavItem[] = NAV_GROUPS.flat();
+/** The groups with the pages this view leaves out taken away, and any group left empty by that. */
+export function visibleNav(groups: NavItem[][] = NAV_GROUPS, hidden: ReadonlySet<string> = hiddenPages()): NavItem[][] {
+  return groups.map((g) => g.filter((item) => pageShown(item.to, hidden))).filter((g) => g.length > 0);
+}

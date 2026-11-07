@@ -10,6 +10,7 @@ import { ACTIVITY_ORDER, activityUpTo, filterActivity } from "@/lib/activity";
 import { ACTIVITY_KINDS } from "@/lib/semantics";
 import { useNow } from "@/lib/useNow";
 import { useActivity, useCapabilities, useLive } from "@/live";
+import { pageShown } from "@/lib/pages";
 
 /** Tool calls as they happen: what an agent read, wrote and linked. */
 export function ActivityPage() {
@@ -31,7 +32,13 @@ export function ActivityPage() {
     body = (
       <Empty title="This view cannot see tool calls">
         Tool calls only show when the view is served by the agent's MCP server (<span className="font-mono">serve_graph_3d</span>); the command-line view reads the
-        database alone. <Link to="/changes" className="text-primary underline underline-offset-4">Changes</Link> still lists every write.
+        database alone.
+        {pageShown("/changes") && (
+          <>
+            {" "}
+            <Link to="/changes" className="text-primary underline underline-offset-4">Changes</Link> still lists every write.
+          </>
+        )}
       </Empty>
     );
   } else if (shown.length === 0) {
