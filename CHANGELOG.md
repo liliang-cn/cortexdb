@@ -17,6 +17,13 @@ All notable changes to this project will be documented in this file.
   entity page read it. The graph and the entity page cannot be left out, and
   `New` refuses an unknown name. `Server.HiddenPages` reports the set.
 
+### Fixed
+
+- The Ontology page no longer shows a STRICT badge for a report whose
+  `Enforcement` is empty (#139). CortexDB's own sources always fill it; an
+  empty one comes from a host's own `Source.Ontology` that declared no
+  enforcement, and now shows no badge.
+
 ## [2.146.0] - 2026-11-06
 
 ### Added
