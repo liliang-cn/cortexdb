@@ -11,6 +11,23 @@ import (
 	"github.com/liliang-cn/cortexdb/v2/pkg/quantization"
 )
 
+// upsertEmbeddingSQL writes a chunk, replacing every column of a row that has
+// the same id. It is an update, not INSERT OR REPLACE, because SQLite does not
+// fire delete triggers for a row REPLACE removes (unless recursive_triggers is
+// on): the full-text indexes would keep the old entry for good.
+const upsertEmbeddingSQL = `
+	INSERT INTO embeddings (id, collection_id, vector, content, doc_id, metadata, acl, created_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+	ON CONFLICT(id) DO UPDATE SET
+		collection_id = excluded.collection_id,
+		vector = excluded.vector,
+		content = excluded.content,
+		doc_id = excluded.doc_id,
+		metadata = excluded.metadata,
+		acl = excluded.acl,
+		created_at = excluded.created_at
+`
+
 // Upsert inserts or updates a single embedding
 func (s *SQLiteStore) Upsert(ctx context.Context, emb *Embedding) error {
 	s.mu.RLock()
@@ -129,13 +146,7 @@ func (s *SQLiteStore) Upsert(ctx context.Context, emb *Embedding) error {
 		docID.Valid = true
 	}
 
-	// Insert or replace
-	query := `
-	INSERT OR REPLACE INTO embeddings (id, collection_id, vector, content, doc_id, metadata, acl, created_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-	`
-
-	_, err = s.db.ExecContext(ctx, query, emb.ID, collectionID, vectorBytes, emb.Content, docID, metadataJSON, aclJSON)
+	_, err = s.db.ExecContext(ctx, upsertEmbeddingSQL, emb.ID, collectionID, vectorBytes, emb.Content, docID, metadataJSON, aclJSON)
 	if err != nil {
 		return wrapError("upsert", fmt.Errorf("failed to insert embedding: %w", err))
 	}
@@ -211,10 +222,7 @@ func (s *SQLiteStore) UpsertBatch(ctx context.Context, embs []*Embedding) error 
 	}()
 
 	// Prepare statement
-	stmt, err := tx.PrepareContext(ctx, `
-		INSERT OR REPLACE INTO embeddings (id, collection_id, vector, content, doc_id, metadata, acl, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-	`)
+	stmt, err := tx.PrepareContext(ctx, upsertEmbeddingSQL)
 	if err != nil {
 		return wrapError("upsert_batch", fmt.Errorf("failed to prepare statement: %w", err))
 	}

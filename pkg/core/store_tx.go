@@ -23,10 +23,7 @@ func (s *SQLiteStore) UpsertBatchTx(ctx context.Context, tx *sql.Tx, embs []*Emb
 		return nil
 	}
 
-	stmt, err := tx.PrepareContext(ctx, `
-		INSERT OR REPLACE INTO embeddings (id, collection_id, vector, content, doc_id, metadata, acl, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-	`)
+	stmt, err := tx.PrepareContext(ctx, upsertEmbeddingSQL)
 	if err != nil {
 		return wrapError("upsert_batch_tx", fmt.Errorf("failed to prepare statement: %w", err))
 	}

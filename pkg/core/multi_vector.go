@@ -94,10 +94,7 @@ func (s *SQLiteStore) UpsertMultiVector(ctx context.Context, entity *MultiVector
 			return wrapError("upsert_multi_vector", err)
 		}
 
-		_, err = tx.ExecContext(ctx, `
-			INSERT OR REPLACE INTO embeddings (id, collection_id, vector, content, doc_id, metadata, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-		`, compositeID, 1, vectorBytes, entity.Content, entity.ID, string(metadataJSON))
+		_, err = tx.ExecContext(ctx, upsertEmbeddingSQL, compositeID, 1, vectorBytes, entity.Content, entity.ID, string(metadataJSON), nil)
 
 		if err != nil {
 			return wrapError("upsert_multi_vector", err)
