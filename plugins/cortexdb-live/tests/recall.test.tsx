@@ -337,6 +337,17 @@ test('a prompt the desktop app sent with an image is not recalled for', async ($
   expect(seen.calls.some(c => c.tool === 'knowledge_memory_recall')).toBe(true)
 })
 
+test('a background task notification is not recalled for', async ($, on) => {
+  const seen = world(on, { autorecall: 'on', messages: linstor, root: '/Users/a/Works/linstor-server' })
+
+  await $.classic.UserPromptSubmit({
+    prompt: '<task-notification>\n<task-id>bbpfrnt42</task-id>\n<status>completed</status>\n</task-notification>',
+  })
+
+  expect(seen.calls.some(c => c.tool === 'knowledge_memory_recall')).toBe(false)
+  expect(seen.prompts.some(p => p.includes('New user message'))).toBe(false)
+})
+
 test('a fresh session with no project asks the message as written', async ($, on) => {
   const seen = world(on, { autorecall: 'on', plan: 'fail' })
 
