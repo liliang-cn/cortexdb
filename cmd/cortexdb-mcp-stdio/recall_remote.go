@@ -62,8 +62,8 @@ func runRecallRemote(addr, token, prompt string, situation recallSituation, topK
 	request := map[string]any{
 		"query":           situation.query(prompt),
 		"keywords":        situation.keywords(prompt),
-		"top_k_memories":  situation.fetchK(topK),
-		"top_k_knowledge": situation.fetchK(topK),
+		"top_k_memories":  topK,
+		"top_k_knowledge": topK,
 		// Graph expansion earns its keep on relational prompts ("who uses X"),
 		// but this runs before every single message: light traversal only.
 		"graph_light": true,
@@ -103,7 +103,6 @@ func runRecallRemote(addr, token, prompt string, situation recallSituation, topK
 		fmt.Fprintf(os.Stderr, "cortexdb recall: %v (request_id %s, received %s)\n", err, call.ID(), describeReply(resp.GetResultJson()))
 		return ""
 	}
-	situation.focus(recalled, topK)
 	return formatRecallHits(hitsFromRecall(recalled))
 }
 

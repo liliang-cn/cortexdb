@@ -267,18 +267,27 @@ async function situationOf($: EngineInterface, prompt: string): Promise<Situatio
 const conversationOf = (s: Situation) =>
   s.turns.map(m => `${m.role === 'user' ? 'USER' : 'ASSISTANT'}: ${clip(m.text, m.role === 'user' ? 300 : 800)}`).join('\n\n')
 
-// The fallback when no plan came back: the message with the project after it,
-// as the shell hook asks (cmd/cortexdb-mcp-stdio/recall_situation.go). The
-// start of the last reply used to ride along too, and on a short message it
-// outweighed the message: the recall answered the previous turn (#142).
-const situated = (prompt: string, s: Situation) => (s.project ? `${prompt}\n\nProject: ${s.project}` : prompt)
+// The fallback when no plan came back: the message, the project, and the start
+// of the reply it follows, as the shell hook asks
+// (cmd/cortexdb-mcp-stdio/recall_situation.go). A short message ("？", "做吧")
+// names nothing; the reply it answers is what it is about (#144).
+const situated = (prompt: string, s: Situation) => {
+  const reply = s.turns.findLast(m => m.role === 'assistant')?.text ?? ''
+  const lines = [
+    s.project ? `Project: ${s.project}` : '',
+    reply ? `Context: ${clip(reply.replace(/\s+/g, ' ').trim(), 300)}` : '',
+  ].filter(Boolean)
+  return lines.length > 0 ? `${prompt}\n\n${lines.join('\n')}` : prompt
+}
 
-// How Claude Code writes an attached image into the prompt: "[Image #1] what
-// happened？". Neither the planner nor the brain can see the picture, so a
-// recall for the words beside it answers the turn before instead; such a
-// prompt is not recalled for, as the shell hook does.
+// A prompt that came with a picture. Neither the planner nor the brain can see
+// it, so a recall for the words beside it answers the turn before instead; such
+// a prompt is not recalled for, as the shell hook does. The CLI writes the
+// picture into the text as "[Image #1]"; the desktop app does not, and only
+// prompt.submit's attachments say so.
 const IMAGE = /\[Image #\d+\]/
-const carriesImage = (prompt: string) => IMAGE.test(prompt)
+let imaged: string | undefined
+const carriesImage = (prompt: string) => IMAGE.test(prompt) || imaged === prompt
 
 async function planRecall($: EngineInterface, prompt: string): Promise<Planned> {
   const started = await $.clock.now()
@@ -830,6 +839,11 @@ export const register: Register = (on, options) => {
     await update($, isHidden, () => false)
     await update($, isOpen, () => true)
     return { text: t().shown }
+  })
+
+  on('prompt.submit', ($, e, next) => {
+    imaged = e.attachments?.some(a => a.type === 'image') ? e.text.trim() : undefined
+    return next(e)
   })
 
   on('classic.UserPromptSubmit', async ($, e, next) => {
