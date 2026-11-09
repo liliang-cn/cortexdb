@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.148.1] - 2026-11-09
+
 ### Fixed
 
 - Auto-recall asks with the start of the last reply again (#144). 2.148.0
