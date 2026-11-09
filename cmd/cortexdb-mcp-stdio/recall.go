@@ -39,10 +39,15 @@ func runRecall() {
 	if err := json.NewDecoder(os.Stdin).Decode(&in); err != nil {
 		return
 	}
-	prompt := strings.TrimSpace(in.Prompt)
+	// What the person typed, without the machinery Claude Code injects: a
+	// background task's <task-notification> is a turn of its own, and was
+	// recalled for as if it were a question. A turn that is all machinery is
+	// not recalled for, as capture drops it (stripTranscriptNoise).
+	prompt := stripTranscriptNoise(in.Prompt)
 	if prompt == "" {
 		return
 	}
+	in.Prompt = prompt
 
 	topK := envInt("CORTEXDB_RECALL_TOPK", 3)
 	situation := situationFor(in)

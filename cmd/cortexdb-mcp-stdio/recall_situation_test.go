@@ -134,6 +134,37 @@ func TestAPromptWithAnImageRecallsNothing(t *testing.T) {
 }
 
 // recallFor runs the hook on a prompt and returns what it printed.
+// A background task finishing reaches the hook as a turn of its own, a
+// <task-notification> with nothing the person typed. On the live brain one
+// recall in seven was one of these (#146). It is not recalled for; machinery
+// beside what the person typed is left out of what is asked.
+func TestAPromptThatIsAllMachineryRecallsNothing(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "brain.db")
+	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SaveMemory(context.Background(), cortexdb.MemorySaveRequest{
+		MemoryID: "desktop-build", Scope: cortexdb.MemoryScopeGlobal,
+		Content: "build and sign the desktop app with make desktop, then install it",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	t.Setenv("CORTEXDB_REMOTE", "")
+	t.Setenv("CORTEXDB_PATH", dbPath)
+
+	notification := "<task-notification>\n<task-id>bbpfrnt42</task-id>\n<status>completed</status>\n" +
+		"<summary>Background command \"Build and sign the desktop app\" completed (exit code 0)</summary>\n</task-notification>"
+	if out := recallFor(t, notification); out != "" {
+		t.Fatalf("a task notification recalled %q", out)
+	}
+	if out := recallFor(t, notification+"\nhow do I build and sign the desktop app"); !strings.Contains(out, "desktop-build") {
+		t.Fatalf("what the person typed beside it was not recalled for, got %q", out)
+	}
+}
+
 func recallFor(t *testing.T, prompt string) string {
 	t.Helper()
 	payload, _ := json.Marshal(hookInput{Prompt: prompt})

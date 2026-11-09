@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Auto-recall no longer recalls for a background task's notification (#146).
+  Claude Code delivers a finished background task as a turn of its own, a
+  `<task-notification>` with nothing the person typed; on the live brain one
+  recall in seven was one of these. The hook and the cortexdb-live mod now ask
+  with what the person typed, without the machinery Claude Code injects, and
+  skip a turn that is all machinery, as capture already does.
+
 ## [2.148.1] - 2026-11-09
 
 ### Fixed

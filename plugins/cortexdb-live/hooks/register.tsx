@@ -847,7 +847,11 @@ export const register: Register = (on, options) => {
   })
 
   on('classic.UserPromptSubmit', async ($, e, next) => {
-    const prompt = e.prompt.trim()
+    // What the person typed, without the machinery Claude Code injects: a
+    // background task's <task-notification> is a turn of its own, and was
+    // recalled for as if it were a question. A turn that is all machinery is
+    // not recalled for, as capture drops it.
+    const prompt = scrubForCapture(e.prompt.replace(NOISE, '')).trim()
     const asked =
       prompt !== '' && !carriesImage(prompt) && (await sentinel($, 'autorecall'))?.startsWith('on')
         ? Promise.race([
