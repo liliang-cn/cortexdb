@@ -267,16 +267,18 @@ async function situationOf($: EngineInterface, prompt: string): Promise<Situatio
 const conversationOf = (s: Situation) =>
   s.turns.map(m => `${m.role === 'user' ? 'USER' : 'ASSISTANT'}: ${clip(m.text, m.role === 'user' ? 300 : 800)}`).join('\n\n')
 
-// The fallback when no plan came back: the message with the project and the
-// start of the last reply after it, so the embedding lands near what the
-// conversation is about and not near every other project's "fix" and "verify".
-// The server embeds the query alone, so the context has to be in it.
-const situated = (prompt: string, s: Situation) => {
-  const previous = s.turns.filter(m => m.role === 'assistant').at(-1)?.text
-  const lines = [s.project ? `Project: ${s.project}` : '', previous ? `Context: ${clip(oneLine(previous), 300)}` : '']
-  const context = lines.filter(Boolean).join('\n')
-  return context ? `${prompt}\n\n${context}` : prompt
-}
+// The fallback when no plan came back: the message with the project after it,
+// as the shell hook asks (cmd/cortexdb-mcp-stdio/recall_situation.go). The
+// start of the last reply used to ride along too, and on a short message it
+// outweighed the message: the recall answered the previous turn (#142).
+const situated = (prompt: string, s: Situation) => (s.project ? `${prompt}\n\nProject: ${s.project}` : prompt)
+
+// How Claude Code writes an attached image into the prompt: "[Image #1] what
+// happened？". Neither the planner nor the brain can see the picture, so a
+// recall for the words beside it answers the turn before instead; such a
+// prompt is not recalled for, as the shell hook does.
+const IMAGE = /\[Image #\d+\]/
+const carriesImage = (prompt: string) => IMAGE.test(prompt)
 
 async function planRecall($: EngineInterface, prompt: string): Promise<Planned> {
   const started = await $.clock.now()
@@ -486,9 +488,70 @@ Rules:
 - slug: short kebab-case ascii. importance: 0.3 routine fact, 0.6 useful decision, 0.85+ hard-won lesson or standing preference.
 - entities: the concrete named things (projects, hosts, services, people) each memory is about.
 - When a memory is about specific files listed under FILES, add each of those files as an entity of type "file", named exactly as listed. Leave out files a memory is not about; a memory about none has no file entities.
+- ALREADY RECORDED, when the prompt has it, is the project's file memory: notes loaded into every future session of this project, more detailed than a memory here. Extract nothing they already say, in whatever words. Extract only what they lack: a fact about another project or machine, or something the session established that no note records. A fact that changes what a note says is still extracted, and its content says which note it replaces ("replaces the note <name>").
 - grade, for a fact or a lesson: "verified" only when the transcript shows it was checked — a command's output, a test that passed or failed, a bug reproduced, a measurement — and grade_why then names that check in a few words; "asserted" when it was not checked: a suspected root cause, a fix nobody tested, a guess about how something works. Write an asserted memory so its content says it is unverified ("probably", "suspected", "not tested"). A guess the session later confirmed is one verified memory, not a guess beside a fact. Leave grade empty for a preference or a decision: it records what someone said or chose, and there is nothing to check.
 
 Respond with JSON only: {"memories":[{"slug":"...","content":"...","importance":0.6,"type":"fact|decision|preference|lesson","grade":"verified|asserted|","grade_why":"...","entities":[{"name":"...","type":"..."}]}]}`
+
+// Claude Code's file memory for the project: one Markdown file per memory
+// under <config>/projects/<slug>/memory/, MEMORY.md the index it loads into
+// every session. The capture is shown it so a memory does not restate a note
+// in other words (#142); the shell capture does the same
+// (cmd/cortexdb-mcp-stdio/file_memory.go), with the same budget.
+const FILE_MEMORY_CHARS = 24000
+
+type FileMemory = { name: string; description: string; body: string }
+
+const parseFileMemory = (file: string, raw: string): FileMemory => {
+  const text = raw.replace(/\r\n/g, '\n')
+  const m: FileMemory = { name: '', description: '', body: text.trim() }
+  const front = /^---\n([\s\S]*?)\n---[^\n]*\n?([\s\S]*)$/.exec(text)
+  if (front) {
+    for (const line of (front[1] ?? '').split('\n')) {
+      const at = line.indexOf(':')
+      if (at < 0) continue
+      const value = line.slice(at + 1).trim().replace(/^["']|["']$/g, '')
+      const key = line.slice(0, at).trim()
+      if (key === 'name') m.name = value
+      if (key === 'description') m.description = value
+    }
+    m.body = (front[2] ?? '').trim()
+  }
+  if (m.name === '') m.name = file.replace(/\.md$/, '')
+  return m
+}
+
+// Every note by its name and description, and as many bodies as fit beside
+// them, in file order. '' when the project has none.
+async function recordedInFiles($: EngineInterface, root: string): Promise<string> {
+  if (root === '') return ''
+  const config = (await $.env.get('CLAUDE_CONFIG_DIR')) ?? `${await $.env.get('HOME')}/.claude`
+  const dir = `${config}/projects/${root.replace(/[^A-Za-z0-9]/g, '-')}/memory`
+  const entries = await $.fs.list(dir).catch(() => [])
+  const files = entries
+    .filter(entry => entry.kind === 'file' && entry.name.endsWith('.md') && entry.name !== 'MEMORY.md')
+    .map(entry => entry.name)
+    .sort()
+  const notes: FileMemory[] = []
+  for (const file of files) {
+    const raw = await $.fs.read(`${dir}/${file}`).catch(() => undefined)
+    if (raw === undefined) continue
+    const note = parseFileMemory(file, String(raw))
+    if (note.description !== '' || note.body !== '') notes.push(note)
+  }
+  if (notes.length === 0) return ''
+  const heads = notes.map(n => `- ${n.name}${n.description ? `: ${n.description}` : ''}`)
+  let used = heads.reduce((sum, head) => sum + head.length + 1, 0)
+  if (used > FILE_MEMORY_CHARS) return clip(heads.join('\n'), FILE_MEMORY_CHARS)
+  return notes
+    .map((n, i) => {
+      const body = n.body ? `  ${n.body.replace(/\n/g, '\n  ')}` : ''
+      if (body === '' || used + body.length + 1 > FILE_MEMORY_CHARS) return heads[i]
+      used += body.length + 1
+      return `${heads[i]}\n${body}`
+    })
+    .join('\n')
+}
 
 type CapturedReply = {
   memories?: {
@@ -660,10 +723,18 @@ async function capture($: EngineInterface) {
     if (userTurns < CAPTURE_MIN_USER_TURNS) return
 
     const already = mark.memories.map(m => `- ${m.slug}: ${clip(m.content, 300)}`).join('\n')
+    const recorded = await recordedInFiles($, root)
     const reply = await $.model.complete({
       model: PLANNER,
       system: CAPTURE_SYSTEM,
-      prompt: `Today is ${today()}.\n\nAlready captured from this session:\n${already || '(none)'}\n\nTranscript not yet captured:\n${digest}`,
+      prompt: [
+        `Today is ${today()}.`,
+        recorded ? `ALREADY RECORDED (the project's file memory; do not extract what it says):\n${recorded}` : '',
+        `Already captured from this session:\n${already || '(none)'}`,
+        `Transcript not yet captured:\n${digest}`,
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
       maxTokens: 3000,
       timeoutMs: 90 * 1000,
     })
@@ -764,7 +835,7 @@ export const register: Register = (on, options) => {
   on('classic.UserPromptSubmit', async ($, e, next) => {
     const prompt = e.prompt.trim()
     const asked =
-      prompt !== '' && (await sentinel($, 'autorecall'))?.startsWith('on')
+      prompt !== '' && !carriesImage(prompt) && (await sentinel($, 'autorecall'))?.startsWith('on')
         ? Promise.race([
             recall($, prompt).catch(err => {
               brain = { ...brain, error: isDenied(err) ? t().denied(TOOLS_TO_ALLOW) : `${t().recallFailed}: ${messageOf(err)}` }

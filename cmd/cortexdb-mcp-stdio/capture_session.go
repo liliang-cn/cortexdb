@@ -91,7 +91,7 @@ func runCaptureSession(args []string) {
 		return
 	}
 
-	facts, err := extractSessionFacts(context.Background(), llm, digest, time.Now())
+	facts, err := extractSessionFacts(context.Background(), llm, digest, t.recorded(cwd), time.Now())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cortexdb: capture: %v\n", err)
 		os.Exit(1)
@@ -392,16 +392,21 @@ Rules:
 - slug: short kebab-case ascii. importance: 0.3 routine fact, 0.6 useful decision, 0.85+ hard-won lesson or standing preference.
 - entities: the concrete named things (projects, hosts, services, people) each memory is about.
 - When a memory is about specific files listed under FILES, add each of those files as an entity of type "file", named exactly as listed. Leave out files a memory is not about; a memory about none has no file entities.
+- ALREADY RECORDED, when the prompt has it, is the project's file memory: notes loaded into every future session of this project, more detailed than a memory here. Extract nothing they already say, in whatever words. Extract only what they lack: a fact about another project or machine, or something the session established that no note records. A fact that changes what a note says is still extracted, and its content says which note it replaces ("replaces the note <name>").
 - grade, for a fact or a lesson: "verified" only when the transcript shows it was checked — a command's output, a test that passed or failed, a bug reproduced, a measurement — and grade_why then names that check in a few words; "asserted" when it was not checked: a suspected root cause, a fix nobody tested, a guess about how something works. Write an asserted memory so its content says it is unverified ("probably", "suspected", "not tested"). A guess the session later confirmed is one verified memory, not a guess beside a fact. Leave grade empty for a preference or a decision: it records what someone said or chose, and there is nothing to check.
 
 Respond with JSON only: {"memories":[{"slug":"...","content":"...","importance":0.6,"type":"fact|decision|preference|lesson","grade":"verified|asserted|","grade_why":"...","entities":[{"name":"...","type":"..."}]}]}`
 
 func extractSessionFacts(ctx context.Context, llm interface {
 	GenerateJSON(ctx context.Context, systemPrompt, userPrompt string) ([]byte, error)
-}, digest string, asOf time.Time) ([]capturedFact, error) {
+}, digest, recorded string, asOf time.Time) ([]capturedFact, error) {
 	// asOf is the day the session happened, not the day it is read: a session
 	// imported months later must not have its "today" dated to the import.
-	userPrompt := fmt.Sprintf("Today is %s.\n\nTranscript digest:\n%s", asOf.Format("2006-01-02"), digest)
+	userPrompt := fmt.Sprintf("Today is %s.\n\n", asOf.Format("2006-01-02"))
+	if recorded != "" {
+		userPrompt += "ALREADY RECORDED (the project's file memory; do not extract what it says):\n" + recorded + "\n\n"
+	}
+	userPrompt += "Transcript digest:\n" + digest
 	raw, err := llm.GenerateJSON(ctx, captureSystemPrompt, userPrompt)
 	if err != nil {
 		return nil, fmt.Errorf("llm: %w", err)

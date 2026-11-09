@@ -62,8 +62,8 @@ func runRecallRemote(addr, token, prompt string, situation recallSituation, topK
 	request := map[string]any{
 		"query":           situation.query(prompt),
 		"keywords":        situation.keywords(prompt),
-		"top_k_memories":  topK,
-		"top_k_knowledge": topK,
+		"top_k_memories":  situation.fetchK(topK),
+		"top_k_knowledge": situation.fetchK(topK),
 		// Graph expansion earns its keep on relational prompts ("who uses X"),
 		// but this runs before every single message: light traversal only.
 		"graph_light": true,
@@ -98,12 +98,13 @@ func runRecallRemote(addr, token, prompt string, situation recallSituation, topK
 		return ""
 	}
 
-	hits, err := parseRecallPayload(resp.GetResultJson())
+	recalled, err := parseRecallResponse(resp.GetResultJson())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cortexdb recall: %v (request_id %s, received %s)\n", err, call.ID(), describeReply(resp.GetResultJson()))
 		return ""
 	}
-	return formatRecallHits(hits)
+	situation.focus(recalled, topK)
+	return formatRecallHits(hitsFromRecall(recalled))
 }
 
 // describeReply is what a reply that could not be read was: its size and its
@@ -123,9 +124,19 @@ func describeReply(body string) string {
 // `results` is still read: a brain running an older server answers
 // knowledge-only, and half a recall beats none.
 func parseRecallPayload(body string) ([]recallHit, error) {
+	resp, err := parseRecallResponse(body)
+	if err != nil {
+		return nil, err
+	}
+	return hitsFromRecall(resp), nil
+}
+
+// parseRecallResponse is parseRecallPayload before the hits are formed, for a
+// caller that chooses among them first.
+func parseRecallResponse(body string) (*cortexdb.KnowledgeMemoryRecallResponse, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
-		return nil, nil
+		return &cortexdb.KnowledgeMemoryRecallResponse{}, nil
 	}
 	var payload struct {
 		cortexdb.KnowledgeMemoryRecallResponse
@@ -137,7 +148,7 @@ func parseRecallPayload(body string) ([]recallHit, error) {
 	if len(payload.Memories) == 0 && len(payload.Knowledge) == 0 {
 		payload.Knowledge = payload.Results
 	}
-	return hitsFromRecall(&payload.KnowledgeMemoryRecallResponse), nil
+	return &payload.KnowledgeMemoryRecallResponse, nil
 }
 
 // hitsFromRecall turns a recall answer into injectable hits, each with its

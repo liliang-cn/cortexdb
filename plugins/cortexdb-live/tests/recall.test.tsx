@@ -75,6 +75,8 @@ type World = {
   indexFits?: boolean
   isDenied?: boolean
   connectsAfter?: number
+  // files on disk by path: Claude Code's file memory, for one.
+  files?: Record<string, string>
 }
 
 type Seen = {
@@ -100,7 +102,17 @@ const world = (on: On, w: World): Seen => {
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('command.register', () => ({ value: undefined as never }))
+  on('fs.list', ($, e) => {
+    const dir = e.path?.replace(/\/$/, '') ?? ''
+    const names = Object.keys(w.files ?? {})
+      .filter(path => path.startsWith(`${dir}/`) && !path.slice(dir.length + 1).includes('/'))
+      .map(path => path.slice(dir.length + 1))
+    if (names.length === 0) throw new Error('ENOENT')
+    return { value: names.map(name => ({ name, kind: 'file' as const, size: 1, mtimeMs: 0, isLink: false })) }
+  })
   on('fs.read', ($, e) => {
+    const file = w.files?.[e.path]
+    if (file !== undefined) return { value: file }
     const value = e.path.endsWith('autorecall') ? w.autorecall : w.autocapture
     if (value === undefined) throw new Error('ENOENT')
     return { value }
@@ -291,16 +303,25 @@ test('a message that points into the conversation is planned with the conversati
   expect(asked).toContain('USER: linstor-server: resize leaves')
 })
 
-test('without a plan the pointer message still carries the project and the last reply', async ($, on) => {
+test('without a plan the pointer message carries the project, and not the last reply', async ($, on) => {
   const seen = world(on, { autorecall: 'on', plan: 'fail', messages: linstor, root: '/Users/a/Works/linstor-server' })
 
   await $.classic.UserPromptSubmit({ prompt: '按建议 · 这个修复前后可以验证吗' })
 
   const recall = seen.calls.find(c => c.tool === 'knowledge_memory_recall')
-  const query = String(recall?.args.query)
-  expect(query.startsWith('按建议 · 这个修复前后可以验证吗\n\nProject: linstor-server\nContext: Root cause: VolumeDefinition')).toBe(true)
+  // The last reply outweighed a short message and answered the turn before (#142).
+  expect(String(recall?.args.query)).toBe('按建议 · 这个修复前后可以验证吗\n\nProject: linstor-server')
   expect(recall?.args.keywords).toContain('linstor-server')
   expect(recall?.args.entity_names).toEqual(['linstor-server'])
+})
+
+test('a prompt with an image is not recalled for', async ($, on) => {
+  const seen = world(on, { autorecall: 'on', messages: linstor, root: '/Users/a/Works/linstor-server' })
+
+  await $.classic.UserPromptSubmit({ prompt: '[Image #1] what happened？' })
+
+  expect(seen.calls.some(c => c.tool === 'knowledge_memory_recall')).toBe(false)
+  expect(seen.prompts.some(p => p.includes('New user message'))).toBe(false)
 })
 
 test('a fresh session with no project asks the message as written', async ($, on) => {
@@ -434,6 +455,39 @@ test('a captured memory names the project and the machine it came from', async (
 
   const save = seen.calls.find(c => c.tool === 'memory_save')
   expect(save?.args.metadata).toMatchObject({ project: 'linstor-server', host: 'mac', agent: 'claude-code' })
+})
+
+test('a capture is told what the project\'s file memory already says', async ($, on) => {
+  const memory = '/home/a/.claude/projects/-Users-a-Works-my-app/memory'
+  const seen = world(on, {
+    messages: conversation,
+    root: '/Users/a/Works/my.app',
+    files: {
+      [`${memory}/MEMORY.md`]: '- [Deploy](deploy.md) — the index, not a memory\n',
+      [`${memory}/deploy.md`]: '---\nname: deploy-all-nodes\ndescription: deploy to all three nodes, then evict the controller\nmetadata:\n  type: project\n---\n\nCopy to a, b and e.\n',
+    },
+  })
+
+  await $.turn.complete(turnDone)
+  await seen.clock.advance(91 * 1000)
+
+  const asked = seen.prompts.find(p => p.includes('Transcript not yet captured')) ?? ''
+  expect(asked).toContain('ALREADY RECORDED')
+  expect(asked).toContain('- deploy-all-nodes: deploy to all three nodes, then evict the controller\n  Copy to a, b and e.')
+  expect(asked).not.toContain('the index, not a memory')
+  expect(asked).not.toContain('type: project')
+  expect(asked.indexOf('ALREADY RECORDED')).toBeLessThan(asked.indexOf('Transcript not yet captured'))
+})
+
+test('a capture in a project with no file memory is asked as before', async ($, on) => {
+  const seen = world(on, { messages: conversation, root: '/Users/a/Works/other' })
+
+  await $.turn.complete(turnDone)
+  await seen.clock.advance(91 * 1000)
+
+  const asked = seen.prompts.find(p => p.includes('Transcript not yet captured')) ?? ''
+  expect(asked).not.toBe('')
+  expect(asked).not.toContain('ALREADY RECORDED')
 })
 
 test('a captured guess is saved as one, and a checked fact names its check', async ($, on) => {

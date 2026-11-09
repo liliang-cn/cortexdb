@@ -1,13 +1,17 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
-func TestAPromptIsAskedWithTheProjectAndTheLastReply(t *testing.T) {
+func TestAPromptIsAskedWithTheProjectAndTheLastReplyOnlyOrdersTheHits(t *testing.T) {
 	transcript := filepath.Join(t.TempDir(), "s.jsonl")
 	lines := []string{
 		`{"type":"user","message":{"content":"linstor-server: resize leaves the old size"}}`,
@@ -21,7 +25,7 @@ func TestAPromptIsAskedWithTheProjectAndTheLastReply(t *testing.T) {
 	s := situationFor(hookInput{Cwd: "/Users/a/Works/linstor-server", TranscriptPath: transcript})
 
 	got := s.query("按建议 · 这个修复前后可以验证吗")
-	want := "按建议 · 这个修复前后可以验证吗\n\nProject: linstor-server\nContext: Root cause: VolumeDefinition resize skips the satellite update. I suggest a fix plus a regression test."
+	want := "按建议 · 这个修复前后可以验证吗\n\nProject: linstor-server"
 	if got != want {
 		t.Fatalf("query =\n%q\nwant\n%q", got, want)
 	}
@@ -32,6 +36,124 @@ func TestAPromptIsAskedWithTheProjectAndTheLastReply(t *testing.T) {
 	if e := s.entities(); len(e) != 1 || e[0] != "linstor-server" {
 		t.Fatalf("entities = %v", e)
 	}
+	if got := s.fetchK(3); got != 6 {
+		t.Fatalf("fetchK(3) = %d, want twice topK to choose among", got)
+	}
+
+	// Of what the prompt found, the hit about the last reply's subject comes
+	// first, and topK of each kind are kept.
+	resp := &cortexdb.KnowledgeMemoryRecallResponse{
+		Memories: []cortexdb.MemorySearchHit{
+			{Memory: cortexdb.MemoryRecord{ID: "other-fix", Content: "cortexdb: a fix is verified by reverting it"}},
+			{Memory: cortexdb.MemoryRecord{ID: "resize-fix", Content: "linstor-server: verify the VolumeDefinition resize fix on the satellite"}},
+			{Memory: cortexdb.MemoryRecord{ID: "third", Content: "linstor-server: release notes go in CHANGELOG"}},
+		},
+		Knowledge: []cortexdb.KnowledgeSearchHit{
+			{KnowledgeID: "k1", Snippet: "unrelated"},
+			{KnowledgeID: "k2", Title: "Satellite resize", Snippet: "how a resize reaches the satellite"},
+		},
+	}
+	s.focus(resp, 1)
+	if len(resp.Memories) != 1 || resp.Memories[0].Memory.ID != "resize-fix" {
+		t.Fatalf("memories = %+v, want resize-fix alone", resp.Memories)
+	}
+	if len(resp.Knowledge) != 1 || resp.Knowledge[0].KnowledgeID != "k2" {
+		t.Fatalf("knowledge = %+v, want k2 alone", resp.Knowledge)
+	}
+}
+
+// Turn B of #142: a screenshot of a DRBD resync and "what happened？", after
+// a reply about AutoHTTPS. The last reply is not in the query, and with no
+// last reply to go by nothing is reordered.
+func TestAShortPromptIsNotAskedAsTheLastReply(t *testing.T) {
+	s := recallSituation{Project: "linstor-gui", Previous: "The controller's AutoHTTPS answers :3370 with a 302 redirect to :3371, so the public port no longer opens."}
+	if got := s.query("what happened？"); strings.Contains(got, "AutoHTTPS") || strings.Contains(got, "302") {
+		t.Fatalf("query carries the last reply: %q", got)
+	}
+	for _, k := range s.keywords("what happened？") {
+		if strings.Contains(strings.ToLower(k), "autohttps") {
+			t.Fatalf("keywords carry the last reply: %v", s.keywords("what happened？"))
+		}
+	}
+	bare := recallSituation{Project: "linstor-gui"}
+	if got := bare.fetchK(3); got != 3 {
+		t.Fatalf("fetchK(3) = %d with no last reply, want 3", got)
+	}
+	resp := &cortexdb.KnowledgeMemoryRecallResponse{Memories: []cortexdb.MemorySearchHit{
+		{Memory: cortexdb.MemoryRecord{ID: "a", Content: "first"}},
+		{Memory: cortexdb.MemoryRecord{ID: "b", Content: "second"}},
+	}}
+	bare.focus(resp, 3)
+	if len(resp.Memories) != 2 || resp.Memories[0].Memory.ID != "a" {
+		t.Fatalf("memories = %+v, want the brain's order", resp.Memories)
+	}
+}
+
+// A prompt with a picture is not recalled for: the hook cannot see it, and
+// the brain would answer the words beside it, or the turn before.
+func TestAPromptWithAnImageRecallsNothing(t *testing.T) {
+	for _, p := range []string{"[Image #1] what happened？", "看下这个 [Image #2]", "[Image #1][Image #2] 对比一下"} {
+		if !carriesImage(p) {
+			t.Errorf("%q not seen as carrying an image", p)
+		}
+	}
+	for _, p := range []string{"what happened?", "the [Image] tag in markdown", "Image #1 of the series"} {
+		if carriesImage(p) {
+			t.Errorf("%q seen as carrying an image", p)
+		}
+	}
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "brain.db")
+	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SaveMemory(context.Background(), cortexdb.MemorySaveRequest{
+		MemoryID: "drbd-resync", Scope: cortexdb.MemoryScopeGlobal,
+		Content: "what happened when the DRBD resource stuck resyncing: the peer lost its disk",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	t.Setenv("CORTEXDB_REMOTE", "")
+	t.Setenv("CORTEXDB_PATH", dbPath)
+
+	if out := recallFor(t, "what happened resyncing"); !strings.Contains(out, "drbd-resync") {
+		t.Fatalf("without an image the memory is recalled, got %q", out)
+	}
+	if out := recallFor(t, "[Image #1] what happened resyncing"); out != "" {
+		t.Fatalf("a prompt with an image recalled %q", out)
+	}
+}
+
+// recallFor runs the hook on a prompt and returns what it printed.
+func recallFor(t *testing.T, prompt string) string {
+	t.Helper()
+	payload, _ := json.Marshal(hookInput{Prompt: prompt})
+	stdin, err := os.CreateTemp(t.TempDir(), "stdin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stdin.Write(payload); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stdin.Seek(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	stdout, err := os.CreateTemp(t.TempDir(), "stdout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldIn, oldOut := os.Stdin, os.Stdout
+	os.Stdin, os.Stdout = stdin, stdout
+	defer func() { os.Stdin, os.Stdout = oldIn, oldOut }()
+	runRecall()
+	out, err := os.ReadFile(stdout.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
 }
 
 func TestASessionInTheHomeDirectoryNamesNoProject(t *testing.T) {
