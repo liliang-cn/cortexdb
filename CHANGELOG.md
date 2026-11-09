@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Auto-recall asks with the prompt and the project, and no longer with the
+  start of the last reply (#142). On a short prompt those 300 runes
+  outweighed the prompt, and a new subject was answered with the previous
+  one. The last reply now only decides which of the hits the prompt found
+  come first: the hook asks for twice `CORTEXDB_RECALL_TOPK` of each kind and
+  keeps those sharing the most of its words. A prompt with an image attached
+  (`[Image #1]`) is not recalled for, since the hook cannot see the picture.
+  The cortexdb-live mod does the same.
+- A Claude Code capture is shown the project's file memory
+  (`~/.claude/projects/<slug>/memory/*.md`) as already recorded, and extracts
+  only what those notes lack (#142). They are in context every session and
+  say more, so a capture that restated one in other words took a recall slot
+  and added nothing. A project without a file memory is captured as before.
+  The SessionEnd capture, `import_agent_memory`'s session import and the
+  cortexdb-live mod all do this.
+
 ## [2.147.1] - 2026-11-09
 
 ### Fixed

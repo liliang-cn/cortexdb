@@ -40,7 +40,7 @@ func runRecall() {
 		return
 	}
 	prompt := strings.TrimSpace(in.Prompt)
-	if prompt == "" {
+	if prompt == "" || carriesImage(prompt) {
 		return
 	}
 
@@ -81,12 +81,13 @@ func runRecall() {
 		EntityNames:   situation.entities(),
 		RetrievalMode: cortexdb.RetrievalModeAuto,
 		GraphLight:    true,
-		TopKMemories:  topK,
-		TopKKnowledge: topK,
+		TopKMemories:  situation.fetchK(topK),
+		TopKKnowledge: situation.fetchK(topK),
 	})
 	if err != nil || resp == nil {
 		return
 	}
+	situation.focus(resp, topK)
 
 	hits := hitsFromRecall(resp)
 	emitRecall(formatRecallHits(hits))

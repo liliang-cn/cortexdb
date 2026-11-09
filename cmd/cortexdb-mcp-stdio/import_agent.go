@@ -561,7 +561,7 @@ func (a agentImport) importSessions(ctx context.Context, src string, all []trans
 		// A short exchange holds nothing worth keeping; it is marked done so
 		// it is not read again every call.
 		if turns >= 3 {
-			facts, err := extractSessionFacts(ctx, a.llm, digest, t.Modified)
+			facts, err := extractSessionFacts(ctx, a.llm, digest, t.recorded(""), t.Modified)
 			if err != nil {
 				return res, fmt.Errorf("distil %s: %w", t.key(), err)
 			}
