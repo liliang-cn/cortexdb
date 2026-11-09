@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.147.1] - 2026-11-09
+
+### Fixed
+
+- Rewriting a chunk on SQLite (`Upsert`, `UpsertBatch`, `UpsertBatchTx`,
+  `UpsertMultiVector`) no longer leaves the old entry in `chunks_fts` and
+  `chunks_fts_cjk` (#141). `INSERT OR REPLACE` removed the old row without
+  firing the delete triggers, so every rewrite left an index entry whose row
+  was gone: reads dropped it, but it skewed BM25 and grew the indexes without
+  bound. The writers now upsert with `ON CONFLICT(id) DO UPDATE`, which fires
+  the update triggers; every column is still replaced, and a rewritten row
+  keeps its rowid. A store written before this keeps the entries it already
+  has until `INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')` (and the
+  same for `chunks_fts_cjk`) runs. Lauro Foletti.
+
 ## [2.147.0] - 2026-11-07
 
 ### Added
