@@ -170,7 +170,7 @@ It is built to stay out of the way:
 - **Local or remote.** It uses `CORTEXDB_REMOTE` when configured, without requiring a local database. In local mode it looks for `$CORTEXDB_PATH` (else the global `~/.cortexdb/cortexdb.db`) and stays silent if that file does not exist.
 - **Asked once.** The first time it runs on a machine with a database present, it asks (via Claude) whether you want auto-recall, and remembers your answer in `${XDG_CACHE_HOME:-~/.cache}/cortexdb/autorecall`.
 - **Never blocks.** Any error — missing binary, query failure, no matches — exits silently so your prompt is never delayed.
-- **Asked by what you typed.** The query is your prompt and the project the session works in. The start of the last reply only decides which of the hits your prompt found come first, so a short prompt on a new subject is not answered with the previous one. A prompt with an image attached (`[Image #1]`) is not recalled for: the hook cannot see the picture.
+- **Asked by what you typed, in its place.** The query is your prompt, the project the session works in, and the start of the last reply, so a follow-up such as "？" or "go ahead" is recalled for what it answers. A prompt with an image attached (`[Image #1]` in the CLI, an image block in the desktop app) is not recalled for: the hook cannot see the picture.
 - **Bounded.** Injects at most `CORTEXDB_RECALL_TOPK` (default 3) snippets, and no hook's block exceeds 9,000 characters: Claude Code replaces a larger `additionalContext` with a short preview, so the model would receive none of it. Entries are dropped whole from the end, and the block says how many were left out.
 
 Toggle it any time:

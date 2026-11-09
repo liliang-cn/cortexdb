@@ -11,87 +11,57 @@ import (
 	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
-func TestAPromptIsAskedWithTheProjectAndTheLastReplyOnlyOrdersTheHits(t *testing.T) {
+func TestAPromptIsAskedWithTheProjectAndTheLastReply(t *testing.T) {
 	transcript := filepath.Join(t.TempDir(), "s.jsonl")
 	lines := []string{
 		`{"type":"user","message":{"content":"linstor-server: resize leaves the old size"}}`,
 		`{"type":"assistant","message":{"content":[{"type":"text","text":"Root cause: VolumeDefinition resize skips the satellite update.\nI suggest a fix plus a regression test."}]}}`,
 		`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"a.go"}}]}}`,
+		`{"type":"user","message":{"content":[{"type":"tool_result","content":"package a"}]}}`,
 		`{"type":"user","message":{"content":"按建议 · 这个修复前后可以验证吗"}}`,
 	}
-	if err := os.WriteFile(transcript, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	s := situationFor(hookInput{Cwd: "/Users/a/Works/linstor-server", TranscriptPath: transcript})
+	writeTranscript(t, transcript, lines)
+	prompt := "按建议 · 这个修复前后可以验证吗"
+	s := situationFor(hookInput{Prompt: prompt, Cwd: "/Users/a/Works/linstor-server", TranscriptPath: transcript})
 
-	got := s.query("按建议 · 这个修复前后可以验证吗")
-	want := "按建议 · 这个修复前后可以验证吗\n\nProject: linstor-server"
+	got := s.query(prompt)
+	want := "按建议 · 这个修复前后可以验证吗\n\nProject: linstor-server\nContext: Root cause: VolumeDefinition resize skips the satellite update. I suggest a fix plus a regression test."
 	if got != want {
 		t.Fatalf("query =\n%q\nwant\n%q", got, want)
 	}
-	kw := s.keywords("按建议 · 这个修复前后可以验证吗")
+	kw := s.keywords(prompt)
 	if kw[len(kw)-1] != "linstor-server" {
 		t.Fatalf("keywords %v do not name the project", kw)
 	}
 	if e := s.entities(); len(e) != 1 || e[0] != "linstor-server" {
 		t.Fatalf("entities = %v", e)
 	}
-	if got := s.fetchK(3); got != 6 {
-		t.Fatalf("fetchK(3) = %d, want twice topK to choose among", got)
-	}
-
-	// Of what the prompt found, the hit about the last reply's subject comes
-	// first, and topK of each kind are kept.
-	resp := &cortexdb.KnowledgeMemoryRecallResponse{
-		Memories: []cortexdb.MemorySearchHit{
-			{Memory: cortexdb.MemoryRecord{ID: "other-fix", Content: "cortexdb: a fix is verified by reverting it"}},
-			{Memory: cortexdb.MemoryRecord{ID: "resize-fix", Content: "linstor-server: verify the VolumeDefinition resize fix on the satellite"}},
-			{Memory: cortexdb.MemoryRecord{ID: "third", Content: "linstor-server: release notes go in CHANGELOG"}},
-		},
-		Knowledge: []cortexdb.KnowledgeSearchHit{
-			{KnowledgeID: "k1", Snippet: "unrelated"},
-			{KnowledgeID: "k2", Title: "Satellite resize", Snippet: "how a resize reaches the satellite"},
-		},
-	}
-	s.focus(resp, 1)
-	if len(resp.Memories) != 1 || resp.Memories[0].Memory.ID != "resize-fix" {
-		t.Fatalf("memories = %+v, want resize-fix alone", resp.Memories)
-	}
-	if len(resp.Knowledge) != 1 || resp.Knowledge[0].KnowledgeID != "k2" {
-		t.Fatalf("knowledge = %+v, want k2 alone", resp.Knowledge)
+	if s.Image {
+		t.Fatal("a prompt without a picture was seen as carrying one")
 	}
 }
 
-// Turn B of #142: a screenshot of a DRBD resync and "what happened？", after
-// a reply about AutoHTTPS. The last reply is not in the query, and with no
-// last reply to go by nothing is reordered.
-func TestAShortPromptIsNotAskedAsTheLastReply(t *testing.T) {
-	s := recallSituation{Project: "linstor-gui", Previous: "The controller's AutoHTTPS answers :3370 with a 302 redirect to :3371, so the public port no longer opens."}
-	if got := s.query("what happened？"); strings.Contains(got, "AutoHTTPS") || strings.Contains(got, "302") {
-		t.Fatalf("query carries the last reply: %q", got)
-	}
-	for _, k := range s.keywords("what happened？") {
-		if strings.Contains(strings.ToLower(k), "autohttps") {
-			t.Fatalf("keywords carry the last reply: %v", s.keywords("what happened？"))
-		}
-	}
-	bare := recallSituation{Project: "linstor-gui"}
-	if got := bare.fetchK(3); got != 3 {
-		t.Fatalf("fetchK(3) = %d with no last reply, want 3", got)
-	}
-	resp := &cortexdb.KnowledgeMemoryRecallResponse{Memories: []cortexdb.MemorySearchHit{
-		{Memory: cortexdb.MemoryRecord{ID: "a", Content: "first"}},
-		{Memory: cortexdb.MemoryRecord{ID: "b", Content: "second"}},
-	}}
-	bare.focus(resp, 3)
-	if len(resp.Memories) != 2 || resp.Memories[0].Memory.ID != "a" {
-		t.Fatalf("memories = %+v, want the brain's order", resp.Memories)
+// The reply a prompt follows is the one before the prompt's own entry when
+// Claude Code has written it already, and the last one when it has not.
+func TestTheLastReplyIsTheOneBeforeThePrompt(t *testing.T) {
+	transcript := filepath.Join(t.TempDir(), "s.jsonl")
+	writeTranscript(t, transcript, []string{
+		`{"type":"user","message":{"content":"ok"}}`,
+		`{"type":"assistant","message":{"content":[{"type":"text","text":"first reply"}]}}`,
+		`{"type":"user","message":{"content":"ok"}}`,
+		`{"type":"assistant","message":{"content":[{"type":"text","text":"second reply"}]}}`,
+	})
+	// "ok" was said before, but something answered it: this "ok" is not
+	// written yet, and it follows the second reply.
+	if s := situationFor(hookInput{Prompt: "ok", TranscriptPath: transcript}); s.Previous != "second reply" {
+		t.Fatalf("previous = %q, want the last reply", s.Previous)
 	}
 }
 
-// A prompt with a picture is not recalled for: the hook cannot see it, and
-// the brain would answer the words beside it, or the turn before.
-func TestAPromptWithAnImageRecallsNothing(t *testing.T) {
+// Turn B of #142: a screenshot of a DRBD resync and "what happened？". The
+// CLI writes the picture into the prompt as [Image #1]; the desktop app does
+// not, and only the prompt's own transcript entry has the image block.
+func TestAPromptWithAnImageIsSeenFromEitherApp(t *testing.T) {
 	for _, p := range []string{"[Image #1] what happened？", "看下这个 [Image #2]", "[Image #1][Image #2] 对比一下"} {
 		if !carriesImage(p) {
 			t.Errorf("%q not seen as carrying an image", p)
@@ -103,6 +73,42 @@ func TestAPromptWithAnImageRecallsNothing(t *testing.T) {
 		}
 	}
 
+	reply := `{"type":"assistant","message":{"content":[{"type":"text","text":"The controller's AutoHTTPS answers :3370 with a 302."}]}}`
+	desktop := `{"type":"user","message":{"content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBO"}},{"type":"text","text":"what happened？"}]}}`
+	dir := t.TempDir()
+
+	written := filepath.Join(dir, "written.jsonl")
+	writeTranscript(t, written, []string{reply, desktop})
+	s := situationFor(hookInput{Prompt: "what happened？", TranscriptPath: written})
+	if !s.Image {
+		t.Fatal("a desktop prompt with an image block was not seen as carrying one")
+	}
+	if !strings.Contains(s.Previous, "AutoHTTPS") {
+		t.Fatalf("previous = %q, want the reply before the prompt", s.Previous)
+	}
+
+	// An older message with a picture is not this one.
+	answered := filepath.Join(dir, "answered.jsonl")
+	writeTranscript(t, answered, []string{reply, desktop, `{"type":"assistant","message":{"content":[{"type":"text","text":"It is resyncing."}]}}`})
+	if s := situationFor(hookInput{Prompt: "what happened？", TranscriptPath: answered}); s.Image {
+		t.Fatal("an answered message's image was taken for this prompt's")
+	}
+
+	if s := situationFor(hookInput{Prompt: "[Image #1] what happened？"}); !s.Image {
+		t.Fatal("a CLI prompt with [Image #1] was not seen as carrying an image")
+	}
+}
+
+func writeTranscript(t *testing.T, path string, lines []string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A prompt with a picture is not recalled for: the hook cannot see it, and
+// the brain would answer the words beside it, or the turn before.
+func TestAPromptWithAnImageRecallsNothing(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "brain.db")
 	db, err := cortexdb.Open(cortexdb.DefaultConfig(dbPath))

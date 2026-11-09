@@ -40,12 +40,18 @@ func runRecall() {
 		return
 	}
 	prompt := strings.TrimSpace(in.Prompt)
-	if prompt == "" || carriesImage(prompt) {
+	if prompt == "" {
 		return
 	}
 
 	topK := envInt("CORTEXDB_RECALL_TOPK", 3)
 	situation := situationFor(in)
+	// A prompt with a picture is not recalled for: the hook cannot see the
+	// picture, so whatever it found for the words beside it would come from
+	// the turn before (#142).
+	if situation.Image {
+		return
+	}
 
 	// Shared-brain mode: answer from the one central database, not this
 	// machine's local file. Without this branch --recall returns from main
@@ -81,13 +87,12 @@ func runRecall() {
 		EntityNames:   situation.entities(),
 		RetrievalMode: cortexdb.RetrievalModeAuto,
 		GraphLight:    true,
-		TopKMemories:  situation.fetchK(topK),
-		TopKKnowledge: situation.fetchK(topK),
+		TopKMemories:  topK,
+		TopKKnowledge: topK,
 	})
 	if err != nil || resp == nil {
 		return
 	}
-	situation.focus(resp, topK)
 
 	hits := hitsFromRecall(resp)
 	emitRecall(formatRecallHits(hits))

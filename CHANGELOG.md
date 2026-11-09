@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Auto-recall asks with the start of the last reply again (#144). 2.148.0
+  left it out of the query, and a follow-up that names nothing ("？",
+  "做吧", "测试通过了吗？") was recalled for its own few words: on the
+  conversations replayed against a snapshot of the brain it lost the memory
+  the reply was about, which 2.147.1 found. The hook asks as 2.147.1 did,
+  `CORTEXDB_RECALL_TOPK` of each kind, and the cortexdb-live mod's fallback
+  query carries the reply again.
+- A prompt sent with an image from the Claude desktop app is not recalled for
+  either (#144). The app does not write `[Image #1]` into the prompt; the
+  hook reads the image block from the prompt's own transcript entry, and the
+  mod from `prompt.submit`'s attachments.
+
 ## [2.148.0] - 2026-11-09
 
 ### Changed

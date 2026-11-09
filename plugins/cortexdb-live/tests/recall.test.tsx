@@ -303,14 +303,14 @@ test('a message that points into the conversation is planned with the conversati
   expect(asked).toContain('USER: linstor-server: resize leaves')
 })
 
-test('without a plan the pointer message carries the project, and not the last reply', async ($, on) => {
+test('without a plan the pointer message carries the project and the reply it follows', async ($, on) => {
   const seen = world(on, { autorecall: 'on', plan: 'fail', messages: linstor, root: '/Users/a/Works/linstor-server' })
 
   await $.classic.UserPromptSubmit({ prompt: '按建议 · 这个修复前后可以验证吗' })
 
   const recall = seen.calls.find(c => c.tool === 'knowledge_memory_recall')
-  // The last reply outweighed a short message and answered the turn before (#142).
-  expect(String(recall?.args.query)).toBe('按建议 · 这个修复前后可以验证吗\n\nProject: linstor-server')
+  // A short message names nothing; the reply it answers is what it is about (#144).
+  expect(String(recall?.args.query)).toMatch(/^按建议 · 这个修复前后可以验证吗\n\nProject: linstor-server\nContext: Root cause: VolumeDefinition resize skips the satellite update\./)
   expect(recall?.args.keywords).toContain('linstor-server')
   expect(recall?.args.entity_names).toEqual(['linstor-server'])
 })
@@ -322,6 +322,19 @@ test('a prompt with an image is not recalled for', async ($, on) => {
 
   expect(seen.calls.some(c => c.tool === 'knowledge_memory_recall')).toBe(false)
   expect(seen.prompts.some(p => p.includes('New user message'))).toBe(false)
+})
+
+test('a prompt the desktop app sent with an image is not recalled for', async ($, on) => {
+  const seen = world(on, { autorecall: 'on', messages: linstor, root: '/Users/a/Works/linstor-server' })
+  on('prompt.submit', ($, e) => ({ text: e.text }))
+
+  await $.prompt.submit({ text: 'what happened？', attachments: [{ type: 'image', mediaType: 'image/png' }], wait: false, origin: { kind: 'composer' } })
+  await $.classic.UserPromptSubmit({ prompt: 'what happened？' })
+  expect(seen.calls.some(c => c.tool === 'knowledge_memory_recall')).toBe(false)
+
+  await $.prompt.submit({ text: 'what happened？', wait: false, origin: { kind: 'composer' } })
+  await $.classic.UserPromptSubmit({ prompt: 'what happened？' })
+  expect(seen.calls.some(c => c.tool === 'knowledge_memory_recall')).toBe(true)
 })
 
 test('a fresh session with no project asks the message as written', async ($, on) => {
