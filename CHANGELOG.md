@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.148.0] - 2026-11-09
+
 ### Changed
 
 - Auto-recall asks with the prompt and the project, and no longer with the
