@@ -33,9 +33,18 @@ func (p *Pipeline) Run(ctx context.Context, db *cortexdb.DB, req RunRequest) (*R
 	if err != nil {
 		return nil, err
 	}
+	extractor := p.Extractor
+	if typed, ok := extractor.(VocabularyExtractor); ok {
+		// Read once per run. A schema that cannot be read leaves the
+		// extractor as it was: the types improve an extraction, and not
+		// knowing them must not fail one.
+		if vocab, err := db.ActiveExtractorVocabulary(ctx); err == nil && !vocab.Empty() {
+			extractor = typed.WithVocabulary(vocab)
+		}
+	}
 	extractions := make([]ExtractionResult, 0, len(docs))
 	for _, doc := range docs {
-		extraction, err := p.Extractor.Extract(ctx, doc)
+		extraction, err := extractor.Extract(ctx, doc)
 		if err != nil {
 			return nil, err
 		}

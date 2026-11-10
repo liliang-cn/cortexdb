@@ -32,6 +32,20 @@ All notable changes to this project will be documented in this file.
   case only. A schema whose alias names another type or interface, or is
   claimed by two types, is refused.
 
+- Extractors are given the active ontology's types (#153). The session
+  capture and graphflow's LLM extractor asked the model for a free-form entity
+  type, so every session invented its own spelling and the shared brain held
+  268 node types, most with one or two nodes. With an active schema they now
+  read it once per run (a shared brain through its `ontology_list` tool), list
+  each declared type's api name, description and aliases in the prompt, and
+  ask for one of those api names or an empty type. An alias is saved as its
+  api name and an undeclared type as the generic untyped entity. The list is
+  capped (60 types, 160-character descriptions, 5 aliases) so a large schema
+  cannot crowd out the transcript. With no active schema, or when it cannot be
+  read, the prompts are byte for byte what they were. New
+  `DB.ActiveExtractorVocabulary` and `ExtractorVocabularyFromSchemas` build
+  the same list for other extractors.
+
 ## [2.148.2] - 2026-11-10
 
 ### Fixed

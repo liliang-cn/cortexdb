@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
 func writeFile(t *testing.T, path, content string) {
@@ -91,7 +93,7 @@ func (p *promptRecorder) GenerateJSON(_ context.Context, _, user string) ([]byte
 func TestTheCaptureIsToldWhatTheFileMemoryAlreadySays(t *testing.T) {
 	llm := &promptRecorder{}
 	day := time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC)
-	if _, err := extractSessionFacts(context.Background(), llm, "USER: deploy it", "- deploy-all-nodes: deploy to all three nodes", day); err != nil {
+	if _, err := extractSessionFacts(context.Background(), llm, "USER: deploy it", "- deploy-all-nodes: deploy to all three nodes", day, cortexdb.ExtractorTypeVocabulary{}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(llm.user, "ALREADY RECORDED") || !strings.Contains(llm.user, "- deploy-all-nodes: deploy to all three nodes") {
@@ -100,7 +102,7 @@ func TestTheCaptureIsToldWhatTheFileMemoryAlreadySays(t *testing.T) {
 	if strings.Index(llm.user, "ALREADY RECORDED") > strings.Index(llm.user, "Transcript digest:") {
 		t.Fatalf("the file memory comes after the transcript:\n%s", llm.user)
 	}
-	if _, err := extractSessionFacts(context.Background(), llm, "USER: deploy it", "", day); err != nil {
+	if _, err := extractSessionFacts(context.Background(), llm, "USER: deploy it", "", day, cortexdb.ExtractorTypeVocabulary{}); err != nil {
 		t.Fatal(err)
 	}
 	if want := "Today is 2026-11-09.\n\nTranscript digest:\nUSER: deploy it"; llm.user != want {
