@@ -1334,6 +1334,8 @@ lighter explicit-tool integration.
   `recall_log_stats`, `recall_feedback`, `recall_feedback_export` (golden-set
   JSONL), held to the calling key. The live view's `/recalls` page reads it;
   the graph page shades by it (`?color=recalls`) and replays one (`?replay=<id>`).
+  An open view follows the log's head, so every client's recall reaches the
+  graph, the activity feed and the timeline as it happens.
 
 ## gRPC Sidecar + Rust / Python / Node clients
 

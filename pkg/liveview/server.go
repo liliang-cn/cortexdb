@@ -206,6 +206,9 @@ type Server struct {
 	cursor int64
 	// hidden is the pages the host left out; see pages.go.
 	hidden map[Page]bool
+	// recalls follows the recall log's head; nil when the page is left out or
+	// the source cannot be asked (recall_watch.go).
+	recalls *recallWatch
 }
 
 // fullReadEvery bounds how stale the view can be when the feed says nothing
@@ -314,6 +317,10 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 	s.mux = mux
 
 	go s.poll(ctx)
+	if src.Call != nil && !s.hidden[PageRecalls] {
+		s.recalls = &recallWatch{seen: map[string]bool{}, tools: map[string]bool{}}
+		go s.watchRecalls(ctx)
+	}
 	return s, nil
 }
 
@@ -497,8 +504,15 @@ func (s *Server) poll(ctx context.Context) {
 	}
 }
 
-// observe is the hook the MCP middleware calls for every handled tool call.
-func (s *Server) Observe(ev Event) { s.hub.publishEvent(ev) }
+// Observe is the hook the MCP middleware calls for every handled tool call.
+// A recall the recall log will report is left to it, which says what the
+// recall returned (recall_watch.go); the view shows each recall once.
+func (s *Server) Observe(ev Event) {
+	if s.recalls.logged(ev) {
+		return
+	}
+	s.hub.publishEvent(ev)
+}
 
 // Payload is the page's opening state: everything needed to draw,
 // plus what the header reports about where it came from.
@@ -557,7 +571,7 @@ func (s *Server) openPayload(snap Snapshot, backlog []Event, cursor int64) Paylo
 		Edges:    snap.Edges,
 		Events:   backlog,
 		Source:   s.src.Describe,
-		Activity: s.activity,
+		Activity: s.activity || s.recalls.following(),
 		Interval: s.interval.Milliseconds(),
 		Grades:   s.src.Grades,
 		Records:  s.src.Record != nil,
