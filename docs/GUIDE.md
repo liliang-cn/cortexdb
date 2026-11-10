@@ -972,6 +972,12 @@ download. On the graph page, **Colour by → Recalls** (`?color=recalls`) shades
 nodes by how often recalls reached them, and `?replay=<recall id>` lights the
 nodes one recall returned.
 
+Recalls show up live, whoever made them. While a page is open, the view reads
+the log's head on every poll. Each new recall, from any agent, hook or
+machine on the brain, reaches every open page as activity: the graph lights the
+records it returned, the activity feed lists who asked what, and the recalls
+timeline shows it at once.
+
 ## OpenClaw and Hermes memory plugins
 
 CortexDB also ships native memory-layer adapters for agents that expose a memory

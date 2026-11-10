@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- The live view shows every recall as it happens, whoever made it (#148). Its
+  activity feed used to show only the tool calls of the one process serving
+  it, so on a shared brain the auto-recalls of every other session never
+  appeared, and the recalls timeline caught them only every 15 seconds. While a
+  page is open the view now reads the recall log's head on every poll, and each
+  new recall reaches every page as activity: the graph lights the records it
+  returned, the feed says who asked what, and the timeline shows it at once.
+
 ## [2.148.2] - 2026-11-10
 
 ### Fixed
