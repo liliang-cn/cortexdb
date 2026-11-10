@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.148.2] - 2026-11-10
+
 ### Fixed
 
 - Auto-recall no longer recalls for a background task's notification (#146).
