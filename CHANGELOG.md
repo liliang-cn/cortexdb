@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.149.0] - 2026-11-10
+
 ### Fixed
 
 - Activating a vocabulary ontology no longer moves entities to new nodes
