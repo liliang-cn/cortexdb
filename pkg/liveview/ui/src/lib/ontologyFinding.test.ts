@@ -44,6 +44,15 @@ describe("the finding for a saved-schema answer", () => {
     expect(foot(transit())).toContain("counted over every row");
   });
 
+  it("words what was counted in the page's language", () => {
+    const graph = transit({ usage: { ...transit().usage, counted: "graph", returned: 2000, total: 8465 } });
+    expect(finding(graph, "zh").foot.map(textOf).join("\n")).toContain("而且只返回了 8,465 个节点中连接最多的 2,000 个");
+    expect(finding(graph, "en").foot.map(textOf).join("\n")).toContain("only the 2,000 most-connected of 8,465 nodes came back");
+    const store = transit({ usage: { ...transit().usage, counted: "store" } });
+    expect(finding(store, "zh").foot.map(textOf).join("\n")).toContain("存储中的每一行");
+    expect(finding(store, "zh").foot.map(textOf).join("\n")).not.toContain("counted over");
+  });
+
   it("says when everything declared is in use and nothing is outside", () => {
     const clean = transit({ declared_unused_types: 0, declared_unused_links: 0, usage: { ...transit().usage, undeclared_node_types: 0, undeclared_edge_types: 0 } });
     expect(say(clean)).toContain("Everything declared is in use and nothing in the store is outside the model.");
@@ -236,5 +245,21 @@ describe("a draft held against a saved schema", () => {
     });
     expect(textOf(againstSummary(rep) ?? [])).toContain("26 changes, of which 1 listed here would stop something already stored from validating.");
     expect(textOf(againstSummary({ ...rep, breaking: false }) ?? [])).toContain("none of which would invalidate anything already stored.");
+  });
+});
+
+describe("the finding in Chinese", () => {
+  it("says each state in Chinese, with the same numbers set off", () => {
+    expect(textOf(finding(absent(), "zh").runs)).toContain("这个存储没有保存本体。");
+    const live = finding(transit(), "zh");
+    expect(textOf(live.runs)).toBe("声明了 7 个对象类型和 6 个链接类型，对照存储中的 22 个节点和 15 条边。3 项声明为零——声明了，从未使用。数据中有 5 种类型是模式没有描述的。");
+    expect(live.runs.filter((r) => typeof r !== "string" && "b" in r)).toEqual(finding(transit()).runs.filter((r) => typeof r !== "string" && "b" in r));
+  });
+
+  it("keeps the names the schema declares as they are", () => {
+    const h = headerOf(transit(), "zh");
+    expect(h.pills[0]?.label).toBe("生效中");
+    expect(h.detail).toMatch(/^v\d/);
+    expect(textOf(finding(draft(), "zh").runs)).toContain("ontology_save");
   });
 });

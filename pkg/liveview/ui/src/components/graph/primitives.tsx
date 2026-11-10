@@ -5,6 +5,8 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Side } from "@/lib/graph/insets";
+import { GRAPH_TEXT } from "@/lib/graphStrings";
+import { useText } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 const NARROW = "(max-width: 767px)";
@@ -41,13 +43,14 @@ export function Card({ className, children, occludes }: { className?: string; ch
 }
 
 export function CardHeader({ title, icon, children, onClose, className }: { title: ReactNode; icon?: ReactNode; children?: ReactNode; onClose?: () => void; className?: string }) {
+  const t = useText(GRAPH_TEXT);
   return (
     <header className={cn("flex h-10 shrink-0 items-center gap-2 border-b px-3", className)}>
       {icon && <span className="text-muted-foreground [&>svg]:size-4">{icon}</span>}
       <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{title}</h2>
       {children}
       {onClose && (
-        <Button variant="ghost" size="icon" className="-mr-1.5 size-7" onClick={onClose} aria-label="Close">
+        <Button variant="ghost" size="icon" className="-mr-1.5 size-7" onClick={onClose} aria-label={t.close}>
           <X className="size-4" />
         </Button>
       )}

@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { CO_OCCURS, predicateColor, typeColor } from "@/lib/graph/colors";
 import { edgeKey, predicateShown, type Adjacency, type NodeMap } from "@/lib/graph/model";
 import { useCapabilities } from "@/live";
+import { GRAPH_TEXT } from "@/lib/graphStrings";
+import { useLang, useText } from "@/lib/i18n";
 import { useRecentChanges } from "@/lib/useEntityData";
 import { formatRelative } from "@/lib/time";
 import { useNow } from "@/lib/useNow";
@@ -61,6 +63,7 @@ function RelationRow({ row, dir, nodes }: { row: Group["rows"][number]; dir: "ou
 function Groups({ groups, dir, nodes }: { groups: Group[]; dir: "out" | "in"; nodes: NodeMap }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const filters = useGraphUI((s) => s.filters);
+  const t = useText(GRAPH_TEXT);
   if (!groups.length) return null;
   return (
     <div>
@@ -76,14 +79,14 @@ function Groups({ groups, dir, nodes }: { groups: Group[]; dir: "out" | "in"; no
               <span className="h-0.5 w-3.5 rounded-full" style={{ background: predicateColor(g.predicate) }} />
               <span className={cn("text-[13px] font-medium", quiet && "text-muted-foreground")}>{g.predicate}</span>
               <span className="font-mono text-[11px] tabular-nums text-muted-foreground">{g.rows.length}</span>
-              {quiet && !off && <span className="text-[11px] text-muted-foreground">appeared together</span>}
+              {quiet && !off && <span className="text-[11px] text-muted-foreground">{t.appearedTogether}</span>}
               {off && (
                 <button
                   type="button"
                   className="ml-auto text-xs text-muted-foreground hover:text-foreground"
                   onClick={() => setOpen((prev) => { const n = new Set(prev); if (!n.delete(g.predicate)) n.add(g.predicate); return n; })}
                 >
-                  {all ? "Fold" : "Hidden, list"}
+                  {all ? t.fold : t.hiddenList}
                 </button>
               )}
             </div>
@@ -96,7 +99,7 @@ function Groups({ groups, dir, nodes }: { groups: Group[]; dir: "out" | "in"; no
                 className="ml-1.5 px-1.5 text-xs text-muted-foreground hover:text-foreground"
                 onClick={() => setOpen((prev) => { const n = new Set(prev); if (!n.delete(g.predicate)) n.add(g.predicate); return n; })}
               >
-                {all ? "Show fewer" : `${g.rows.length - 5} more`}
+                {all ? t.showFewer : t.more(g.rows.length - 5)}
               </button>
             )}
           </div>
@@ -109,18 +112,19 @@ function Groups({ groups, dir, nodes }: { groups: Group[]; dir: "out" | "in"; no
 function Relations({ id, adj, nodes }: { id: string; adj: Adjacency; nodes: NodeMap }) {
   const out = useMemo(() => groupRelations(adj.out.get(id), "out"), [adj, id]);
   const inn = useMemo(() => groupRelations(adj.in.get(id), "in"), [adj, id]);
-  if (!out.length && !inn.length) return <Hint>No relations in the scene.</Hint>;
+  const t = useText(GRAPH_TEXT);
+  if (!out.length && !inn.length) return <Hint>{t.noRelations}</Hint>;
   return (
     <>
       {out.length > 0 && (
         <>
-          <p className="mb-1 flex items-center gap-1 px-1.5 text-xs text-muted-foreground"><ArrowUpRight className="size-3" /> Outgoing</p>
+          <p className="mb-1 flex items-center gap-1 px-1.5 text-xs text-muted-foreground"><ArrowUpRight className="size-3" /> {t.outgoing}</p>
           <Groups groups={out} dir="out" nodes={nodes} />
         </>
       )}
       {inn.length > 0 && (
         <>
-          <p className={cn("mb-1 flex items-center gap-1 px-1.5 text-xs text-muted-foreground", out.length > 0 && "mt-2")}><ArrowDownLeft className="size-3" /> Incoming</p>
+          <p className={cn("mb-1 flex items-center gap-1 px-1.5 text-xs text-muted-foreground", out.length > 0 && "mt-2")}><ArrowDownLeft className="size-3" /> {t.incoming}</p>
           <Groups groups={inn} dir="in" nodes={nodes} />
         </>
       )}
@@ -146,14 +150,16 @@ function Changes({ id }: { id: string }) {
   }, [id, caps.changes]);
   const items = useRecentChanges(id, fetched.id === id ? fetched.items : [], 6);
   const now = useNow(5000);
-  if (!items.length) return <Hint>{caps.changes ? "No changes to this entity in the change log." : "This source keeps no change log."}</Hint>;
+  const lang = useLang();
+  const t = GRAPH_TEXT[lang];
+  if (!items.length) return <Hint>{caps.changes ? t.noEntityChanges : t.noChangeLog}</Hint>;
   return (
     <ul className="space-y-1">
       {items.slice(0, 6).map((c) => (
         <li key={c.seq} className="flex items-center gap-2 text-[13px]">
           <OpChip op={c.op} iconOnly />
           <span className="min-w-0 flex-1 truncate" title={c.summary}>{c.summary}</span>
-          <time className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">{formatRelative(c.at, now)}</time>
+          <time className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">{formatRelative(lang, c.at, now)}</time>
         </li>
       ))}
     </ul>
@@ -164,11 +170,12 @@ function Actions({ id }: { id: string }) {
   const caps = useCapabilities();
   const [busy, setBusy] = useState(false);
   const g = useMerged();
+  const t = useText(GRAPH_TEXT);
   return (
     <div className="flex flex-wrap gap-1.5">
       <Button asChild variant="secondary" size="sm" className="h-8 gap-1.5">
-        <Link to={{ pathname: "/entity", search: `?id=${encodeURIComponent(id)}` }} title="Every version of this entity and its relations, and which one is in effect">
-          <History className="size-3.5" />History
+        <Link to={{ pathname: "/entity", search: `?id=${encodeURIComponent(id)}` }} title={t.historyTitle}>
+          <History className="size-3.5" />{t.history}
         </Link>
       </Button>
       {caps.explore && (
@@ -184,16 +191,16 @@ function Actions({ id }: { id: string }) {
               .catch((err) => toast(err instanceof Error ? err.message : String(err)))
               .finally(() => setBusy(false));
           }}
-          title="Fetch what this connects to, even outside the drawn part"
+          title={t.expandTitle}
         >
-          <Expand className="size-3.5" />{busy ? "Expanding" : "Expand"}
+          <Expand className="size-3.5" />{busy ? t.expanding : t.expand}
         </Button>
       )}
-      <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={() => getScene()?.flyTo(id, 700)} title="Fly to it">
-        <Maximize className="size-3.5" />Frame
+      <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={() => getScene()?.flyTo(id, 700)} title={t.flyTo}>
+        <Maximize className="size-3.5" />{t.frame}
       </Button>
-      <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={() => shareLink([["focus", id]])} title="Copy a link that opens here">
-        <Link2 className="size-3.5" />Share
+      <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={() => shareLink([["focus", id]])} title={t.shareTitle}>
+        <Link2 className="size-3.5" />{t.share}
       </Button>
     </div>
   );
@@ -217,25 +224,26 @@ export function NodeInspector({ id }: { id: string }) {
   const n = g.nodes.get(id);
   const rec = useRecord(id, caps.records);
   const degree = g.adj.degree.get(id) ?? 0;
+  const t = useText(GRAPH_TEXT);
   return (
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-        <span>{n?.type || "untyped"}</span>
+        <span>{n?.type || t.untyped}</span>
         <span aria-hidden>·</span>
-        <span>{degree} {degree === 1 ? "relation" : "relations"}</span>
+        <span>{t.relations(degree)}</span>
         {n?.grade && <GradeChip value={n.grade} className="ml-1" />}
       </div>
       <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">{id}</p>
-      {!n && <p className="mt-2"><Hint>Not drawn in the scene. The store can still answer about it.</Hint></p>}
+      {!n && <p className="mt-2"><Hint>{t.notDrawn}</Hint></p>}
       <div className="mt-3"><Actions id={id} /></div>
 
-      <SectionTitle>Relations</SectionTitle>
+      <SectionTitle>{t.relationsTitle}</SectionTitle>
       <Relations id={id} adj={g.adj} nodes={g.nodes} />
 
-      <SectionTitle>Latest changes</SectionTitle>
+      <SectionTitle>{t.latestChanges}</SectionTitle>
       <Changes id={id} />
 
-      <SectionTitle>Record</SectionTitle>
+      <SectionTitle>{t.record}</SectionTitle>
       <RecordView rep={rec.rep} error={rec.error} loading={rec.loading} available={caps.records} />
     </div>
   );
@@ -246,7 +254,8 @@ export function EdgeInspector({ edgeKey: key }: { edgeKey: string }) {
   const caps = useCapabilities();
   const e = g.edges.get(key);
   const rec = useRecord(e?.id ?? null, caps.records && !!e?.id);
-  if (!e) return <div className="px-3 py-3"><Hint>This relation is no longer in the scene.</Hint></div>;
+  const t = useText(GRAPH_TEXT);
+  if (!e) return <div className="px-3 py-3"><Hint>{t.relationGone}</Hint></div>;
   const name = (id: string) => g.nodes.get(id)?.label ?? id;
   return (
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
@@ -259,16 +268,16 @@ export function EdgeInspector({ edgeKey: key }: { edgeKey: string }) {
       </div>
       {e.grade && <div className="mt-2"><GradeChip value={e.grade} /></div>}
       {e.id && <p className="mt-2 break-all font-mono text-[11px] text-muted-foreground">{e.id}</p>}
-      <SectionTitle>Record</SectionTitle>
+      <SectionTitle>{t.record}</SectionTitle>
       {e.id ? (
         <RecordView rep={rec.rep} error={rec.error} loading={rec.loading} available={caps.records} />
       ) : (
-        <Hint>This view cannot look this relation up: the source did not name its record id.</Hint>
+        <Hint>{t.noRecordId}</Hint>
       )}
       <div className="mt-3 flex gap-1.5">
-        <IdLink id={e.source} label="Open source" />
+        <IdLink id={e.source} label={t.openSource} />
         <span className="text-muted-foreground">·</span>
-        <IdLink id={e.target} label="Open target" />
+        <IdLink id={e.target} label={t.openTarget} />
       </div>
     </div>
   );

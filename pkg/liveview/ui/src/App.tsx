@@ -9,7 +9,9 @@ import { EntityPage } from "@/pages/EntityPage";
 import { GraphPage } from "@/pages/GraphPage";
 import { LibraryPage } from "@/pages/LibraryPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
+import { useText } from "@/lib/i18n";
 import { pageShown } from "@/lib/pages";
+import { SHELL_TEXT } from "@/lib/shellStrings";
 
 // The recalls, ontology and versions pages are each a few hundred lines that
 // most visits never open, so they load when they are first visited rather
@@ -22,12 +24,13 @@ const OntologyHistoryPage = lazy(() =>
 );
 
 function Loading({ children }: { children: ReactNode }) {
+  const t = useText(SHELL_TEXT);
   return (
     <Suspense
       fallback={
         <div className="flex h-full min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />
-          Loading
+          {t.loading}
         </div>
       }
     >

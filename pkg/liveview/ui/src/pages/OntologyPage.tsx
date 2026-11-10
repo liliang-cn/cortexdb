@@ -31,6 +31,8 @@ import type { OntologyPalette } from "@/lib/ontologyPalette";
 import { useOntology } from "@/lib/useOntology";
 import { cn } from "@/lib/utils";
 import { pageShown } from "@/lib/pages";
+import { useLang, type Lang } from "@/lib/i18n";
+import { ONTOLOGY_TEXT } from "@/lib/ontologyStrings";
 
 function PillBadge({ p, pal }: { p: Pill; pal: OntologyPalette }) {
   const style =
@@ -46,9 +48,9 @@ function PillBadge({ p, pal }: { p: Pill; pal: OntologyPalette }) {
   );
 }
 
-function HeaderLine({ rep, pal }: { rep: OntologyAnswer | null; pal: OntologyPalette }) {
-  if (!rep) return <span className="text-muted-foreground">Reading the ontology…</span>;
-  const h = headerOf(rep);
+function HeaderLine({ rep, pal, lang }: { rep: OntologyAnswer | null; pal: OntologyPalette; lang: Lang }) {
+  if (!rep) return <span className="text-muted-foreground">{ONTOLOGY_TEXT[lang].reading}</span>;
+  const h = headerOf(rep, lang);
   return (
     <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
       {h.title && <b className="font-semibold text-foreground">{h.title}</b>}
@@ -61,9 +63,9 @@ function HeaderLine({ rep, pal }: { rep: OntologyAnswer | null; pal: OntologyPal
   );
 }
 
-function Skeletons() {
+function Skeletons({ label }: { label: string }) {
   return (
-    <div className="space-y-4" aria-busy aria-label="Reading the ontology">
+    <div className="space-y-4" aria-busy aria-label={label}>
       <Skeleton className="h-16 w-full rounded-xl" />
       <div className="space-y-3 rounded-xl border bg-card p-4">
         {[0, 1, 2].map((i) => (
@@ -84,6 +86,8 @@ export function OntologyPage() {
   const set = useCallback((patch: Partial<OntologyOptions>) => setParams(writeOntologyOptions({ ...opts, ...patch }, params), { replace: true }), [opts, params, setParams]);
   const pal = usePalette();
   const { rep, loading, reload } = useOntology(opts);
+  const lang = useLang();
+  const t = ONTOLOGY_TEXT[lang];
 
   // A selection survives a refresh, or every poll would close the panel a
   // reader had open on the type they were studying. It does not survive the
@@ -97,8 +101,8 @@ export function OntologyPage() {
   }, [opts.draft]);
 
   const parts = pageParts(opts);
-  const f = rep ? finding(rep) : null;
-  const band = rep ? outsideTheModel(rep, parts.outside) : null;
+  const f = rep ? finding(rep, lang) : null;
+  const band = rep ? outsideTheModel(rep, parts.outside, lang) : null;
   const draft = rep && isDraft(rep) ? rep : null;
 
   return (
@@ -106,14 +110,14 @@ export function OntologyPage() {
       <Page className="max-w-7xl space-y-4">
         {parts.header && (
           <PageHeader
-            title="Ontology"
-            description={<HeaderLine rep={rep} pal={pal} />}
+            title={t.title}
+            description={<HeaderLine rep={rep} pal={pal} lang={lang} />}
             actions={
               pageShown("/ontology-history") && (
                 <Button variant="outline" size="sm" asChild>
-                  <Link to={versionsPath(rep)} title="Every saved version of this schema, when it was in effect, and what changed between them">
+                  <Link to={versionsPath(rep)} title={t.versionsTip}>
                     <History aria-hidden />
-                    Versions
+                    {t.versions}
                   </Link>
                 </Button>
               )
@@ -123,7 +127,7 @@ export function OntologyPage() {
         {parts.controls && <Controls opts={opts} set={set} rep={rep} loading={loading} reload={reload} pal={pal} />}
 
         {!rep || !f ? (
-          <Skeletons />
+          <Skeletons label={t.reading.replace("…", "")} />
         ) : (
           <>
             {parts.finding && <Finding f={f} draftColor={pal.draft} />}

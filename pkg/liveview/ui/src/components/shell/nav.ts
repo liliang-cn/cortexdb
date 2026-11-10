@@ -1,9 +1,10 @@
 import { Activity, GitCommitHorizontal, History, Library, Network, ScanSearch, Shapes, type LucideIcon } from "lucide-react";
 import { hiddenPages, pageShown } from "@/lib/pages";
+import type { NavKey } from "@/lib/shellStrings";
 
 export interface NavItem {
-  to: string;
-  label: string;
+  /** The route, which is also the key of its label in SHELL_TEXT.nav. */
+  to: NavKey;
   icon: LucideIcon;
   end?: boolean;
 }
@@ -15,15 +16,15 @@ export interface NavItem {
  */
 export const NAV_GROUPS: NavItem[][] = [
   [
-    { to: "/", label: "Graph", icon: Network, end: true },
-    { to: "/changes", label: "Changes", icon: GitCommitHorizontal },
-    { to: "/activity", label: "Activity", icon: Activity },
+    { to: "/", icon: Network, end: true },
+    { to: "/changes", icon: GitCommitHorizontal },
+    { to: "/activity", icon: Activity },
   ],
   [
-    { to: "/recalls", label: "Recalls", icon: ScanSearch },
-    { to: "/library", label: "Library", icon: Library },
-    { to: "/ontology", label: "Ontology", icon: Shapes },
-    { to: "/ontology-history", label: "Versions", icon: History },
+    { to: "/recalls", icon: ScanSearch },
+    { to: "/library", icon: Library },
+    { to: "/ontology", icon: Shapes },
+    { to: "/ontology-history", icon: History },
   ],
 ];
 

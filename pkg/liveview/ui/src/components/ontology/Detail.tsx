@@ -11,9 +11,10 @@ import type { OntologyAnswer, OntologyInterfaceNode, OntologyLinkEdge, OntologyL
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useIsNarrow } from "@/components/graph/primitives";
-import { num } from "@/lib/ontologyFinding";
 import { cardinalityWord, counted, resolveSelection, type Selection } from "@/lib/ontologyLayout";
+import { useLang, type Lang } from "@/lib/i18n";
 import type { OntologyPalette } from "@/lib/ontologyPalette";
+import { ONTOLOGY_TEXT, type OntologyText } from "@/lib/ontologyStrings";
 
 function K({ children }: { children: ReactNode }) {
   return <dt className="mt-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{children}</dt>;
@@ -23,19 +24,19 @@ function V({ children }: { children: ReactNode }) {
   return <dd className="text-sm [overflow-wrap:anywhere]">{children}</dd>;
 }
 
-function Props({ props }: { props: OntologyProp[] }) {
-  if (!props.length) return <V><span className="text-muted-foreground">no properties declared</span></V>;
+function Props({ props, t }: { props: OntologyProp[]; t: OntologyText }) {
+  if (!props.length) return <V><span className="text-muted-foreground">{t.noProps}</span></V>;
   return (
     <dd>
       <table className="mt-1 w-full border-collapse text-xs">
         <tbody>
           {props.map((p) => {
-            const flags = [p.searchable && "searchable", p.vectorized && "vectorized"].filter(Boolean).join(" · ");
+            const flags = [p.searchable && t.searchable, p.vectorized && t.vectorized].filter(Boolean).join(" · ");
             return (
               <tr key={p.api_name} className="border-b border-border/60 last:border-0">
                 <td className="py-1 pr-2 align-top [overflow-wrap:anywhere]">
                   <span className="font-mono">{p.api_name}</span>
-                  {p.required && <span className="ml-1.5 text-[11px] font-medium text-foreground">required</span>}
+                  {p.required && <span className="ml-1.5 text-[11px] font-medium text-foreground">{t.required}</span>}
                   {flags && <span className="ml-1.5 text-[11px] text-muted-foreground">{flags}</span>}
                 </td>
                 <td className="whitespace-nowrap py-1 text-right align-top text-muted-foreground">{p.kind || "?"}</td>
@@ -48,74 +49,68 @@ function Props({ props }: { props: OntologyProp[] }) {
   );
 }
 
-function ObjectDetail({ ot, isCounted }: { ot: OntologyObjectNode; isCounted: boolean }) {
+function ObjectDetail({ ot, isCounted, t }: { ot: OntologyObjectNode; isCounted: boolean; t: OntologyText }) {
   return (
     <>
       {ot.display_name && ot.display_name !== ot.api_name && <p className="text-sm text-muted-foreground">{ot.display_name}</p>}
       {ot.description && <p className="mt-1 text-sm text-muted-foreground">{ot.description}</p>}
       <dl>
-        <K>In the store</K>
-        <V>
-          {isCounted
-            ? ot.instances
-              ? `${num(ot.instances)} ${ot.instances === 1 ? "node carries" : "nodes carry"} this type`
-              : "nothing in the store is of this type"
-            : "not counted — the gap was not measured"}
-        </V>
-        <K>Primary key</K>
+        <K>{t.inStore}</K>
+        <V>{isCounted ? (ot.instances ? t.nodesCarry(ot.instances) : t.noNodes) : t.notCountedGap}</V>
+        <K>{t.primaryKey}</K>
         <V><span className="font-mono">{ot.primary_key || "—"}</span></V>
         {ot.title_property && (
           <>
-            <K>Title property</K>
+            <K>{t.titleProperty}</K>
             <V><span className="font-mono">{ot.title_property}</span></V>
           </>
         )}
         {(ot.implements ?? []).length > 0 && (
           <>
-            <K>Implements</K>
+            <K>{t.implementsK}</K>
             <V>{ot.implements.join(", ")}</V>
           </>
         )}
         {(ot.aliases ?? []).length > 0 && (
           <>
-            <K>Aliases</K>
+            <K>{t.aliases}</K>
             <V>{ot.aliases?.join(", ")}</V>
           </>
         )}
         {ot.status && (
           <>
-            <K>Status</K>
+            <K>{t.status}</K>
             <V>
               {ot.status}
               {ot.visibility ? ` · ${ot.visibility}` : ""}
             </V>
           </>
         )}
-        <K>Properties ({ot.properties.length})</K>
-        <Props props={ot.properties} />
+        <K>{t.properties(ot.properties.length)}</K>
+        <Props props={ot.properties} t={t} />
       </dl>
     </>
   );
 }
 
-function Side({ label, s, warn }: { label: string; s: OntologyLinkEnd; warn: string }) {
+function Side({ label, s, warn, t, lang }: { label: string; s: OntologyLinkEnd; warn: string; t: OntologyText; lang: Lang }) {
   return (
     <>
       <K>
         {label} · {s.api_name || "—"}
       </K>
       <V>
-        {s.object_type} → reaches <b className="font-semibold">{cardinalityWord(s.cardinality)}</b>
+        {s.object_type} → {t.reaches} <b className="font-semibold">{cardinalityWord(s.cardinality, lang)}</b>
         {s.foreign_key ? (
           <span className="block text-xs text-muted-foreground">
-            carries the foreign key: <span className="font-mono">{s.foreign_key}</span>
+            {t.carriesFk} <span className="font-mono">{s.foreign_key}</span>
           </span>
         ) : s.cardinality === "ONE" ? (
           // A ONE side with no key property named is not an error, but it is
           // the half of the declaration that says where the column lives, and
           // its absence is worth seeing rather than reading as "no key here".
           <span className="block text-xs" style={{ color: warn }}>
-            single-valued, but no foreign key property is declared
+            {t.oneNoFk}
           </span>
         ) : null}
       </V>
@@ -123,26 +118,20 @@ function Side({ label, s, warn }: { label: string; s: OntologyLinkEnd; warn: str
   );
 }
 
-function LinkDetail({ lt, isCounted, warn }: { lt: OntologyLinkEdge; isCounted: boolean; warn: string }) {
+function LinkDetail({ lt, isCounted, warn, t, lang }: { lt: OntologyLinkEdge; isCounted: boolean; warn: string; t: OntologyText; lang: Lang }) {
   return (
     <>
       {lt.description && <p className="text-sm text-muted-foreground">{lt.description}</p>}
       <dl>
-        <K>Multiplicity</K>
-        <V>{lt.multiplicity || "not declared on both sides"}</V>
-        <K>In the store</K>
-        <V>
-          {isCounted
-            ? lt.instances
-              ? `${num(lt.instances)} ${lt.instances === 1 ? "edge carries" : "edges carry"} this type`
-              : "no edge in the store carries this type"
-            : "not counted — the gap was not measured"}
-        </V>
-        <Side label="Side A" s={lt.a} warn={warn} />
-        <Side label="Side B" s={lt.b} warn={warn} />
+        <K>{t.multiplicity}</K>
+        <V>{lt.multiplicity || t.notBothSides}</V>
+        <K>{t.inStore}</K>
+        <V>{isCounted ? (lt.instances ? t.edgesCarry(lt.instances) : t.noEdges) : t.notCountedGap}</V>
+        <Side label={t.sideA} s={lt.a} warn={warn} t={t} lang={lang} />
+        <Side label={t.sideB} s={lt.b} warn={warn} t={t} lang={lang} />
         {lt.status && (
           <>
-            <K>Status</K>
+            <K>{t.status}</K>
             <V>{lt.status}</V>
           </>
         )}
@@ -151,7 +140,7 @@ function LinkDetail({ lt, isCounted, warn }: { lt: OntologyLinkEdge; isCounted: 
   );
 }
 
-function InterfaceDetail({ it, warn }: { it: OntologyInterfaceNode; warn: string }) {
+function InterfaceDetail({ it, warn, t }: { it: OntologyInterfaceNode; warn: string; t: OntologyText }) {
   const impl = it.implementors ?? [];
   return (
     <>
@@ -159,29 +148,36 @@ function InterfaceDetail({ it, warn }: { it: OntologyInterfaceNode; warn: string
       <dl>
         {(it.extends ?? []).length > 0 && (
           <>
-            <K>Extends</K>
+            <K>{t.extendsK}</K>
             <V>{it.extends?.join(", ")}</V>
           </>
         )}
-        <K>Implemented by ({impl.length})</K>
-        <V>{impl.length ? impl.join(", ") : <span style={{ color: warn }}>nothing implements this interface</span>}</V>
-        <K>Shared properties ({it.properties.length})</K>
-        <Props props={it.properties} />
+        <K>{t.implementedBy(impl.length)}</K>
+        <V>{impl.length ? impl.join(", ") : <span style={{ color: warn }}>{t.nothingImplements}</span>}</V>
+        <K>{t.sharedProps(it.properties.length)}</K>
+        <Props props={it.properties} t={t} />
       </dl>
     </>
   );
 }
 
-const KIND_WORD = { object: "Object type", link: "Link type", interface: "Interface" } as const;
-
 export function Detail({ rep, sel, pal, onClose }: { rep: OntologyAnswer; sel: Selection | null; pal: OntologyPalette; onClose: () => void }) {
   const narrow = useIsNarrow();
+  const lang = useLang();
+  const t = ONTOLOGY_TEXT[lang];
+  const KIND_WORD = { object: t.objectType, link: t.linkType, interface: t.iface } as const;
   const hit = resolveSelection(rep, sel);
   if (!hit) return null;
   const isCounted = counted(rep);
   const title = hit.kind === "object" ? hit.ot.api_name : hit.kind === "link" ? hit.lt.api_name : hit.it.api_name;
   const body =
-    hit.kind === "object" ? <ObjectDetail ot={hit.ot} isCounted={isCounted} /> : hit.kind === "link" ? <LinkDetail lt={hit.lt} isCounted={isCounted} warn={pal.status} /> : <InterfaceDetail it={hit.it} warn={pal.status} />;
+    hit.kind === "object" ? (
+      <ObjectDetail ot={hit.ot} isCounted={isCounted} t={t} />
+    ) : hit.kind === "link" ? (
+      <LinkDetail lt={hit.lt} isCounted={isCounted} warn={pal.status} t={t} lang={lang} />
+    ) : (
+      <InterfaceDetail it={hit.it} warn={pal.status} t={t} />
+    );
 
   if (narrow) {
     return (
@@ -206,7 +202,7 @@ export function Detail({ rep, sel, pal, onClose }: { rep: OntologyAnswer; sel: S
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{KIND_WORD[hit.kind]}</p>
           <h2 className="text-sm font-semibold [overflow-wrap:anywhere]">{title}</h2>
         </div>
-        <Button variant="ghost" size="icon-sm" className="-mr-2 size-7" onClick={onClose} aria-label="Close">
+        <Button variant="ghost" size="icon-sm" className="-mr-2 size-7" onClick={onClose} aria-label={t.close}>
           <X aria-hidden />
         </Button>
       </header>

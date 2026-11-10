@@ -30,29 +30,36 @@ describe("reason wording", () => {
       replaces: { id: "e1", summary: "Leo lives_in Beijing" },
       schema: { id: "people", version: 2 },
     });
-    expect(reasonView(c)).toEqual({ text: "replaced Beijing", schema: "people v2" });
+    expect(reasonView(c, "en")).toEqual({ text: "replaced Beijing", schema: "people v2" });
   });
 
   it("says what took a superseded row's place", () => {
     const c = lives("lives_in", "Beijing", { op: "superseded", reason: "superseded", replaced_by: { id: "e2", summary: "Leo lives_in Chengdu" } });
-    expect(reasonView(c)?.text).toBe("replaced by Chengdu");
+    expect(reasonView(c, "en")?.text).toBe("replaced by Chengdu");
   });
 
   it("says where a merged row went", () => {
     const c = item(3, { kind: "node", op: "merged", replaced_by: { id: "n2", summary: "entity Leo Li" } });
-    expect(reasonView(c)?.text).toBe("merged into entity Leo Li");
+    expect(reasonView(c, "en")?.text).toBe("merged into entity Leo Li");
   });
 
   it("has nothing to add to a plain addition", () => {
-    expect(reasonView(item(1))).toBeNull();
-    expect(reasonView(item(1, { reason: "insert_whatever" }))).toBeNull();
+    expect(reasonView(item(1), "en")).toBeNull();
+    expect(reasonView(item(1, { reason: "insert_whatever" }), "en")).toBeNull();
   });
 
   it("spells out raw reasons it knows and tidies the ones it does not", () => {
-    expect(reasonWords("document_deleted")).toBe("its source document was deleted");
-    expect(reasonWords("some_new_reason")).toBe("some new reason");
-    expect(reasonView(item(4, { op: "deleted", reason: "orphaned" }))?.text).toBe("nothing refers to it any more");
-    expect(reasonView(item(5, { op: "retracted" }))?.text).toBe("taken back");
+    expect(reasonWords("document_deleted", "en")).toBe("its source document was deleted");
+    expect(reasonWords("some_new_reason", "en")).toBe("some new reason");
+    expect(reasonView(item(4, { op: "deleted", reason: "orphaned" }), "en")?.text).toBe("nothing refers to it any more");
+    expect(reasonView(item(5, { op: "retracted" }), "en")?.text).toBe("taken back");
+  });
+
+  it("says the same in Chinese, and leaves the values as they are", () => {
+    const c = lives("lives_in", "Chengdu", { replaces: { id: "e1", summary: "Leo lives_in Beijing" } });
+    expect(reasonView(c, "zh")?.text).toBe("替换了 Beijing");
+    expect(reasonWords("document_deleted", "zh")).toBe("来源文档已删除");
+    expect(reasonWords("some_new_reason", "zh")).toBe("some new reason");
   });
 
   it("names a schema with and without a version", () => {
@@ -71,10 +78,16 @@ describe("day grouping", () => {
   const now = noon(2026, 11, 6);
 
   it("labels today, yesterday and older days", () => {
-    expect(dayLabel(noon(2026, 11, 6), now)).toBe("Today");
-    expect(dayLabel(noon(2026, 11, 5), now)).toBe("Yesterday");
-    expect(dayLabel(noon(2026, 9, 1), now)).toContain("September");
-    expect(dayLabel(noon(2025, 9, 1), now)).toContain("2025");
+    expect(dayLabel(noon(2026, 11, 6), now, "en")).toBe("Today");
+    expect(dayLabel(noon(2026, 11, 5), now, "en")).toBe("Yesterday");
+    expect(dayLabel(noon(2026, 9, 1), now, "en")).toContain("September");
+    expect(dayLabel(noon(2025, 9, 1), now, "en")).toContain("2025");
+  });
+
+  it("labels days in Chinese too", () => {
+    expect(dayLabel(noon(2026, 11, 6), now, "zh")).toBe("今天");
+    expect(dayLabel(noon(2026, 11, 5), now, "zh")).toBe("昨天");
+    expect(dayLabel(noon(2026, 9, 1), now, "zh")).toContain("9月");
   });
 
   it("groups consecutive rows of one local day and keeps order", () => {
@@ -83,7 +96,7 @@ describe("day grouping", () => {
       { at: noon(2026, 11, 6), n: 2 },
       { at: noon(2026, 11, 5), n: 3 },
     ];
-    const g = groupByDay(rows, now);
+    const g = groupByDay(rows, now, "en");
     expect(g.map((x) => [x.label, x.items.map((i) => i.n)])).toEqual([
       ["Today", [1, 2]],
       ["Yesterday", [3]],

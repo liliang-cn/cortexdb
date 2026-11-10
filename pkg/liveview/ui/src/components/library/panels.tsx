@@ -12,6 +12,7 @@ import { Hint, SectionTitle } from "@/components/graph/primitives";
 import { shortId, totals, whereBooks, whereOf, withOpening, type BookSpot, type Layout } from "@/lib/library";
 import { bookText, metaLine, provenance } from "@/lib/libraryPages";
 import { BOOK_SERIF } from "@/lib/libraryPalette";
+import { useLang } from "@/lib/i18n";
 import type { LibraryText } from "@/lib/libraryStrings";
 import { formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -300,6 +301,7 @@ export function CardBody({ opened, layout, t }: { opened: Extract<Opened, { kind
 
 export function Feed({ events, live, t }: { events: ReadonlyArray<ActivityEvent>; live: boolean; t: LibraryText }) {
   const last = events.slice(0, 4);
+  const lang = useLang();
   return (
     <div className="px-3 py-2.5">
       <h2 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
@@ -313,7 +315,7 @@ export function Feed({ events, live, t }: { events: ReadonlyArray<ActivityEvent>
             <li key={`${e.seq}:${e.at}`} className="flex min-w-0 gap-2 border-t py-1.5 text-[13px] first:border-t-0">
               <span className={cn("min-w-0 flex-1 truncate", e.failed && "text-destructive")}>{e.text || e.tool}</span>
               <time className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground" dateTime={new Date(e.at).toISOString()}>
-                {formatTime(e.at)}
+                {formatTime(lang, e.at)}
               </time>
             </li>
           ))

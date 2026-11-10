@@ -98,6 +98,11 @@ export interface OntologyUsage {
   reason?: string;
   /** What was counted, when that is less than the whole store. */
   scope?: string;
+  /** What was counted, as a value the page words: "store" or "graph". */
+  counted?: "store" | "graph";
+  /** Of a truncated graph, how many nodes came back out of total. */
+  returned?: number;
+  total?: number;
   nodes: number;
   edges: number;
   node_types: number;

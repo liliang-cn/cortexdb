@@ -3,7 +3,8 @@
 // Changes page's row later.
 
 import { memo } from "react";
-import type { Semantic } from "@/lib/semantics";
+import { useLang } from "@/lib/i18n";
+import { semLabel, type Semantic } from "@/lib/semantics";
 import { formatRelative } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,8 @@ export interface RailRowProps {
 
 export const RailRow = memo(function RailRow({ semantic: s, text, at, now, by, failed, fresh, onHover, onSelect }: RailRowProps) {
   const Icon = s.icon;
+  const lang = useLang();
+  const word = semLabel(s, lang);
   return (
     <li>
       <button
@@ -32,7 +35,7 @@ export const RailRow = memo(function RailRow({ semantic: s, text, at, now, by, f
         onMouseLeave={() => onHover(false)}
         onFocus={() => onHover(true)}
         onBlur={() => onHover(false)}
-        title={`${s.label}: ${text}${by ? ` (${by})` : ""}`}
+        title={`${word}: ${text}${by ? ` (${by})` : ""}`}
         style={fresh ? ({ "--touched": s.color } as React.CSSProperties) : undefined}
         className={cn(
           "flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50",
@@ -41,11 +44,11 @@ export const RailRow = memo(function RailRow({ semantic: s, text, at, now, by, f
       >
         <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-md", s.chip)}>
           <Icon aria-hidden className="size-3" />
-          <span className="sr-only">{s.label}</span>
+          <span className="sr-only">{word}</span>
         </span>
         <span className={cn("min-w-0 flex-1 truncate text-[13px]", failed && "text-muted-foreground line-through")}>{text}</span>
         <time dateTime={new Date(at).toISOString()} className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
-          {formatRelative(at, now)}
+          {formatRelative(lang, at, now)}
         </time>
       </button>
     </li>

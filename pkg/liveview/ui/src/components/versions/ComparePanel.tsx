@@ -5,22 +5,25 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { Pair } from "@/lib/ontologyHistory";
 import { diffCounts, groupDiff, type DiffGroup } from "@/lib/ontologyHistoryDiff";
 import type { DiffState } from "@/lib/ontologyHistoryHooks";
+import { useLang } from "@/lib/i18n";
+import { partIn, VERSIONS_TEXT } from "@/lib/versionsStrings";
 import { cn } from "@/lib/utils";
 import { BreakingChip, ClassChip, CountChips, DIFF_TONES } from "./DiffChips";
 import { fullClock } from "./VersionRow";
 
 function Side({ label, version, info }: { label: string; version: number; info: OntologyVersionInfo | undefined }) {
+  const lang = useLang();
   return (
     <div className="min-w-0 rounded-lg border bg-background/60 px-3 py-2">
       <p className="text-[0.7rem] font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
       <p className="font-semibold tabular-nums">v{version}</p>
       {info && (
         <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
-          {fullClock(info.saved_at)}
+          {fullClock(lang, info.saved_at)}
           {info.saved_by && (
             <>
               <br />
-              by {info.saved_by}
+              {VERSIONS_TEXT[lang].by(info.saved_by)}
             </>
           )}
         </p>
@@ -30,11 +33,14 @@ function Side({ label, version, info }: { label: string; version: number; info: 
 }
 
 function Group({ g }: { g: DiffGroup }) {
+  const lang = useLang();
+  const t = VERSIONS_TEXT[lang];
+  const subject = g.subject === "object_type" ? t.objectType : t.linkType;
   return (
-    <section className="overflow-hidden rounded-lg border bg-card" aria-label={`${g.name}, ${g.subject === "object_type" ? "object type" : "link type"}`}>
+    <section className="overflow-hidden rounded-lg border bg-card" aria-label={`${g.name}, ${subject}`}>
       <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-muted/40 px-3 py-2">
         <span className="font-mono text-sm font-medium [overflow-wrap:anywhere]">{g.name}</span>
-        <span className="text-xs text-muted-foreground">{g.subject === "object_type" ? "object type" : "link type"}</span>
+        <span className="text-xs text-muted-foreground">{subject}</span>
         {g.whole && <ClassChip cls={g.whole} className="ml-auto" />}
       </header>
       <ul className="divide-y">
@@ -54,7 +60,7 @@ function Group({ g }: { g: DiffGroup }) {
                 <div className="flex flex-wrap items-center gap-1.5">
                   <ClassChip cls={e.cls} />
                   <span className="text-sm">
-                    {e.part}
+                    {partIn(lang, e.part)}
                     {e.member && <> <code className="font-mono text-[0.8rem] font-medium [overflow-wrap:anywhere]">{e.member}</code></>}
                   </span>
                   {e.change.breaking && <BreakingChip />}
@@ -73,27 +79,24 @@ function DiffBody({ diff, pair }: { diff: OntologyDiff; pair: Pair }) {
   const groups = groupDiff(diff.changes);
   const counts = diffCounts(diff.changes);
   const n = diff.changes.length;
+  const t = VERSIONS_TEXT[useLang()];
   return (
     <div className="space-y-3">
       <div className="space-y-2">
         <p className="text-sm">
           {n === 0 ? (
-            <>No difference in object types or link types.</>
+            <>{t.noDifference}</>
           ) : (
             <>
-              <span className="font-medium">
-                {n} {n === 1 ? "change" : "changes"}
-              </span>{" "}
-              to {groups.length} {groups.length === 1 ? "type" : "types"}.
+              <span className="font-medium">{t.changes(n)}</span>
+              {t.toTypes(groups.length)}
             </>
           )}
         </p>
         {n > 0 && <CountChips counts={counts} />}
         {n > 0 && (
           <p className={cn("text-sm", diff.has_breaking_changes ? "text-destructive" : "text-muted-foreground")}>
-            {diff.has_breaking_changes
-              ? `Data written under v${pair.from} may no longer validate under v${pair.to}.`
-              : `Nothing written under v${pair.from} stops validating under v${pair.to}.`}
+            {diff.has_breaking_changes ? t.breakingSentence(pair.from, pair.to) : t.safeSentence(pair.from, pair.to)}
           </p>
         )}
       </div>
@@ -101,15 +104,16 @@ function DiffBody({ diff, pair }: { diff: OntologyDiff; pair: Pair }) {
         <Group key={`${g.subject}:${g.name}`} g={g} />
       ))}
       <p className="text-xs text-muted-foreground">
-        Actions, interfaces and object sets are not compared: they describe how data is read and written, not the shape it has.
+        {t.notCompared}
       </p>
     </div>
   );
 }
 
 function DiffSkeleton() {
+  const t = VERSIONS_TEXT[useLang()];
   return (
-    <div className="space-y-3" aria-busy aria-label="Comparing">
+    <div className="space-y-3" aria-busy aria-label={t.comparing}>
       <Skeleton className="h-4 w-2/5" />
       <Skeleton className="h-5 w-3/5 rounded-full" />
       {[0, 1].map((i) => (
@@ -138,37 +142,39 @@ export interface ComparePanelProps {
 
 /** Two picked versions and what changed between them, or how to pick them. */
 export function ComparePanel({ picks, pair, diff, latest, infoOf, onPair, onClear, inSheet }: ComparePanelProps) {
+  const t = VERSIONS_TEXT[useLang()];
   if (!pair) {
     const one = picks[0];
     return (
       <div className="space-y-3 p-4">
-        {!inSheet && <h2 className="text-sm font-semibold">Compare</h2>}
+        {!inSheet && <h2 className="text-sm font-semibold">{t.compare}</h2>}
         {one === undefined ? (
           <div className="rounded-lg border border-dashed px-4 py-6 text-center">
             <GitCompareArrows aria-hidden className="mx-auto mb-2 size-5 text-muted-foreground" />
-            <p className="text-sm font-medium">Pick two versions</p>
+            <p className="text-sm font-medium">{t.pickTwo}</p>
             <p className="mx-auto mt-1 max-w-xs text-sm text-muted-foreground">
-              Use Pick on any two versions in the list, or Diff on one to compare it with the version before it.
+              {t.pickTwoBody}
             </p>
           </div>
         ) : (
           <div className="space-y-3">
             <p className="text-sm">
-              <span className="font-semibold tabular-nums">v{one}</span> picked. Pick one more to compare it with, or:
+              <span className="font-semibold tabular-nums">v{one}</span>
+              {t.pickedPickMore}
             </p>
             <div className="flex flex-wrap gap-2">
               {one > 1 && (
                 <Button variant="outline" size="sm" onClick={() => onPair({ from: one - 1, to: one })}>
-                  With v{one - 1}, the one before
+                  {t.withBefore(one - 1)}
                 </Button>
               )}
               {latest > one && (
                 <Button variant="outline" size="sm" onClick={() => onPair({ from: one, to: latest })}>
-                  With v{latest}, the latest
+                  {t.withLatest(latest)}
                 </Button>
               )}
               <Button variant="ghost" size="sm" onClick={onClear}>
-                Clear
+                {t.clear}
               </Button>
             </div>
           </div>
@@ -184,27 +190,27 @@ export function ComparePanel({ picks, pair, diff, latest, infoOf, onPair, onClea
         <div className="flex items-center gap-2">
           <h2 className="flex items-center gap-1.5 text-sm font-semibold tabular-nums">
             v{pair.from} <ArrowRight aria-hidden className="size-3.5" />
-            <span className="sr-only">to</span> v{pair.to}
+            <span className="sr-only">{t.to}</span> v{pair.to}
           </h2>
           <Button variant="ghost" size="sm" className="ml-auto" onClick={onClear}>
             <X aria-hidden />
-            Clear
+            {t.clear}
           </Button>
         </div>
       )}
       <div className="grid grid-cols-2 gap-2">
-        <Side label="From" version={pair.from} info={infoOf(pair.from)} />
-        <Side label="To" version={pair.to} info={infoOf(pair.to)} />
+        <Side label={t.from} version={pair.from} info={infoOf(pair.from)} />
+        <Side label={t.roles.to} version={pair.to} info={infoOf(pair.to)} />
       </div>
       {diff.status === "loading" || diff.status === "idle" ? (
         <DiffSkeleton />
       ) : diff.status === "error" ? (
         <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm">
-          <p className="font-medium">The two versions could not be compared</p>
+          <p className="font-medium">{t.compareFailed}</p>
           <p className="mt-1 text-muted-foreground [overflow-wrap:anywhere]">
             {diff.error}{" "}
             <button type="button" className="text-primary underline underline-offset-4" onClick={diff.retry}>
-              Try again
+              {t.tryAgain}
             </button>
           </p>
         </div>
@@ -217,22 +223,23 @@ export function ComparePanel({ picks, pair, diff, latest, infoOf, onPair, onClea
 
 /** The comparison in one line, for the bar a phone shows under the list. */
 export function CompareSummary({ pair, diff }: { pair: Pair; diff: DiffState }) {
+  const t = VERSIONS_TEXT[useLang()];
   return (
     <span className="flex min-w-0 flex-col">
       <span className="flex items-center gap-1 text-sm font-semibold tabular-nums">
         v{pair.from} <ArrowRight aria-hidden className="size-3.5" />
-            <span className="sr-only">to</span> v{pair.to}
+        <span className="sr-only">{t.to}</span> v{pair.to}
       </span>
       <span className="truncate text-xs text-muted-foreground">
         {diff.status === "ready" && diff.diff
           ? diff.diff.changes.length === 0
-            ? "No difference in types"
-            : `${diff.diff.changes.length} ${diff.diff.changes.length === 1 ? "change" : "changes"}${
-                diff.diff.has_breaking_changes ? `, ${diffCounts(diff.diff.changes).breaking} breaking` : ""
+            ? t.noTypeDifference
+            : `${t.changes(diff.diff.changes.length)}${
+                diff.diff.has_breaking_changes ? t.andBreaking(diffCounts(diff.diff.changes).breaking) : ""
               }`
           : diff.status === "error"
-            ? "Could not compare"
-            : "Comparing"}
+            ? t.couldNotCompare
+            : t.comparing}
       </span>
     </span>
   );

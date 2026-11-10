@@ -40,7 +40,9 @@
 // it would throw away the only grouping the modeller expressed.
 
 import type { OntologyAnswer, OntologyInterfaceNode, OntologyLinkEdge, OntologyLinkEnd, OntologyObjectNode } from "@/api/ontology";
+import type { Lang } from "@/lib/i18n";
 import { num } from "./ontologyFinding";
+import { FINDING_TEXT } from "./ontologyStrings";
 
 export const BOX_W = 176;
 export const BOX_H = 66;
@@ -86,9 +88,9 @@ export function cardinalityGlyph(cardinality: string): "1" | "∗" | "?" {
   return "?";
 }
 
-export function cardinalityWord(cardinality: string): "one" | "many" | "?" {
-  if (cardinality === "ONE") return "one";
-  if (cardinality === "MANY") return "many";
+export function cardinalityWord(cardinality: string, lang: Lang = "en"): string {
+  if (cardinality === "ONE") return FINDING_TEXT[lang].one;
+  if (cardinality === "MANY") return FINDING_TEXT[lang].many;
   return "?";
 }
 
@@ -109,10 +111,10 @@ export interface CountLabel {
  * would make a count nobody took look exactly like a count that came back
  * empty.
  */
-export function countLabel(instances: number, isCounted: boolean): CountLabel {
-  if (!isCounted) return { text: "not counted", unused: false, uncounted: true };
-  if (!instances) return { text: "unused", unused: true, uncounted: false };
-  return { text: num(instances), unused: false, uncounted: false };
+export function countLabel(instances: number, isCounted: boolean, lang: Lang = "en"): CountLabel {
+  if (!isCounted) return { text: FINDING_TEXT[lang].notCounted, unused: false, uncounted: true };
+  if (!instances) return { text: FINDING_TEXT[lang].unusedBox, unused: true, uncounted: false };
+  return { text: num(instances, lang), unused: false, uncounted: false };
 }
 
 /**
@@ -249,14 +251,15 @@ export function edgePoint(box: Rect, tx: number, ty: number): Point {
 
 const round = (n: number) => Math.round(n * 10) / 10;
 
-function headerLines(lane: LaneDraft): { title: string; subtitle: string; footnote: string } {
-  if (!lane.iface) return { title: "implements nothing", subtitle: `${lane.types.length} object ${lane.types.length === 1 ? "type" : "types"}`, footnote: "" };
+function headerLines(lane: LaneDraft, lang: Lang): { title: string; subtitle: string; footnote: string } {
+  const t = FINDING_TEXT[lang];
+  if (!lane.iface) return { title: t.implementsNothing, subtitle: t.objectTypes(lane.types.length), footnote: "" };
   const it = lane.iface;
   const ext = it.extends ?? [];
   return {
     title: clip(it.api_name, 20),
-    subtitle: clip(ext.length ? `extends ${clip(ext.join(", "), 16)}` : `${(it.properties ?? []).length} shared properties`, 24),
-    footnote: `${(it.implementors ?? []).length} implementors`,
+    subtitle: clip(ext.length ? t.extendsList(clip(ext.join(", "), 16)) : t.sharedProps((it.properties ?? []).length), 24),
+    footnote: t.implementors((it.implementors ?? []).length),
   };
 }
 
@@ -265,7 +268,7 @@ function headerLines(lane: LaneDraft): { title: string; subtitle: string; footno
  * how many boxes a row holds and whether headers sit beside or above a lane;
  * nothing else about the picture depends on it.
  */
-export function layout(rep: OntologyAnswer, available: number): Layout {
+export function layout(rep: OntologyAnswer, available: number, lang: Lang = "en"): Layout {
   const compact = available < COMPACT_BELOW;
   const width = Math.max(compact ? 2 * PAD + 20 + BOX_W : COMPACT_BELOW, Math.floor(available));
   const isCounted = counted(rep);
@@ -286,14 +289,14 @@ export function layout(rep: OntologyAnswer, available: number): Layout {
     const boxTop = y + head;
     const h = head + rows * BOX_H + (rows - 1) * GAP_Y;
     const header: Rect = compact ? { x: PAD + 10, y, w: Math.min(gridW - 2 * PAD - 20, 280), h: HEAD_H } : { x: PAD + 10, y, w: LANE_W - 12, h: 54 };
-    lanes.push({ iface: lane.iface, colorIndex: lane.colorIndex, band: { x: PAD, y: y - 8, w: gridW - 2 * PAD, h: h + 16 }, header, ...headerLines(lane), boxes: lane.types.map((t) => key(t.api_name)) });
+    lanes.push({ iface: lane.iface, colorIndex: lane.colorIndex, band: { x: PAD, y: y - 8, w: gridW - 2 * PAD, h: h + 16 }, header, ...headerLines(lane, lang), boxes: lane.types.map((t) => key(t.api_name)) });
 
     lane.types.forEach((ot, i) => {
       const c = i % cols;
       const r = Math.floor(i / cols);
       const bx = bodyX + c * (BOX_W + GAP_X);
       const by = boxTop + r * (BOX_H + GAP_Y);
-      const count = countLabel(ot.instances || 0, isCounted);
+      const count = countLabel(ot.instances || 0, isCounted, lang);
       const dots: Box["dots"] = [];
       (ot.implements ?? []).forEach((n, slot) => {
         const idx = ifaceIndex.get(key(n));
@@ -344,7 +347,7 @@ export function layout(rep: OntologyAnswer, available: number): Layout {
     // The name's width is estimated from its length, which is close enough
     // for the 10.5 px label font to keep names off each other; placeLabels
     // decides where along the curve it rides.
-    const text = clip(lt.api_name, 22) + (isCounted ? `  ${num(lt.instances || 0)}` : "");
+    const text = clip(lt.api_name, 22) + (isCounted ? `  ${num(lt.instances || 0, lang)}` : "");
     const lw = text.length * 6.1 + 10;
 
     let p0: Point;

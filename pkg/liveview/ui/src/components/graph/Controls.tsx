@@ -7,6 +7,8 @@ import { Hint, SectionTitle, Segmented } from "./primitives";
 import { useGraphUI } from "./state";
 import type { ColorMode } from "@/lib/graph/scene";
 import { pageShown } from "@/lib/pages";
+import { GRAPH_TEXT } from "@/lib/graphStrings";
+import { useText } from "@/lib/i18n";
 
 /** The local date-time field takes wall-clock time; the wire takes unix milliseconds. The two meet only here. */
 function localValue(ms: number): string {
@@ -36,26 +38,27 @@ function AsOf() {
   const caps = useCapabilities();
   const [raw, setRaw] = useState(() => (asOf ? localValue(asOf) : ""));
   const [note, setNote] = useState("");
+  const t = useText(GRAPH_TEXT);
 
   const doPin = () => {
-    if (!raw) return setNote("Pick an instant first.");
+    if (!raw) return setNote(t.pickInstant);
     const ms = new Date(raw).getTime();
-    if (!(ms > 0)) return setNote("That is not an instant.");
+    if (!(ms > 0)) return setNote(t.notInstant);
     setNote("");
     pin(ms);
   };
 
   return (
     <div className="space-y-2">
-      <Input type="datetime-local" step={1} value={raw} onChange={(e) => setRaw(e.target.value)} aria-label="As of" className="h-9 text-base md:text-sm" />
+      <Input type="datetime-local" step={1} value={raw} onChange={(e) => setRaw(e.target.value)} aria-label={t.asOf} className="h-9 text-base md:text-sm" />
       <div className="flex gap-2">
-        <Button size="sm" variant={asOf ? "default" : "secondary"} className="flex-1" onClick={doPin}>Pin</Button>
-        <Button size="sm" variant="secondary" className="flex-1" disabled={!asOf} onClick={() => { setNote(""); unpin(); }}>Back to now</Button>
+        <Button size="sm" variant={asOf ? "default" : "secondary"} className="flex-1" onClick={doPin}>{t.pin}</Button>
+        <Button size="sm" variant="secondary" className="flex-1" disabled={!asOf} onClick={() => { setNote(""); unpin(); }}>{t.backToNow}</Button>
       </div>
-      {pinReason ? <Hint tone="bad">Still showing now: {pinReason}</Hint> : null}
+      {pinReason ? <Hint tone="bad">{t.stillNow(pinReason)}</Hint> : null}
       {note ? <Hint tone="bad">{note}</Hint> : null}
-      {!note && !pinReason && !caps.temporal && <Hint>This source cannot be asked about the past.</Hint>}
-      {pinnedAt && <Hint>Live updates are stopped while pinned.</Hint>}
+      {!note && !pinReason && !caps.temporal && <Hint>{t.noPast}</Hint>}
+      {pinnedAt && <Hint>{t.pinnedStopped}</Hint>}
     </div>
   );
 }
@@ -69,31 +72,32 @@ export function ControlsContent() {
   const set = useGraphUI((s) => s.set);
   const setCoOccurs = useGraphUI((s) => s.setCoOccurs);
   const caps = useCapabilities();
+  const t = useText(GRAPH_TEXT);
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
-      <SectionTitle>Find on the canvas</SectionTitle>
-      <Input value={query} onChange={(e) => set({ query: e.target.value })} placeholder="Highlight by name" aria-label="Highlight by name" className="h-9 text-base md:text-sm" />
+      <SectionTitle>{t.findOnCanvas}</SectionTitle>
+      <Input value={query} onChange={(e) => set({ query: e.target.value })} placeholder={t.highlightByName} aria-label={t.highlightByName} className="h-9 text-base md:text-sm" />
 
-      <SectionTitle>Colour entities by</SectionTitle>
+      <SectionTitle>{t.colourBy}</SectionTitle>
       <Segmented<ColorMode>
         value={colorMode}
         onChange={(v) => set({ colorMode: v })}
         options={[
-          { value: "type", label: "Type" },
-          { value: "grade", label: "Grade", title: "How each record is known: the knowledge contract's grade" },
+          { value: "type", label: t.type },
+          { value: "grade", label: t.grade, title: t.gradeTitle },
           // Colouring by recalls reads the recall log, which goes with the Recalls page when a host leaves it out.
-          ...(pageShown("/recalls") ? [{ value: "recalls" as const, label: "Recalls", title: "How often recalls reached each node (needs the recall log)" }] : []),
+          ...(pageShown("/recalls") ? [{ value: "recalls" as const, label: t.recalls, title: t.recallsTitle }] : []),
         ]}
       />
-      {colorMode === "grade" && !caps.grades && <p className="mt-1.5"><Hint tone="bad">This source does not report grades.</Hint></p>}
+      {colorMode === "grade" && !caps.grades && <p className="mt-1.5"><Hint tone="bad">{t.noGradesShort}</Hint></p>}
 
-      <SectionTitle>Show</SectionTitle>
-      <Toggle id="gc-co" label="co_occurs relations" hint="Only says two names appeared together." checked={filters.showCoOccurs} onChange={setCoOccurs} />
-      <Toggle id="gc-names" label="Names on the canvas" checked={labels} onChange={(v) => set({ labels: v })} />
-      <Toggle id="gc-flow" label="Pulses along new relations" hint="Light that runs from source to target." checked={flow} onChange={(v) => set({ flow: v })} />
+      <SectionTitle>{t.show}</SectionTitle>
+      <Toggle id="gc-co" label={t.coOccursLabel} hint={t.coOccursHint} checked={filters.showCoOccurs} onChange={setCoOccurs} />
+      <Toggle id="gc-names" label={t.namesOnCanvas} checked={labels} onChange={(v) => set({ labels: v })} />
+      <Toggle id="gc-flow" label={t.pulses} hint={t.pulsesHint} checked={flow} onChange={(v) => set({ flow: v })} />
 
-      <SectionTitle>As of</SectionTitle>
+      <SectionTitle>{t.asOf}</SectionTitle>
       <AsOf />
     </div>
   );

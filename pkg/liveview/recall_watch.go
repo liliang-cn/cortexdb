@@ -84,8 +84,9 @@ func (s *Server) watchRecalls(ctx context.Context) {
 }
 
 // readRecalls publishes the recalls logged since the last read, oldest first.
-// The first read only marks where the log stood: what was recalled before the
-// view opened is the recalls page's to show, not news.
+// The first read marks where the log stood and puts what it found in the
+// backlog a page opens with: a page opened just after the view started shows
+// the latest recalls instead of nothing, and lights none of them.
 func (s *Server) readRecalls(ctx context.Context) {
 	w := s.recalls
 	ctx, cancel := context.WithTimeout(ctx, exploreTimeout)
@@ -125,6 +126,14 @@ func (s *Server) readRecalls(ctx context.Context) {
 		case e.At.Equal(w.since):
 			w.seen[e.ID] = true
 		}
+	}
+	if first {
+		var backlog []Event
+		for i := len(page.Recalls) - 1; i >= 0; i-- {
+			backlog = append(backlog, recallEvent(page.Recalls[i]))
+		}
+		s.hub.seedEvents(backlog)
+		return
 	}
 	// The log answers newest first.
 	for i := len(fresh) - 1; i >= 0; i-- {

@@ -11,6 +11,8 @@ import { ChevronDown, ChevronUp, Layers, Loader2, Radio, Route, SlidersHorizonta
 import { Empty } from "@/components/Page";
 import { Button } from "@/components/ui/button";
 import { hoverIntent } from "@/lib/graph/hover";
+import { GRAPH_TEXT } from "@/lib/graphStrings";
+import { useText } from "@/lib/i18n";
 import { GraphScene } from "@/lib/graph/scene";
 import { setMode } from "@/lib/theme";
 import { useCapabilities, useLive } from "@/live";
@@ -209,17 +211,18 @@ export default function GraphView() {
 
 function Status({ ready }: { ready: boolean }) {
   const n = useLive((s) => s.nodes.size);
+  const t = useText(GRAPH_TEXT);
   if (!ready) {
     return (
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" />Reading the brain
+        <Loader2 className="size-4 animate-spin" />{t.readingBrain}
       </div>
     );
   }
   if (n === 0) {
     return (
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
-        <div className="max-w-sm"><Empty title="Nothing in the graph yet">Entities and relations show up here as they are written.</Empty></div>
+        <div className="max-w-sm"><Empty title={t.emptyTitle}>{t.emptyBody}</Empty></div>
       </div>
     );
   }
@@ -231,10 +234,11 @@ function Status({ ready }: { ready: boolean }) {
 function InspectorCard() {
   const selected = useGraphUI((s) => s.selected);
   const selectedEdge = useGraphUI((s) => s.selectedEdge);
+  const t = useText(GRAPH_TEXT);
   if (!selected && !selectedEdge) return null;
   return (
     <Card occludes="left" className="min-h-0 flex-1">
-      <CardHeader title={selected ? <NodeTitle id={selected} /> : "Relation"} onClose={clearSelection} />
+      <CardHeader title={selected ? <NodeTitle id={selected} /> : t.relation} onClose={clearSelection} />
       {selected ? <NodeInspector id={selected} /> : selectedEdge ? <EdgeInspector edgeKey={selectedEdge} /> : null}
     </Card>
   );
@@ -263,6 +267,7 @@ function DesktopChrome() {
   const caps = useCapabilities();
   const showExplore = OPTS.explore && caps.explore;
   const results = showExplore && hasResult && resultsOpen;
+  const t = useText(GRAPH_TEXT);
   return (
     <div className="pointer-events-none absolute inset-3 flex min-h-0 gap-3">
       <div className="flex min-h-0 w-[22rem] shrink-0 flex-col gap-3">
@@ -277,12 +282,12 @@ function DesktopChrome() {
               </Card>
             )}
             {showExplore && hasResult && !resultsOpen && (
-              <Button variant="secondary" size="sm" className="pointer-events-auto absolute right-2 top-full mt-1.5 h-7 shadow-sm" onClick={() => set({ resultsOpen: true })}>Show results</Button>
+              <Button variant="secondary" size="sm" className="pointer-events-auto absolute right-2 top-full mt-1.5 h-7 shadow-sm" onClick={() => set({ resultsOpen: true })}>{t.showResults}</Button>
             )}
           </div>
         )}
         {hasSelection ? <InspectorCard /> : <div className="min-h-0 flex-1" />}
-        <FoldCard title="Key" icon={<Layers />} open={panels.legend} onToggle={() => setPanel("legend", !panels.legend)} className={cn(panels.legend && (hasSelection ? "max-h-[32%]" : "max-h-[60%]"))}>
+        <FoldCard title={t.key} icon={<Layers />} open={panels.legend} onToggle={() => setPanel("legend", !panels.legend)} className={cn(panels.legend && (hasSelection ? "max-h-[32%]" : "max-h-[60%]"))}>
           <LegendContent />
         </FoldCard>
       </div>
@@ -291,7 +296,7 @@ function DesktopChrome() {
         <div className="self-start"><Toolbar /></div>
         {panels.rail && (
           <Card occludes="right" className="h-full w-80 shrink-0">
-            <CardHeader title="Live" icon={<Radio />}><LiveDot /></CardHeader>
+            <CardHeader title={t.live} icon={<Radio />}><LiveDot /></CardHeader>
             <RailContent />
           </Card>
         )}
@@ -313,6 +318,7 @@ function MobileChrome() {
   const open = (m: typeof mobile) => set({ mobile: mobile === m ? "none" : m });
   const showExplore = OPTS.explore && caps.explore;
   void g;
+  const t = useText(GRAPH_TEXT);
   return (
     <div className="pointer-events-none absolute inset-0">
       {showExplore && (
@@ -322,26 +328,26 @@ function MobileChrome() {
       )}
 
       <Card className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 flex-row gap-0.5 rounded-full p-1" >
-        <IconButton label="Key" icon={<Layers />} active={mobile === "legend"} onClick={() => open("legend")} className="rounded-full" />
-        <IconButton label="Live changes" icon={<Radio />} active={mobile === "rail"} onClick={() => open("rail")} className="rounded-full" />
-        <IconButton label="View settings" icon={<SlidersHorizontal />} active={mobile === "controls"} onClick={() => open("controls")} className="rounded-full" />
-        <IconButton label="Fit the graph" icon={<ScanSearch />} onClick={() => getScene()?.fit(700)} className="rounded-full" />
-        <IconButton label="Trace a path" icon={<Route />} onClick={() => { close(); startPathPick(); }} className="rounded-full" />
+        <IconButton label={t.key} icon={<Layers />} active={mobile === "legend"} onClick={() => open("legend")} className="rounded-full" />
+        <IconButton label={t.liveChanges} icon={<Radio />} active={mobile === "rail"} onClick={() => open("rail")} className="rounded-full" />
+        <IconButton label={t.viewSettings} icon={<SlidersHorizontal />} active={mobile === "controls"} onClick={() => open("controls")} className="rounded-full" />
+        <IconButton label={t.fitGraph} icon={<ScanSearch />} onClick={() => getScene()?.fit(700)} className="rounded-full" />
+        <IconButton label={t.tracePath} icon={<Route />} onClick={() => { close(); startPathPick(); }} className="rounded-full" />
       </Card>
 
-      <BottomSheet open={mobile === "inspector" && !!(selected || selectedEdge)} onClose={() => { clearSelection(); }} title={selected ? <NodeTitle id={selected} /> : "Relation"}>
+      <BottomSheet open={mobile === "inspector" && !!(selected || selectedEdge)} onClose={() => { clearSelection(); }} title={selected ? <NodeTitle id={selected} /> : t.relation}>
         {selected ? <NodeInspector id={selected} /> : selectedEdge ? <EdgeInspector edgeKey={selectedEdge} /> : null}
       </BottomSheet>
-      <BottomSheet open={mobile === "results"} onClose={close} title="Results" tall>
+      <BottomSheet open={mobile === "results"} onClose={close} title={t.results} tall>
         <ResultsContent />
       </BottomSheet>
-      <BottomSheet open={mobile === "legend"} onClose={close} title="Key" icon={<Layers />} tall>
+      <BottomSheet open={mobile === "legend"} onClose={close} title={t.key} icon={<Layers />} tall>
         <LegendContent />
       </BottomSheet>
-      <BottomSheet open={mobile === "rail"} onClose={close} title="Live" icon={<Radio />} tall>
+      <BottomSheet open={mobile === "rail"} onClose={close} title={t.live} icon={<Radio />} tall>
         <RailContent />
       </BottomSheet>
-      <BottomSheet open={mobile === "controls"} onClose={close} title="View" icon={<SlidersHorizontal />} tall>
+      <BottomSheet open={mobile === "controls"} onClose={close} title={t.view} icon={<SlidersHorizontal />} tall>
         <ControlsContent />
         {OPTS.contract && <div className="border-t"><ContractContent /></div>}
       </BottomSheet>
@@ -354,13 +360,15 @@ function MobileChrome() {
 function PathChip({ narrow }: { narrow: boolean }) {
   const note = useGraphUI((s) => s.pathNote);
   const pick = useGraphUI((s) => s.pick);
-  if (!note) return null;
+  const t = useText(GRAPH_TEXT);
+  const text = t.path(note);
+  if (!text) return null;
   return (
     <div className={cn("pointer-events-none absolute inset-x-0 flex justify-center px-3", narrow ? "bottom-16" : "bottom-3")}>
       <div className="pointer-events-auto flex max-w-xl items-center gap-2 rounded-full border bg-card/95 py-1 pl-3.5 pr-1.5 text-sm shadow-md backdrop-blur-md">
         <Route aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 truncate">{note}</span>
-        <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={clearPath} aria-label={pick !== "off" ? "Cancel" : "Clear the path"}><X className="size-4" /></Button>
+        <span className="min-w-0 truncate">{text}</span>
+        <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={clearPath} aria-label={pick !== "off" ? t.cancel : t.clearPath}><X className="size-4" /></Button>
       </div>
     </div>
   );

@@ -20,6 +20,14 @@
         } catch (e) {}
         var dark = mode === "dark" || (mode === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
         if (dark) document.documentElement.classList.add("dark");
+        // The same for the language (lib/i18n.ts): ?lang=, the saved choice, the browser.
+        var lang = "";
+        try {
+          var saved = localStorage.getItem("cortexdb.liveview.lang");
+          lang = new URLSearchParams(location.search).get("lang") || (saved === "en" || saved === "zh" ? saved : "");
+        } catch (e) {}
+        lang = lang || navigator.language || "en";
+        document.documentElement.lang = lang.toLowerCase().indexOf("zh") === 0 ? "zh-CN" : "en";
       })();
     </script>
   </head>

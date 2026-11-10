@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { hasFilters, noFilters, toggleValue, type ChangeFilters, type FilterKey } from "@/lib/changes";
-import { CHANGE_KIND_LABELS, CHANGE_OPS, CHANGE_OP_ORDER, changeKindLabel } from "@/lib/semantics";
+import { FEED_TEXT } from "@/lib/feedStrings";
+import { useLang, useText } from "@/lib/i18n";
+import { CHANGE_KIND_LABELS, CHANGE_OPS, CHANGE_OP_ORDER, changeKindLabel, semLabel } from "@/lib/semantics";
 import { cn } from "@/lib/utils";
 import { useLive } from "@/live";
 
@@ -37,6 +39,7 @@ function Picker({
 }) {
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<Option[]>([]);
+  const t = useText(FEED_TEXT);
 
   useEffect(() => {
     if (!remote) return;
@@ -80,12 +83,12 @@ function Picker({
           <CommandInput placeholder={searchPlaceholder} value={query} onValueChange={setQuery} />
           <CommandList>
             {list.length === 0 && !canUseTyped && (
-              <div className="px-3 py-4 text-center text-sm text-muted-foreground">{remote && typed === "" ? "Type to search." : "Nothing to pick."}</div>
+              <div className="px-3 py-4 text-center text-sm text-muted-foreground">{remote && typed === "" ? t.typeToSearch : t.nothingToPick}</div>
             )}
             <CommandGroup>
               {canUseTyped && (
                 <CommandItem value={`use ${typed}`} onSelect={() => { onToggle(typed); setQuery(""); }}>
-                  Use <span className="font-mono">{typed}</span>
+                  {t.use} <span className="font-mono">{typed}</span>
                 </CommandItem>
               )}
               {list.map((o) => {
@@ -106,6 +109,7 @@ function Picker({
 }
 
 function Tag({ label, onRemove, what }: { label: ReactNode; onRemove: () => void; what: string }) {
+  const t = useText(FEED_TEXT);
   return (
     <span className="inline-flex max-w-full items-center gap-1 rounded-full border bg-card py-0.5 pr-1 pl-2.5 text-xs">
       <span className="text-muted-foreground">{what}</span>
@@ -113,7 +117,7 @@ function Tag({ label, onRemove, what }: { label: ReactNode; onRemove: () => void
       <button
         type="button"
         onClick={onRemove}
-        aria-label={`Remove ${what} filter`}
+        aria-label={t.removeFilter(what)}
         className="flex size-4 items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
       >
         <X aria-hidden className="size-3" />
@@ -127,17 +131,28 @@ export function ChangeFilterBar({ filters, producers, onChange }: { filters: Cha
   const nodes = useLive((s) => s.nodes);
   const nameOf = (id: string) => nodes.get(id)?.label ?? id;
   const toggle = (k: FilterKey) => (v: string) => onChange({ ...filters, [k]: toggleValue(filters[k], v) });
+  const lang = useLang();
+  const t = FEED_TEXT[lang];
+  const opWord = (op: string) => {
+    const s = CHANGE_OPS[op as keyof typeof CHANGE_OPS];
+    return s ? semLabel(s, lang) : op;
+  };
 
-  const kindOptions: Option[] = Object.keys(CHANGE_KIND_LABELS).map((k) => ({ value: k, text: changeKindLabel(k), label: changeKindLabel(k) }));
+  // A kind or op is matched by its word in either language and by its wire value.
+  const kindOptions: Option[] = Object.keys(CHANGE_KIND_LABELS.en).map((k) => ({
+    value: k,
+    text: `${changeKindLabel(k, "en")} ${changeKindLabel(k, "zh")} ${k}`,
+    label: changeKindLabel(k, lang),
+  }));
   const opOptions: Option[] = CHANGE_OP_ORDER.map((op) => {
     const s = CHANGE_OPS[op];
     return {
       value: op,
-      text: s.label,
+      text: `${semLabel(s, "en")} ${semLabel(s, "zh")} ${op}`,
       label: (
         <span className="flex items-center gap-2">
           <span className={cn("size-2 rounded-full", s.dot)} aria-hidden />
-          {s.label}
+          {semLabel(s, lang)}
         </span>
       ),
     };
@@ -160,22 +175,22 @@ export function ChangeFilterBar({ filters, producers, onChange }: { filters: Cha
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <Picker title="Kind" selected={filters.kind} options={kindOptions} onToggle={toggle("kind")} searchPlaceholder="Filter kinds" />
-        <Picker title="Op" selected={filters.op} options={opOptions} onToggle={toggle("op")} searchPlaceholder="Filter ops" />
-        <Picker title="Producer" selected={filters.producer} options={producerOptions} onToggle={toggle("producer")} searchPlaceholder="Producer name" custom />
-        <Picker title="Entity" selected={filters.entity} options={[]} onToggle={toggle("entity")} searchPlaceholder="Search entities" remote={{ search: searchEntities }} />
+        <Picker title={t.kind} selected={filters.kind} options={kindOptions} onToggle={toggle("kind")} searchPlaceholder={t.filterKinds} />
+        <Picker title={t.op} selected={filters.op} options={opOptions} onToggle={toggle("op")} searchPlaceholder={t.filterOps} />
+        <Picker title={t.producer} selected={filters.producer} options={producerOptions} onToggle={toggle("producer")} searchPlaceholder={t.producerName} custom />
+        <Picker title={t.entity} selected={filters.entity} options={[]} onToggle={toggle("entity")} searchPlaceholder={t.searchEntities} remote={{ search: searchEntities }} />
         {hasFilters(filters) && (
           <Button variant="ghost" size="sm" onClick={() => onChange(noFilters)}>
-            Clear filters
+            {t.clearFilters}
           </Button>
         )}
       </div>
       {hasFilters(filters) && (
         <div className="flex flex-wrap gap-1.5">
-          {filters.kind.map((v) => <Tag key={`k${v}`} what="kind" label={changeKindLabel(v)} onRemove={() => toggle("kind")(v)} />)}
-          {filters.op.map((v) => <Tag key={`o${v}`} what="op" label={CHANGE_OPS[v as keyof typeof CHANGE_OPS]?.label ?? v} onRemove={() => toggle("op")(v)} />)}
-          {filters.producer.map((v) => <Tag key={`p${v}`} what="producer" label={<span className="font-mono">{v}</span>} onRemove={() => toggle("producer")(v)} />)}
-          {filters.entity.map((v) => <Tag key={`e${v}`} what="entity" label={nameOf(v)} onRemove={() => toggle("entity")(v)} />)}
+          {filters.kind.map((v) => <Tag key={`k${v}`} what={t.kind} label={changeKindLabel(v, lang)} onRemove={() => toggle("kind")(v)} />)}
+          {filters.op.map((v) => <Tag key={`o${v}`} what={t.op} label={opWord(v)} onRemove={() => toggle("op")(v)} />)}
+          {filters.producer.map((v) => <Tag key={`p${v}`} what={t.producer} label={<span className="font-mono">{v}</span>} onRemove={() => toggle("producer")(v)} />)}
+          {filters.entity.map((v) => <Tag key={`e${v}`} what={t.entity} label={nameOf(v)} onRemove={() => toggle("entity")(v)} />)}
         </div>
       )}
     </div>

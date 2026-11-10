@@ -211,6 +211,14 @@ type OntologyUsage struct {
 	// totals that disagree are not a fault and a reader should not have to
 	// guess that.
 	Scope string `json:"scope,omitempty"`
+	// Counted, Returned and Total say the same as Scope as values, so a page
+	// words it in its own language: Counted is "store" (every row, chunks
+	// included) or "graph" (the entity graph a shared brain returns), and
+	// Returned of Total, when Total is set, is how much of a truncated graph
+	// came back.
+	Counted  string `json:"counted,omitempty"`
+	Returned int    `json:"returned,omitempty"`
+	Total    int    `json:"total,omitempty"`
 
 	Nodes int `json:"nodes"`
 	Edges int `json:"edges"`
@@ -711,6 +719,7 @@ func localOntology(db *cortexdb.DB) func(context.Context, OntologyQuery) (Ontolo
 		}
 		read := buildOntologyReading("counted over every row in the store, chunk nodes included",
 			nodeTypes, edgeTypes, chosen)
+		read.Usage.Counted = "store"
 		return buildOntologyReport(schemas, q.SchemaID, &read), nil
 	}
 }
@@ -780,6 +789,10 @@ func remoteOntology(addr, token string) func(context.Context, OntologyQuery) (On
 				scope, len(graphAll.Nodes), graphAll.TotalNodes)
 		}
 		read := buildOntologyReading(scope, nodeTypes, edgeTypes, chosen)
+		read.Usage.Counted = "graph"
+		if graphAll.Truncated {
+			read.Usage.Returned, read.Usage.Total = len(graphAll.Nodes), graphAll.TotalNodes
+		}
 		return buildOntologyReport(listed.Schemas, q.SchemaID, &read), nil
 	}
 }

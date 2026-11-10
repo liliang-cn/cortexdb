@@ -5,22 +5,15 @@
 
 import type { ChangeItem, ChangesQuery } from "@/api";
 import { mergeChangeItems } from "@/live/reducer";
+import { FEED_TEXT } from "@/lib/feedStrings";
+import { localeOf, type Lang } from "@/lib/i18n";
 
 // ---- the words a row says ------------------------------------------------
 
-/** What a raw history reason means in a sentence. Unknown codes are spelled out. */
-const REASON_WORDS: Record<string, string> = {
-  superseded: "a newer value replaced it",
-  retracted: "its producer took it back",
-  merged: "folded into another entity",
-  document_deleted: "its source document was deleted",
-  orphaned: "nothing refers to it any more",
-  pruned: "pruned by retention",
-};
-
-export function reasonWords(reason: string | undefined): string {
+/** What a raw history reason means in a sentence. Unknown codes are spelled out as they came. */
+export function reasonWords(reason: string | undefined, lang: Lang): string {
   if (!reason) return "";
-  return REASON_WORDS[reason] ?? reason.replaceAll("_", " ");
+  return FEED_TEXT[lang].reasons[reason] ?? reason.replaceAll("_", " ");
 }
 
 /** "people v2" for a schema decision, "people" when no version was recorded. */
@@ -58,16 +51,17 @@ export interface ReasonView {
  * Why a change happened, in words, or null when the row says it all (a plain
  * addition). The links to the other row stay in the details; this is the chip.
  */
-export function reasonView(item: ChangeItem): ReasonView | null {
+export function reasonView(item: ChangeItem, lang: Lang): ReasonView | null {
+  const t = FEED_TEXT[lang];
   const schema = schemaLabel(item.schema);
   let text = "";
-  if (item.replaces) text = `replaced ${valueOfSummary(item.replaces.summary, item)}`;
+  if (item.replaces) text = t.replaced(valueOfSummary(item.replaces.summary, item));
   else if (item.replaced_by) {
     const by = valueOfSummary(item.replaced_by.summary, item);
-    text = item.op === "merged" ? `merged into ${by}` : `replaced by ${by}`;
-  } else if (item.op === "retracted") text = "taken back";
-  else if (item.op === "merged") text = "merged";
-  else if (item.reason && item.op !== "added") text = reasonWords(item.reason);
+    text = item.op === "merged" ? t.mergedInto(by) : t.replacedBy(by);
+  } else if (item.op === "retracted") text = t.takenBack;
+  else if (item.op === "merged") text = t.merged;
+  else if (item.reason && item.op !== "added") text = reasonWords(item.reason, lang);
   if (!text && !schema) return null;
   return { text, schema };
 }
@@ -94,12 +88,12 @@ function startOfDay(ms: number): number {
   return d.getTime();
 }
 
-export function dayLabel(ms: number, now: number): string {
+export function dayLabel(ms: number, now: number, lang: Lang): string {
   const days = Math.round((startOfDay(now) - startOfDay(ms)) / 86_400_000);
-  if (days === 0) return "Today";
-  if (days === 1) return "Yesterday";
+  if (days === 0) return FEED_TEXT[lang].today;
+  if (days === 1) return FEED_TEXT[lang].yesterday;
   const sameYear = new Date(ms).getFullYear() === new Date(now).getFullYear();
-  return new Date(ms).toLocaleDateString(undefined, {
+  return new Date(ms).toLocaleDateString(localeOf(lang), {
     weekday: days < 7 ? "long" : undefined,
     month: "long",
     day: "numeric",
@@ -108,13 +102,13 @@ export function dayLabel(ms: number, now: number): string {
 }
 
 /** Consecutive items sharing a local calendar day; order is kept. */
-export function groupByDay<T extends { at: number }>(items: ReadonlyArray<T>, now: number): DayGroup<T>[] {
+export function groupByDay<T extends { at: number }>(items: ReadonlyArray<T>, now: number, lang: Lang): DayGroup<T>[] {
   const groups: DayGroup<T>[] = [];
   for (const item of items) {
     const key = dayKey(item.at);
     const last = groups[groups.length - 1];
     if (last && last.key === key) last.items.push(item);
-    else groups.push({ key, label: dayLabel(item.at, now), items: [item] });
+    else groups.push({ key, label: dayLabel(item.at, now, lang), items: [item] });
   }
   return groups;
 }

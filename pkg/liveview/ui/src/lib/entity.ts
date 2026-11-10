@@ -3,6 +3,8 @@
 // lining history up under the relations it belongs to.
 
 import type { EntityRelation, GraphHistory, HistoryLine, HistoryVersion, InEffect, RelationGroup } from "@/api";
+import { FEED_TEXT } from "@/lib/feedStrings";
+import type { Lang } from "@/lib/i18n";
 
 export const CO_OCCURS = "co_occurs";
 
@@ -31,21 +33,6 @@ export function countEdges(groups: ReadonlyArray<RelationGroup>): number {
 
 // ---- why a version is in effect -------------------------------------------
 
-const IE_TITLE: Record<string, string> = {
-  only_version: "The only version",
-  replaced: "Replaced an earlier value",
-  revised: "Revised in place",
-  merge_survivor: "Survivor of a merge",
-  several_in_effect: "Several values in effect",
-};
-
-const OPINION: Record<string, string> = {
-  no_opinion: "The schema has no opinion on this relation, so nothing is closed and no value is picked as the winner.",
-  multi_valued: "The schema declares this relation multi-valued, so these values hold together.",
-  single_valued_unenforced:
-    "The schema declares this relation single-valued, but these values were written by a path that does not close the old one.",
-};
-
 export interface InEffectView {
   title: string;
   /** The server's own sentence. */
@@ -55,20 +42,20 @@ export interface InEffectView {
   several: boolean;
 }
 
-export function describeInEffect(ie: InEffect | undefined): InEffectView | null {
+export function describeInEffect(ie: InEffect | undefined, lang: Lang): InEffectView | null {
   if (!ie) return null;
+  const t = FEED_TEXT[lang];
   const notes: string[] = [];
   // The server's sentence already states the rule, the schema version and the
   // schema's opinion (pkg/cortexdb/graph_history.go composes it from the same
   // fields), so those are not repeated here. The opinion is written out only
   // when the server sent no sentence at all.
-  const opinion = ie.schema_opinion ? OPINION[ie.schema_opinion] : undefined;
+  const opinion = ie.schema_opinion ? t.opinions[ie.schema_opinion] : undefined;
   if (opinion && !ie.summary) notes.push(opinion);
   if (ie.also_asserted_by && ie.also_asserted_by.length > 0) {
-    const n = ie.also_asserted_by.length;
-    notes.push(`Also stated by ${n} other record${n === 1 ? "" : "s"}.`);
+    notes.push(t.alsoStatedBy(ie.also_asserted_by.length));
   }
-  return { title: IE_TITLE[ie.kind] ?? ie.kind.replaceAll("_", " "), summary: ie.summary, notes, several: ie.kind === "several_in_effect" };
+  return { title: t.ieTitles[ie.kind] ?? ie.kind.replaceAll("_", " "), summary: ie.summary, notes, several: ie.kind === "several_in_effect" };
 }
 
 /** An in_effect that adds nothing: a lone, unremarkable version. */
@@ -167,7 +154,7 @@ export function successorOf(lines: ReadonlyArray<HistoryLine>, v: HistoryVersion
   return undefined;
 }
 
-/** "superseded" reads as "replaced"; the rest as they are. */
-export function statusWords(status: string): string {
-  return status === "superseded" ? "replaced" : status;
+/** "superseded" reads as "replaced"; the rest as they are (or in Chinese). */
+export function statusWords(status: string, lang: Lang): string {
+  return FEED_TEXT[lang].statuses[status] ?? status;
 }

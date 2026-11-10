@@ -1,4 +1,6 @@
 import type { Finding as FindingT, Run } from "@/lib/ontologyFinding";
+import { useText } from "@/lib/i18n";
+import { ONTOLOGY_TEXT } from "@/lib/ontologyStrings";
 import { cn } from "@/lib/utils";
 
 /** A sentence from lib/ontologyFinding, with its set-off runs drawn as such. */
@@ -32,9 +34,10 @@ const TONE: Record<FindingT["tone"], string> = {
  * the page rather than as a footnote under a drawing.
  */
 export function Finding({ f, draftColor }: { f: FindingT; draftColor: string }) {
+  const t = useText(ONTOLOGY_TEXT);
   return (
     <section
-      aria-label="What this page found"
+      aria-label={t.found}
       className={cn("rounded-xl border bg-card px-4 py-3 text-sm leading-relaxed text-muted-foreground", TONE[f.tone])}
       style={f.tone === "warn" ? { borderLeftColor: draftColor } : undefined}
     >

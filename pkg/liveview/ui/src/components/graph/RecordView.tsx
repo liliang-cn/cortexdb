@@ -7,6 +7,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { api, isAbort } from "@/api";
 import type { RecordDecision, RecordDetail } from "@/api";
 import { GradeChip } from "@/components/semantic";
+import { GRAPH_TEXT } from "@/lib/graphStrings";
+import { useText } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { selectNode } from "./actions";
 import { Hint } from "./primitives";
@@ -58,6 +60,7 @@ function Quote({ children, meta }: { children: ReactNode; meta?: string }) {
 
 function Decision({ d }: { d: RecordDecision }) {
   const meta = [d.actor, d.kind, d.at, d.grade].filter(Boolean).join(" · ");
+  const t = useText(GRAPH_TEXT);
   return (
     <li className="rounded-lg border p-2 text-xs">
       <div className="flex items-center gap-2">
@@ -68,7 +71,7 @@ function Decision({ d }: { d: RecordDecision }) {
       {meta && <p className="mt-0.5 text-[11px] text-muted-foreground">{meta}</p>}
       {(d.supersedes ?? []).length > 0 && (
         <p className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
-          supersedes {d.supersedes?.map((x) => <IdLink key={x} id={x} />)}
+          {t.supersedes} {d.supersedes?.map((x) => <IdLink key={x} id={x} />)}
         </p>
       )}
     </li>
@@ -97,12 +100,13 @@ function Memo({ text }: { text: string }) {
 }
 
 export function RecordView({ rep, error, loading, available }: { rep: RecordDetail | null; error: string; loading: boolean; available: boolean }) {
-  if (!available) return <Hint>This view's source cannot look a record up, so there is nothing to show about where this came from. That is not the same as a record that carries nothing.</Hint>;
-  if (loading) return <Hint>Reading the record...</Hint>;
+  const t = useText(GRAPH_TEXT);
+  if (!available) return <Hint>{t.noRecords}</Hint>;
+  if (loading) return <Hint>{t.readingRecord}</Hint>;
   if (error) return <Hint tone="bad">{error}</Hint>;
   if (!rep) return null;
-  if (!rep.available) return <Hint>This view cannot look the record up.{rep.reason ? ` ${rep.reason}` : ""}</Hint>;
-  if (!rep.found) return <Hint>The source has no record with this id any more: it was on screen and is not on the shelf.</Hint>;
+  if (!rep.available) return <Hint>{t.cannotLookUp}{rep.reason ? ` ${rep.reason}` : ""}</Hint>;
+  if (!rep.found) return <Hint>{t.recordGone}</Hint>;
 
   const g = rep.grade ?? "";
   const m = rep.memory;
@@ -112,62 +116,62 @@ export function RecordView({ rep, error, loading, available }: { rep: RecordDeta
         <section className="mb-3">
           <div className="rounded-lg border bg-muted/40 p-2.5"><Memo text={m.content} /></div>
           <dl className="mt-1.5">
-            <Field k="Saved">{m.created_at ? m.created_at.replace("T", " ").replace("Z", " UTC") : undefined}</Field>
-            <Field k="Scope">{[m.scope, m.namespace && m.namespace !== "default" ? m.namespace : "", m.user_id].filter(Boolean).join(" · ")}</Field>
-            <Field k="Importance">{m.importance ? String(m.importance) : undefined}</Field>
+            <Field k={t.saved}>{m.created_at ? m.created_at.replace("T", " ").replace("Z", " UTC") : undefined}</Field>
+            <Field k={t.scope}>{[m.scope, m.namespace && m.namespace !== "default" ? m.namespace : "", m.user_id].filter(Boolean).join(" · ")}</Field>
+            <Field k={t.importance}>{m.importance ? String(m.importance) : undefined}</Field>
             {(m.facts ?? []).map((f) => <Field key={f.key} k={f.key.replaceAll("_", " ")}>{f.value}</Field>)}
           </dl>
         </section>
       )}
       <div className="flex flex-wrap items-center gap-2">
         <GradeChip value={g} />
-        {!g && <span className="text-xs text-muted-foreground">Nothing on this record says how it is known.</span>}
+        {!g && <span className="text-xs text-muted-foreground">{t.noGrade}</span>}
       </div>
       {rep.why ? (
         <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">{rep.why}</p>
       ) : (
-        (g === "held" || g === "refused") && <p className="mt-1.5 text-xs text-destructive">No reason given: the contract requires one for {g}.</p>
+        (g === "held" || g === "refused") && <p className="mt-1.5 text-xs text-destructive">{t.noReasonFor(g)}</p>
       )}
       <dl className="mt-2">
-        <Field k="State">{rep.state}</Field>
-        <Field k="Source">{rep.source}</Field>
-        <Field k="Chunk">{rep.chunk}</Field>
-        <Field k="Producer">{rep.producer}</Field>
-        <Field k="Produced at">{rep.at}</Field>
-        <Field k="Asserted by">{rep.by}</Field>
-        <Field k="Confidence">{rep.confidence}</Field>
-        <Field k="Valid from">{rep.valid_from}</Field>
-        {rep.edge && <Field k="From">{rep.from ? <IdLink id={rep.from} /> : undefined}</Field>}
-        {rep.edge && <Field k="To">{rep.to ? <IdLink id={rep.to} /> : undefined}</Field>}
-        {rep.inferred && <Field k="Inferred by">{rep.rule || "(unnamed rule)"}</Field>}
-        <Field k="Document">{rep.document_id}</Field>
+        <Field k={t.state}>{rep.state}</Field>
+        <Field k={t.source}>{rep.source}</Field>
+        <Field k={t.chunk}>{rep.chunk}</Field>
+        <Field k={t.producer}>{rep.producer}</Field>
+        <Field k={t.producedAt}>{rep.at}</Field>
+        <Field k={t.assertedBy}>{rep.by}</Field>
+        <Field k={t.confidence}>{rep.confidence}</Field>
+        <Field k={t.validFrom}>{rep.valid_from}</Field>
+        {rep.edge && <Field k={t.from}>{rep.from ? <IdLink id={rep.from} /> : undefined}</Field>}
+        {rep.edge && <Field k={t.to}>{rep.to ? <IdLink id={rep.to} /> : undefined}</Field>}
+        {rep.inferred && <Field k={t.inferredBy}>{rep.rule || t.unnamedRule}</Field>}
+        <Field k={t.document}>{rep.document_id}</Field>
       </dl>
 
       {(rep.contradicts ?? []).length > 0 && (
-        <Block title="Contradicts">
+        <Block title={t.contradicts}>
           <div className="flex flex-wrap gap-x-2 gap-y-1">{rep.contradicts?.map((x) => <IdLink key={x} id={x} />)}</div>
         </Block>
       )}
       {(rep.text ?? []).length > 0 ? (
-        <Block title="Drawn from">
+        <Block title={t.drawnFrom}>
           {rep.text?.map((t) => <Quote key={t.chunk_id} meta={[t.chunk_id, t.document_id].filter(Boolean).join(" · ")}>{t.content}</Quote>)}
-          {(rep.chunk_ids ?? []).length > (rep.text?.length ?? 0) && <p className="mt-1"><Hint>Showing {rep.text?.length} of {rep.chunk_ids?.length} chunks.</Hint></p>}
+          {(rep.chunk_ids ?? []).length > (rep.text?.length ?? 0) && <p className="mt-1"><Hint>{t.chunksShown(rep.text?.length ?? 0, rep.chunk_ids?.length ?? 0)}</Hint></p>}
         </Block>
       ) : (rep.chunk_ids ?? []).length > 0 ? (
-        <Block title="Drawn from"><Hint>{rep.chunk_ids?.length} chunks cited, none of them loaded.</Hint></Block>
+        <Block title={t.drawnFrom}><Hint>{t.chunksUnloaded(rep.chunk_ids?.length ?? 0)}</Hint></Block>
       ) : null}
       {(rep.missing_chunks ?? []).length > 0 && (
-        <p className="mt-2 text-xs text-destructive">{rep.missing_chunks?.length} cited chunk(s) no longer exist: {rep.missing_chunks?.join(", ")}</p>
+        <p className="mt-2 text-xs text-destructive">{t.missingChunks(rep.missing_chunks?.length ?? 0, rep.missing_chunks?.join(", ") ?? "")}</p>
       )}
-      {(rep.decisions ?? []).length > 0 && <Block title="Decided"><ul className="space-y-1.5">{rep.decisions?.map((d) => <Decision key={d.id} d={d} />)}</ul></Block>}
+      {(rep.decisions ?? []).length > 0 && <Block title={t.decided}><ul className="space-y-1.5">{rep.decisions?.map((d) => <Decision key={d.id} d={d} />)}</ul></Block>}
       {(rep.chain ?? []).length > 0 && (
-        <Block title="Rests on">
+        <Block title={t.restsOn}>
           <ul className="space-y-1.5">{rep.chain?.map((d) => <Decision key={d.id} d={d} />)}</ul>
-          {rep.chain_truncated && <p className="mt-1"><Hint>The chain goes further than this: it was cut, not finished.</Hint></p>}
+          {rep.chain_truncated && <p className="mt-1"><Hint>{t.chainCut}</Hint></p>}
         </Block>
       )}
       {rep.grade === "verified" && !(rep.decisions ?? []).length && !rep.edge && rep.type !== "Decision" && (
-        <p className="mt-3"><Hint>Graded verified, and no decision in the ledger names it.</Hint></p>
+        <p className="mt-3"><Hint>{t.verifiedNoDecision}</Hint></p>
       )}
       {(rep.notes ?? []).map((n) => <p key={n} className={cn("mt-1")}><Hint>{n}</Hint></p>)}
     </div>
