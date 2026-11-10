@@ -635,24 +635,38 @@ func buildOntologyReading(scope string, nodeTypes, edgeTypes map[string]int, sch
 	u.EdgeTypes = len(edgeTypes)
 	read := ontologyReading{nodes: map[string]int{}, edges: map[string]int{}}
 
-	declaredNodes := make(map[string]bool, len(schema.ObjectTypes))
+	// Each spelling the schema declares, keyed to the type it stands for: a
+	// type's own name, and its aliases. Writes and queries resolve an alias to
+	// its type, so a node stored under one (written before the alias was
+	// declared) is an instance of that type here too, not a type the schema
+	// left out. As when the schema is compiled, an alias never shadows a
+	// declared name, and the first type to claim one keeps it.
+	declaredNodes := make(map[string]string, len(schema.ObjectTypes))
 	for _, ot := range schema.ObjectTypes {
-		declaredNodes[ontologyKey(ot.APIName)] = true
+		declaredNodes[ontologyKey(ot.APIName)] = ontologyKey(ot.APIName)
 	}
-	declaredEdges := make(map[string]bool, len(schema.LinkTypes))
+	for _, ot := range schema.ObjectTypes {
+		for _, alias := range ot.Aliases {
+			if key := ontologyKey(alias); key != "" {
+				if _, taken := declaredNodes[key]; !taken {
+					declaredNodes[key] = ontologyKey(ot.APIName)
+				}
+			}
+		}
+	}
+	declaredEdges := make(map[string]string, len(schema.LinkTypes))
 	for _, lt := range schema.LinkTypes {
-		declaredEdges[ontologyKey(lt.APIName)] = true
+		declaredEdges[ontologyKey(lt.APIName)] = ontologyKey(lt.APIName)
 	}
 
-	split := func(counts map[string]int, declared map[string]bool, into map[string]int) ([]OntologyStrayType, int, int, int) {
+	split := func(counts map[string]int, declared map[string]string, into map[string]int) ([]OntologyStrayType, int, int, int) {
 		strays := make([]OntologyStrayType, 0)
 		total := 0
 		strayRecords := 0
 		for name, n := range counts {
 			total += n
-			key := ontologyKey(name)
-			if declared[key] {
-				into[key] += n
+			if typeKey, ok := declared[ontologyKey(name)]; ok {
+				into[typeKey] += n
 				continue
 			}
 			strays = append(strays, OntologyStrayType{Name: name, Count: n})

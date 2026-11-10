@@ -638,8 +638,9 @@ then the browser's own language.
   book on its project's shelf, an entity is an index card, and a book opens on
   a lectern.
 - **Ontology** (`/ontology`): the active schema drawn as lanes, one per
-  interface, held against what the records are actually typed as; the types
-  nothing declares are listed outside the model. `?draft=1` draws instead a
+  interface, held against what the records are actually typed as; a node stored under
+  one of a type's aliases counts as that type, and the types nothing declares
+  are listed outside the model. `?draft=1` draws instead a
   schema derived from the store's own vocabulary, for review; nothing on the
   page saves it. The page reads itself again when a schema is saved.
 - **Versions** (`/ontology-history`): a schema's saved versions; pick two to
