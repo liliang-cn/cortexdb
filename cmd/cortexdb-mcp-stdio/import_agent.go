@@ -85,7 +85,22 @@ type brainClient interface {
 	SearchMemory(ctx context.Context, req cortexdb.MemorySearchRequest) ([]cortexdb.MemorySearchHit, error)
 }
 
+// activeOntologyLister is the part of a brain capture reads the extractor's
+// type vocabulary from. It is apart from brainClient so a writer that cannot
+// answer — a test double, an older brain — simply goes without.
+type activeOntologyLister interface {
+	ActiveOntologies(ctx context.Context) ([]cortexdb.OntologySchema, error)
+}
+
 type localBrain struct{ db *cortexdb.DB }
+
+func (l localBrain) ActiveOntologies(ctx context.Context) ([]cortexdb.OntologySchema, error) {
+	resp, err := l.db.ListOntologySchemas(ctx, cortexdb.OntologyListRequest{ActiveOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Schemas, nil
+}
 
 func (l localBrain) SaveKnowledge(ctx context.Context, req cortexdb.KnowledgeSaveRequest) error {
 	_, err := l.db.SaveKnowledge(ctx, req)
@@ -121,6 +136,21 @@ func (r remoteBrain) call(ctx context.Context, tool string, req any) (string, er
 		return "", fmt.Errorf("%s: %w", tool, err)
 	}
 	return resp.GetResultJson(), nil
+}
+
+// ActiveOntologies asks the shared brain through its ontology_list tool, the
+// same call an agent would make, so the vocabulary is the server's schema and
+// not whatever this machine's local file holds.
+func (r remoteBrain) ActiveOntologies(ctx context.Context) ([]cortexdb.OntologySchema, error) {
+	raw, err := r.call(ctx, "ontology_list", cortexdb.OntologyListRequest{ActiveOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	var resp cortexdb.OntologyListResponse
+	if err := json.Unmarshal([]byte(raw), &resp); err != nil {
+		return nil, fmt.Errorf("decode ontology_list: %w", err)
+	}
+	return resp.Schemas, nil
 }
 
 func (r remoteBrain) SaveKnowledge(ctx context.Context, req cortexdb.KnowledgeSaveRequest) error {
@@ -548,6 +578,8 @@ func (a agentImport) importSessions(ctx context.Context, src string, all []trans
 		res.Note = "distilling a past session needs a model: set CORTEXDB_LLM_BASE_URL and CORTEXDB_LLM_MODEL (any OpenAI-compatible endpoint, or Ollama) for this MCP server"
 		return res, nil
 	}
+	// Read once for the whole call, not once per session.
+	vocab := captureVocabulary(ctx, a.w)
 	var ids []string
 	for _, t := range todo {
 		if max <= 0 {
@@ -561,7 +593,7 @@ func (a agentImport) importSessions(ctx context.Context, src string, all []trans
 		// A short exchange holds nothing worth keeping; it is marked done so
 		// it is not read again every call.
 		if turns >= 3 {
-			facts, err := extractSessionFacts(ctx, a.llm, digest, t.recorded(""), t.Modified)
+			facts, err := extractSessionFacts(ctx, a.llm, digest, t.recorded(""), t.Modified, vocab)
 			if err != nil {
 				return res, fmt.Errorf("distil %s: %w", t.key(), err)
 			}

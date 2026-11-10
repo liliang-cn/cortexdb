@@ -383,6 +383,8 @@ object type 的 `aliases` 是写入方对它的其他叫法（比如 `merge_requ
 
 `strict_actions` 与 `enforcement: "vocabulary"` 互斥——一个关闭通用写入路径，另一个承诺永不关闭。
 
+抽取器会拿到 active schema 的 object type。会话捕获（`--capture-session`、`import_agent_memory` 的会话导入）和 graphflow 的 `LLMExtractor`（经由 `Pipeline.Run`）每次运行读一次 active schema——共享大脑上走它自己的 `ontology_list` 工具——并在提示词里列出每个已声明类型的 `api_name`、一行 `description` 和别名（"also called …"），要求模型给实体用其中一个 api name 作类型，都不合适就留空。模型返回别名或大小写不同的拼写时按声明的 api name 保存；schema 没声明的类型按无类型保存（捕获是 `entity`，graphflow 是 `graphflow_node`），不再成为一种新拼写，捕获里的 `file` 实体保留其类型。列表有上限——最多 60 个类型（其余只计数不列出），描述截到 160 字符，每个类型最多 5 个别名——免得大 schema 把对话记录或文档挤出上下文；deprecated 类型不提供。没有 active schema 或读取失败时，提示词与以前逐字节相同，读取失败也不会让捕获失败。`db.ActiveExtractorVocabulary(ctx)` / `cortexdb.ExtractorVocabularyFromSchemas` 可为你自己的抽取器生成同样的列表。
+
 **Object type** 带 `api_name`、`display_name`、`plural_display_name`、`description`、`status`、`visibility`、`primary_key`（必填）、`title_property`、`implements` 和类型化的 `properties`。数据类型：string、integer、long、double、decimal、boolean、date、timestamp、geopoint、geoshape、vector、array、struct、marking。属性可标记 `searchable`（进 FTS5）或 `vectorized`。`shared_properties` 让一个定义写一次、在多个 object type 与 interface 里按名字复用。
 
 **Link type** 是双向的，两侧各有自己的 `api_name` 和 `ONE`/`MANY` 基数。一对多 = 一侧 `ONE` + 一侧 `MANY`；只有 `ONE` 侧可以声明 `foreign_key_property`。

@@ -91,7 +91,17 @@ func runCaptureSession(args []string) {
 		return
 	}
 
-	facts, err := extractSessionFacts(context.Background(), llm, digest, t.recorded(cwd), time.Now())
+	// The brain is opened before the model runs: the extractor is shown the
+	// active ontology's types, read once for the whole run.
+	ctx := context.Background()
+	brain, _, _, closeBrain, err := openBrainWriter()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cortexdb: capture: %v\n", err)
+		os.Exit(1)
+	}
+	defer closeBrain()
+
+	facts, err := extractSessionFacts(ctx, llm, digest, t.recorded(cwd), time.Now(), captureVocabulary(ctx, brain))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cortexdb: capture: %v\n", err)
 		os.Exit(1)
@@ -100,14 +110,6 @@ func runCaptureSession(args []string) {
 		fmt.Println("capture: nothing durable in this session")
 		return
 	}
-
-	ctx := context.Background()
-	brain, _, _, closeBrain, err := openBrainWriter()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "cortexdb: capture: %v\n", err)
-		os.Exit(1)
-	}
-	defer closeBrain()
 	now := time.Now()
 	prefix := t.idPrefix()
 	plan, err := reconcileFacts(ctx, llm, brain, facts, prefix, now)
@@ -379,7 +381,11 @@ type capturedFact struct {
 	} `json:"entities"`
 }
 
-const captureSystemPrompt = `You distil a coding-session transcript into durable memories for a long-term store shared across future sessions.
+// The capture prompt is built from pieces so that, with no active ontology, it
+// is byte for byte the prompt capture always used: only the entities rule and
+// an OBJECT TYPES list change when the brain declares types (#153).
+const (
+	capturePromptHead = `You distil a coding-session transcript into durable memories for a long-term store shared across future sessions.
 
 Extract ONLY things worth knowing weeks later: decisions made and why, facts established (deployments, topology, versions, credentials locations — not values), user preferences expressed, outcomes and their root causes, lessons that changed how something is done.
 
@@ -390,16 +396,46 @@ Rules:
 - Skip: transient debugging steps, anything superseded within the session, tool chatter, politeness, plans that were replaced.
 - 0 to 8 memories. An uneventful session yields zero — that is a good answer.
 - slug: short kebab-case ascii. importance: 0.3 routine fact, 0.6 useful decision, 0.85+ hard-won lesson or standing preference.
-- entities: the concrete named things (projects, hosts, services, people) each memory is about.
-- When a memory is about specific files listed under FILES, add each of those files as an entity of type "file", named exactly as listed. Leave out files a memory is not about; a memory about none has no file entities.
+`
+	captureEntitiesRule = `- entities: the concrete named things (projects, hosts, services, people) each memory is about.
+`
+	capturePromptRules = `- When a memory is about specific files listed under FILES, add each of those files as an entity of type "file", named exactly as listed. Leave out files a memory is not about; a memory about none has no file entities.
 - ALREADY RECORDED, when the prompt has it, is the project's file memory: notes loaded into every future session of this project, more detailed than a memory here. Extract nothing they already say, in whatever words. Extract only what they lack: a fact about another project or machine, or something the session established that no note records. A fact that changes what a note says is still extracted, and its content says which note it replaces ("replaces the note <name>").
 - grade, for a fact or a lesson: "verified" only when the transcript shows it was checked — a command's output, a test that passed or failed, a bug reproduced, a measurement — and grade_why then names that check in a few words; "asserted" when it was not checked: a suspected root cause, a fix nobody tested, a guess about how something works. Write an asserted memory so its content says it is unverified ("probably", "suspected", "not tested"). A guess the session later confirmed is one verified memory, not a guess beside a fact. Leave grade empty for a preference or a decision: it records what someone said or chose, and there is nothing to check.
+`
+	capturePromptJSON = `Respond with JSON only: {"memories":[{"slug":"...","content":"...","importance":0.6,"type":"fact|decision|preference|lesson","grade":"verified|asserted|","grade_why":"...","entities":[{"name":"...","type":"..."}]}]}`
+)
 
-Respond with JSON only: {"memories":[{"slug":"...","content":"...","importance":0.6,"type":"fact|decision|preference|lesson","grade":"verified|asserted|","grade_why":"...","entities":[{"name":"...","type":"..."}]}]}`
+const captureSystemPrompt = capturePromptHead + captureEntitiesRule + capturePromptRules + "\n" + capturePromptJSON
 
+// captureFileEntityType is the type the FILES rule asks for. It is kept on a
+// captured entity whether or not the ontology declares it, since the prompt
+// itself asked for it.
+const captureFileEntityType = "file"
+
+// captureTypedEntitiesRule replaces the entities rule when the brain has an
+// active ontology: the model picks a declared type or none.
+const captureTypedEntitiesRule = `- entities: the concrete named things (projects, hosts, services, people) each memory is about. An entity's type is the api name of the OBJECT TYPE below that it is an instance of, written exactly as listed, or "file" for a file under FILES; when no listed type fits, leave type empty (""). Never invent a type.
+`
+
+// captureSystemPromptFor is the capture prompt for a brain with this
+// vocabulary. An empty vocabulary gives captureSystemPrompt unchanged.
+func captureSystemPromptFor(vocab cortexdb.ExtractorTypeVocabulary) string {
+	if vocab.Empty() {
+		return captureSystemPrompt
+	}
+	return capturePromptHead + captureTypedEntitiesRule + capturePromptRules +
+		"\nOBJECT TYPES (the brain's active ontology):\n" + vocab.PromptList() +
+		"\n" + capturePromptJSON
+}
+
+// extractSessionFacts distils one digest. vocab is the brain's active
+// ontology (zero when it has none); the model is shown its types, and an
+// entity type the schema does not declare is dropped rather than saved as a
+// new spelling.
 func extractSessionFacts(ctx context.Context, llm interface {
 	GenerateJSON(ctx context.Context, systemPrompt, userPrompt string) ([]byte, error)
-}, digest, recorded string, asOf time.Time) ([]capturedFact, error) {
+}, digest, recorded string, asOf time.Time, vocab cortexdb.ExtractorTypeVocabulary) ([]capturedFact, error) {
 	// asOf is the day the session happened, not the day it is read: a session
 	// imported months later must not have its "today" dated to the import.
 	userPrompt := fmt.Sprintf("Today is %s.\n\n", asOf.Format("2006-01-02"))
@@ -407,7 +443,7 @@ func extractSessionFacts(ctx context.Context, llm interface {
 		userPrompt += "ALREADY RECORDED (the project's file memory; do not extract what it says):\n" + recorded + "\n\n"
 	}
 	userPrompt += "Transcript digest:\n" + digest
-	raw, err := llm.GenerateJSON(ctx, captureSystemPrompt, userPrompt)
+	raw, err := llm.GenerateJSON(ctx, captureSystemPromptFor(vocab), userPrompt)
 	if err != nil {
 		return nil, fmt.Errorf("llm: %w", err)
 	}
@@ -423,9 +459,49 @@ func extractSessionFacts(ctx context.Context, llm interface {
 		if f.Slug == "" || strings.TrimSpace(f.Content) == "" {
 			continue
 		}
+		for i := range f.Entities {
+			f.Entities[i].Type = capturedEntityType(f.Entities[i].Type, vocab)
+		}
 		facts = append(facts, f)
 	}
 	return facts, nil
+}
+
+// capturedEntityType is the type an extracted entity is saved with. With no
+// active ontology it is what the model said, trimmed. With one, a declared api
+// name or alias becomes the api name as declared, "file" (which the FILES rule
+// asks for) is kept, and anything else becomes empty — the store's generic
+// entity type — instead of yet another invented spelling.
+func capturedEntityType(typeName string, vocab cortexdb.ExtractorTypeVocabulary) string {
+	typeName = strings.TrimSpace(typeName)
+	if typeName == "" || vocab.Empty() {
+		return typeName
+	}
+	if apiName, ok := vocab.Canonical(typeName); ok {
+		return apiName
+	}
+	if strings.EqualFold(typeName, captureFileEntityType) {
+		return captureFileEntityType
+	}
+	return ""
+}
+
+// captureVocabulary is the brain's active ontology as the extractor is shown
+// it, read once per capture run. A brain that cannot say — an older server, a
+// network error, a local brain without the table — gives the empty
+// vocabulary, which is the prompt capture always used: knowing the types
+// improves a capture, and not knowing them must never fail one.
+func captureVocabulary(ctx context.Context, w brainClient) cortexdb.ExtractorTypeVocabulary {
+	lister, ok := w.(activeOntologyLister)
+	if !ok {
+		return cortexdb.ExtractorTypeVocabulary{}
+	}
+	schemas, err := lister.ActiveOntologies(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cortexdb: capture: reading the active ontology: %v (extracting without its types)\n", err)
+		return cortexdb.ExtractorTypeVocabulary{}
+	}
+	return cortexdb.ExtractorVocabularyFromSchemas(schemas)
 }
 
 // repairJSON balances trailing braces and brackets. One deployed proxy returns
