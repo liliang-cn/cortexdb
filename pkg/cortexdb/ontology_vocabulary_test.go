@@ -154,3 +154,77 @@ func TestEnforcementRoundTripsThroughStorage(t *testing.T) {
 		t.Fatalf("enforcement lost in storage round trip: %q", loaded.Schema.Enforcement)
 	}
 }
+
+// A type keyed by name, as ontology_draft drafts every type it cannot find a
+// better key for.
+func nameKeyedSchema(enforcement OntologyEnforcement) OntologySchema {
+	return OntologySchema{
+		SchemaID:    "brain",
+		Enforcement: enforcement,
+		ObjectTypes: []OntologyObjectType{{
+			APIName:    "project",
+			PrimaryKey: "name",
+			Properties: []OntologyProperty{{APIName: "name", DataType: OntologyDataType{Kind: OntologyDataString}, Required: true}},
+		}},
+	}
+}
+
+// Activating a vocabulary over a graph whose entities are keyed by name moves
+// none of them, and a new object keyed only by its name lands where its name
+// keys it, as extraction and recall expect. A writer that states the key
+// still gets the typed node.
+func TestActivatingAVocabularyMovesNoNameKeyedEntity(t *testing.T) {
+	db := openOntologyTestDB(t)
+	ctx := context.Background()
+	tools := db.GraphRAGTools()
+	upsert := func(e ToolEntityInput) string {
+		t.Helper()
+		resp, err := tools.UpsertEntities(ctx, ToolUpsertEntitiesRequest{Entities: []ToolEntityInput{e}})
+		if err != nil || len(resp.EntityNodeIDs) != 1 {
+			t.Fatalf("upsert %+v: %v %v", e, resp, err)
+		}
+		return resp.EntityNodeIDs[0]
+	}
+	before := upsert(ToolEntityInput{Name: "CortexDB", Type: "project"})
+	if _, err := db.SaveOntologySchema(ctx, OntologySaveRequest{Schema: nameKeyedSchema(OntologyEnforcementVocabulary), Activate: true}); err != nil {
+		t.Fatal(err)
+	}
+	if after := upsert(ToolEntityInput{Name: "CortexDB", Type: "project"}); after != before {
+		t.Errorf("the same entity moved from %s to %s when the vocabulary was activated", before, after)
+	}
+	if got, want := upsert(ToolEntityInput{Name: "Athanor", Type: "project"}), resolveEntityNodeID("", "Athanor"); got != want {
+		t.Errorf("a new entity keyed only by its name went to %s, want %s", got, want)
+	}
+	stated := upsert(ToolEntityInput{Name: "Argus", Type: "project", Metadata: map[string]string{"name": "Argus"}})
+	if want := ontologyNodeID("project", "Argus"); stated != want {
+		t.Errorf("an entity stating its key went to %s, want %s", stated, want)
+	}
+}
+
+// Strict enforcement keys an object by its type and the name its key is
+// filled from: the identity it promises, not a vocabulary's.
+func TestStrictEnforcementKeysByTypeAndName(t *testing.T) {
+	db := openOntologyTestDB(t)
+	ctx := context.Background()
+	if _, err := db.SaveOntologySchema(ctx, OntologySaveRequest{Schema: nameKeyedSchema(OntologyEnforcementStrict), Activate: true}); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := db.GraphRAGTools().UpsertEntities(ctx, ToolUpsertEntitiesRequest{Entities: []ToolEntityInput{{Name: "Athanor", Type: "project"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := ontologyNodeID("project", "Athanor"); len(resp.EntityNodeIDs) != 1 || resp.EntityNodeIDs[0] != want {
+		t.Errorf("strict wrote %v, want %s", resp.EntityNodeIDs, want)
+	}
+}
+
+// The draft says what a name-filled key does to identity, and says nothing of
+// the kind for any other key.
+func TestTheDraftSaysWhatANameKeyDoesToIdentity(t *testing.T) {
+	if note := ontologyDraftNameKeyNote("name"); !strings.Contains(note, "strict") || !strings.Contains(note, "vocabulary") {
+		t.Errorf("note for a name key: %q", note)
+	}
+	if note := ontologyDraftNameKeyNote("iataCode"); note != "" {
+		t.Errorf("note for another key: %q", note)
+	}
+}

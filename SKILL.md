@@ -795,8 +795,9 @@ An object type's `aliases` resolve: a write naming one is stored under the
 type's api name on the node it already had, and a type or interface filter
 also matches nodes stored under the aliases. An alias that is another type's
 name, an interface's, or a second type's alias refuses the schema. A primary
-key named `name` re-keys entities to `entity:<type>:<name>` once active; over
-a name-keyed graph use `id` with `title_property: "name"`.
+key named `name` re-keys entities to `entity:<type>:<name>` under strict
+enforcement; under vocabulary an entity that states no key keeps its
+name-keyed node, so activating a vocabulary moves nothing.
 
 A property declared `vectorized` is embedded on write when an embedder is
 configured: the object's node vector becomes the embedding of its vectorized

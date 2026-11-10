@@ -684,11 +684,11 @@ func (d *ontologyDrafter) objectTypeFor(nodeType string, nodes int, usage []grap
 		}
 		primaryKey = ontologyDraftPlaceholderKey
 		d.decide(OntologyDecisionNoPrimaryKey, nodeType,
-			fmt.Sprintf("nothing in these records identifies them, so the draft declares %q as a placeholder to make the schema valid. Decide what identifies one of these before saving.", ontologyDraftPlaceholderKey),
+			fmt.Sprintf("nothing in these records identifies them, so the draft declares %q as a placeholder to make the schema valid. Decide what identifies one of these before saving.", ontologyDraftPlaceholderKey)+ontologyDraftNameKeyNote(ontologyDraftPlaceholderKey),
 			evidence)
 	} else {
 		d.decide(OntologyDecisionPrimaryKey, nodeType,
-			fmt.Sprintf("the draft guesses %q as the primary key. Nothing in the data can confirm it: a key is what a person promises will stay unique, and changing it later re-identifies every object.", primaryKey),
+			fmt.Sprintf("the draft guesses %q as the primary key. Nothing in the data can confirm it: a key is what a person promises will stay unique, and changing it later re-identifies every object.", primaryKey)+ontologyDraftNameKeyNote(primaryKey),
 			evidence)
 	}
 
@@ -1206,4 +1206,14 @@ func (d *ontologyDrafter) finish() *OntologyDraftResponse {
 		},
 		Decisions: d.decisions,
 	}
+}
+
+// ontologyDraftNameKeyNote says what a key filled from an object's name does
+// to identity, which differs between the two enforcements (see
+// ontologyEntityNodeID); "" for any other key.
+func ontologyDraftNameKeyNote(primaryKey string) string {
+	if !ontologyPrimaryKeyArrivesAsName(OntologyObjectType{PrimaryKey: primaryKey}) {
+		return ""
+	}
+	return fmt.Sprintf(" %q is filled from an object's name. Under this draft's vocabulary enforcement an object that states no other key keeps the node its name already keys to; saved as strict, every such object moves to a node keyed by its type and name.", primaryKey)
 }

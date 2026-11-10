@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Activating a vocabulary ontology no longer moves entities to new nodes
+  (#152). A declared type whose primary key is filled from the name (`name`,
+  as `ontology_draft` drafts it) gave every entity written without a stated key
+  a typed ID, `entity:<type>:<name>`, beside the `entity:<name>` node it
+  already had. Nothing merged the two, and recall, which seeds by name, never
+  reached the typed one. Under vocabulary enforcement such an entity now keeps
+  its name-keyed node; an entity that states its key still gets the typed one,
+  and strict enforcement is unchanged.
+
 ### Added
 
 - The live view shows every recall as it happens, whoever made it (#148). Its

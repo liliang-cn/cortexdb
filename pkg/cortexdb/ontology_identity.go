@@ -80,6 +80,16 @@ func ontologyEntityNodeID(compiled *compiledOntology, entity ToolEntityInput) (s
 		}
 		return "", fmt.Errorf("%w: ontology does not define object type %q", ErrInvalidOntology, objectTypeName)
 	}
+	// A vocabulary schema keys an object by type only when the writer stated
+	// its key. One whose key would come from its name alone — what extraction
+	// always sends — keeps the node its name already keys to: the typed ID
+	// would be a second node beside it, which nothing merges, which later
+	// extraction keeps missing, and which recall, seeding by name, never
+	// reaches. Activating a vocabulary then moves no node. Strict enforcement
+	// does re-key such an object by type and name; that is what it is for.
+	if compiled.vocabularyMode() && !ontologyPrimaryKeyStated(objectType, entity) {
+		return resolveEntityNodeID(entity.ID, entity.Name), nil
+	}
 	primaryKeyValue, err := resolveOntologyPrimaryKeyValue(compiled, objectType.APIName, entity)
 	if err != nil {
 		// A vocabulary schema still hands out typed IDs when it can — an entity
@@ -215,4 +225,18 @@ func ontologyPrimaryKeyArrivesAsName(objectType OntologyObjectType) bool {
 	// With no declared title property, only a name-shaped primary key is
 	// taken to be the object's human-readable name.
 	return primaryKeyKey == "name" || strings.HasSuffix(primaryKeyKey, "name")
+}
+
+// ontologyPrimaryKeyStated reports whether an entity carries its primary key
+// itself — in its metadata, or in an ID already derived from it — rather than
+// only through its name.
+func ontologyPrimaryKeyStated(objectType OntologyObjectType, entity ToolEntityInput) bool {
+	primaryKeyKey := ontologyAPIKey(objectType.PrimaryKey)
+	for key, value := range entity.Metadata {
+		if ontologyAPIKey(key) == primaryKeyKey && strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	prefix := ontologyNodeID(objectType.APIName, "")
+	return strings.HasPrefix(entity.ID, prefix) && len(entity.ID) > len(prefix)
 }
