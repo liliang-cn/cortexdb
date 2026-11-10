@@ -9,6 +9,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { OntologyOptions } from "@/lib/ontology";
 import { schemaChoices } from "@/lib/ontologyFinding";
 import type { OntologyPalette } from "@/lib/ontologyPalette";
+import { useText } from "@/lib/i18n";
+import { ONTOLOGY_TEXT } from "@/lib/ontologyStrings";
 import { cn } from "@/lib/utils";
 
 /** The thresholds offered without editing the URL; any other value still works from ?min=. */
@@ -51,6 +53,7 @@ export function Controls({
   reload: () => void;
   pal: OntologyPalette;
 }) {
+  const t = useText(ONTOLOGY_TEXT);
   const choices = rep ? schemaChoices(rep) : [];
   const draft = rep && isDraft(rep) ? rep : null;
   // The threshold the draft actually ran with, which is the number a reader
@@ -60,20 +63,20 @@ export function Controls({
   const thresholds = THRESHOLDS.includes(ran) ? THRESHOLDS : [...THRESHOLDS, ran];
 
   return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-3" role="group" aria-label="What to draw">
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-3" role="group" aria-label={t.whatToDraw}>
       {/* The gap has nothing to switch off on a draft, so the switch is
           disabled rather than left looking like a lever that does nothing.
           It keeps its position and stops claiming to hold one. */}
       <Labelled
         id="ontology-gap"
-        label="Declared vs actual"
-        tip={opts.draft ? "A draft is derived from the store's own counts, so the overlay is already taken." : "Count what the store actually holds and hold the declarations against it. Off reads nothing about the data."}
+        label={t.gap}
+        tip={opts.draft ? t.gapTipDraft : t.gapTip}
         checked={opts.gap && !opts.draft}
         disabled={opts.draft}
         onChange={(gap) => set({ gap })}
       />
-      <Labelled id="ontology-strays" label="Undeclared" tip="Show the types the store uses that no schema declares." checked={opts.strays} onChange={(strays) => set({ strays })} />
-      <Tip tip="Derive an ontology from what this store already holds. Nothing is saved: this page reviews, and a person saves, through ontology_save.">
+      <Labelled id="ontology-strays" label={t.strays} tip={t.straysTip} checked={opts.strays} onChange={(strays) => set({ strays })} />
+      <Tip tip={t.draftTip}>
         <Toggle
           variant="outline"
           size="sm"
@@ -85,22 +88,22 @@ export function Controls({
           style={opts.draft ? { borderColor: pal.draft, color: pal.draftInk, background: `color-mix(in oklab, ${pal.draft} 12%, var(--card))` } : undefined}
         >
           <FlaskConical aria-hidden />
-          Draft
+          {t.draft}
         </Toggle>
       </Tip>
       {opts.draft && (
         <span className="inline-flex items-center gap-2 text-sm">
           <label htmlFor="ontology-min" className="text-muted-foreground">
-            Threshold
+            {t.threshold}
           </label>
           <Select value={ran} onValueChange={(v) => !v.includes("/") && set({ min: v, minNodes: "", minEdges: "" })}>
-            <SelectTrigger id="ontology-min" size="sm" className="min-w-16" aria-label="Keep types with fewer records than this out of the drawing">
+            <SelectTrigger id="ontology-min" size="sm" className="min-w-16" aria-label={t.thresholdLabel}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {thresholds.map((t) => (
-                <SelectItem key={t} value={t} disabled={t.includes("/")}>
-                  {t.includes("/") ? `${t} (from the URL)` : t}
+              {thresholds.map((th) => (
+                <SelectItem key={th} value={th} disabled={th.includes("/")}>
+                  {th.includes("/") ? t.fromUrl(th) : th}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -110,26 +113,26 @@ export function Controls({
       {choices.length > 0 && (
         <span className="inline-flex items-center gap-2 text-sm">
           <label htmlFor="ontology-schema" className="text-muted-foreground">
-            Schema
+            {t.schema}
           </label>
           <Select value={choices.find((c) => c.current)?.schema_id ?? ""} onValueChange={(schema) => set({ schema })}>
             <SelectTrigger id="ontology-schema" size="sm" className="max-w-56">
-              <SelectValue placeholder="Choose a schema" />
+              <SelectValue placeholder={t.chooseSchema} />
             </SelectTrigger>
             <SelectContent>
               {choices.map((c) => (
                 <SelectItem key={c.schema_id} value={c.schema_id}>
                   <span className="truncate">{c.schema_id}</span>
-                  {c.active && <span className="text-xs text-muted-foreground">active</span>}
+                  {c.active && <span className="text-xs text-muted-foreground">{t.active}</span>}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </span>
       )}
-      <Button variant="ghost" size="sm" onClick={reload} aria-label="Read it again now" className="text-muted-foreground">
+      <Button variant="ghost" size="sm" onClick={reload} aria-label={t.refreshLabel} className="text-muted-foreground">
         <RefreshCw aria-hidden className={cn(loading && "animate-spin motion-reduce:animate-none")} />
-        Refresh
+        {t.refresh}
       </Button>
     </div>
   );

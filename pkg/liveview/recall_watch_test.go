@@ -50,6 +50,12 @@ func TestARecallAnyoneMakesReachesTheOpenPage(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	// What was recalled before the view opened is in the backlog a page opens
+	// with, and was sent to no page as news.
+	_, _, backlog, _ := sv.hub.subscribe()
+	if len(backlog) != 1 || backlog[0].Text != "brain VIP before the view" {
+		t.Fatalf("backlog %+v, want the recall made before the view", backlog)
+	}
 	// What the middleware would report for a recall this process handled.
 	sv.Observe(Event{Kind: KindQuery, Tool: "knowledge_memory_recall", Text: "brain VIP"})
 	recall("brain VIP")

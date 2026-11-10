@@ -6,6 +6,7 @@ import { api, getJSON, isAbort } from "@/api";
 import type { Edge, Node } from "@/api";
 import { useLive } from "@/live";
 import { tracePath } from "@/lib/graph/model";
+import { currentGraphText } from "@/lib/graphStrings";
 import { mergedGraph } from "./bind";
 import { getScene } from "./controller";
 import { OPTS, isNarrow, readOptions, useGraphUI, type ExploreMode } from "./state";
@@ -60,11 +61,11 @@ export function onNodeClick(id: string): void {
 // ---- tracing a path -----------------------------------------------------
 
 export function startPathPick(): void {
-  ui().set({ pick: "first", pathFrom: null, path: null, pathNote: "Pick the first node." });
+  ui().set({ pick: "first", pathFrom: null, path: null, pathNote: { kind: "first" } });
 }
 
 export function clearPath(): void {
-  ui().set({ pick: "off", pathFrom: null, path: null, pathNote: "" });
+  ui().set({ pick: "off", pathFrom: null, path: null, pathNote: { kind: "none" } });
 }
 
 function pickPathNode(id: string): void {
@@ -72,13 +73,13 @@ function pickPathNode(id: string): void {
   const g = mergedGraph();
   if (s.pick === "first") {
     getScene()?.lightNodes([id], "#d97706", 60000);
-    ui().set({ pick: "second", pathFrom: id, pathNote: `From ${g.nodes.get(id)?.label ?? id}. Pick the other end.` });
+    ui().set({ pick: "second", pathFrom: id, pathNote: { kind: "second", from: g.nodes.get(id)?.label ?? id } });
     return;
   }
   const from = s.pathFrom ?? id;
   const found = tracePath(g.adj, from, id);
   if (!found) {
-    ui().set({ pick: "off", pathFrom: null, path: null, pathNote: "No path between them." });
+    ui().set({ pick: "off", pathFrom: null, path: null, pathNote: { kind: "nopath" } });
     return;
   }
   const names = found.nodes.map((n) => g.nodes.get(n)?.label ?? n);
@@ -86,7 +87,7 @@ function pickPathNode(id: string): void {
     pick: "off",
     pathFrom: null,
     path: { nodes: new Set(found.nodes), edges: new Set(found.edges), ids: found.nodes },
-    pathNote: `${found.nodes.length - 1} hop${found.nodes.length === 2 ? "" : "s"}: ${names.join(" → ")}`,
+    pathNote: { kind: "path", hops: found.nodes.length - 1, names },
   });
 }
 
@@ -132,7 +133,7 @@ export async function expandNode(id: string, quiet: boolean): Promise<{ nodes: N
   const addedColor = "#15803d";
   requestAnimationFrame(() => getScene()?.lightNodes(fresh, addedColor, 5000));
   const label = mergedGraph().nodes.get(id)?.label ?? id;
-  if (!quiet) toast(fresh.length ? `${fresh.length} new around ${label}` : `Nothing new around ${label}`);
+  if (!quiet) toast(fresh.length ? currentGraphText().newAround(fresh.length, label) : currentGraphText().nothingNewAround(label));
   return nb;
 }
 
@@ -160,7 +161,7 @@ export async function focusNode(raw: string, hops = 0): Promise<void> {
   const live = useLive.getState();
   if (!getScene()?.has(id) || hops > 0) {
     if (!live.caps.explore) {
-      if (!getScene()?.has(id)) toast("Not in view, and this source cannot be explored.");
+      if (!getScene()?.has(id)) toast(currentGraphText().notInViewNoExplore);
     } else {
       try {
         await expandRings(id, Math.max(1, hops));
@@ -172,7 +173,7 @@ export async function focusNode(raw: string, hops = 0): Promise<void> {
   // A node that has just arrived has no settled position yet; give the layout a moment.
   for (let i = 0; i < 8 && !getScene()?.placed(id); i++) await sleep(150);
   if (!getScene()?.has(id)) {
-    toast(`No node ${id}`);
+    toast(currentGraphText().noNode(id));
     return;
   }
   selectNode(id);
@@ -187,7 +188,7 @@ export async function runExplore(mode: ExploreMode, raw: string): Promise<void> 
   const live = useLive.getState();
   ui().set({ mode, panels: { ...ui().panels, explore: true }, resultsOpen: true, mobile: isNarrow() ? "results" : ui().mobile });
   if (!live.caps.explore) {
-    ui().set({ result: { status: "error", mode, message: "This view's source cannot be explored." } });
+    ui().set({ result: { status: "error", mode, message: currentGraphText().sourceCannotExplore } });
     return;
   }
   const gen = ++exploreGen;
@@ -237,9 +238,10 @@ export function shareLink(pairs: Array<[string, string]>): void {
   for (const k of ["focus", "find", "ask", "cypher"]) u.searchParams.delete(k);
   for (const [k, v] of pairs) if (v) u.searchParams.set(k, v);
   const link = u.toString();
-  const done = () => toast("Link copied");
-  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(link).then(done, () => window.prompt("Link", link));
-  else window.prompt("Link", link);
+  const t = currentGraphText();
+  const done = () => toast(t.linkCopied);
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(link).then(done, () => window.prompt(t.link, link));
+  else window.prompt(t.link, link);
 }
 
 // ---- opening actions ----------------------------------------------------
@@ -292,7 +294,7 @@ export function runOpeningActions(): void {
         .then((r) => {
           const first = r.results?.[0];
           if (first) void focusNode(first.id, OPTS.hops);
-          else toast(`Nothing called ${f}`);
+          else toast(currentGraphText().nothingCalled(f));
         })
         .catch((err) => toast(messageOf(err)));
     }
@@ -321,7 +323,7 @@ export async function replayRecall(id: string): Promise<void> {
     const shown = ids.filter((x) => mergedGraph().nodes.has(x));
     setHighlight(shown, true);
     getScene()?.lightNodes(shown, "#4f46e5", 6000);
-    toast(`Recall "${r.query}": ${ids.length} hits, ${shown.length} in this scene`);
+    toast(currentGraphText().replayed(r.query, ids.length, shown.length));
   } catch (err) {
     toast(messageOf(err));
   }

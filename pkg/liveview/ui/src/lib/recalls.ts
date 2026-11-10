@@ -6,6 +6,7 @@
 
 import type { RecallEntry, RecallHit, RecallListQuery, RecallVerdict } from "@/api/recalls";
 import type { Lang } from "@/lib/i18n";
+import { formatDateTime, formatRelative } from "@/lib/time";
 
 // ---- URL options ---------------------------------------------------------
 
@@ -354,32 +355,14 @@ export function goldenFileName(source: string, now: Date): string {
 
 // ---- time -----------------------------------------------------------------
 
-export const localeOf = (lang: Lang) => (lang === "zh" ? "zh-CN" : "en");
-
-const rtfs = new Map<Lang, Intl.RelativeTimeFormat>();
-function rtf(lang: Lang): Intl.RelativeTimeFormat {
-  let f = rtfs.get(lang);
-  if (!f) {
-    f = new Intl.RelativeTimeFormat(localeOf(lang), { numeric: "auto", style: "short" });
-    rtfs.set(lang, f);
-  }
-  return f;
-}
+export { localeOf } from "@/lib/i18n";
 
 /** "3 min ago" or "3分钟前"; the date after a week. */
 export function relativeTime(lang: Lang, ms: number, now: number): string {
-  if (!Number.isFinite(ms)) return "";
-  const diff = Math.round((ms - now) / 1000);
-  const abs = Math.abs(diff);
-  if (abs < 5) return lang === "zh" ? "刚刚" : "just now";
-  if (abs < 60) return rtf(lang).format(diff, "second");
-  if (abs < 3600) return rtf(lang).format(Math.round(diff / 60), "minute");
-  if (abs < 86400) return rtf(lang).format(Math.round(diff / 3600), "hour");
-  if (abs < 7 * 86400) return rtf(lang).format(Math.round(diff / 86400), "day");
-  return new Date(ms).toLocaleDateString(localeOf(lang), { year: "numeric", month: "short", day: "numeric" });
+  return formatRelative(lang, ms, now);
 }
 
 /** The full local date and time, for a title or the detail. */
 export function clockTime(lang: Lang, ms: number): string {
-  return Number.isFinite(ms) ? new Date(ms).toLocaleString(localeOf(lang), { dateStyle: "medium", timeStyle: "medium" }) : "";
+  return formatDateTime(lang, ms);
 }

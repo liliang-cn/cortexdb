@@ -7,6 +7,8 @@
 import type { ChangeItem } from "@/api/types";
 import type { OntologyActivation, OntologyChangeSummary, OntologyHistoryResponse, OntologySchemaRef, OntologyVersionInfo } from "@/api/ontologyHistory";
 import { summaryCounts, type DiffCounts } from "./ontologyHistoryDiff";
+import type { Lang } from "@/lib/i18n";
+import { VERSIONS_TEXT } from "@/lib/versionsStrings";
 
 /** Versions per page. A version is a few lines, so a page is a screenful or two. */
 export const PAGE_SIZE = 25;
@@ -290,17 +292,10 @@ export function summaryView(s: OntologyChangeSummary | undefined | null): Summar
   return { kind: "changes", total: s.changes, counts };
 }
 
-const END_WORDS: Record<string, string> = {
-  replaced: "replaced by a newer version",
-  switched: "another schema was activated",
-  deactivated: "deactivated",
-  deleted: "the schema was deleted",
-};
-
 /** Why an activation ended, in words. A reason this page does not know is spelled out. */
-export function endWords(reason: string | undefined): string {
+export function endWords(reason: string | undefined, lang: Lang = "en"): string {
   if (!reason) return "";
-  return END_WORDS[reason] ?? reason.replaceAll("_", " ");
+  return VERSIONS_TEXT[lang].endWords[reason] ?? reason.replaceAll("_", " ");
 }
 
 export interface ActivationView {
@@ -313,13 +308,13 @@ export interface ActivationView {
   endedBy: string;
 }
 
-export function activationView(a: OntologyActivation): ActivationView {
+export function activationView(a: OntologyActivation, lang: Lang = "en"): ActivationView {
   const to = a.active_to ? Date.parse(a.active_to) : NaN;
   return {
     from: Date.parse(a.active_from),
     to: Number.isFinite(to) ? to : null,
     activatedBy: a.activated_by ?? "",
-    ended: endWords(a.end_reason),
+    ended: endWords(a.end_reason, lang),
     endedBy: a.ended_by ?? "",
   };
 }

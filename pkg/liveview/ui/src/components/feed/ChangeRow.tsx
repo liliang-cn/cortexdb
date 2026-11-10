@@ -4,8 +4,10 @@ import type { ChangeItem } from "@/api";
 import { GradeChip, OpChip } from "@/components/semantic";
 import { Badge } from "@/components/ui/badge";
 import { reasonView, reasonWords, schemaLabel } from "@/lib/changes";
-import { changeKindLabel, changeOp } from "@/lib/semantics";
-import { formatClock, formatRelative } from "@/lib/time";
+import { FEED_TEXT } from "@/lib/feedStrings";
+import { useLang } from "@/lib/i18n";
+import { changeKindLabel, changeOp, semLabel, semMeans } from "@/lib/semantics";
+import { formatClock, formatDateTime, formatRelative } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { EntityLink, Predicate } from "./EntityLink";
 
@@ -51,31 +53,33 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function ChangeDetails({ item }: { item: ChangeItem }) {
+  const lang = useLang();
+  const t = FEED_TEXT[lang];
   return (
     <dl className="space-y-1.5 text-xs">
-      <Detail label="When">{new Date(item.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" })}</Detail>
-      <Detail label="Row">
-        <span className="font-mono">{item.id}</span> <span className="text-muted-foreground">({changeKindLabel(item.kind).toLowerCase()}, seq {item.seq})</span>
+      <Detail label={t.dWhen}>{formatDateTime(lang, item.at)}</Detail>
+      <Detail label={t.dRow}>
+        <span className="font-mono">{item.id}</span> <span className="text-muted-foreground">{t.rowKind(changeKindLabel(item.kind, lang), item.seq)}</span>
       </Detail>
       {item.reason && (
-        <Detail label="Reason">
-          <span className="font-mono">{item.reason}</span> <span className="text-muted-foreground">{reasonWords(item.reason)}</span>
+        <Detail label={t.dReason}>
+          <span className="font-mono">{item.reason}</span> <span className="text-muted-foreground">{reasonWords(item.reason, lang)}</span>
         </Detail>
       )}
-      {item.schema && <Detail label="Schema"><span className="font-mono">{schemaLabel(item.schema)}</span></Detail>}
+      {item.schema && <Detail label={t.dSchema}><span className="font-mono">{schemaLabel(item.schema)}</span></Detail>}
       {item.replaces && (
-        <Detail label="Replaces">
+        <Detail label={t.dReplaces}>
           {item.replaces.summary} <span className="font-mono text-muted-foreground">{item.replaces.id}</span>
         </Detail>
       )}
       {item.replaced_by && (
-        <Detail label="Replaced by">
+        <Detail label={t.dReplacedBy}>
           {item.replaced_by.summary} <span className="font-mono text-muted-foreground">{item.replaced_by.id}</span>
         </Detail>
       )}
-      {item.producer && <Detail label="Producer"><span className="font-mono">{item.producer}</span></Detail>}
+      {item.producer && <Detail label={t.dProducer}><span className="font-mono">{item.producer}</span></Detail>}
       {item.entities.length > 0 && (
-        <Detail label="Touched">
+        <Detail label={t.dTouched}>
           <span className="flex flex-wrap gap-x-3 gap-y-1">
             {item.entities.map((id) => (
               <EntityLink key={id} id={id} label={id} className="font-mono text-xs font-normal" />
@@ -103,23 +107,26 @@ export interface ChangeRowProps {
 export function ChangeRow({ item, now, compact, fresh, current, className }: ChangeRowProps) {
   const [open, setOpen] = useState(false);
   const sem = changeOp(item.op);
-  const why = reasonView(item);
+  const lang = useLang();
+  const t = FEED_TEXT[lang];
+  const word = semLabel(sem, lang);
+  const why = reasonView(item, lang);
   const time = (
     <time
       dateTime={new Date(item.at).toISOString()}
-      title={formatClock(item.at)}
+      title={formatClock(lang, item.at)}
       className="shrink-0 text-xs tabular-nums text-muted-foreground"
     >
-      {formatRelative(item.at, now)}
+      {formatRelative(lang, item.at, now)}
     </time>
   );
 
   if (compact) {
     return (
       <div className={cn("flex items-start gap-2 px-2 py-1.5 text-sm", fresh && "animate-arrive motion-reduce:animate-none", className)}>
-        <span className={cn("mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full", sem.chip)} title={`${sem.label}: ${sem.means}`}>
+        <span className={cn("mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full", sem.chip)} title={`${word}: ${semMeans(sem, lang)}`}>
           <sem.icon aria-hidden className="size-3" />
-          <span className="sr-only">{sem.label}</span>
+          <span className="sr-only">{word}</span>
         </span>
         <div className="min-w-0 flex-1 leading-snug">
           <ChangeSentence item={item} current={current} />
@@ -145,7 +152,7 @@ export function ChangeRow({ item, now, compact, fresh, current, className }: Cha
         <button
           type="button"
           aria-expanded={open}
-          aria-label={open ? "Hide details" : "Show details"}
+          aria-label={open ? t.hideDetails : t.showDetails}
           onClick={() => setOpen((o) => !o)}
           className="mt-0.5 -ml-1 flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
@@ -156,7 +163,7 @@ export function ChangeRow({ item, now, compact, fresh, current, className }: Cha
           <div className="text-sm leading-6">
             {item.kind !== "node" && item.kind !== "edge" && (
               <Badge variant="outline" className="mr-2 align-middle font-normal text-muted-foreground">
-                {changeKindLabel(item.kind)}
+                {changeKindLabel(item.kind, lang)}
               </Badge>
             )}
             <ChangeSentence item={item} current={current} />
@@ -168,8 +175,8 @@ export function ChangeRow({ item, now, compact, fresh, current, className }: Cha
               </Badge>
             )}
             {why && why.schema && (
-              <span className="rounded-sm border px-1.5 py-px" title="The schema this was decided under">
-                schema {why.schema}
+              <span className="rounded-sm border px-1.5 py-px" title={t.schemaTitle}>
+                {t.schemaChip(why.schema)}
               </span>
             )}
             {item.grade && <GradeChip value={item.grade} />}

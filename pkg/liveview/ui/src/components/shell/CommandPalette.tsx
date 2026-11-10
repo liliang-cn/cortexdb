@@ -6,16 +6,19 @@ import { entityPath } from "@/components/feed/EntityLink";
 import { Button } from "@/components/ui/button";
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useText } from "@/lib/i18n";
+import { SHELL_TEXT } from "@/lib/shellStrings";
 import { visibleNav } from "./nav";
 import { PALETTE_EVENT, openPalette } from "./palette";
 
 /** The top bar's button; the shortcut itself lives in CommandPalette. */
 export function PaletteButton() {
   const mac = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
+  const t = useText(SHELL_TEXT);
   return (
-    <Button variant="outline" size="sm" className="gap-2 text-muted-foreground" onClick={() => openPalette()} aria-label="Search entities and pages">
+    <Button variant="outline" size="sm" className="gap-2 text-muted-foreground" onClick={() => openPalette()} aria-label={t.searchLabel}>
       <Search aria-hidden className="size-3.5" />
-      <span className="hidden sm:inline">Search</span>
+      <span className="hidden sm:inline">{t.search}</span>
       <kbd className="hidden rounded border bg-muted px-1 font-mono text-[0.68rem] sm:inline">{mac ? "⌘K" : "Ctrl K"}</kbd>
     </Button>
   );
@@ -28,6 +31,7 @@ export function CommandPalette() {
   const [results, setResults] = useState<FindResult[]>([]);
   const [searching, setSearching] = useState(false);
   const navigate = useNavigate();
+  const t = useText(SHELL_TEXT);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -86,24 +90,27 @@ export function CommandPalette() {
   };
 
   const q = query.trim().toLowerCase();
-  const pages = visibleNav().flat().filter((p) => q === "" || p.label.toLowerCase().includes(q));
+  // A page is found by its name in either language, so a habit formed in one still works in the other.
+  const pages = visibleNav()
+    .flat()
+    .filter((p) => q === "" || [t.nav[p.to], SHELL_TEXT.en.nav[p.to], SHELL_TEXT.zh.nav[p.to]].some((name) => name.toLowerCase().includes(q)));
 
   return (
     <Dialog open={open} onOpenChange={close}>
       <DialogHeader className="sr-only">
-        <DialogTitle>Search</DialogTitle>
-        <DialogDescription>Jump to an entity or a page</DialogDescription>
+        <DialogTitle>{t.search}</DialogTitle>
+        <DialogDescription>{t.searchHint}</DialogDescription>
       </DialogHeader>
       <DialogContent className="top-[20%] translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-lg" showCloseButton={false}>
         {/* Entities come from the server already matched, so cmdk must not filter again. */}
         <Command shouldFilter={false}>
-      <CommandInput value={query} onValueChange={setQuery} placeholder="Find an entity or go to a page" />
+      <CommandInput value={query} onValueChange={setQuery} placeholder={t.searchPlaceholder} />
       <CommandList>
         {!searching && results.length === 0 && pages.length === 0 && (
-          <div className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing matches that.</div>
+          <div className="px-3 py-6 text-center text-sm text-muted-foreground">{t.nothingMatches}</div>
         )}
         {results.length > 0 && (
-          <CommandGroup heading="Entities">
+          <CommandGroup heading={t.entities}>
             {results.slice(0, 12).map((r) => (
               <CommandItem key={r.id} value={`entity ${r.id}`} onSelect={() => go(entityPath(r.id))}>
                 <span className="truncate font-medium">{r.label}</span>
@@ -112,12 +119,12 @@ export function CommandPalette() {
             ))}
           </CommandGroup>
         )}
-        {searching && results.length === 0 && <div className="px-3 py-3 text-sm text-muted-foreground">Searching...</div>}
+        {searching && results.length === 0 && <div className="px-3 py-3 text-sm text-muted-foreground">{t.searching}</div>}
         {pages.length > 0 && (
-          <CommandGroup heading="Pages">
-            {pages.map(({ to, label, icon: Icon }) => (
-              <CommandItem key={to} value={`page ${label}`} onSelect={() => go(to)}>
-                <Icon aria-hidden /> {label}
+          <CommandGroup heading={t.pages}>
+            {pages.map(({ to, icon: Icon }) => (
+              <CommandItem key={to} value={`page ${to}`} onSelect={() => go(to)}>
+                <Icon aria-hidden /> {t.nav[to]}
               </CommandItem>
             ))}
           </CommandGroup>

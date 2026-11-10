@@ -490,6 +490,21 @@ func (h *Hub) publishEvent(ev Event) {
 	h.broadcast(Message{Event: &ev})
 }
 
+// seedEvents puts events in the backlog a page opens with, oldest first,
+// without sending them to the pages already open: history, not news.
+func (h *Hub) seedEvents(evs []Event) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, ev := range evs {
+		h.seq++
+		ev.Seq = h.seq
+		h.recent = append(h.recent, ev)
+	}
+	if len(h.recent) > recentEventsCap {
+		h.recent = h.recent[len(h.recent)-recentEventsCap:]
+	}
+}
+
 func (h *Hub) broadcast(msg Message) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

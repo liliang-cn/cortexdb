@@ -7,13 +7,16 @@ import { Empty, Page, PageHeader } from "@/components/Page";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { filtersFromParams, filtersKey, filtersToParams, groupByDay, hasFilters, mergeFeed, noFilters, producersSeen, type ChangeFilters } from "@/lib/changes";
+import { FEED_TEXT } from "@/lib/feedStrings";
+import { useLang, useText } from "@/lib/i18n";
 import { useChangeFeed } from "@/lib/useChangeFeed";
 import { useNow } from "@/lib/useNow";
 import { useCapabilities, useChanges, useLive } from "@/live";
 
 function ListSkeleton() {
+  const t = useText(FEED_TEXT);
   return (
-    <div className="divide-y rounded-xl border bg-card" aria-busy aria-label="Loading changes">
+    <div className="divide-y rounded-xl border bg-card" aria-busy aria-label={t.loadingChanges}>
       {Array.from({ length: 7 }, (_, i) => (
         <div key={i} className="flex items-start gap-3 px-4 py-3">
           <Skeleton className="h-5 w-24 rounded-full" />
@@ -40,6 +43,8 @@ export function ChangesPage() {
   const resets = useLive((s) => s.resets);
   const live = useChanges();
   const now = useNow(5000);
+  const lang = useLang();
+  const t = FEED_TEXT[lang];
 
   const feed = useChangeFeed(filters, key);
   const { reload } = feed;
@@ -85,7 +90,7 @@ export function ChangesPage() {
 
   const visible = useMemo(() => (frozen === null ? all : all.filter((c) => c.seq <= frozen)), [all, frozen]);
   const waiting = all.length - visible.length;
-  const groups = useMemo(() => groupByDay(visible, now), [visible, now]);
+  const groups = useMemo(() => groupByDay(visible, now, lang), [visible, now, lang]);
 
   const backToTop = () => {
     topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -111,30 +116,28 @@ export function ChangesPage() {
   if (feed.status === "loading" && all.length === 0) body = <ListSkeleton />;
   else if (noFeed) {
     body = (
-      <Empty title="This source has no change feed">
-        The graph is still live, but writes are not listed here. Changes appear when the view is served by a process that sees the database's change log, such as the agent's MCP server.
-      </Empty>
+      <Empty title={t.noFeedTitle}>{t.noFeedBody}</Empty>
     );
   } else if (feed.status === "error" && all.length === 0) {
     body = (
-      <Empty title="The changes could not be read">
+      <Empty title={t.readErrorTitle}>
         {feed.error}{" "}
         <button type="button" className="text-primary underline underline-offset-4" onClick={feed.reload}>
-          Try again
+          {t.tryAgain}
         </button>
       </Empty>
     );
   } else if (all.length === 0) {
     body = hasFilters(filters) ? (
-      <Empty title="No changes match these filters">
-        Nothing in the retained history fits. Loosen a filter, or{" "}
+      <Empty title={t.noMatchTitle}>
+        {t.noMatchLead}{" "}
         <button type="button" className="text-primary underline underline-offset-4" onClick={() => setFilters(noFilters)}>
-          clear them all
+          {t.clearThemAll}
         </button>
-        .
+        {t.noMatchTail}
       </Empty>
     ) : (
-      <Empty title="No changes yet">New writes show up here the moment they are committed.</Empty>
+      <Empty title={t.noChangesTitle}>{t.noChangesBody}</Empty>
     );
   } else {
     body = (
@@ -156,10 +159,10 @@ export function ChangesPage() {
         <div ref={endRef} className="flex flex-col items-center gap-2 pb-8 text-sm text-muted-foreground">
           {feed.hasMore ? (
             <Button variant="outline" size="sm" onClick={feed.loadMore} disabled={feed.loadingMore}>
-              {feed.loadingMore ? "Loading older changes" : "Load older changes"}
+              {feed.loadingMore ? t.loadingOlder : t.loadOlder}
             </Button>
           ) : (
-            <p>That is the oldest change this source has kept.</p>
+            <p>{t.oldest}</p>
           )}
           {feed.error && feed.status === "ready" && <p className="text-destructive">{feed.error}</p>}
         </div>
@@ -170,12 +173,12 @@ export function ChangesPage() {
   return (
     <Page>
       <PageHeader
-        title="Changes"
-        description="Every fact added, replaced or taken back, newest first. Open a row for its ids and links."
+        title={t.changesTitle}
+        description={t.changesDescription}
         actions={
           <Button variant="outline" size="sm" onClick={() => setPaused((p) => !p)} aria-pressed={paused}>
             {paused ? <Play aria-hidden /> : <Pause aria-hidden />}
-            {paused ? "Resume live" : "Pause live"}
+            {paused ? t.resumeLive : t.pauseLive}
           </Button>
         }
       />
@@ -185,9 +188,9 @@ export function ChangesPage() {
       {rebuilt && (
         <p className="mb-4 flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
           <GitCommitHorizontal aria-hidden className="size-4 shrink-0" />
-          The change history moved past where this page was reading, so the list was rebuilt from the newest changes.
+          {t.rebuilt}
           <button type="button" className="ml-auto shrink-0 text-foreground underline underline-offset-4" onClick={() => setRebuilt(false)}>
-            Dismiss
+            {t.dismiss}
           </button>
         </p>
       )}
@@ -196,16 +199,12 @@ export function ChangesPage() {
         <div className="sticky top-3 z-20 mb-3 flex justify-center">
           <Button size="sm" className="rounded-full shadow-md" onClick={backToTop}>
             <ArrowUp aria-hidden />
-            {paused
-              ? waiting > 0
-                ? `Paused, ${waiting} new ${waiting === 1 ? "change" : "changes"}. Resume`
-                : "Paused. Resume"
-              : `${waiting} new ${waiting === 1 ? "change" : "changes"}`}
+            {paused ? (waiting > 0 ? t.pausedNew(waiting) : t.pausedResume) : t.newChanges(waiting)}
           </Button>
         </div>
       )}
       {body}
-      <p className="sr-only" aria-live="polite">{waiting > 0 ? `${waiting} new changes` : ""}</p>
+      <p className="sr-only" aria-live="polite">{waiting > 0 ? t.newChanges(waiting) : ""}</p>
     </Page>
   );
 }

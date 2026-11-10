@@ -30,7 +30,7 @@ describe("co_occurs", () => {
 
 describe("in effect, in words", () => {
   it("explains a single-valued decision with the schema version", () => {
-    const v = describeInEffect({ kind: "replaced", summary: "Replaced Beijing: lives_in is single-valued in schema people v2.", rule: "single_valued", schema_id: "people", schema_version: 2 });
+    const v = describeInEffect({ kind: "replaced", summary: "Replaced Beijing: lives_in is single-valued in schema people v2.", rule: "single_valued", schema_id: "people", schema_version: 2 }, "en");
     expect(v?.title).toBe("Replaced an earlier value");
     expect(v?.summary).toContain("schema people v2");
     // The server's sentence carries the rule and the schema; nothing is repeated.
@@ -39,21 +39,22 @@ describe("in effect, in words", () => {
   });
 
   it("says several values are in effect, in the server's words, without repeating the opinion", () => {
-    const v = describeInEffect({ kind: "several_in_effect", summary: "Leo knows Ann is one of 2 values in effect (also: Bob); the schema has no opinion.", schema_opinion: "no_opinion" });
+    const v = describeInEffect({ kind: "several_in_effect", summary: "Leo knows Ann is one of 2 values in effect (also: Bob); the schema has no opinion.", schema_opinion: "no_opinion" }, "en");
     expect(v?.several).toBe(true);
     expect(v?.notes).toEqual([]);
   });
 
   it("writes the schema's opinion out when the server sent no sentence", () => {
-    expect(describeInEffect({ kind: "several_in_effect", summary: "", schema_opinion: "no_opinion" })?.notes[0]).toContain("no opinion");
+    expect(describeInEffect({ kind: "several_in_effect", summary: "", schema_opinion: "no_opinion" }, "en")?.notes[0]).toContain("no opinion");
   });
 
   it("counts other records that state the same thing", () => {
-    expect(describeInEffect({ kind: "only_version", summary: "", also_asserted_by: ["a"] })?.notes).toEqual(["Also stated by 1 other record."]);
+    expect(describeInEffect({ kind: "only_version", summary: "", also_asserted_by: ["a"] }, "en")?.notes).toEqual(["Also stated by 1 other record."]);
   });
 
   it("has nothing to say without an explanation", () => {
-    expect(describeInEffect(undefined)).toBeNull();
+    expect(describeInEffect(undefined, "en")).toBeNull();
+    expect(describeInEffect({ kind: "only_version", summary: "", also_asserted_by: ["a", "b"] }, "zh")?.notes).toEqual(["另有 2 条记录也这么说。"]);
   });
 });
 

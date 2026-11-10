@@ -7,7 +7,9 @@ import { Empty, Page, PageHeader } from "@/components/Page";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ACTIVITY_ORDER, activityUpTo, filterActivity } from "@/lib/activity";
-import { ACTIVITY_KINDS } from "@/lib/semantics";
+import { FEED_TEXT } from "@/lib/feedStrings";
+import { useLang } from "@/lib/i18n";
+import { ACTIVITY_KINDS, semLabel } from "@/lib/semantics";
 import { useNow } from "@/lib/useNow";
 import { useActivity, useCapabilities, useLive } from "@/live";
 import { pageShown } from "@/lib/pages";
@@ -24,19 +26,26 @@ export function ActivityPage() {
   const shown = useMemo(() => filterActivity(activityUpTo(events, pausedAt), kinds), [events, pausedAt, kinds]);
   const waiting = pausedAt === null ? 0 : filterActivity(events, kinds).length - shown.length;
   const firstSeen = useMemo(() => Date.now(), []);
+  const lang = useLang();
+  const t = FEED_TEXT[lang];
+  const [toolLead, toolTail] = t.noCallsViewBody.split("{tool}");
+  const [changesLead, changesTail] = t.changesStillLists.split("{changes}");
 
   let body;
   if (!ready) {
-    body = <Empty title="Connecting">Waiting for the live stream.</Empty>;
+    body = <Empty title={t.connecting}>{t.waitingStream}</Empty>;
   } else if (!caps.activity && events.length === 0) {
     body = (
-      <Empty title="This view cannot see tool calls">
-        Tool calls only show when the view is served by the agent's MCP server (<span className="font-mono">serve_graph_3d</span>); the command-line view reads the
-        database alone.
+      <Empty title={t.noCallsViewTitle}>
+        {toolLead}
+        <span className="font-mono">serve_graph_3d</span>
+        {toolTail}
         {pageShown("/changes") && (
           <>
             {" "}
-            <Link to="/changes" className="text-primary underline underline-offset-4">Changes</Link> still lists every write.
+            {changesLead}
+            <Link to="/changes" className="text-primary underline underline-offset-4">{t.changesLink}</Link>
+            {changesTail}
           </>
         )}
       </Empty>
@@ -44,9 +53,9 @@ export function ActivityPage() {
   } else if (shown.length === 0) {
     body =
       kinds.length > 0 ? (
-        <Empty title="No calls of that kind">Pick another kind, or clear the filter to see every call.</Empty>
+        <Empty title={t.noKindTitle}>{t.noKindBody}</Empty>
       ) : (
-        <Empty title="No calls yet">Calls appear here the moment an agent makes them.</Empty>
+        <Empty title={t.noCallsTitle}>{t.noCallsBody}</Empty>
       );
   } else {
     body = (
@@ -63,21 +72,21 @@ export function ActivityPage() {
   return (
     <Page>
       <PageHeader
-        title="Activity"
-        description="Tool calls the brain just handled: what was read, written and linked, and the terms each one named."
+        title={t.activityTitle}
+        description={t.activityDescription}
         actions={
           caps.activity ? (
             <Button variant="outline" size="sm" aria-pressed={pausedAt !== null} onClick={() => setPausedAt((p) => (p === null ? Date.now() : null))}>
               {pausedAt === null ? <Pause aria-hidden /> : <Play aria-hidden />}
-              {pausedAt === null ? "Pause live" : waiting > 0 ? `Resume (${waiting} new)` : "Resume live"}
+              {pausedAt === null ? t.pauseLive : waiting > 0 ? t.resumeNew(waiting) : t.resumeLive}
             </Button>
           ) : undefined
         }
       />
       {caps.activity && (
-        <ToggleGroup type="multiple" value={kinds} onValueChange={setKinds} variant="outline" size="sm" className="mb-5 flex-wrap justify-start" aria-label="Filter by kind">
+        <ToggleGroup type="multiple" value={kinds} onValueChange={setKinds} variant="outline" size="sm" className="mb-5 flex-wrap justify-start" aria-label={t.filterByKind}>
           {ACTIVITY_ORDER.map((k) => (
-            <ToggleGroupItem key={k} value={k} aria-label={ACTIVITY_KINDS[k].label} className="gap-1.5 px-2.5">
+            <ToggleGroupItem key={k} value={k} aria-label={semLabel(ACTIVITY_KINDS[k], lang)} className="gap-1.5 px-2.5">
               <Chip s={ACTIVITY_KINDS[k]} className="bg-transparent px-0" />
             </ToggleGroupItem>
           ))}

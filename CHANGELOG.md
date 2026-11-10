@@ -14,6 +14,18 @@ All notable changes to this project will be documented in this file.
   reached the typed one. Under vocabulary enforcement such an entity now keeps
   its name-keyed node; an entity that states its key still gets the typed one,
   and strict enforcement is unchanged.
+- The live view speaks one language on every page (#158). Only the Recalls
+  and Library pages had Chinese, so a Chinese browser showed them under an
+  English top bar, beside English Graph, Changes, Activity, Ontology and
+  Versions pages. Every page, the top bar, the command palette and relative
+  times now follow one choice: `?lang=` when the link has it, then a language
+  toggle in the top bar (remembered in this browser), then the browser's
+  language.
+- The live view's Activity page no longer opens empty after the view starts
+  (#158). Its first read of the recall log only marked where the log stood, so
+  until someone recalled again the page said there were no calls while the
+  Recalls page listed them. The latest recalls are now in the list a page
+  opens with; they light nothing on the graph.
 
 ### Added
 

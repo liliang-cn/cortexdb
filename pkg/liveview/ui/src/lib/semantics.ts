@@ -27,13 +27,14 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ChangeOp } from "@/api";
+import type { Lang, Strings } from "@/lib/i18n";
 
 export interface Semantic {
   /** Stable key, the wire value. */
   key: string;
-  /** Short label for chips and filters. */
+  /** Short label for chips and filters, in English; semLabel gives it in the app's language. */
   label: string;
-  /** One sentence for tooltips and legends. */
+  /** One sentence for tooltips and legends, in English; semMeans gives it in the app's language. */
   means: string;
   icon: LucideIcon;
   /** CSS variable holding the solid colour, for canvas, SVG and inline style. */
@@ -222,17 +223,71 @@ export function grade(value: string | undefined | null): Semantic {
 
 // ---- change kinds (what row a change touched) ---------------------------
 
-export const CHANGE_KIND_LABELS: Record<string, string> = {
-  node: "Entity",
-  edge: "Relation",
-  triple: "Triple",
-  memory: "Memory",
-  knowledge: "Document",
-  ontology_schema: "Schema",
+export const CHANGE_KIND_LABELS: Strings<Record<string, string>> = {
+  en: {
+    node: "Entity",
+    edge: "Relation",
+    triple: "Triple",
+    memory: "Memory",
+    knowledge: "Document",
+    ontology_schema: "Schema",
+  },
+  zh: {
+    node: "实体",
+    edge: "关系",
+    triple: "三元组",
+    memory: "记忆",
+    knowledge: "文档",
+    ontology_schema: "模式",
+  },
 };
 
-export function changeKindLabel(kind: string): string {
-  return CHANGE_KIND_LABELS[kind] ?? kind;
+/** The word for a change kind; a kind this build does not know is shown as it came. */
+export function changeKindLabel(kind: string, lang: Lang): string {
+  return CHANGE_KIND_LABELS[lang][kind] ?? kind;
+}
+
+// ---- the words, in both languages ---------------------------------------
+
+type SemanticWords = Record<ChangeOp | ActivityTone | GradeKey, { label: string; means: string }>;
+
+/** Every op, kind and grade's word and sentence, keyed by Semantic.key (the keys do not collide). */
+export const SEMANTIC_TEXT: Strings<SemanticWords> = {
+  en: Object.fromEntries(
+    [...Object.values(CHANGE_OPS), ...Object.values(ACTIVITY_KINDS), ...Object.values(GRADES)].map((s) => [
+      s.key,
+      { label: s.label, means: s.means },
+    ]),
+  ) as SemanticWords,
+  zh: {
+    added: { label: "新增", means: "一条新的事实或记录。" },
+    updated: { label: "更新", means: "原地改写。" },
+    superseded: { label: "被取代", means: "被更新的值替换。" },
+    retracted: { label: "撤回", means: "由写入方收回。" },
+    merged: { label: "合并", means: "并入了另一个实体。" },
+    deleted: { label: "删除", means: "已从存储中移除。" },
+    query: { label: "查询", means: "读取大脑，没有改动任何东西。" },
+    write: { label: "写入", means: "保存了一条记忆、事实或文档。" },
+    relate: { label: "关联", means: "把两样东西连了起来。" },
+    failed: { label: "失败", means: "调用返回了错误。" },
+    verified: { label: "已核实", means: "写入方之外的来源证实了它。" },
+    self_consistent: { label: "自洽", means: "与已有陈述一致，但未对照外部世界核查。" },
+    asserted: { label: "断言", means: "来源或模型这么说，尚无任何核查。" },
+    held: { label: "待定", means: "尚无结论，需要人来看。" },
+    refused: { label: "拒绝", means: "写入方拒绝了，并说明了原因。" },
+    untagged: { label: "未标注", means: "完全没有 _grade，无从得知它是怎么知道的。" },
+    unknown: { label: "未知", means: "契约未定义的 _grade，属于写入方的 bug。" },
+  },
+};
+
+/** A meaning's short word in the given language. */
+export function semLabel(s: Semantic, lang: Lang): string {
+  return (SEMANTIC_TEXT[lang] as Record<string, { label: string }>)[s.key]?.label ?? s.label;
+}
+
+/** A meaning's sentence in the given language. */
+export function semMeans(s: Semantic, lang: Lang): string {
+  return (SEMANTIC_TEXT[lang] as Record<string, { means: string }>)[s.key]?.means ?? s.means;
 }
 
 // ---- connection states --------------------------------------------------

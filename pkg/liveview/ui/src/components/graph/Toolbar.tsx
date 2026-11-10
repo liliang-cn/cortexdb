@@ -2,6 +2,8 @@ import { Orbit, Radio, ScanSearch, ShieldCheck, SlidersHorizontal, Route, Tag, L
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
+import { GRAPH_TEXT } from "@/lib/graphStrings";
+import { useText } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { clearPath, startPathPick } from "./actions";
 import { ContractContent } from "./Contract";
@@ -42,24 +44,25 @@ export function Toolbar() {
   const path = useGraphUI((s) => s.path);
   const set = useGraphUI((s) => s.set);
   const pathActive = pick !== "off" || !!path;
+  const t = useText(GRAPH_TEXT);
 
   return (
-    <div role="toolbar" aria-label="Canvas" className="pointer-events-auto flex flex-col gap-0.5 rounded-xl border bg-card/92 p-1 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_-12px_rgb(0_0_0/0.18)] backdrop-blur-md">
-      <IconButton label="Fit the graph" kbd="F" icon={<ScanSearch />} onClick={() => getScene()?.fit(700)} />
-      <IconButton label={orbit ? "Stop orbiting" : "Orbit"} icon={<Orbit />} active={orbit} onClick={() => set({ orbit: !orbit })} />
-      <IconButton label={labels ? "Hide names" : "Show names"} icon={<Tag />} active={labels} onClick={() => set({ labels: !labels })} />
-      <IconButton label={pathActive ? "Clear the path" : "Trace a path between two nodes"} icon={<Route />} active={pathActive} onClick={() => (pathActive ? clearPath() : startPathPick())} />
+    <div role="toolbar" aria-label={t.canvas} className="pointer-events-auto flex flex-col gap-0.5 rounded-xl border bg-card/92 p-1 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_-12px_rgb(0_0_0/0.18)] backdrop-blur-md">
+      <IconButton label={t.fitGraph} kbd="F" icon={<ScanSearch />} onClick={() => getScene()?.fit(700)} />
+      <IconButton label={orbit ? t.stopOrbit : t.orbit} icon={<Orbit />} active={orbit} onClick={() => set({ orbit: !orbit })} />
+      <IconButton label={labels ? t.hideNames : t.showNames} icon={<Tag />} active={labels} onClick={() => set({ labels: !labels })} />
+      <IconButton label={pathActive ? t.clearPath : t.tracePathBetween} icon={<Route />} active={pathActive} onClick={() => (pathActive ? clearPath() : startPathPick())} />
       <span aria-hidden className="mx-1.5 my-0.5 h-px bg-border" />
-      <PopoverButton label="View settings" title="View" icon={<SlidersHorizontal />} open={panels.controls} onOpenChange={(o) => setPanel("controls", o)}>
+      <PopoverButton label={t.viewSettings} title={t.view} icon={<SlidersHorizontal />} open={panels.controls} onOpenChange={(o) => setPanel("controls", o)}>
         <ControlsContent />
       </PopoverButton>
       {OPTS.contract && (
-        <PopoverButton label="Knowledge contract" title="Knowledge contract" icon={<ShieldCheck />} open={panels.contract} onOpenChange={(o) => setPanel("contract", o)} width="w-96">
+        <PopoverButton label={t.contract} title={t.contract} icon={<ShieldCheck />} open={panels.contract} onOpenChange={(o) => setPanel("contract", o)} width="w-96">
           <ContractContent />
         </PopoverButton>
       )}
-      <IconButton label={panels.legend ? "Hide the key" : "Show the key"} icon={<Layers />} active={panels.legend} onClick={() => setPanel("legend", !panels.legend)} />
-      <IconButton label={panels.rail ? "Hide live changes" : "Show live changes"} icon={<Radio />} active={panels.rail} onClick={() => setPanel("rail", !panels.rail)} />
+      <IconButton label={panels.legend ? t.hideKey : t.showKey} icon={<Layers />} active={panels.legend} onClick={() => setPanel("legend", !panels.legend)} />
+      <IconButton label={panels.rail ? t.hideLive : t.showLive} icon={<Radio />} active={panels.rail} onClick={() => setPanel("rail", !panels.rail)} />
     </div>
   );
 }

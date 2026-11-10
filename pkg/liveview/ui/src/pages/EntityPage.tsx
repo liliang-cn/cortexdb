@@ -10,7 +10,9 @@ import { Empty, Page } from "@/components/Page";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { countEdges, groupsWithHistory, historyByRelation, relationKey, splitCoOccurs } from "@/lib/entity";
-import { changeOp, grade } from "@/lib/semantics";
+import { FEED_TEXT } from "@/lib/feedStrings";
+import { useLang, useText } from "@/lib/i18n";
+import { changeOp, grade, semLabel } from "@/lib/semantics";
 import { useEntityData, useRecentChanges } from "@/lib/useEntityData";
 import { formatClock } from "@/lib/time";
 import { useNow } from "@/lib/useNow";
@@ -19,6 +21,7 @@ import { pageShown } from "@/lib/pages";
 
 function CopyId({ id }: { id: string }) {
   const [done, setDone] = useState(false);
+  const t = useText(FEED_TEXT);
   useEffect(() => {
     if (!done) return;
     const t = setTimeout(() => setDone(false), 1500);
@@ -30,7 +33,7 @@ function CopyId({ id }: { id: string }) {
       <Button
         variant="ghost"
         size="icon-xs"
-        aria-label="Copy id"
+        aria-label={t.copyId}
         onClick={() => {
           navigator.clipboard?.writeText(id).then(() => setDone(true), () => undefined);
         }}
@@ -43,16 +46,17 @@ function CopyId({ id }: { id: string }) {
 
 /** "touched just now": the colour of what happened, pulsing while it is fresh. */
 function TouchPulse({ id }: { id: string }) {
-  const t = useTouch(id);
-  if (!t) return null;
-  const s = changeOp(t.op);
+  const touch = useTouch(id);
+  const lang = useLang();
+  if (!touch) return null;
+  const s = changeOp(touch.op);
   return (
     <span role="status" className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${s.chip}`}>
       <span className="relative flex size-2">
         <span className={`absolute inline-flex size-full animate-ping rounded-full opacity-60 motion-reduce:animate-none ${s.dot}`} />
         <span className={`relative inline-flex size-2 rounded-full ${s.dot}`} />
       </span>
-      {s.label.toLowerCase()} just now
+      {FEED_TEXT[lang].justNow(semLabel(s, lang))}
     </span>
   );
 }
@@ -82,11 +86,12 @@ function Provenance({ rec }: { rec: RecordDetail }) {
   const g = grade(rec.grade);
   const contradicts = rec.contradicts ?? [];
   const decisions = rec.decisions ?? [];
+  const t = useText(FEED_TEXT);
   return (
     <div className="rounded-xl border bg-card px-4 py-2">
       <dl className="divide-y divide-border/60">
         {rec.grade !== undefined || rec.state ? (
-          <Fact label="Grade">
+          <Fact label={t.fGrade}>
             <span className="flex flex-wrap items-center gap-2">
               <Chip s={g} />
               {rec.state && <span className="text-muted-foreground">{rec.state}</span>}
@@ -94,24 +99,24 @@ function Provenance({ rec }: { rec: RecordDetail }) {
             {rec.why && <p className="mt-1 text-muted-foreground">{rec.why}</p>}
           </Fact>
         ) : null}
-        {rec.source && <Fact label="Source">{rec.source}</Fact>}
-        {rec.document_id && <Fact label="Document"><span className="font-mono text-xs">{rec.document_id}</span></Fact>}
+        {rec.source && <Fact label={t.fSource}>{rec.source}</Fact>}
+        {rec.document_id && <Fact label={t.fDocument}><span className="font-mono text-xs">{rec.document_id}</span></Fact>}
         {(rec.chunk_ids?.length ?? 0) > 0 && (
-          <Fact label="Chunks">
+          <Fact label={t.fChunks}>
             <span className="font-mono text-xs">{rec.chunk_ids?.join(", ")}</span>
           </Fact>
         )}
-        {rec.chunk && !rec.chunk_ids?.includes(rec.chunk) && <Fact label="Chunk"><span className="font-mono text-xs">{rec.chunk}</span></Fact>}
-        {rec.producer && <Fact label="Producer"><span className="font-mono text-xs">{rec.producer}</span></Fact>}
+        {rec.chunk && !rec.chunk_ids?.includes(rec.chunk) && <Fact label={t.fChunk}><span className="font-mono text-xs">{rec.chunk}</span></Fact>}
+        {rec.producer && <Fact label={t.fProducer}><span className="font-mono text-xs">{rec.producer}</span></Fact>}
         {(rec.at || rec.by) && (
-          <Fact label="Recorded">
-            {rec.at && <span>{rec.at}</span>} {rec.by && <span className="text-muted-foreground">by {rec.by}</span>}
+          <Fact label={t.fRecorded}>
+            {rec.at && <span>{rec.at}</span>} {rec.by && <span className="text-muted-foreground">{t.byWho(rec.by)}</span>}
           </Fact>
         )}
-        {rec.confidence && <Fact label="Confidence">{rec.confidence}</Fact>}
-        {rec.inferred && <Fact label="Inferred">{rec.rule ? `By rule ${rec.rule}.` : "Yes, not stated directly."}</Fact>}
+        {rec.confidence && <Fact label={t.fConfidence}>{rec.confidence}</Fact>}
+        {rec.inferred && <Fact label={t.fInferred}>{rec.rule ? t.byRule(rec.rule) : t.inferredYes}</Fact>}
         {contradicts.length > 0 && (
-          <Fact label="Contradicts">
+          <Fact label={t.fContradicts}>
             <span className="flex flex-wrap gap-x-3 gap-y-1">
               {contradicts.map((c) => (
                 <EntityLink key={c} id={c} label={c} className="font-mono text-xs font-normal" />
@@ -120,20 +125,20 @@ function Provenance({ rec }: { rec: RecordDetail }) {
           </Fact>
         )}
         {decisions.length > 0 && (
-          <Fact label="Decisions">
+          <Fact label={t.fDecisions}>
             <ul className="space-y-2">
               {decisions.map((d) => (
                 <li key={d.id} className="text-sm">
-                  <span className="font-medium">{d.verdict ?? d.kind ?? "decision"}</span>
-                  {d.actor && <span className="text-muted-foreground"> by {d.actor}</span>}
-                  {d.at && <span className="text-muted-foreground"> on {d.at}</span>}
+                  <span className="font-medium">{d.verdict ?? d.kind ?? t.decision}</span>
+                  {d.actor && <span className="text-muted-foreground"> {t.byWho(d.actor)}</span>}
+                  {d.at && <span className="text-muted-foreground"> {t.onWhen(d.at)}</span>}
                   {d.grade && <GradeChip value={d.grade} className="ml-2" />}
                   {d.note && <p className="text-muted-foreground">{d.note}</p>}
                   <p className="font-mono text-xs text-muted-foreground">
                     {d.id}
                     {(d.supersedes ?? []).length > 0 && (
                       <>
-                        {" "}replaces{" "}
+                        {" "}{t.replacesWord}{" "}
                         {d.supersedes?.map((s) => (
                           <EntityLink key={s} id={s} label={s} className="font-mono text-xs font-normal" />
                         ))}
@@ -161,8 +166,9 @@ function hasProvenance(r: RecordDetail | null): r is RecordDetail {
 }
 
 function Skeletons() {
+  const t = useText(FEED_TEXT);
   return (
-    <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_14rem_1fr]" aria-busy aria-label="Loading entity">
+    <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_14rem_1fr]" aria-busy aria-label={t.loadingEntity}>
       {[0, 1, 2].map((i) => (
         <div key={i} className="space-y-3">
           <Skeleton className="h-24 w-full rounded-xl" />
@@ -181,6 +187,8 @@ export function EntityPage() {
   const liveNode = useNode(id);
   const data = useEntityData(id);
   const recent = useRecentChanges(id, data.changes);
+  const lang = useLang();
+  const t = FEED_TEXT[lang];
 
   const node = data.view?.node ?? liveNode ?? null;
   const out = useMemo(() => splitCoOccurs(data.view?.out ?? []), [data.view]);
@@ -197,7 +205,7 @@ export function EntityPage() {
   if (!id) {
     return (
       <Page>
-        <Empty title="No entity chosen">Press Ctrl or Cmd K to search for one, or open one from a change in the Changes page.</Empty>
+        <Empty title={t.noEntityTitle}>{t.noEntityBody}</Empty>
       </Page>
     );
   }
@@ -221,7 +229,7 @@ export function EntityPage() {
         </div>
         {pageShown("/changes") && (
           <Button variant="outline" size="sm" asChild>
-            <Link to={`/changes?entity=${encodeURIComponent(id)}`}>All changes</Link>
+            <Link to={`/changes?entity=${encodeURIComponent(id)}`}>{t.allChanges}</Link>
           </Button>
         )}
       </header>
@@ -230,10 +238,8 @@ export function EntityPage() {
 
       {!data.loading && !inGraph && !data.error && (
         <p className="mt-5 rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">
-          {nothingKnown
-            ? "Nothing is known about this id: it is not in the graph and no change mentions it."
-            : "This entity is not in the graph right now. It may have been merged, retracted or deleted; what is known about it is below."}
-          {data.unsupported && " This server cannot describe live relations, so only history is shown."}
+          {nothingKnown ? t.nothingKnown : t.notInGraph}
+          {data.unsupported && ` ${t.noLiveRelations}`}
         </p>
       )}
 
@@ -242,11 +248,11 @@ export function EntityPage() {
       ) : (
         (inGraph || outGroups.length > 0 || inGroups.length > 0) && (
           <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_13rem_minmax(0,1fr)] lg:gap-6">
-            <div className="space-y-3" aria-label="Incoming relations">
+            <div className="space-y-3" aria-label={t.incomingRelations}>
               <p className="text-xs font-medium text-muted-foreground">
-                Incoming <span className="tabular-nums">({countEdges(inn.groups)})</span>
+                {t.incoming} <span className="tabular-nums">({countEdges(inn.groups)})</span>
               </p>
-              {inGroups.length === 0 && <p className="rounded-xl border border-dashed px-3 py-4 text-sm text-muted-foreground">Nothing points here.</p>}
+              {inGroups.length === 0 && <p className="rounded-xl border border-dashed px-3 py-4 text-sm text-muted-foreground">{t.nothingPointsHere}</p>}
               {inGroups.map((g) => (
                 <RelationGroupCard key={g.predicate} group={g} direction="in" lines={history.get(relationKey("in", g.predicate)) ?? []} now={now} />
               ))}
@@ -257,18 +263,18 @@ export function EntityPage() {
                 <p className="text-base font-semibold [overflow-wrap:anywhere]">{title}</p>
                 {node?.type && <p className="text-xs text-muted-foreground">{node.type}</p>}
                 <p className="mt-2 flex items-center justify-center gap-2 text-xs text-muted-foreground tabular-nums">
-                  <span>{countEdges(inn.groups)} in</span>
+                  <span>{t.nIn(countEdges(inn.groups))}</span>
                   <ArrowRight aria-hidden className="size-3" />
-                  <span>{countEdges(out.groups)} out</span>
+                  <span>{t.nOut(countEdges(out.groups))}</span>
                 </p>
               </div>
             </div>
 
-            <div className="space-y-3" aria-label="Outgoing relations">
+            <div className="space-y-3" aria-label={t.outgoingRelations}>
               <p className="text-xs font-medium text-muted-foreground">
-                Outgoing <span className="tabular-nums">({countEdges(out.groups)})</span>
+                {t.outgoing} <span className="tabular-nums">({countEdges(out.groups)})</span>
               </p>
-              {outGroups.length === 0 && <p className="rounded-xl border border-dashed px-3 py-4 text-sm text-muted-foreground">Nothing leaves from here.</p>}
+              {outGroups.length === 0 && <p className="rounded-xl border border-dashed px-3 py-4 text-sm text-muted-foreground">{t.nothingLeaves}</p>}
               {outGroups.map((g) => (
                 <RelationGroupCard key={g.predicate} group={g} direction="out" lines={history.get(relationKey("out", g.predicate)) ?? []} now={now} />
               ))}
@@ -278,7 +284,7 @@ export function EntityPage() {
       )}
 
       {together.length > 0 && (
-        <Section title={`Mentioned together with ${together.length}`} aside="Seen in the same passage; not a stated relation.">
+        <Section title={t.mentionedWith(together.length)} aside={t.mentionedAside}>
           <div className="flex flex-wrap gap-2">
             {together.map((r) => (
               <Link
@@ -295,12 +301,12 @@ export function EntityPage() {
       )}
 
       {(data.history?.merged_from?.length ?? 0) > 0 && (
-        <Section title="Merged from">
+        <Section title={t.mergedFrom}>
           <ul className="space-y-1 text-sm">
             {data.history?.merged_from?.map((m) => (
               <li key={m.id}>
                 <EntityLink id={m.id} label={m.name || m.id} />
-                {m.at && <span className="text-muted-foreground"> on {formatClock(Date.parse(m.at))}</span>}
+                {m.at && <span className="text-muted-foreground"> {t.onWhen(formatClock(lang, Date.parse(m.at)))}</span>}
               </li>
             ))}
           </ul>
@@ -308,14 +314,14 @@ export function EntityPage() {
       )}
 
       {hasProvenance(data.record) && (
-        <Section title="Where it came from" aside={data.record.type}>
+        <Section title={t.whereFrom} aside={data.record.type}>
           <Provenance rec={data.record} />
         </Section>
       )}
 
-      <Section title="Recent changes" aside={recent.length > 0 ? `${recent.length} shown` : undefined}>
+      <Section title={t.recentChanges} aside={recent.length > 0 ? t.nShown(recent.length) : undefined}>
         {recent.length === 0 ? (
-          <Empty title="No changes recorded for this entity">{data.loading ? "Reading the change feed." : "Changes that touch it will show up here as they happen."}</Empty>
+          <Empty title={t.noEntityChanges}>{data.loading ? t.readingFeed : t.changesWillShow}</Empty>
         ) : (
           <ol className="divide-y overflow-hidden rounded-xl border bg-card">
             {recent.map((c) => (

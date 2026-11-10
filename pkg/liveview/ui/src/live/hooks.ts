@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { useLive } from "./store";
 import type { Touch } from "./reducer";
 import type { LinkKind } from "@/lib/semantics";
+import { useLang } from "@/lib/i18n";
+import { SHELL_TEXT } from "@/lib/shellStrings";
 import { formatClock } from "@/lib/time";
 
 export { useLive } from "./store";
@@ -66,27 +68,30 @@ export function useLinkView(): LinkView {
   const source = useLive((s) => s.source);
   const activity = useLive((s) => s.caps.activity);
   const changes = useLive((s) => s.caps.changes);
+  const lang = useLang();
 
   return useMemo(() => {
-    const from = source ? `Source: ${source}.` : "";
-    if (link === "offline") return { kind: "offline", label: "Offline", detail: `Cannot reach the live view. Retrying. ${from}`.trim() };
-    if (!ready && link === "connecting") return { kind: "connecting", label: "Connecting", detail: "Opening the live stream." };
+    const t = SHELL_TEXT[lang];
+    const from = source ? t.source(source) : "";
+    const and = (sentence: string) => `${sentence} ${from}`.trim();
+    if (link === "offline") return { kind: "offline", label: t.offline, detail: and(t.offlineDetail) };
+    if (!ready && link === "connecting") return { kind: "connecting", label: t.connecting, detail: t.connectingDetail };
     if (link === "reconnecting") {
-      return { kind: "reconnecting", label: "Reconnecting", detail: `The stream dropped; the browser is retrying and will resume from the last change. ${from}`.trim() };
+      return { kind: "reconnecting", label: t.reconnecting, detail: and(t.reconnectingDetail) };
     }
     if (pinned) {
       return {
         kind: "pinned",
-        label: `Pinned to ${pinnedAt ? formatClock(pinnedAt) : "a past instant"}`,
-        detail: `Showing the brain as it was then; no live updates. ${from}`.trim(),
+        label: t.pinnedTo(pinnedAt ? formatClock(lang, pinnedAt) : t.aPastInstant),
+        detail: and(t.pinnedDetail),
       };
     }
     if (pinReason) {
-      return { kind: "live", label: "Live", detail: `The pin was refused: ${pinReason}. ${from}`.trim() };
+      return { kind: "live", label: t.live, detail: and(t.pinRefused(pinReason)) };
     }
     if (ready && !activity && !changes) {
-      return { kind: "structure", label: "Structure only", detail: `This source reports the graph but no activity or change events. ${from}`.trim() };
+      return { kind: "structure", label: t.structureOnly, detail: and(t.structureDetail) };
     }
-    return { kind: "live", label: "Live", detail: from || "Receiving updates." };
-  }, [link, ready, pinned, pinnedAt, pinReason, source, activity, changes]);
+    return { kind: "live", label: t.live, detail: from || t.receiving };
+  }, [lang, link, ready, pinned, pinnedAt, pinReason, source, activity, changes]);
 }

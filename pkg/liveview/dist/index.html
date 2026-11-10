@@ -20,10 +20,18 @@
         } catch (e) {}
         var dark = mode === "dark" || (mode === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
         if (dark) document.documentElement.classList.add("dark");
+        // The same for the language (lib/i18n.ts): ?lang=, the saved choice, the browser.
+        var lang = "";
+        try {
+          var saved = localStorage.getItem("cortexdb.liveview.lang");
+          lang = new URLSearchParams(location.search).get("lang") || (saved === "en" || saved === "zh" ? saved : "");
+        } catch (e) {}
+        lang = lang || navigator.language || "en";
+        document.documentElement.lang = lang.toLowerCase().indexOf("zh") === 0 ? "zh-CN" : "en";
       })();
     </script>
-    <script type="module" crossorigin src="./assets/index-D-BIG_T0.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/Page-V8tfNUbc.js">
+    <script type="module" crossorigin src="./assets/index-DvRRlG5M.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/Page-CGGkb053.js">
     <link rel="stylesheet" crossorigin href="./assets/index-vpKdl6pX.css">
   </head>
   <body>

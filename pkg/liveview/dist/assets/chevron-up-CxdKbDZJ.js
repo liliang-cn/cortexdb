@@ -1,1 +1,0 @@
-import{ut as e}from"./Page-V8tfNUbc.js";var t={name:`chevron-up`,size:24,node:[[`path`,{d:`m18 15-6-6-6 6`,key:`153udz`}]]};t.node;var n=e(t);export{n as t};

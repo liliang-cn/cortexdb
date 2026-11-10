@@ -3,6 +3,8 @@ import { Radio } from "lucide-react";
 import { buildRailItems, railSelection, railTargets, type RailFilter, type RailItem } from "@/lib/graph/rail";
 import { useActivity, useCapabilities, useChanges, useLinkView } from "@/live";
 import { useNow } from "@/lib/useNow";
+import { GRAPH_TEXT } from "@/lib/graphStrings";
+import { useText } from "@/lib/i18n";
 import { LINK_TONES } from "@/lib/semantics";
 import { cn } from "@/lib/utils";
 import { selectNode } from "./actions";
@@ -22,6 +24,7 @@ export function RailContent() {
   const set = useGraphUI((s) => s.set);
   const now = useNow(1000);
   const [filter, setFilter] = useState<RailFilter>("all");
+  const t = useText(GRAPH_TEXT);
 
   const items = useMemo(() => buildRailItems(changes, activity, filter, SHOWN), [changes, activity, filter]);
 
@@ -49,9 +52,9 @@ export function RailContent() {
           value={filter}
           onChange={setFilter}
           options={[
-            { value: "all", label: "All" },
-            { value: "changes", label: "Changes", title: "Rows written to the store" },
-            { value: "calls", label: "Calls", title: "Tool calls an agent made" },
+            { value: "all", label: t.all },
+            { value: "changes", label: t.changes, title: t.changesTitle },
+            { value: "calls", label: t.calls, title: t.callsTitle },
           ]}
         />
       </div>
@@ -60,8 +63,8 @@ export function RailContent() {
           <div className="px-2 pt-3">
             <Hint>
               {!caps.changes && !caps.activity
-                ? "This source reports the graph but no changes or tool calls."
-                : "Nothing yet. Changes and tool calls appear here as they happen, newest first."}
+                ? t.railNoSource
+                : t.railEmpty}
             </Hint>
           </div>
         ) : (

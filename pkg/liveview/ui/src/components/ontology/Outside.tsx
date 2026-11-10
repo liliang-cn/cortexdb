@@ -1,5 +1,7 @@
 import type { Outside as OutsideT } from "@/lib/ontologyFinding";
 import type { OntologyPalette } from "@/lib/ontologyPalette";
+import { useText } from "@/lib/i18n";
+import { ONTOLOGY_TEXT } from "@/lib/ontologyStrings";
 import { Runs } from "./Finding";
 
 /**
@@ -10,15 +12,16 @@ import { Runs } from "./Finding";
  */
 export function Outside({ band, pal }: { band: OutsideT; pal: OntologyPalette }) {
   const s = pal.stray;
+  const t = useText(ONTOLOGY_TEXT);
   return (
     <section
-      aria-label="Outside the model"
+      aria-label={t.outside}
       className="rounded-xl border border-dashed px-4 py-3"
       style={{ borderColor: s.border, background: `color-mix(in oklab, ${s.fill} 70%, var(--card))` }}
       data-outside
     >
       <h2 className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: pal.draftInk }}>
-        Outside the model
+        {t.outside}
       </h2>
       <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
         <Runs runs={band.runs} />
@@ -34,7 +37,7 @@ export function Outside({ band, pal }: { band: OutsideT; pal: OntologyPalette })
                 style={{ borderColor: s.border, color: s.ink, background: `color-mix(in oklab, ${s.fill} 85%, transparent)` }}
               >
                 <span className={c.name ? "truncate" : "italic"} style={c.name ? undefined : { color: s.count }}>
-                  {c.name ?? "(no type at all)"}
+                  {c.name ?? t.noType}
                 </span>
                 <span className="font-medium tabular-nums" style={{ color: s.count }}>
                   {c.count}

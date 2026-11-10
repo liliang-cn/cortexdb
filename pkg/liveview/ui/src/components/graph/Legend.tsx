@@ -2,8 +2,10 @@ import { useMemo, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CO_OCCURS, heatColor, predicateColor, rankTypes, typeColor } from "@/lib/graph/colors";
-import { predicateCounts, predicateShown, typeCounts } from "@/lib/graph/model";
-import { GRADES, GRADE_ORDER, grade } from "@/lib/semantics";
+import { predicateCounts, predicateShown, typeCounts, UNTYPED } from "@/lib/graph/model";
+import { GRAPH_TEXT } from "@/lib/graphStrings";
+import { useLang, useText } from "@/lib/i18n";
+import { GRADES, GRADE_ORDER, grade, semLabel, semMeans } from "@/lib/semantics";
 import { useCapabilities } from "@/live";
 import { cn } from "@/lib/utils";
 import { useDark, useMerged } from "./hooks";
@@ -14,12 +16,13 @@ import { useRecallHeat } from "./useRecallHeat";
 const COLLAPSED_ROWS = 7;
 
 function Row({ on, onClick, swatch, label, count, title }: { on: boolean; onClick: () => void; swatch: React.ReactNode; label: string; count: number; title?: string }) {
+  const t = useText(GRAPH_TEXT);
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={on}
-      title={title ?? (on ? `Hide ${label}` : `Show ${label}`)}
+      title={title ?? (on ? t.hideX(label) : t.showX(label))}
       className={cn(
         "group flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[13px] outline-none transition-colors hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50",
         !on && "text-muted-foreground",
@@ -38,10 +41,11 @@ function Row({ on, onClick, swatch, label, count, title }: { on: boolean; onClic
 }
 
 function Expander({ shown, total, open, onToggle }: { shown: number; total: number; open: boolean; onToggle: () => void }) {
+  const t = useText(GRAPH_TEXT);
   if (total <= shown) return null;
   return (
     <Button variant="ghost" size="sm" className="mt-0.5 h-7 w-full justify-start px-1.5 text-xs text-muted-foreground" onClick={onToggle}>
-      {open ? "Show fewer" : `Show all ${total}`}
+      {open ? t.showFewer : t.showAllN(total)}
     </Button>
   );
 }
@@ -67,10 +71,12 @@ function EntityKey() {
     return m;
   }, [g.nodes]);
   const heat = useRecallHeat(mode === "recalls");
+  const lang = useLang();
+  const tx = GRAPH_TEXT[lang];
 
   if (mode === "grade") {
     if (!caps.grades) {
-      return <Hint>This source does not report grades, so nothing here can be coloured by one. That is not the same as a store where nothing is graded.</Hint>;
+      return <Hint>{tx.noGrades}</Hint>;
     }
     return (
       <ul className="space-y-1">
@@ -80,8 +86,8 @@ function EntityKey() {
             <li key={k} className="flex items-start gap-2 px-1.5 py-0.5 text-[13px]">
               <span className={cn("mt-1.5 size-2.5 shrink-0 rounded-full", s.dot)} />
               <span className="min-w-0 flex-1">
-                <span className="block leading-snug">{s.label}</span>
-                <span className="block text-xs leading-snug text-muted-foreground">{s.means}</span>
+                <span className="block leading-snug">{semLabel(s, lang)}</span>
+                <span className="block text-xs leading-snug text-muted-foreground">{semMeans(s, lang)}</span>
               </span>
               <span className="font-mono text-[11px] tabular-nums text-muted-foreground">{byGrade.get(k) ?? 0}</span>
             </li>
@@ -92,8 +98,8 @@ function EntityKey() {
   }
 
   if (mode === "recalls") {
-    if (heat.error) return <Hint tone="bad">{/recall log is off/i.test(heat.error) ? "The recall log is off on this brain. Start it with CORTEXDB_RECALL_LOG=1." : heat.error}</Hint>;
-    if (!heat.data) return <Hint>Reading the recall log...</Hint>;
+    if (heat.error) return <Hint tone="bad">{/recall log is off/i.test(heat.error) ? tx.recallLogOff : heat.error}</Hint>;
+    if (!heat.data) return <Hint>{tx.readingRecallLog}</Hint>;
     const max = heat.data.max;
     const steps = max > 1 ? [max, Math.max(2, Math.round(Math.sqrt(max))), 1] : [1];
     return (
@@ -107,10 +113,10 @@ function EntityKey() {
           ))}
           <span className="inline-flex items-center gap-1.5">
             <span className="size-2.5 rounded-full" style={{ background: heatColor(0, max, dark) }} />
-            never
+            {tx.never}
           </span>
         </div>
-        <Hint>{Object.keys(heat.data.nodes).length} nodes reached by recalls. Grey was never recalled.</Hint>
+        <Hint>{tx.reachedN(Object.keys(heat.data.nodes).length)}</Hint>
       </div>
     );
   }
@@ -123,9 +129,10 @@ function EntityKey() {
           key={t.key}
           on={!filters.hiddenTypes.has(t.key)}
           onClick={() => toggleType(t.key)}
-          label={t.key}
+          // (untyped) is the page's word for no type, not a type's name.
+          label={t.key === UNTYPED ? `(${tx.untyped})` : t.key}
           count={t.count}
-          swatch={<span className="size-2.5 rounded-full" style={{ background: typeColor(t.key === "(untyped)" ? "" : t.key, dark) }} />}
+          swatch={<span className="size-2.5 rounded-full" style={{ background: typeColor(t.key === UNTYPED ? "" : t.key, dark) }} />}
         />
       ))}
       <Expander shown={COLLAPSED_ROWS} total={types.length} open={all} onToggle={() => setAll(!all)} />
@@ -140,10 +147,11 @@ function RelationKey() {
   const setCoOccurs = useGraphUI((s) => s.setCoOccurs);
   const mode = useGraphUI((s) => s.colorMode);
   const [all, setAll] = useState(false);
+  const t = useText(GRAPH_TEXT);
   const preds = useMemo(() => predicateCounts(g.edges.values()), [g.edges]);
   // co_occurs sits last whatever its count: it says least.
   const ordered = useMemo(() => [...preds.filter((p) => p.key !== CO_OCCURS), ...preds.filter((p) => p.key === CO_OCCURS)], [preds]);
-  if (!ordered.length) return <Hint>No relations yet.</Hint>;
+  if (!ordered.length) return <Hint>{t.noRelationsYet}</Hint>;
   const rows = all ? ordered : ordered.slice(0, COLLAPSED_ROWS);
   // Make sure co_occurs is reachable even when the list is folded.
   const co = ordered.find((p) => p.key === CO_OCCURS);
@@ -161,7 +169,7 @@ function RelationKey() {
             onClick={() => (isCo ? setCoOccurs(!filters.showCoOccurs) : togglePredicate(p.key))}
             label={isCo ? "co_occurs" : p.key}
             count={p.count}
-            title={isCo ? (on ? "Hide co_occurs" : "Show co_occurs: two names appeared together, nothing more") : undefined}
+            title={isCo ? (on ? t.hideCoOccurs : t.showCoOccurs) : undefined}
             swatch={
               <span className="flex w-5 items-center">
                 <span className="h-0.5 flex-1 rounded-full" style={{ background: color ?? "var(--muted-foreground)" }} />
@@ -171,7 +179,7 @@ function RelationKey() {
           />
         );
       })}
-      {co && !filters.showCoOccurs && <p className="px-1.5 pt-1 text-[11px] leading-snug text-muted-foreground">co_occurs only says two names appeared together, so it is hidden.</p>}
+      {co && !filters.showCoOccurs && <p className="px-1.5 pt-1 text-[11px] leading-snug text-muted-foreground">{t.coOccursHidden}</p>}
       <Expander shown={COLLAPSED_ROWS} total={ordered.length} open={all} onToggle={() => setAll(!all)} />
     </div>
   );
@@ -182,13 +190,14 @@ export function LegendContent() {
   const filters = useGraphUI((s) => s.filters);
   const showAll = useGraphUI((s) => s.showAll);
   const anyHidden = filters.hiddenTypes.size > 0 || filters.hiddenPredicates.size > 0;
+  const t = useText(GRAPH_TEXT);
   return (
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2.5 py-2.5">
-      <SectionTitle aside={anyHidden && <button type="button" onClick={showAll} className="text-xs text-primary hover:underline">Show all</button>}>
-        {mode === "grade" ? "How well established" : mode === "recalls" ? "Reached by recalls" : "Entities"}
+      <SectionTitle aside={anyHidden && <button type="button" onClick={showAll} className="text-xs text-primary hover:underline">{t.showAll}</button>}>
+        {mode === "grade" ? t.howEstablished : mode === "recalls" ? t.reachedByRecalls : t.entities}
       </SectionTitle>
       <EntityKey />
-      <SectionTitle>Relations</SectionTitle>
+      <SectionTitle>{t.relationsHeading}</SectionTitle>
       <RelationKey />
     </div>
   );

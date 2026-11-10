@@ -7,6 +7,7 @@ import type { AskAnswer, CypherAnswer, Edge, FindResult, Node } from "@/api";
 import { NO_FILTERS, type Filters } from "@/lib/graph/model";
 import type { ColorMode } from "@/lib/graph/scene";
 import type { Targets } from "@/lib/graph/rail";
+import type { PathNote } from "@/lib/graphStrings";
 import { pageShown } from "@/lib/pages";
 
 export type ExploreMode = "find" | "ask" | "cypher";
@@ -99,7 +100,7 @@ export interface GraphUI {
   path: { nodes: ReadonlySet<string>; edges: ReadonlySet<string>; ids: string[] } | null;
   pick: PathPick;
   pathFrom: string | null;
-  pathNote: string;
+  pathNote: PathNote;
 
   filters: Filters;
   colorMode: ColorMode;
@@ -141,7 +142,7 @@ export const useGraphUI = create<GraphUI>()((set, get) => ({
   path: null,
   pick: "off",
   pathFrom: null,
-  pathNote: "",
+  pathNote: { kind: "none" },
 
   filters: { ...NO_FILTERS, showCoOccurs: stored.showCoOccurs ?? false },
   colorMode: OPTS.color,

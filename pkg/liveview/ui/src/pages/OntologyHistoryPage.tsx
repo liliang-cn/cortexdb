@@ -35,10 +35,13 @@ import { useSchemaIndex, useVersionDiff, useVersionHistory } from "@/lib/ontolog
 import { useNow } from "@/lib/useNow";
 import { useCapabilities, useLive } from "@/live";
 import { pageShown } from "@/lib/pages";
+import { useLang } from "@/lib/i18n";
+import { VERSIONS_TEXT, type VersionsText } from "@/lib/versionsStrings";
 
 function ListSkeleton() {
+  const t = VERSIONS_TEXT[useLang()];
   return (
-    <div className="divide-y rounded-xl border bg-card" aria-busy aria-label="Loading versions">
+    <div className="divide-y rounded-xl border bg-card" aria-busy aria-label={t.loadingVersions}>
       {Array.from({ length: 6 }, (_, i) => (
         <div key={i} className="flex items-start gap-3 px-4 py-3">
           <Skeleton className="h-7 w-16 rounded-md" />
@@ -55,22 +58,24 @@ function ListSkeleton() {
 }
 
 function TryAgain({ onClick }: { onClick: () => void }) {
+  const t = VERSIONS_TEXT[useLang()];
   return (
     <button type="button" className="text-primary underline underline-offset-4" onClick={onClick}>
-      Try again
+      {t.tryAgain}
     </button>
   );
 }
 
 /** One line on where the schema stands: how many versions, which is latest, and whether it validates writes. */
-function Standing({ list }: { list: VersionList }) {
-  const count = `${list.total} ${list.total === 1 ? "version" : "versions"}`;
+function Standing({ list, t }: { list: VersionList; t: VersionsText }) {
+  const count = t.versionsN(list.total);
   const name = list.versions[0]?.name;
   const named = name && name !== list.schema ? <span className="font-medium text-foreground">{name}. </span> : null;
   if (!list.exists) {
     return (
       <>
-        {named}This schema was deleted. Its {count} {list.total === 1 ? "is" : "are"} kept.
+        {named}
+        {t.deleted(count, list.total)}
       </>
     );
   }
@@ -79,8 +84,9 @@ function Standing({ list }: { list: VersionList }) {
   return (
     <>
       {named}
-      {count}. <span className="font-medium text-foreground">v{list.currentVersion}</span> is the latest
-      {active ? " and the active validator." : "; the schema does not validate writes now."}
+      {count}. <span className="font-medium text-foreground">v{list.currentVersion}</span>
+      {t.latestIs}
+      {active ? t.andActive : t.notValidating}
     </>
   );
 }
@@ -119,6 +125,11 @@ export function OntologyHistoryPage() {
   const saved = index.index?.schemas.some((s) => s.schema_id === schema) ?? false;
 
   const now = useNow(5000);
+  const lang = useLang();
+  const t = VERSIONS_TEXT[lang];
+  // The live-region sentence is built in an effect that should not re-run on a language switch.
+  const tRef = useRef(t);
+  tRef.current = t;
   const wide = useWide();
   const caps = useCapabilities();
   const ready = useLive((s) => s.ready);
@@ -233,7 +244,7 @@ export function OntologyHistoryPage() {
     const first = came[0];
     if (first === undefined) return;
     const by = findVersion(list, first)?.saved_by;
-    setSaid(`${came.length === 1 ? `Version ${first} was` : `${came.length} versions were`} just saved${by ? ` by ${by}` : ""}.`);
+    setSaid(tRef.current.arrived(came.length, first, by ?? ""));
     if (!atTopRef.current) setUnseen((u) => [...came, ...u]);
   }, [list]);
   useEffect(() => {
@@ -261,16 +272,16 @@ export function OntologyHistoryPage() {
     if (index.status === "loading") body = <ListSkeleton />;
     else if (index.status === "error") {
       body = (
-        <Empty title="The schemas could not be listed">
+        <Empty title={t.listFailed}>
           {index.error} <TryAgain onClick={index.reload} />
         </Empty>
       );
     } else if (index.index && !index.index.available) {
-      body = <Empty title="This source cannot be asked for its ontology">{index.index.reason}</Empty>;
+      body = <Empty title={t.noOntologySource}>{index.index.reason}</Empty>;
     } else {
       body = (
-        <Empty title="No schema saved yet">
-          Save one with ontology_save and every save is listed here as a version: who saved it, what it changed, and when it validated writes.
+        <Empty title={t.noSchemaYet}>
+          {t.noSchemaYetBody}
         </Empty>
       );
     }
@@ -278,13 +289,14 @@ export function OntologyHistoryPage() {
     body = <ListSkeleton />;
   } else if (history.status === "missing") {
     body = (
-      <Empty title={`No versions stored for “${schema}”`}>
-        Each save of a schema with this id is listed here once it has one.{options.length > 1 ? " Pick another schema above." : ""}
+      <Empty title={t.noVersionsFor(schema)}>
+        {t.noVersionsBody}
+        {options.length > 1 ? t.pickAnother : ""}
       </Empty>
     );
   } else if (history.status === "error" || !list) {
     body = (
-      <Empty title="The versions could not be read">
+      <Empty title={t.readFailed}>
         {history.error} <TryAgain onClick={history.reload} />
       </Empty>
     );
@@ -292,7 +304,7 @@ export function OntologyHistoryPage() {
     const oldest = list.versions.at(-1)?.version ?? 1;
     body = (
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:items-start">
-        <section aria-label="Versions" className="min-w-0">
+        <section aria-label={t.versionsLabel} className="min-w-0">
           <div ref={topRef} aria-hidden className="h-px" />
           {/* No height of its own: appearing must not push the list down
               under the reader, which is what the scroll anchor just held. */}
@@ -300,7 +312,7 @@ export function OntologyHistoryPage() {
             <div className="sticky top-3 z-20 flex h-0 items-start justify-center overflow-visible">
               <Button size="sm" className="rounded-full shadow-md" onClick={() => topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
                 <ArrowUp aria-hidden />
-                {unseen.length === 1 ? `v${unseen[0]} just saved` : `${unseen.length} new versions`}
+                {unseen.length === 1 ? t.justSaved(unseen[0] ?? 0) : t.newVersions(unseen.length)}
               </Button>
             </div>
           )}
@@ -324,20 +336,18 @@ export function OntologyHistoryPage() {
             {list.hasMore ? (
               <>
                 <Button variant="outline" size="sm" onClick={history.loadOlder} disabled={history.loadingOlder}>
-                  {history.loadingOlder ? "Loading older versions" : "Load older versions"}
+                  {history.loadingOlder ? t.loadingOlder : t.loadOlder}
                 </Button>
-                <p>
-                  The newest {list.versions.length} of {list.total}.
-                </p>
+                <p>{t.newestOf(list.versions.length, list.total)}</p>
               </>
             ) : (
-              <p>{list.total === 1 ? "That is the only version." : `That is every version, back to v${oldest}.`}</p>
+              <p>{list.total === 1 ? t.onlyVersion : t.everyVersion(oldest)}</p>
             )}
             {history.olderError && <p className="text-destructive">{history.olderError}</p>}
           </div>
         </section>
         <aside
-          aria-label="Comparison"
+          aria-label={t.comparison}
           className="hidden rounded-xl border bg-card lg:sticky lg:top-4 lg:block lg:max-h-[calc(100dvh-5rem)] lg:overflow-y-auto"
         >
           {panel(false)}
@@ -352,8 +362,8 @@ export function OntologyHistoryPage() {
     // own anchoring, where it exists, would move the list a second time.
     <Page className="max-w-6xl [overflow-anchor:none]">
       <PageHeader
-        title="Ontology versions"
-        description="Every saved version of a schema: when and by whom it was saved, what it changed, and when it was the active validator. Pick two to see what changed between them."
+        title={t.title}
+        description={t.description}
         actions={
           schema ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -362,7 +372,7 @@ export function OntologyHistoryPage() {
                 <Button asChild variant="outline" size="sm">
                   <Link to={{ pathname: "/ontology", search: `?schema=${encodeURIComponent(schema)}` }}>
                     <Shapes aria-hidden />
-                    Diagram
+                    {t.diagram}
                   </Link>
                 </Button>
               )}
@@ -372,8 +382,8 @@ export function OntologyHistoryPage() {
       />
       {list && history.status === "ready" && (
         <p className="-mt-2 mb-4 text-sm text-muted-foreground">
-          <Standing list={list} />
-          {ready && !caps.changes && " This source sends no change events, so versions saved from now on show after a reload."}
+          <Standing list={list} t={t} />
+          {ready && !caps.changes && t.noChangeEvents}
         </p>
       )}
       {body}
@@ -387,16 +397,17 @@ export function OntologyHistoryPage() {
             <CompareSummary pair={pair} diff={diff} />
           ) : (
             <span className="text-sm">
-              <span className="font-semibold tabular-nums">v{picks[0]}</span> picked. Pick one more.
+              <span className="font-semibold tabular-nums">v{picks[0]}</span>
+              {t.pickedOneMore}
             </span>
           )}
           <div className="ml-auto flex shrink-0 items-center gap-1">
             {pair && (
               <Button size="sm" onClick={() => setSheetOpen(true)}>
-                Show diff
+                {t.showDiff}
               </Button>
             )}
-            <Button size="icon-sm" variant="ghost" aria-label="Clear the picks" onClick={clear}>
+            <Button size="icon-sm" variant="ghost" aria-label={t.clearPicks} onClick={clear}>
               <X aria-hidden />
             </Button>
           </div>
@@ -409,11 +420,11 @@ export function OntologyHistoryPage() {
               {pair && (
                 <>
                   v{pair.from} <ArrowRight aria-hidden className="size-4" />
-                  <span className="sr-only">to</span> v{pair.to}
+                  <span className="sr-only">{t.to}</span> v{pair.to}
                 </>
               )}
             </SheetTitle>
-            <SheetDescription>What changed in {schema} between the two versions.</SheetDescription>
+            <SheetDescription>{t.sheetDescription(schema)}</SheetDescription>
           </SheetHeader>
           {panel(true)}
         </SheetContent>

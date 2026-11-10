@@ -551,6 +551,9 @@ func TestLocalOntologyReadsARealStore(t *testing.T) {
 	if rep.Usage.Scope == "" {
 		t.Error("the reading does not say what it counted, so two totals that disagree look like a fault")
 	}
+	if rep.Usage.Counted != "store" || rep.Usage.Total != 0 {
+		t.Errorf("counted %q of total %d; a page words the scope from these, in its own language", rep.Usage.Counted, rep.Usage.Total)
+	}
 
 	// And with the gap switched off: the declarations, and nothing read about
 	// the data — every count meaningless and saying so.
