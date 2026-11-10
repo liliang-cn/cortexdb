@@ -7,12 +7,18 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
 
 // runGraphLive is `--graph-3d`: serve the live view from the command line and
 // stay up until interrupted.
+//
+// `--listen host:port` serves on exactly that address instead of a loopback
+// port, for a view run as a service behind a reverse proxy. An address other
+// than loopback needs an access token, from CORTEXDB_VIEW_TOKEN or
+// `--token-file path`; the view refuses to start without one.
 //
 // What it cannot do is worth stating, because the difference is invisible on
 // the page until you notice the ticker never moves. A command-line view is its
@@ -26,6 +32,12 @@ func runGraphLive(args []string) {
 	port := liveview.PortFromEnv()
 	interval := liveview.DefaultInterval
 	openBrowserFlag := true
+	// listen is an exact address to serve on, for a view run as a service
+	// behind a reverse proxy; empty keeps the loopback port above.
+	listen := ""
+	// The access token comes from the environment or a file, never from an
+	// argument: arguments are readable by every user on the machine.
+	token := strings.TrimSpace(os.Getenv("CORTEXDB_VIEW_TOKEN"))
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -40,6 +52,21 @@ func runGraphLive(args []string) {
 					fmt.Fprintf(os.Stderr, "cortexdb: --port %q is not a port\n", args[i])
 					os.Exit(2)
 				}
+			}
+		case "--listen":
+			if i+1 < len(args) {
+				i++
+				listen = args[i]
+			}
+		case "--token-file":
+			if i+1 < len(args) {
+				i++
+				b, err := os.ReadFile(args[i])
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "cortexdb: --token-file: %v\n", err)
+					os.Exit(2)
+				}
+				token = strings.TrimSpace(string(b))
 			}
 		case "--interval":
 			if i+1 < len(args) {
@@ -67,7 +94,16 @@ func runGraphLive(args []string) {
 		fmt.Fprintf(os.Stderr, "cortexdb: %v\n", err)
 		os.Exit(1)
 	}
-	sv, err := liveview.Start(ctx, src, port, interval, false)
+	var opts []liveview.Option
+	if token != "" {
+		opts = append(opts, liveview.WithAccessToken(token))
+	}
+	var sv *liveview.Server
+	if listen != "" {
+		sv, err = liveview.StartAt(ctx, src, listen, interval, false, opts...)
+	} else {
+		sv, err = liveview.Start(ctx, src, port, interval, false, opts...)
+	}
 	if err != nil {
 		_ = src.Close()
 		fmt.Fprintf(os.Stderr, "cortexdb: %v\n", err)

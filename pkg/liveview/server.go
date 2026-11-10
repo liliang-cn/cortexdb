@@ -209,6 +209,9 @@ type Server struct {
 	// recalls follows the recall log's head; nil when the page is left out or
 	// the source cannot be asked (recall_watch.go).
 	recalls *recallWatch
+	// token is the access token every route asks for; empty serves anyone who
+	// can reach the listener (access.go).
+	token string
 }
 
 // fullReadEvery bounds how stale the view can be when the feed says nothing
@@ -250,6 +253,7 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 		activity: activity,
 		ui:       embeddedUI(),
 		hidden:   hidden,
+		token:    accessToken(opts),
 	}
 
 	// The feed's head is taken before the first read, so a change landing
@@ -327,7 +331,7 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 // Handler is the view's routes, rooted at "/". Mount it wherever the page
 // should live; the pages' own links and fetches are relative, so a prefix
 // works as long as it ends in a slash and is stripped before this handler.
-func (s *Server) Handler() http.Handler { return withGzip(s.mux) }
+func (s *Server) Handler() http.Handler { return gate(s.token, withGzip(s.mux)) }
 
 // Start reads the graph once, starts serving on its own loopback listener,
 // and starts polling. It returns as soon as the URL is usable. It takes the
@@ -341,16 +345,56 @@ func Start(ctx context.Context, src *Source, port int, interval time.Duration, a
 	if err != nil {
 		return nil, err
 	}
+	s.serveOn(ln)
+	return s, nil
+}
+
+// StartAt is Start on exactly addr ("host:port"), for a view that is served
+// past this machine — from a service, behind a reverse proxy. It does not fall
+// back to another port: a service whose port moved is a service nobody can
+// find. It refuses an address other than loopback unless the options carry
+// an access token (WithAccessToken), because the pages show every memory in
+// the brain.
+func StartAt(ctx context.Context, src *Source, addr string, interval time.Duration, activity bool, opts ...Option) (*Server, error) {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("live view: listen address %q: %w", addr, err)
+	}
+	if !isLoopbackHost(host) && accessToken(opts) == "" {
+		return nil, fmt.Errorf("live view: %s is reachable from other machines; give it an access token", addr)
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("live view: listen on %s: %w", addr, err)
+	}
+	s, err := New(ctx, src, interval, activity, opts...)
+	if err != nil {
+		_ = ln.Close()
+		return nil, err
+	}
+	s.serveOn(ln)
+	return s, nil
+}
+
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// serveOn serves the view's routes on ln until Close.
+func (s *Server) serveOn(ln net.Listener) {
 	s.ln = ln
 	s.url = "http://" + ln.Addr().String()
-	s.http = &http.Server{Handler: withGzip(s.mux), ReadHeaderTimeout: 10 * time.Second}
+	s.http = &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second}
 
 	go func() {
 		if serr := s.http.Serve(ln); serr != nil && serr != http.ErrServerClosed {
 			fmt.Fprintf(os.Stderr, "cortexdb: live view: %v\n", serr)
 		}
 	}()
-	return s, nil
 }
 
 // listenLocal binds the preferred port, falling back to any free one.
