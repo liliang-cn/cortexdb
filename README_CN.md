@@ -4,7 +4,7 @@
 
 一个 SQLite 文件装下 AI 记忆与知识图谱。纯 Go，不用额外跑服务，没有 embedding 模型也能用。
 
-![CortexDB 实时视图](docs/assets/img/live-view-dark-1600.webp)
+![CortexDB 实时视图：两次召回点亮图谱，然后是召回、本体和图书馆页面](docs/assets/img/live-view-zh.gif)
 
 ## 安装
 
@@ -34,6 +34,18 @@ fmt.Println(rec.ContextPack.Text)
 
 Codex 中需要在 `/hooks` 审阅并信任插件 hooks，自动召回才会运行。
 配置和 `cortexdb-mcp --doctor --self-test` 诊断用法见[插件指南](plugins/cortexdb/README.md)；诊断命令需要 v2.119.0 或更新版本的二进制。
+
+## 实时视图
+
+大脑之上的网页界面，本地库和共享大脑都能用：运行 `cortexdb-mcp-stdio --graph-3d`，或让 agent 调用 `serve_graph_3d`。
+
+- **图谱**：3D 知识图谱。任何 agent、任何机器发起召回，命中的记录都会亮起来，实时栏写明谁问了什么。
+- **召回**：每一次召回的检索计划、命中和每条的排名原因（需 `CORTEXDB_RECALL_LOG=1`）。
+- **变更**和**活动**：每条事实的新增、替换、撤回，以及大脑处理过的工具调用。
+- **本体**：声明的类型，对照记录实际用的类型。
+- **图书馆**：同一批记忆换成阅览室，按项目上架。
+
+只读，默认浅色，手机也能用，中英文随时切换（顶栏的语言按钮）。详见[指南](docs/GUIDE_CN.md#实时视图)。
 
 ## Claude Code mod
 

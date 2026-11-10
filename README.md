@@ -4,7 +4,7 @@
 
 AI memory and a knowledge graph in one SQLite file. Pure Go, no service to run, works without an embedding model.
 
-![The CortexDB live view](docs/assets/img/live-view-dark-1600.webp)
+![The CortexDB live view: two recalls light up the graph, then the Recalls, Ontology and Library pages](docs/assets/img/live-view-en.gif)
 
 ## Install
 
@@ -35,6 +35,18 @@ The plugin gives Claude Code and Codex one global brain at `~/.cortexdb/cortexdb
 In Codex, review and trust the plugin hooks in `/hooks` to activate automatic
 recall. See the [plugin guide](plugins/cortexdb/README.md) for setup and
 `cortexdb-mcp --doctor --self-test` diagnostics (v2.119.0+).
+
+## Live view
+
+A web UI over the brain, local or shared: run `cortexdb-mcp-stdio --graph-3d`, or ask the agent to call `serve_graph_3d`.
+
+- **Graph**: the knowledge graph in 3D. A recall from any agent or machine lights the records it returned, and the Live feed says who asked what.
+- **Recalls**: every recall with its plan, its hits and why each ranked (`CORTEXDB_RECALL_LOG=1`).
+- **Changes** and **Activity**: every fact added, replaced or retracted, and the tool calls the brain handled.
+- **Ontology**: the declared types held against what the records are actually typed as.
+- **Library**: the same memories as a reading room, shelved by project.
+
+Read-only, light by default, works on a phone, in English or Chinese (the toggle in the top bar). See [the guide](docs/GUIDE.md#the-live-view).
 
 ## Claude Code mod
 

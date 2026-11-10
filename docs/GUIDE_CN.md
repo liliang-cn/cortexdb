@@ -484,7 +484,8 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 
 `serve_graph_3d` 在大脑之上提供一个网页应用；在 shell 里用
 `cortexdb-mcp-stdio --graph-3d`，或在自己的程序里用 `liveview.New`，效果相同。
-默认浅色主题，可切换深色，手机和桌面都能用。
+默认浅色主题，可切换深色，手机和桌面都能用。所有页面统一说英文或中文：先看链接里的
+`?lang=`，再看顶栏语言按钮的选择（在该浏览器里记住），最后看浏览器自己的语言。
 
 - **Graph**：3D 图谱。关系带方向、按谓词着色；`co_occurs` 只说明两个名字一起出现过，
   显示为灰色且默认隐藏。查找、提问、Cypher 和展开都面向整个库。带 `?focus=<id>` 的链接
