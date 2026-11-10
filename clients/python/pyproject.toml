@@ -1,6 +1,6 @@
 [project]
 name = "cortexdb-client"
-version = "0.2.0"
+version = "0.3.0"
 description = "Typed gRPC client for CortexDB (AI memory + knowledge graph sidecar)"
 readme = "README.md"
 requires-python = ">=3.9"
