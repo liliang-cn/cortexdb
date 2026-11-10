@@ -1,6 +1,6 @@
 {
   "name": "cortexdb-openclaw-memory",
-  "version": "2.57.2",
+  "version": "2.58.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/liliang-cn/cortexdb.git",
