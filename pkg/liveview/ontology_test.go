@@ -199,6 +199,34 @@ func TestOntologyReportFoldsCaseWhenMatchingDeclarationsToData(t *testing.T) {
 	}
 }
 
+// A node stored under an alias is an instance of the type the alias names,
+// as writes and queries already treat it, not a type the schema left out.
+// An alias that spells another declared type stays that type's.
+func TestOntologyReportCountsNodesStoredUnderAnAliasAsTheirType(t *testing.T) {
+	schema := aviation()
+	for i := range schema.ObjectTypes {
+		if schema.ObjectTypes[i].APIName == "Airport" {
+			schema.ObjectTypes[i].Aliases = []string{"aerodrome", "Air Field", "flight"}
+		}
+	}
+	read := buildOntologyReading("whole store",
+		map[string]int{"Airport": 12, "aerodrome": 5, "air field": 2, "Flight": 3, "concept": 1}, map[string]int{}, schema)
+	rep := buildOntologyReport([]cortexdb.OntologySchema{schema}, "", &read)
+
+	if got := objectNamed(t, rep, "Airport").Instances; got != 19 {
+		t.Errorf("Airport instances = %d, want 12 + the 7 stored under its aliases", got)
+	}
+	if got := objectNamed(t, rep, "Flight").Instances; got != 3 {
+		t.Errorf("Flight instances = %d; an alias spelling another type must not take its nodes", got)
+	}
+	if got := strayNames(rep.Usage.UndeclaredNodes); strings.Join(got, ",") != "concept=1" {
+		t.Errorf("undeclared node types = %v, want just the concept no spelling declares", got)
+	}
+	if rep.Usage.UndeclaredNodeCount != 1 {
+		t.Errorf("undeclared node records = %d, want 1", rep.Usage.UndeclaredNodeCount)
+	}
+}
+
 // Largest first, because the biggest hole in the schema is the one a reader
 // should land on, and stable because a list that reordered between refreshes
 // would read as a change in the store.

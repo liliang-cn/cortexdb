@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- The live view's Ontology page counts a node stored under one of a type's aliases (`pr`, `work item`, `repository`) as that type, instead of listing the alias outside the model.
+
 ## [2.149.0] - 2026-11-10
 
 ### Fixed
