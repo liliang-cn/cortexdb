@@ -97,6 +97,10 @@ func validateOntologySchemaRules(schema OntologySchema) error {
 		interfaceTypes[key] = interfaceType
 	}
 
+	if err := validateOntologyAliases(schema.ObjectTypes, objectTypes, interfaceTypes); err != nil {
+		return err
+	}
+
 	for _, objectType := range schema.ObjectTypes {
 		for _, implemented := range objectType.Implements {
 			if _, exists := interfaceTypes[ontologyAPIKey(implemented)]; !exists {
@@ -626,4 +630,38 @@ func (db *DB) loadOntologyNodeTypes(ctx context.Context, nodeIDs []string) (map[
 		nodeTypes[node.ID] = node.NodeType
 	}
 	return nodeTypes, nil
+}
+
+// validateOntologyAliases holds each alias to one meaning. An alias is a
+// spelling writers already use for the type ("pull request", "pr"), so it is
+// not held to the api-name pattern; it must not be blank, and it must not be
+// another type's name, an interface's, or another type's alias, since a name
+// that resolves to two things resolves to whichever compile met first. One
+// that differs from its own type only in case is redundant and accepted:
+// names fold case already.
+func validateOntologyAliases(declared []OntologyObjectType, objectTypes map[string]OntologyObjectType, interfaceTypes map[string]OntologyInterfaceType) error {
+	owner := make(map[string]string)
+	for _, objectType := range declared {
+		own := ontologyAPIKey(objectType.APIName)
+		for _, alias := range objectType.Aliases {
+			key := ontologyAPIKey(alias)
+			switch {
+			case key == "":
+				return fmt.Errorf("object type %q has a blank alias", objectType.APIName)
+			case key == own:
+				continue
+			}
+			if other, ok := objectTypes[key]; ok {
+				return fmt.Errorf("alias %q of object type %q is the name of object type %q", alias, objectType.APIName, other.APIName)
+			}
+			if iface, ok := interfaceTypes[key]; ok {
+				return fmt.Errorf("alias %q of object type %q is the name of interface type %q", alias, objectType.APIName, iface.APIName)
+			}
+			if first, ok := owner[key]; ok && first != objectType.APIName {
+				return fmt.Errorf("alias %q is claimed by object types %q and %q", alias, first, objectType.APIName)
+			}
+			owner[key] = objectType.APIName
+		}
+	}
+	return nil
 }
