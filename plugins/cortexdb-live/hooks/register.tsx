@@ -483,6 +483,88 @@ const capturedGrade = (m: { type?: string; grade?: string; grade_why?: string })
   return undefined
 }
 
+// The entities rule when the brain has an active ontology: types come from
+// its declared object types, as the Go capture's do.
+const CAPTURE_TYPED_ENTITIES_RULE = `- entities: the concrete named things (projects, hosts, services, people) each memory is about. An entity's type is the api name of the OBJECT TYPE below that it is an instance of, written exactly as listed, or "file" for a file under FILES; when no listed type fits, leave type empty (""). Never invent a type.
+`
+
+const EXTRACTOR_TYPE_LIMIT = 60
+const EXTRACTOR_DESCRIPTION_CHARS = 160
+const EXTRACTOR_ALIAS_LIMIT = 5
+
+type OntologyObjectType = { api_name?: string; description?: string; aliases?: string[]; status?: string }
+type OntologyList = { schemas?: { object_types?: OntologyObjectType[] }[] }
+
+// TypeVocabulary is the active ontology as an extractor is told it: the
+// prompt's type list and what each spelling a model may answer stands for.
+type TypeVocabulary = { list: string; canonical: Map<string, string> }
+
+const typeKey = (name: string) => name.trim().toLowerCase()
+
+function clipLine(text: string, max: number) {
+  const flat = text.split(/\s+/).filter(Boolean).join(' ')
+  const runes = [...flat]
+  return runes.length <= max ? flat : `${runes.slice(0, max - 1).join('').trim()}…`
+}
+
+// vocabularyOf mirrors cortexdb.ExtractorVocabularyFromSchemas: the first
+// active schema, deprecated types left out, the list capped.
+function vocabularyOf(listed: OntologyList | undefined): TypeVocabulary | undefined {
+  const types = listed?.schemas?.[0]?.object_types ?? []
+  const canonical = new Map<string, string>()
+  const lines: string[] = []
+  let omitted = 0
+  for (const t of types) {
+    const apiName = (t.api_name ?? '').trim()
+    const key = typeKey(apiName)
+    if (apiName === '' || canonical.has(key) || t.status === 'deprecated') continue
+    canonical.set(key, apiName)
+    const aliases: string[] = []
+    for (const raw of t.aliases ?? []) {
+      const alias = raw.trim()
+      const aliasKey = typeKey(alias)
+      if (alias === '' || aliasKey === key) continue
+      if (!canonical.has(aliasKey)) canonical.set(aliasKey, apiName)
+      if (aliases.length < EXTRACTOR_ALIAS_LIMIT) aliases.push(alias)
+    }
+    if (lines.length >= EXTRACTOR_TYPE_LIMIT) {
+      omitted++
+      continue
+    }
+    const description = clipLine(t.description ?? '', EXTRACTOR_DESCRIPTION_CHARS)
+    lines.push(`- ${apiName}${description ? `: ${description}` : ''}${aliases.length ? ` (also called ${aliases.join(', ')})` : ''}\n`)
+  }
+  if (lines.length === 0) return undefined
+  if (omitted > 0) lines.push(`(${omitted} more declared types are not listed.)\n`)
+  return { list: lines.join(''), canonical }
+}
+
+// captureSystemFor is the capture prompt told the active ontology's types, or
+// the plain one when the brain has none.
+function captureSystemFor(vocab: TypeVocabulary | undefined) {
+  if (!vocab) return CAPTURE_SYSTEM
+  const json = CAPTURE_SYSTEM.lastIndexOf('Respond with JSON only:')
+  return `${CAPTURE_SYSTEM.slice(0, json).replace(CAPTURE_ENTITIES_RULE, CAPTURE_TYPED_ENTITIES_RULE)}OBJECT TYPES (the brain's active ontology):\n${vocab.list}\n${CAPTURE_SYSTEM.slice(json)}`
+}
+
+// capturedEntityType is the type an entity is saved under: a declared type's
+// own name, "file", or empty for a type the ontology does not declare.
+function capturedEntityType(type: string, vocab: TypeVocabulary | undefined) {
+  if (!vocab) return type
+  const canonical = vocab.canonical.get(typeKey(type))
+  if (canonical) return canonical
+  return typeKey(type) === 'file' ? 'file' : ''
+}
+
+async function captureVocabulary($: EngineInterface) {
+  // A brain without ontologies, or one that cannot list them, gets the plain
+  // prompt: capture never waits on the ontology.
+  return vocabularyOf((await callTool($, 'ontology_list', { active_only: true }).catch(() => undefined)) as OntologyList | undefined)
+}
+
+const CAPTURE_ENTITIES_RULE = `- entities: the concrete named things (projects, hosts, services, people) each memory is about.
+`
+
 const CAPTURE_SYSTEM = `You distil a coding-session transcript into durable memories for a long-term store shared across future sessions.
 
 Extract ONLY things worth knowing weeks later: decisions made and why, facts established (deployments, topology, versions, credentials locations — not values), user preferences expressed, outcomes and their root causes, lessons that changed how something is done.
@@ -733,9 +815,10 @@ async function capture($: EngineInterface) {
 
     const already = mark.memories.map(m => `- ${m.slug}: ${clip(m.content, 300)}`).join('\n')
     const recorded = await recordedInFiles($, root)
+    const vocab = await captureVocabulary($)
     const reply = await $.model.complete({
       model: PLANNER,
-      system: CAPTURE_SYSTEM,
+      system: captureSystemFor(vocab),
       prompt: [
         `Today is ${today()}.`,
         recorded ? `ALREADY RECORDED (the project's file memory; do not extract what it says):\n${recorded}` : '',
@@ -760,7 +843,7 @@ async function capture($: EngineInterface) {
       const slug = slugOf(m.slug || content)
       if (content === '' || slug === '') continue
       const entities = (m.entities ?? [])
-        .map(entity => ({ name: (entity.name ?? '').trim(), type: entity.type ?? '' }))
+        .map(entity => ({ name: (entity.name ?? '').trim(), type: capturedEntityType(entity.type ?? '', vocab) }))
         .filter(entity => entity.name !== '')
       drafts.push({ slug, content, entities, importance: m.importance, type: m.type, grade: capturedGrade(m) })
     }

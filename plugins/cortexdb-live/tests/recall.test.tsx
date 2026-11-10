@@ -77,6 +77,8 @@ type World = {
   connectsAfter?: number
   // files on disk by path: Claude Code's file memory, for one.
   files?: Record<string, string>
+  // ontology answers ontology_list: the brain's active schemas.
+  ontology?: object
 }
 
 type Seen = {
@@ -84,6 +86,7 @@ type Seen = {
   status: string[]
   toasts: string[]
   prompts: string[]
+  systems: string[]
   clock: ReturnType<typeof mock.clock>
 }
 
@@ -96,7 +99,7 @@ const answered = (text: string) => ({
 })
 
 const world = (on: On, w: World): Seen => {
-  const seen: Seen = { calls: [], status: [], toasts: [], prompts: [], clock: mock.clock(on) }
+  const seen: Seen = { calls: [], status: [], toasts: [], prompts: [], systems: [], clock: mock.clock(on) }
   mock.env(on, { HOME: '/home/a', CORTEXDB_REMOTE: '10.0.0.9:47821', LANG: 'en_US.UTF-8' })
   on('env.set', () => ({ value: undefined }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
@@ -134,6 +137,8 @@ const world = (on: On, w: World): Seen => {
         ? { node_count: 4493 }
         : e.tool === 'memory_save'
           ? { ok: true }
+          : e.tool === 'ontology_list'
+            ? (w.ontology ?? { schemas: [] })
           : isCaptureLookup && w.existing
             ? w.existing
             : (w.payload ?? recallPayload)
@@ -141,6 +146,7 @@ const world = (on: On, w: World): Seen => {
   })
   on('model.complete', ($, e) => {
     seen.prompts.push(e.prompt)
+    seen.systems.push(e.system ?? '')
     if (e.system?.startsWith('You plan')) {
       if (w.plan === 'fail') return { value: { isAnswered: false, reason: 'api-error', status: 529, error: 'overloaded' } as never }
       return answered('```json\n' + JSON.stringify(w.plan ?? PLAN) + '\n```')
@@ -463,6 +469,68 @@ test('an idle session is captured once, with stable ids, and not again', async (
   await $.turn.complete(turnDone)
   await clock.advance(91 * 1000)
   expect(seen.calls.filter(c => c.tool === 'memory_save').length).toBe(1)
+})
+
+test('a capture is told the active ontology\'s types and keeps only those', async ($, on) => {
+  const seen = world(on, {
+    messages: conversation,
+    ontology: {
+      schemas: [
+        {
+          schema_id: 'brain',
+          object_types: [
+            { api_name: 'project', description: 'A codebase\n  or product.', aliases: ['repository', 'Project'] },
+            { api_name: 'host', description: 'A machine.' },
+            { api_name: 'old_thing', status: 'deprecated' },
+          ],
+        },
+      ],
+    },
+    captured: {
+      memories: [
+        {
+          slug: 'typed',
+          content: 'CortexDB runs on node-a since 2026-11-10.',
+          entities: [
+            { name: 'CortexDB', type: 'Repository' },
+            { name: 'node-a', type: 'host' },
+            { name: 'README.md', type: 'file' },
+            { name: 'Alice', type: 'person' },
+            { name: 'Gone', type: 'old_thing' },
+          ],
+        },
+      ],
+    },
+  })
+  await $.turn.complete(turnDone)
+  await seen.clock.advance(91 * 1000)
+
+  const system = seen.systems.find(s => s.startsWith('You distil')) ?? ''
+  expect(system).toContain("OBJECT TYPES (the brain's active ontology):\n- project: A codebase or product. (also called repository)\n- host: A machine.\n\nRespond with JSON only:")
+  expect(system).toContain('Never invent a type.')
+  expect(system).not.toContain('old_thing')
+  const save = seen.calls.find(c => c.tool === 'memory_save')
+  expect(save?.args.entities).toEqual([
+    { name: 'CortexDB', type: 'project' },
+    { name: 'node-a', type: 'host' },
+    { name: 'README.md', type: 'file' },
+    { name: 'Alice', type: '' },
+    { name: 'Gone', type: '' },
+  ])
+})
+
+test('a brain with no active ontology gets the plain capture prompt', async ($, on) => {
+  const seen = world(on, {
+    messages: conversation,
+    captured: { memories: [{ slug: 'plain', content: 'x on 2026-11-10.', entities: [{ name: 'Alice', type: 'person' }] }] },
+  })
+  await $.turn.complete(turnDone)
+  await seen.clock.advance(91 * 1000)
+
+  const system = seen.systems.find(s => s.startsWith('You distil')) ?? ''
+  expect(system).not.toContain('OBJECT TYPES')
+  expect(system).not.toContain('Never invent a type.')
+  expect(seen.calls.find(c => c.tool === 'memory_save')?.args.entities).toEqual([{ name: 'Alice', type: 'person' }])
 })
 
 test('a captured memory names the project and the machine it came from', async ($, on) => {

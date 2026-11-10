@@ -17,6 +17,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- The cortexdb-live mod's capture is told the active ontology's object types
+  too (#156), as the Go capture is: each entity's type is a declared api name
+  (an alias or a case variant is saved under the type's own name), `file`, or
+  empty when no declared type fits. A brain with no active ontology gets the
+  prompt it had.
 - The live view shows every recall as it happens, whoever made it (#148). Its
   activity feed used to show only the tool calls of the one process serving
   it, so on a shared brain the auto-recalls of every other session never
