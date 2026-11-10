@@ -613,7 +613,9 @@ Tool groups (100+ tools, same names in-process and over MCP): GraphRAG (`ingest_
 `serve_graph_3d` serves a web app over the brain; so do
 `cortexdb-mcp-stdio --graph-3d` from a shell and `liveview.New` in your own
 program. It is light by default with a dark theme on the toggle, and works on a
-phone as well as a desktop.
+phone as well as a desktop. Every page speaks English or Chinese: `?lang=` in a
+link, then the language toggle in the top bar (remembered in that browser),
+then the browser's own language.
 
 - **Graph**: the 3D graph. Relations are directed and coloured by predicate;
   `co_occurs`, which only says two names appeared together, is grey and hidden
