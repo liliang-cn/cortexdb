@@ -78,6 +78,13 @@ type compiledOntology struct {
 	linkTypes   map[string]OntologyLinkType
 	interfaces  map[string]OntologyInterfaceType
 	properties  map[string]map[string]OntologyProperty
+	// aliases maps another spelling of an object type to the type's own key.
+	// Writers name one kind of thing several ways ("pr", "pull_request",
+	// "merge request"); a type that lists the others as aliases is the one
+	// they all resolve to, so a write is stored under the declared name and a
+	// query by any of them finds the type. Validation keeps an alias from
+	// naming anything else.
+	aliases map[string]string
 }
 
 func compileOntology(schema OntologySchema) *compiledOntology {
@@ -88,6 +95,7 @@ func compileOntology(schema OntologySchema) *compiledOntology {
 		linkTypes:   make(map[string]OntologyLinkType, len(schema.LinkTypes)),
 		interfaces:  make(map[string]OntologyInterfaceType, len(schema.InterfaceTypes)),
 		properties:  make(map[string]map[string]OntologyProperty, len(schema.ObjectTypes)),
+		aliases:     make(map[string]string),
 	}
 
 	for _, objectType := range schema.ObjectTypes {
@@ -99,6 +107,20 @@ func compileOntology(schema OntologySchema) *compiledOntology {
 			byName[ontologyAPIKey(property.APIName)] = property
 		}
 		compiled.properties[key] = byName
+	}
+	// After every api name is in: a declared type is never shadowed by
+	// another's alias, even in a stored schema validation never saw.
+	for _, objectType := range schema.ObjectTypes {
+		key := ontologyAPIKey(objectType.APIName)
+		for _, alias := range objectType.Aliases {
+			aliasKey := ontologyAPIKey(alias)
+			if _, declared := compiled.objectTypes[aliasKey]; declared || aliasKey == "" {
+				continue
+			}
+			if _, taken := compiled.aliases[aliasKey]; !taken {
+				compiled.aliases[aliasKey] = key
+			}
+		}
 	}
 	for _, linkType := range schema.LinkTypes {
 		compiled.linkTypes[ontologyAPIKey(linkType.APIName)] = linkType
@@ -119,8 +141,22 @@ func (c *compiledOntology) vocabularyMode() bool {
 	return c.schema.Enforcement == OntologyEnforcementVocabulary
 }
 
+// objectTypeKey is the key of the object type a name stands for: its own, or
+// that of the type it is an alias of. A name that is neither comes back
+// folded, so a lookup with it finds nothing.
+func (c *compiledOntology) objectTypeKey(apiName string) string {
+	key := ontologyAPIKey(apiName)
+	if target, ok := c.aliases[key]; ok {
+		if _, declared := c.objectTypes[key]; !declared {
+			return target
+		}
+	}
+	return key
+}
+
+// objectType looks a type up by its api name or by one of its aliases.
 func (c *compiledOntology) objectType(apiName string) (OntologyObjectType, bool) {
-	objectType, ok := c.objectTypes[ontologyAPIKey(apiName)]
+	objectType, ok := c.objectTypes[c.objectTypeKey(apiName)]
 	return objectType, ok
 }
 
@@ -148,7 +184,7 @@ func (c *compiledOntology) actionType(apiName string) (OntologyActionType, bool)
 }
 
 func (c *compiledOntology) property(objectTypeAPIName string, propertyAPIName string) (OntologyProperty, bool) {
-	byName, ok := c.properties[ontologyAPIKey(objectTypeAPIName)]
+	byName, ok := c.properties[c.objectTypeKey(objectTypeAPIName)]
 	if !ok {
 		return OntologyProperty{}, false
 	}
@@ -226,7 +262,7 @@ func vectorizedText(compiled *compiledOntology, entity ToolEntityInput) string {
 	if compiled == nil || strings.TrimSpace(entity.Type) == "" {
 		return ""
 	}
-	byName, ok := compiled.properties[ontologyAPIKey(entity.Type)]
+	byName, ok := compiled.properties[compiled.objectTypeKey(entity.Type)]
 	if !ok {
 		return ""
 	}

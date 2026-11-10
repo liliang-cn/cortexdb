@@ -791,6 +791,13 @@ its own validation. The exemption keys on the type name alone, so a CALLER-
 supplied extractor can write a bare name-keyed node under strict enforcement;
 the `upsert_entities` and `SaveKnowledge` entity doors are unaffected.
 
+An object type's `aliases` resolve: a write naming one is stored under the
+type's api name on the node it already had, and a type or interface filter
+also matches nodes stored under the aliases. An alias that is another type's
+name, an interface's, or a second type's alias refuses the schema. A primary
+key named `name` re-keys entities to `entity:<type>:<name>` once active; over
+a name-keyed graph use `id` with `title_property: "name"`.
+
 A property declared `vectorized` is embedded on write when an embedder is
 configured: the object's node vector becomes the embedding of its vectorized
 text (name first, then each vectorized property), so the `nearest_neighbors`

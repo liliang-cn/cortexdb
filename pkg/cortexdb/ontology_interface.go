@@ -88,24 +88,54 @@ func (db *DB) expandOntologyTypeFilter(ctx context.Context, typeNames []string) 
 	expanded := make([]string, 0, len(typeNames))
 	for _, typeName := range typeNames {
 		for _, resolved := range compiled.resolveTypeClosure(typeName) {
-			key := ontologyAPIKey(resolved)
-			if _, exists := seen[key]; exists {
-				continue
+			// A type's aliases ride along: nodes written before the type
+			// declared them are stored under those spellings. Kept apart by
+			// exact spelling, as some filters compare node types exactly and
+			// "Product" is then not "product".
+			for _, spelling := range compiled.spellings(resolved) {
+				if _, exists := seen[spelling]; exists {
+					continue
+				}
+				seen[spelling] = struct{}{}
+				expanded = append(expanded, spelling)
 			}
-			seen[key] = struct{}{}
-			expanded = append(expanded, resolved)
 		}
 	}
 	return expanded, nil
 }
 
+// spellings is every name a node of this object type may be stored under:
+// its api name, then its aliases. A name that is not an object type is its
+// only spelling.
+func (c *compiledOntology) spellings(apiName string) []string {
+	objectType, ok := c.objectType(apiName)
+	if !ok {
+		return []string{apiName}
+	}
+	out := []string{objectType.APIName}
+	key := ontologyAPIKey(objectType.APIName)
+	for _, alias := range objectType.Aliases {
+		// Only the aliases compile gave this type, and those that differ from
+		// its name in case alone; one shadowed by a declared type, or claimed
+		// by another type first, names something else.
+		aliasKey := ontologyAPIKey(alias)
+		if c.aliases[aliasKey] == key || aliasKey == key && alias != objectType.APIName {
+			out = append(out, alias)
+		}
+	}
+	return out
+}
+
 // typeClosureKeys is resolveTypeClosure as a lookup set: the concrete object
-// types a name stands for, api-key folded.
+// types a name stands for and their aliases, api-key folded — what a stored
+// node type is matched against.
 func (c *compiledOntology) typeClosureKeys(typeAPIName string) map[string]struct{} {
 	resolved := c.resolveTypeClosure(typeAPIName)
 	keys := make(map[string]struct{}, len(resolved))
 	for _, name := range resolved {
-		keys[ontologyAPIKey(name)] = struct{}{}
+		for _, spelling := range c.spellings(name) {
+			keys[ontologyAPIKey(spelling)] = struct{}{}
+		}
 	}
 	return keys
 }

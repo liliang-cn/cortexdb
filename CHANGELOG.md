@@ -13,6 +13,13 @@ All notable changes to this project will be documented in this file.
   page is open the view now reads the recall log's head on every poll, and each
   new recall reaches every page as activity: the graph lights the records it
   returned, the feed says who asked what, and the timeline shows it at once.
+- An ontology object type's `aliases` now resolve (#150). A write naming an
+  alias (`pr`, `pull request`) is stored under the type's own name
+  (`merge_request`), on the node it already had. A query by the type, or by an
+  interface it implements, also finds nodes stored under its aliases. The
+  field was stored before but nothing read it, so a vocabulary schema folded
+  case only. A schema whose alias names another type or interface, or is
+  claimed by two types, is refused.
 
 ## [2.148.2] - 2026-11-10
 
