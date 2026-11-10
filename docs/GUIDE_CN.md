@@ -375,11 +375,11 @@ _, err := db.SaveOntologySchema(ctx, cortexdb.OntologySaveRequest{
 同一时刻只有一份 schema 处于 **active**。激活的效果取决于 schema 的 `enforcement`：
 
 - `"strict"`（默认）校验调用方的每一次写入：未声明的 object type、未声明的属性、缺失的必填值、解析不了的值都会被拒绝。它不管库自己的簿记——内置抽取器产出的实体是无类型的，属于豁免范围，所以 active ontology 不会让 `SaveKnowledge` 变得不可用。这个豁免只认类型名，因此你自己提供的抽取器同样能写进一个仅以名字为键的裸节点。在它之下写入的节点身份是 `entity:<objectType>:<primaryKey>`；没有 active schema 时仍沿用旧的按名字推导的 ID。
-- `"vocabulary"` 把 schema 当作共享词表，不阻拦写入：已声明类型的拼写会被规范化、interface 在检索时照常展开，但一个说不出主键的实体——LLM 从散文抽取实体时的常态——会回落到按名字推导的 ID 而不是被拒绝，未声明的类型和 link type 直接放行。抽取管线用这个模式；strict 会逼它们在"激活 schema"和"保住实体"之间二选一。
+- `"vocabulary"` 把 schema 当作共享词表，不阻拦写入：已声明类型的拼写会被规范化、interface 在检索时照常展开，但一个说不出主键的实体——LLM 从散文抽取实体时的常态——会回落到按名字推导的 ID 而不是被拒绝，未声明的类型和 link type 直接放行。主键只能从名字取的实体（主键叫 `name` 或以 `name` 结尾、metadata 里也没给）同样沿用按名字推导的 ID，所以在已有的图上激活 vocabulary 不会移动任何节点；只有明确给出主键的写入才会落到 `entity:<type>:<key>`。抽取管线用这个模式；strict 会逼它们在"激活 schema"和"保住实体"之间二选一。
 
 object type 的 `aliases` 是写入方对它的其他叫法（比如 `merge_request` 上的 `"aliases": ["pr", "pull request", "mr"]`）。两种 enforcement 下都一样：写入时用别名，存的是这个类型自己的名字，节点还是按名字推导的那一个；按类型或它实现的 interface 查询时，schema 声明别名之前就以别名存下的节点也能查到。别名可以带空格；它不能是另一个类型的名字、一个 interface 的名字或另一个类型的别名，否则 schema 会被拒绝。只在大小写上和类型名不同的别名可以写，名字本来就不分大小写。
 
-主键叫 `name`（或以 `name` 结尾）时，它的值取自实体的名字；schema 激活后，这种类型的实体会写到 `entity:<type>:<name>`，而不是原来按名字推导的节点。要在已有按名字建立的实体的图上声明类型、又不让它们挪位置，主键用 `id` 之类的字段，再设 `title_property: "name"`。
+主键叫 `name`（或以 `name` 结尾）时，它的值取自实体的名字。strict 模式下，这种类型的实体会写到 `entity:<type>:<name>`，而不是原来按名字推导的节点；vocabulary 模式下，除非写入方明确给出主键，否则沿用按名字推导的节点（见上文）。要在已有按名字建立的实体的图上声明 strict schema、又不让它们挪位置，主键用 `id` 之类的字段，再设 `title_property: "name"`。
 
 `strict_actions` 与 `enforcement: "vocabulary"` 互斥——一个关闭通用写入路径，另一个承诺永不关闭。
 
