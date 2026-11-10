@@ -70,7 +70,7 @@ func main() {
 		return
 	}
 
-	// `--graph-3d [--port N] [--interval 2s] [--no-open]` serves the brain as a
+	// `--graph-3d [--port N | --listen host:port] [--token-file f] [--interval 2s] [--no-open]` serves the brain as a
 	// live 3D view on 127.0.0.1 and stays up until interrupted. Structure only
 	// — see runGraphLive for why, and for the tool that also shows queries.
 	if len(os.Args) > 1 && os.Args[1] == "--graph-3d" {

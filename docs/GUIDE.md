@@ -617,6 +617,16 @@ phone as well as a desktop. Every page speaks English or Chinese: `?lang=` in a
 link, then the language toggle in the top bar (remembered in that browser),
 then the browser's own language.
 
+The view listens on 127.0.0.1 and answers anyone who can reach it there. To
+serve it past this machine, behind a reverse proxy, give it an address and an
+access token: `cortexdb-mcp-stdio --graph-3d --no-open --listen host:port`
+with the token in `CORTEXDB_VIEW_TOKEN` or `--token-file path`
+(`liveview.StartAt` with `liveview.WithAccessToken` in Go). It refuses an
+address other than loopback without a token. A browser gets a sign-in form
+that posts the token in the request body, never the URL, and trades it for an
+HttpOnly cookie good for a year; a script sends `Authorization: Bearer <token>`.
+Changing the token signs every browser out.
+
 - **Graph**: the 3D graph. Relations are directed and coloured by predicate;
   `co_occurs`, which only says two names appeared together, is grey and hidden
   until you ask for it. Find, ask, Cypher and expand run against the whole

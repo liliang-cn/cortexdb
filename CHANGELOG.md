@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- The live view can be served past this machine: `--graph-3d --listen host:port` (`liveview.StartAt`) behind an access token (`CORTEXDB_VIEW_TOKEN`, `--token-file`, `liveview.WithAccessToken`). A browser signs in with a form that trades the token for an HttpOnly cookie; a script sends a bearer header. A non-loopback address without a token is refused.
+
 ## [2.149.1] - 2026-11-10
 
 ### Fixed

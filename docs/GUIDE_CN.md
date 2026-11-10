@@ -487,6 +487,13 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 默认浅色主题，可切换深色，手机和桌面都能用。所有页面统一说英文或中文：先看链接里的
 `?lang=`，再看顶栏语言按钮的选择（在该浏览器里记住），最后看浏览器自己的语言。
 
+视图默认只监听 127.0.0.1，谁能连上就给谁看。要放到这台机器之外、挂在反向代理后面，就给它
+一个地址和访问令牌：`cortexdb-mcp-stdio --graph-3d --no-open --listen host:port`，令牌放在
+`CORTEXDB_VIEW_TOKEN` 或 `--token-file path` 里（Go 里用 `liveview.StartAt` 加
+`liveview.WithAccessToken`）。非回环地址没有令牌就拒绝启动。浏览器看到的是一个登录表单，
+令牌放在请求体里提交、从不进 URL，换成一年有效的 HttpOnly cookie；脚本发
+`Authorization: Bearer <token>`。换令牌会让所有浏览器重新登录。
+
 - **Graph**：3D 图谱。关系带方向、按谓词着色；`co_occurs` 只说明两个名字一起出现过，
   显示为灰色且默认隐藏。查找、提问、Cypher 和展开都面向整个库。带 `?focus=<id>` 的链接
   打开时选中该节点，并把它放在面板没有遮住的那块屏幕正中。

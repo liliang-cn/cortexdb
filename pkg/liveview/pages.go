@@ -62,6 +62,8 @@ type Option func(*options)
 
 type options struct {
 	hidden []Page
+	// token gates every route; see WithAccessToken.
+	token string
 }
 
 // WithoutPages leaves the named pages out of the view. New refuses a name
