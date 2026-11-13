@@ -899,6 +899,9 @@ function scheduleCapture($: EngineInterface) {
 // --- hooks ------------------------------------------------------------------
 
 export const register: Register = (on, options) => {
+  // A reload starts the count again: the session may hear a hit once more.
+  prompts = 0
+  given = new Map()
   on('session.start', async ($, e, next) => {
     lang = await resolveLang($, options)
     const remote = await $.env.get('CORTEXDB_REMOTE')
@@ -965,7 +968,7 @@ export const register: Register = (on, options) => {
     showStatus($)
     await update($, last, () => found)
     await update($, isHidden, () => false)
-    const mine = contextOf(found.hits)
+    const mine = contextOf(unseen(found.hits))
     return { ...result, additionalContext: mine ? [...others, mine] : others }
   }).catch(($, e, next) => next(e))
 
@@ -1063,6 +1066,27 @@ type RecallPayload = {
 
 // The text the model reads: the same block the shell hook writes, so an agent
 // sees one thing whichever of the two answered.
+// A hit this session was already given is not given again, as the shell hook
+// does (cmd/cortexdb-mcp-stdio/recall_seen.go): what matches the project
+// matches every prompt of a session about it, and the agent still has the
+// first copy. It comes back after REPEAT_AFTER prompts, when that copy may
+// have been compacted away. The pane still lists everything the recall found.
+const REPEAT_AFTER = 20
+let prompts = 0
+let given = new Map<string, number>()
+const unseen = (hits: RecallHit[]) => {
+  prompts += 1
+  const kept = hits.filter(hit => {
+    const key = `${hit.kind}:${hit.title}`
+    const at = given.get(key)
+    if (at !== undefined && prompts - at < REPEAT_AFTER) return false
+    given.set(key, prompts)
+    return true
+  })
+  for (const [key, at] of given) if (prompts - at >= REPEAT_AFTER) given.delete(key)
+  return kept
+}
+
 // Cut whole lines from the end under the budget the shell hook keeps
 // (hook_budget.go): an oversized block reaches the model as a short preview.
 const CONTEXT_BUDGET = 9000

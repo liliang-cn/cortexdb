@@ -52,10 +52,10 @@ const recallSnippetRunes = 220
 //
 // Silent on every failure, like the local path: the hook must never block or
 // delay the user's prompt with an error.
-func runRecallRemote(addr, token, prompt string, situation recallSituation, topK int) string {
+func runRecallRemote(addr, token, prompt string, situation recallSituation, topK int) []recallHit {
 	conn, err := dialCortexDB(addr, token)
 	if err != nil {
-		return ""
+		return nil
 	}
 	defer func() { _ = conn.Close() }()
 
@@ -74,7 +74,7 @@ func runRecallRemote(addr, token, prompt string, situation recallSituation, topK
 	}
 	args, err := json.Marshal(request)
 	if err != nil {
-		return ""
+		return nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), remoteDialTimeout)
@@ -95,15 +95,15 @@ func runRecallRemote(addr, token, prompt string, situation recallSituation, topK
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cortexdb recall: %s failed (request_id %s, trace_id %s): %v\n", recallToolName, call.ID(), call.TraceID(), err)
-		return ""
+		return nil
 	}
 
 	recalled, err := parseRecallResponse(resp.GetResultJson())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cortexdb recall: %v (request_id %s, received %s)\n", err, call.ID(), describeReply(resp.GetResultJson()))
-		return ""
+		return nil
 	}
-	return formatRecallHits(hitsFromRecall(recalled))
+	return hitsFromRecall(recalled)
 }
 
 // describeReply is what a reply that could not be read was: its size and its
