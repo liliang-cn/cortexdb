@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.151.0] - 2026-11-13
+
 ### Fixed
 
 - The live view's Ontology page no longer counts the store's own record kinds (`memory`, `document`, `chunk`, `mentions`, `has_chunk`, `next`, `co_occurs`) as types the schema left out. They are listed on a line of their own; on the shared brain they were two thirds of the nodes and four fifths of the edges reported outside the model.
