@@ -172,6 +172,7 @@ It is built to stay out of the way:
 - **Never blocks.** Any error — missing binary, query failure, no matches — exits silently so your prompt is never delayed.
 - **Asked by what you typed, in its place.** The query is your prompt, the project the session works in, and the start of the last reply, so a follow-up such as "？" or "go ahead" is recalled for what it answers. A prompt with an image attached (`[Image #1]` in the CLI, an image block in the desktop app) is not recalled for: the hook cannot see the picture.
 - **Bounded.** Injects at most `CORTEXDB_RECALL_TOPK` (default 3) snippets, and no hook's block exceeds 9,000 characters: Claude Code replaces a larger `additionalContext` with a short preview, so the model would receive none of it. Entries are dropped whole from the end, and the block says how many were left out.
+- **Not repeated.** A memory the session was already given is not injected again for the next 20 prompts: whatever matches the project matches every prompt of a session about it, and the assistant still has the first copy. The record is per session, under the user cache directory (`cortexdb/recall-seen`), and is removed a week after the session's last prompt. The cortexdb-live mod does the same.
 
 Toggle it any time:
 

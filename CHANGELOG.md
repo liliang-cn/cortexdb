@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Auto-recall no longer repeats itself within a session. A hit the session was already given is not injected again for the next 20 prompts, in the shell hook and in the cortexdb-live mod. On the shared brain ten documents were 42% of all injected knowledge hits, the same guide in dozens of consecutive prompts.
+
 - Saving no longer stores credentials. `memory_save`, `memory_update`, `knowledge_save`, `knowledge_update` and `ingest_document` replace a provider key, a private key block or a bearer header in the text with `[REDACTED]`, and the save and update responses report the count as `redacted_secrets`. Session capture already did this; an explicit save did not. `cortexdb.WithoutCredentialRedaction()` keeps the old behaviour. Existing rows are not rewritten.
 
 ## [2.150.0] - 2026-11-10

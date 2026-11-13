@@ -16,6 +16,9 @@ type hookInput struct {
 	Prompt         string `json:"prompt"`
 	Cwd            string `json:"cwd"`
 	TranscriptPath string `json:"transcript_path"`
+	// SessionID names the session, so a hit it was already given is not
+	// injected again (recall_seen.go).
+	SessionID string `json:"session_id"`
 }
 
 type hookSpecificOutput struct {
@@ -63,7 +66,7 @@ func runRecall() {
 	// before the CORTEXDB_REMOTE check ever runs, and a machine on a shared
 	// brain keeps injecting memories from a file nothing writes to any more.
 	if remote := strings.TrimSpace(os.Getenv("CORTEXDB_REMOTE")); remote != "" {
-		emitRecall(runRecallRemote(remote, os.Getenv("CORTEXDB_GRPC_TOKEN"), prompt, situation, topK))
+		emitRecall(formatRecallHits(unseenHits(in.SessionID, runRecallRemote(remote, os.Getenv("CORTEXDB_GRPC_TOKEN"), prompt, situation, topK))))
 		return
 	}
 
@@ -99,8 +102,7 @@ func runRecall() {
 		return
 	}
 
-	hits := hitsFromRecall(resp)
-	emitRecall(formatRecallHits(hits))
+	emitRecall(formatRecallHits(unseenHits(in.SessionID, hitsFromRecall(resp))))
 }
 
 // emitRecall prints the additionalContext block, or nothing at all when there

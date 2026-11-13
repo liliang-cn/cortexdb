@@ -194,6 +194,23 @@ test('a haiku plan drives the recall, and its block replaces the shell one', asy
   expect(seen.status.at(-1)).toMatch(/^🧠 .* · recall \d+\.\ds$/)
 })
 
+test('a hit the session was already given is not given again', async ($, on) => {
+  const seen = world(on, { autorecall: 'on' })
+
+  const first = await $.classic.UserPromptSubmit({ prompt: 'what does Alice prefer?' })
+  expect(first.additionalContext?.[1]).toContain('pref-tabs')
+
+  // The brain answers the next prompt with the same two hits: nothing new to say.
+  const second = await $.classic.UserPromptSubmit({ prompt: 'and in Go?' })
+  expect(seen.calls.filter(c => c.tool === 'knowledge_memory_recall').length).toBe(2)
+  expect(second.additionalContext).toEqual(['another plugin'])
+
+  // Twenty prompts on, the first copy may be compacted away: it comes back.
+  for (let i = 0; i < 18; i++) await $.classic.UserPromptSubmit({ prompt: `more ${i}` })
+  const later = await $.classic.UserPromptSubmit({ prompt: 'what does Alice prefer again?' })
+  expect(later.additionalContext?.[1]).toContain('pref-tabs')
+})
+
 test('a failed plan falls back to the lexical keywords', async ($, on) => {
   const seen = world(on, { autorecall: 'on', plan: 'fail' })
 
