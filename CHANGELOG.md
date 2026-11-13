@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Saving no longer stores credentials. `memory_save`, `memory_update`, `knowledge_save`, `knowledge_update` and `ingest_document` replace a provider key, a private key block or a bearer header in the text with `[REDACTED]`, and the save and update responses report the count as `redacted_secrets`. Session capture already did this; an explicit save did not. `cortexdb.WithoutCredentialRedaction()` keeps the old behaviour. Existing rows are not rewritten.
+
 ## [2.150.0] - 2026-11-10
 
 ### Added

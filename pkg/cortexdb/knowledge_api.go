@@ -25,6 +25,10 @@ func (db *DB) SaveKnowledge(ctx context.Context, req KnowledgeSaveRequest) (*Kno
 	if strings.TrimSpace(req.Content) == "" {
 		return nil, ErrEmptyText
 	}
+	var redacted, n int
+	req.Content, redacted = db.redactSaved(req.Content)
+	req.Title, n = db.redactSaved(req.Title)
+	redacted += n
 
 	existing, err := db.store.GetDocument(ctx, req.KnowledgeID)
 	if err != nil && !errors.Is(err, core.ErrNotFound) {
@@ -87,6 +91,7 @@ func (db *DB) SaveKnowledge(ctx context.Context, req KnowledgeSaveRequest) (*Kno
 		DocumentNodeID:  plan.ingest.documentNodeID,
 		EntityNodeIDs:   uniqueSortedStrings(plan.ingest.entityNodeIDs),
 		RelationEdgeIDs: uniqueSortedStrings(plan.ingest.relationEdgeIDs),
+		RedactedSecrets: redacted,
 	}, nil
 }
 
@@ -101,16 +106,18 @@ func (db *DB) UpdateKnowledge(ctx context.Context, req KnowledgeUpdateRequest) (
 		return nil, fmt.Errorf("get knowledge: %w", err)
 	}
 
+	var redacted, n int
 	title := existing.Title
 	if req.Title != nil {
-		title = *req.Title
+		title, redacted = db.redactSaved(*req.Title)
 	}
 	content := existing.Content
 	if req.Content != nil {
 		if strings.TrimSpace(*req.Content) == "" {
 			return nil, ErrEmptyText
 		}
-		content = *req.Content
+		content, n = db.redactSaved(*req.Content)
+		redacted += n
 	}
 	sourceURL := existing.SourceURL
 	if req.SourceURL != nil {
@@ -235,6 +242,7 @@ func (db *DB) UpdateKnowledge(ctx context.Context, req KnowledgeUpdateRequest) (
 		DocumentNodeID:  ingest.documentNodeID,
 		EntityNodeIDs:   uniqueSortedStrings(ingest.entityNodeIDs),
 		RelationEdgeIDs: uniqueSortedStrings(ingest.relationEdgeIDs),
+		RedactedSecrets: redacted,
 	}, nil
 }
 

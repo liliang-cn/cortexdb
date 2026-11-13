@@ -711,6 +711,19 @@ The frontend's source is in
 `pkg/liveview/ui`; its build is committed to `pkg/liveview/dist` and embedded, so
 `go install` needs no Node.
 
+### Credentials are not stored
+
+`memory_save`, `memory_update`, `knowledge_save`, `knowledge_update` and
+`ingest_document` replace a credential in the text they store with
+`[REDACTED]`: a provider key (`sk-…`, `ghp_…`, `AKIA…`, `glpat-…`, …), a
+private key block, a bearer header. The save and update responses report the
+count as `redacted_secrets`. A memory is recalled into prompts and, on a shared
+brain, read by every agent connected to it, so a key pasted into one is a key
+handed to all of them. Only the shapes credentials are issued in are matched; a
+commit hash, a UUID or `max_tokens: 100000` is left alone. A store that is
+meant to hold credentials opens with `cortexdb.WithoutCredentialRedaction()`.
+What was stored before this is not rewritten.
+
 ### Expiry and the sweep
 
 `ingest_document`, `knowledge_save` and `knowledge_update` take `expires_at`, an

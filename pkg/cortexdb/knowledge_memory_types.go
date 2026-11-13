@@ -65,6 +65,9 @@ type KnowledgeSaveResponse struct {
 	DocumentNodeID  string          `json:"document_node_id,omitempty"`
 	EntityNodeIDs   []string        `json:"entity_node_ids,omitempty"`
 	RelationEdgeIDs []string        `json:"relation_edge_ids,omitempty"`
+	// RedactedSecrets counts the credentials replaced by [REDACTED] in what
+	// was stored; see RedactCredentials.
+	RedactedSecrets int `json:"redacted_secrets,omitempty"`
 }
 
 // KnowledgeUpdateRequest updates a durable knowledge item.
@@ -273,6 +276,9 @@ func (r MemorySaveRequest) review() reviewFields {
 // MemorySaveResponse returns the stored memory.
 type MemorySaveResponse struct {
 	Memory MemoryRecord `json:"memory"`
+	// RedactedSecrets counts the credentials replaced by [REDACTED] in what
+	// was stored; see RedactCredentials.
+	RedactedSecrets int `json:"redacted_secrets,omitempty"`
 }
 
 // MemoryUpdateRequest updates a memory item.
