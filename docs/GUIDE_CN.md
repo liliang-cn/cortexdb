@@ -509,7 +509,7 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 - **Library**（`/library`）：同一张图画成阅览室。记忆是它所属项目书架上的一本书，实体是一张
   索引卡，书在阅读台上打开。
 - **Ontology**（`/ontology`）：把当前生效的 schema 按接口分成一条条泳道画出来，再对照记录
-  实际带的类型；以某个类型的别名存下的节点算作那个类型，没有被声明的类型列在模型之外。`?draft=1` 改画一份从库里已有词汇推出来的
+  实际带的类型；以某个类型的别名存下的节点算作那个类型，没有被声明的类型列在模型之外。存储自己写的种类（`memory`、`document`、`chunk`；`mentions`、`has_chunk`、`next`、`co_occurs`）单独列一行，不算作模式漏掉的，除非模式自己声明了其中某个。`?draft=1` 改画一份从库里已有词汇推出来的
   schema 草稿供审阅，页面上不会保存它。有 schema 保存时页面会自己重读。
 - **Versions**（`/ontology-history`）：一个 schema 保存过的各个版本；任选两个比较，这一对版本
   会写进链接（`?schema=&from=&to=`）。

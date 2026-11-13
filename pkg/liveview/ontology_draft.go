@@ -393,9 +393,9 @@ func buildOntologyDraftView(resp *cortexdb.OntologyDraftResponse, q OntologyDraf
 	// saved page knows how to draw — the lanes, the per-side cardinality, the
 	// implementors, the dashed unused box — is computed here, by the same
 	// function, from the same shapes.
-	read := buildOntologyReading(
+	read := readOntology(
 		"counted while the draft was derived: the deriver's own read of every row in the store, not a second scan",
-		nodeCounts, edgeCounts, resp.Schema)
+		nodeCounts, edgeCounts, resp.Schema, false)
 	rep := buildOntologyReport([]cortexdb.OntologySchema{resp.Schema}, resp.Schema.SchemaID, &read)
 
 	// And the one place it is un-treated as one. buildOntologyReport concluded

@@ -102,6 +102,8 @@ function savedFinding(rep: OntologyAnswer, t: FindingText): Finding {
 
   if (u.available && u.counted) foot.push([t.scope(u.counted, u.returned, u.total)]);
   else if (u.available && u.scope) foot.push([u.scope]);
+  const own = u.available ? [...(u.store_nodes ?? []), ...(u.store_edges ?? [])] : [];
+  if (own.length) foot.push([t.storeOwn(own)]);
   return { tone, runs, foot, notes: [] };
 }
 

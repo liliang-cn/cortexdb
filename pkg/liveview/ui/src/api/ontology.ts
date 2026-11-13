@@ -109,6 +109,9 @@ export interface OntologyUsage {
   edge_types: number;
   undeclared_nodes: OntologyStrayType[];
   undeclared_edges: OntologyStrayType[];
+  /** The kinds the store writes for itself (memory, document, mentions), kept out of the undeclared lists. Absent from a server before v2.151. */
+  store_nodes?: OntologyStrayType[];
+  store_edges?: OntologyStrayType[];
   undeclared_node_types: number;
   undeclared_edge_types: number;
   undeclared_node_count: number;

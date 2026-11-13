@@ -53,6 +53,17 @@ describe("the finding for a saved-schema answer", () => {
     expect(finding(store, "zh").foot.map(textOf).join("\n")).not.toContain("counted over");
   });
 
+  it("lists the store's own record kinds apart from what the schema left out", () => {
+    const rep = transit();
+    rep.usage = { ...rep.usage, store_nodes: [{ name: "memory", count: 2967 }], store_edges: [{ name: "mentions", count: 8333 }] };
+    const en = finding(rep).foot.map((line) => textOf(line)).join("\n");
+    expect(en).toContain("the store's own records: memory 2,967 · mentions 8,333");
+    const zh = finding(rep, "zh").foot.map((line) => textOf(line)).join("\n");
+    expect(zh).toContain("存储自身的记录：memory 2,967 · mentions 8,333");
+    // A server before v2.151 sends neither list, and the line is not drawn.
+    expect(finding(transit()).foot.map((line) => textOf(line)).join("\n")).not.toContain("own records");
+  });
+
   it("says when everything declared is in use and nothing is outside", () => {
     const clean = transit({ declared_unused_types: 0, declared_unused_links: 0, usage: { ...transit().usage, undeclared_node_types: 0, undeclared_edge_types: 0 } });
     expect(say(clean)).toContain("Everything declared is in use and nothing in the store is outside the model.");

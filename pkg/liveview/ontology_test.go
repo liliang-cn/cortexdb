@@ -227,15 +227,53 @@ func TestOntologyReportCountsNodesStoredUnderAnAliasAsTheirType(t *testing.T) {
 	}
 }
 
+// A memory, a document and the mention that ties one to an entity are the
+// store's own records: a domain schema has nothing to say about them, so they
+// are counted apart and not as what the schema left out. A schema that does
+// declare one of those names means its own.
+func TestOntologyUsageKeepsTheStoresOwnKindsOutOfTheUndeclared(t *testing.T) {
+	read := buildOntologyReading("whole store",
+		map[string]int{"Airport": 3, "memory": 2967, "Document": 164, "concept": 9},
+		map[string]int{"mentions": 8333, "co_occurs": 424, "monitors": 172}, aviation())
+	u := read.Usage
+
+	if got := strings.Join(strayNames(u.UndeclaredNodes), ","); got != "concept=9" {
+		t.Errorf("undeclared nodes = %s", got)
+	}
+	if got := strings.Join(strayNames(u.UndeclaredEdges), ","); got != "monitors=172" {
+		t.Errorf("undeclared edges = %s", got)
+	}
+	if u.UndeclaredNodeTypes != 1 || u.UndeclaredNodeCount != 9 || u.UndeclaredEdgeTypes != 1 || u.UndeclaredEdgeCount != 172 {
+		t.Errorf("undeclared counts = %d types/%d nodes, %d types/%d edges", u.UndeclaredNodeTypes, u.UndeclaredNodeCount, u.UndeclaredEdgeTypes, u.UndeclaredEdgeCount)
+	}
+	if got := strings.Join(strayNames(u.StoreNodes), ","); got != "memory=2967,Document=164" {
+		t.Errorf("store nodes = %s", got)
+	}
+	if got := strings.Join(strayNames(u.StoreEdges), ","); got != "mentions=8333,co_occurs=424" {
+		t.Errorf("store edges = %s", got)
+	}
+	// The totals still count every record read.
+	if u.Nodes != 3143 || u.Edges != 8929 {
+		t.Errorf("totals = %d nodes, %d edges", u.Nodes, u.Edges)
+	}
+
+	schema := aviation()
+	schema.ObjectTypes = append(schema.ObjectTypes, cortexdb.OntologyObjectType{APIName: "document"})
+	declared := buildOntologyReading("whole store", map[string]int{"Document": 164}, map[string]int{}, schema)
+	if len(declared.Usage.StoreNodes) != 0 || declared.nodes["document"] != 164 {
+		t.Errorf("a declared document type: store=%v counted=%d", declared.Usage.StoreNodes, declared.nodes["document"])
+	}
+}
+
 // Largest first, because the biggest hole in the schema is the one a reader
 // should land on, and stable because a list that reordered between refreshes
 // would read as a change in the store.
 func TestOntologyUsageOrdersUndeclaredTypesBySizeAndKeepsTheUntyped(t *testing.T) {
 	read := buildOntologyReading("whole store",
-		map[string]int{"Airport": 3, "memory": 20, "concept": 900, "": 5},
+		map[string]int{"Airport": 3, "gadget": 20, "concept": 900, "": 5},
 		map[string]int{}, aviation())
 
-	want := []string{"concept=900", "memory=20", "=5"}
+	want := []string{"concept=900", "gadget=20", "=5"}
 	if got := strayNames(read.Usage.UndeclaredNodes); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("undeclared = %v, want %v", got, want)
 	}
@@ -412,7 +450,7 @@ func startOntologyServer(t *testing.T, hook func(context.Context, OntologyQuery)
 
 func TestLiveServerServesTheOntology(t *testing.T) {
 	read := buildOntologyReading("whole store",
-		map[string]int{"Airport": 4, "memory": 12}, map[string]int{}, aviation())
+		map[string]int{"Airport": 4, "gadget": 12}, map[string]int{}, aviation())
 	want := buildOntologyReport([]cortexdb.OntologySchema{aviation()}, "", &read)
 	sv := startOntologyServer(t, func(context.Context, OntologyQuery) (OntologyReport, error) { return want, nil })
 
@@ -425,8 +463,8 @@ func TestLiveServerServesTheOntology(t *testing.T) {
 		t.Errorf("report drew %d types / %d links / %d interfaces",
 			len(got.ObjectTypes), len(got.LinkTypes), len(got.Interfaces))
 	}
-	if got.Usage.UndeclaredNodes[0].Name != "memory" {
-		t.Errorf("undeclared = %v, want memory to survive the wire", strayNames(got.Usage.UndeclaredNodes))
+	if got.Usage.UndeclaredNodes[0].Name != "gadget" {
+		t.Errorf("undeclared = %v, want gadget to survive the wire", strayNames(got.Usage.UndeclaredNodes))
 	}
 }
 
@@ -573,8 +611,12 @@ func TestLocalOntologyReadsARealStore(t *testing.T) {
 	if got := strayNames(rep.Usage.UndeclaredNodes); strings.Join(got, ",") != "concept=1" {
 		t.Errorf("undeclared node types = %v, want just the concept nobody declared", got)
 	}
-	if got := strayNames(rep.Usage.UndeclaredEdges); strings.Join(got, ",") != "mentions=1" {
-		t.Errorf("undeclared edge types = %v, want just the mentions edge", got)
+	// The mentions edge is the store's own, set apart from what the schema left out.
+	if got := strayNames(rep.Usage.UndeclaredEdges); len(got) != 0 {
+		t.Errorf("undeclared edge types = %v, want none", got)
+	}
+	if got := strayNames(rep.Usage.StoreEdges); strings.Join(got, ",") != "mentions=1" {
+		t.Errorf("store edge kinds = %v, want just the mentions edge", got)
 	}
 	if rep.Usage.Scope == "" {
 		t.Error("the reading does not say what it counted, so two totals that disagree look like a fault")
