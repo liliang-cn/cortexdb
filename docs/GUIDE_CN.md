@@ -556,6 +556,10 @@ sv, _ := liveview.New(ctx, src, 2*time.Second, false,
 前端源码在 `pkg/liveview/ui`，构建结果提交在 `pkg/liveview/dist` 并嵌入二进制，所以
 `go install` 不需要 Node。
 
+### 凭据不入库
+
+`memory_save`、`memory_update`、`knowledge_save`、`knowledge_update` 和 `ingest_document` 会把要存的文本里的凭据换成 `[REDACTED]`：各家的 key（`sk-…`、`ghp_…`、`AKIA…`、`glpat-…` 等）、私钥块、Bearer 头。保存和更新的返回里用 `redacted_secrets` 报告换掉了几处。记忆会被召回进提示词，在共享大脑上还会被所有连着的 agent 读到，所以贴进一条记忆的 key 等于发给了所有 agent。只匹配凭据签发时的固定形状；commit 哈希、UUID、`max_tokens: 100000` 不会被动。确实要存凭据的库用 `cortexdb.WithoutCredentialRedaction()` 打开。此前已经存进去的内容不会被改写。
+
 ### 过期与清理
 
 `ingest_document`、`knowledge_save`、`knowledge_update` 接受 `expires_at`（RFC 3339 时间）。过了这个时间，文档不再出现在任何搜索、分块工具、图遍历和统计里，但仍可按 id 读到（`knowledge_get`）。不传这个字段会保留原来的过期时间，所以从源头重新同步不会解除保留期限；传空值则去掉过期时间。引擎把它存在自己的 metadata 键 `_expires_at` 下；名为 `expires_at` 的 metadata 键属于调用方，引擎从不读取。

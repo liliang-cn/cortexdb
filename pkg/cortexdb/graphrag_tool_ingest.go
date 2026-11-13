@@ -25,6 +25,10 @@ func (t *GraphRAGToolbox) IngestDocument(ctx context.Context, req ToolIngestDocu
 	if strings.TrimSpace(req.Content) == "" {
 		return nil, ErrEmptyText
 	}
+	// Before the content hash, so a re-ingest of the same source is still
+	// recognised as unchanged.
+	req.Content, _ = t.db.redactSaved(req.Content)
+	req.Title, _ = t.db.redactSaved(req.Title)
 
 	condition, err := newIngestCondition(req)
 	if err != nil {

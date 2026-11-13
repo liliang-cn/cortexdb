@@ -102,6 +102,8 @@ func (db *DB) SaveMemory(ctx context.Context, req MemorySaveRequest) (*MemorySav
 	if strings.TrimSpace(req.Content) == "" {
 		return nil, ErrEmptyText
 	}
+	var redacted int
+	req.Content, redacted = db.redactSaved(req.Content)
 	grade, gradeWhy := gradeOfSave(req)
 	if err := validateMemoryGrade(grade, gradeWhy); err != nil {
 		return nil, err
@@ -178,7 +180,7 @@ func (db *DB) SaveMemory(ctx context.Context, req MemorySaveRequest) (*MemorySav
 	if err := db.saveMemoryGraph(ctx, req); err != nil {
 		return nil, err
 	}
-	return &MemorySaveResponse{Memory: row.record}, nil
+	return &MemorySaveResponse{Memory: row.record, RedactedSecrets: redacted}, nil
 }
 
 // UpdateMemory updates a memory record and refreshes its vector when needed.
@@ -194,11 +196,12 @@ func (db *DB) UpdateMemory(ctx context.Context, req MemoryUpdateRequest) (*Memor
 
 	content := row.record.Content
 	vectorBytes := row.vector
+	redacted := 0
 	if req.Content != nil {
 		if strings.TrimSpace(*req.Content) == "" {
 			return nil, ErrEmptyText
 		}
-		content = *req.Content
+		content, redacted = db.redactSaved(*req.Content)
 		vectorBytes, err = db.embedMemoryContent(ctx, content)
 		if err != nil {
 			return nil, err
@@ -268,7 +271,7 @@ func (db *DB) UpdateMemory(ctx context.Context, req MemoryUpdateRequest) (*Memor
 			}
 		}
 	}
-	return &MemorySaveResponse{Memory: updated.record}, nil
+	return &MemorySaveResponse{Memory: updated.record, RedactedSecrets: redacted}, nil
 }
 
 // GetMemory fetches a memory record by ID.

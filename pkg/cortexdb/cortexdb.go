@@ -26,7 +26,9 @@ type DB struct {
 	store core.BrainStore
 	// dialect is the SQL this store speaks, for the sibling packages that
 	// build their own queries against SQL().
-	dialect          sqldialect.Dialect
+	dialect sqldialect.Dialect
+	// keepCredentials stores saved text as given; see RedactCredentials.
+	keepCredentials  bool
 	graph            *graph.GraphStore
 	embedder         Embedder         // Optional embedder for text operations
 	reranker         Reranker         // Optional cross-encoder reranker for retrieval
