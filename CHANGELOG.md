@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- The live view's Ontology page no longer counts the store's own record kinds (`memory`, `document`, `chunk`, `mentions`, `has_chunk`, `next`, `co_occurs`) as types the schema left out. They are listed on a line of their own; on the shared brain they were two thirds of the nodes and four fifths of the edges reported outside the model.
+
 ### Changed
 
 - Saving no longer stores credentials. `memory_save`, `memory_update`, `knowledge_save`, `knowledge_update` and `ingest_document` replace a provider key, a private key block or a bearer header in the text with `[REDACTED]`, and the save and update responses report the count as `redacted_secrets`. Session capture already did this; an explicit save did not. `cortexdb.WithoutCredentialRedaction()` keeps the old behaviour. Existing rows are not rewritten.

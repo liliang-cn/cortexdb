@@ -343,6 +343,8 @@ export interface FindingText {
   gapOff: string;
   /** What a reading counted, worded from the server's values. */
   scope: (counted: "store" | "graph", returned?: number, total?: number) => string;
+  /** The store's own kinds, set apart from what the schema left out. */
+  storeOwn: (kinds: ReadonlyArray<{ name: string; count: number }>) => string;
   unknownState: Run[];
 
   undraftable: Run[];
@@ -426,6 +428,8 @@ export const FINDING_TEXT: Strings<FindingText> = {
       counted === "store"
         ? "counted over every row in the store, chunk nodes included"
         : `counted over the entity graph this brain returns — chunk nodes and the edges that only wire them are not in it${total ? `; and only the ${numIn("en", returned ?? 0)} most-connected of ${numIn("en", total)} nodes came back` : ""}`,
+    storeOwn: (kinds) =>
+      `not counted as outside the model, the store's own records: ${kinds.map((k) => `${k.name} ${numIn("en", k.count)}`).join(" · ")}`,
     unknownState: [bE("This report arrived in a state this page does not know how to read.")],
 
     undraftable: [bE("This source cannot draft an ontology."), " That is not the same as this store having nothing to draft — nobody could ask it."],
@@ -523,6 +527,7 @@ export const FINDING_TEXT: Strings<FindingText> = {
       counted === "store"
         ? "统计范围：存储中的每一行，包括分块节点"
         : `统计范围：这个大脑返回的实体图——不含分块节点，也不含只连接分块的边${total ? `；而且只返回了 ${numIn("zh", total)} 个节点中连接最多的 ${numIn("zh", returned ?? 0)} 个` : ""}`,
+    storeOwn: (kinds) => `不算在模型之外的，是存储自身的记录：${kinds.map((k) => `${k.name} ${numIn("zh", k.count)}`).join(" · ")}`,
     unknownState: [bZ("这份报告的状态是本页不认识的，无法解读。")],
 
     undraftable: [bZ("这个数据源无法起草本体。"), "这并不等于这个存储没有可起草的内容——只是没有办法问它。"],

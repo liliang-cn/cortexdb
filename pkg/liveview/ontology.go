@@ -232,6 +232,13 @@ type OntologyUsage struct {
 	// this is the whole vocabulary, and it is the page's only content.
 	UndeclaredNodes []OntologyStrayType `json:"undeclared_nodes"`
 	UndeclaredEdges []OntologyStrayType `json:"undeclared_edges"`
+	// StoreNodes and StoreEdges are the kinds the store writes for itself — a
+	// memory, a document, the mention that ties one to an entity — largest
+	// first. A schema models a domain and has nothing to say about them, so
+	// they are counted here and kept out of the undeclared lists, where they
+	// were most of the "outside the model" total on any real brain.
+	StoreNodes []OntologyStrayType `json:"store_nodes"`
+	StoreEdges []OntologyStrayType `json:"store_edges"`
 	// The true counts behind the capped lists above.
 	UndeclaredNodeTypes int  `json:"undeclared_node_types"`
 	UndeclaredEdgeTypes int  `json:"undeclared_edge_types"`
@@ -367,6 +374,8 @@ func emptyOntologyUsage(reason string) OntologyUsage {
 		Reason:          reason,
 		UndeclaredNodes: []OntologyStrayType{},
 		UndeclaredEdges: []OntologyStrayType{},
+		StoreNodes:      []OntologyStrayType{},
+		StoreEdges:      []OntologyStrayType{},
 	}
 }
 
@@ -627,7 +636,26 @@ func buildOntologyReport(schemas []cortexdb.OntologySchema, want string, read *o
 // is only meaningful relative to one, and a store with no schema at all makes
 // every type undeclared — which is the correct and most common answer, not an
 // edge case to special-case away.
+// storeNodeKinds and storeEdgeKinds are what the engine's own write paths
+// stamp (grep NodeType: and EdgeType: through pkg/cortexdb): the records a
+// brain keeps and the edges that attach them to what they mention. Keyed as
+// ontologyKey folds a name.
+var (
+	storeNodeKinds = map[string]bool{ontologyKey("memory"): true, ontologyKey("document"): true, ontologyKey("chunk"): true}
+	storeEdgeKinds = map[string]bool{ontologyKey("mentions"): true, ontologyKey("has_chunk"): true, ontologyKey("next"): true, ontologyKey("co_occurs"): true}
+)
+
+// buildOntologyReading holds a saved schema against the store's vocabulary.
+// The store's own kinds are set apart when there is a schema to hold them
+// against; with none, the page is the whole vocabulary and they are part of it.
 func buildOntologyReading(scope string, nodeTypes, edgeTypes map[string]int, schema cortexdb.OntologySchema) ontologyReading {
+	return readOntology(scope, nodeTypes, edgeTypes, schema, len(schema.ObjectTypes)+len(schema.LinkTypes) > 0)
+}
+
+// readOntology is buildOntologyReading with the choice spelled out. A draft
+// passes false: its "outside the model" band is the deriver's own exclusions,
+// record kinds among them, and a reader reviewing a draft is shown them.
+func readOntology(scope string, nodeTypes, edgeTypes map[string]int, schema cortexdb.OntologySchema, storeKindsApart bool) ontologyReading {
 	u := emptyOntologyUsage("")
 	u.Available = true
 	u.Scope = scope
@@ -659,33 +687,47 @@ func buildOntologyReading(scope string, nodeTypes, edgeTypes map[string]int, sch
 		declaredEdges[ontologyKey(lt.APIName)] = ontologyKey(lt.APIName)
 	}
 
-	split := func(counts map[string]int, declared map[string]string, into map[string]int) ([]OntologyStrayType, int, int, int) {
-		strays := make([]OntologyStrayType, 0)
-		total := 0
-		strayRecords := 0
+	// Largest first, ties by name, so the same store draws the same list
+	// twice running and the biggest hole in the schema is the one a reader
+	// lands on.
+	bySize := func(list []OntologyStrayType) {
+		sort.SliceStable(list, func(i, j int) bool {
+			if list[i].Count != list[j].Count {
+				return list[i].Count > list[j].Count
+			}
+			return list[i].Name < list[j].Name
+		})
+	}
+	// A type the schema declares is counted as that type whatever its name:
+	// a schema that models "document" means its own documents.
+	split := func(counts map[string]int, declared map[string]string, own map[string]bool, into map[string]int) (strays, store []OntologyStrayType, total, strayRecords int) {
+		strays, store = make([]OntologyStrayType, 0), make([]OntologyStrayType, 0)
 		for name, n := range counts {
 			total += n
 			if typeKey, ok := declared[ontologyKey(name)]; ok {
 				into[typeKey] += n
 				continue
 			}
+			if own[ontologyKey(name)] {
+				store = append(store, OntologyStrayType{Name: name, Count: n})
+				continue
+			}
 			strays = append(strays, OntologyStrayType{Name: name, Count: n})
 			strayRecords += n
 		}
-		// Largest first, ties by name, so the same store draws the same list
-		// twice running and the biggest hole in the schema is the one a reader
-		// lands on.
-		sort.SliceStable(strays, func(i, j int) bool {
-			if strays[i].Count != strays[j].Count {
-				return strays[i].Count > strays[j].Count
-			}
-			return strays[i].Name < strays[j].Name
-		})
-		return strays, total, len(strays), strayRecords
+		bySize(strays)
+		bySize(store)
+		return strays, store, total, strayRecords
 	}
 
-	nodeStrays, nodeTotal, nodeStrayTypes, nodeStrayRecords := split(nodeTypes, declaredNodes, read.nodes)
-	edgeStrays, edgeTotal, edgeStrayTypes, edgeStrayRecords := split(edgeTypes, declaredEdges, read.edges)
+	ownNodes, ownEdges := storeNodeKinds, storeEdgeKinds
+	if !storeKindsApart {
+		ownNodes, ownEdges = nil, nil
+	}
+	nodeStrays, storeNodes, nodeTotal, nodeStrayRecords := split(nodeTypes, declaredNodes, ownNodes, read.nodes)
+	edgeStrays, storeEdges, edgeTotal, edgeStrayRecords := split(edgeTypes, declaredEdges, ownEdges, read.edges)
+	nodeStrayTypes, edgeStrayTypes := len(nodeStrays), len(edgeStrays)
+	u.StoreNodes, u.StoreEdges = storeNodes, storeEdges
 
 	u.Nodes, u.Edges = nodeTotal, edgeTotal
 	u.UndeclaredNodeTypes, u.UndeclaredEdgeTypes = nodeStrayTypes, edgeStrayTypes

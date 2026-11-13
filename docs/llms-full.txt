@@ -1,6 +1,6 @@
 # CortexDB — full documentation
 
-> Generated from README.md and docs/GUIDE.md at commit d39714c. Summary: https://liliang-cn.github.io/cortexdb/llms.txt
+> Generated from README.md and docs/GUIDE.md at commit dda835d. Summary: https://liliang-cn.github.io/cortexdb/llms.txt
 
 # CortexDB
 
@@ -785,7 +785,10 @@ Changing the token signs every browser out.
 - **Ontology** (`/ontology`): the active schema drawn as lanes, one per
   interface, held against what the records are actually typed as; a node stored under
   one of a type's aliases counts as that type, and the types nothing declares
-  are listed outside the model. `?draft=1` draws instead a
+  are listed outside the model. The kinds the store writes for itself
+  (`memory`, `document`, `chunk`; `mentions`, `has_chunk`, `next`,
+  `co_occurs`) are counted on a line of their own and not as what the schema
+  left out, unless the schema declares one. `?draft=1` draws instead a
   schema derived from the store's own vocabulary, for review; nothing on the
   page saves it. The page reads itself again when a schema is saved.
 - **Versions** (`/ontology-history`): a schema's saved versions; pick two to
