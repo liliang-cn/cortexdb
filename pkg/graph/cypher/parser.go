@@ -972,7 +972,15 @@ func (p *parser) parseAtom() (Expr, error) {
 		if n := p.peekN(1); n.kind == tPunct && n.text == "(" {
 			return p.parseCall()
 		}
-		// a.b.c( is a namespaced function call (apoc.*, db.*, gds.*).
+		// date.truncate( and its like: the namespaced functions of the
+		// subset. Any other a.b.c( (apoc.*, db.*, gds.*) is refused by name.
+		if d := p.peekN(1); d.kind == tPunct && d.text == "." {
+			if m := p.peekN(2); m.kind == tIdent && p.peekN(3).kind == tPunct && p.peekN(3).text == "(" {
+				if _, ok := functionArity[strings.ToLower(t.text+"."+m.text)]; ok {
+					return p.parseCall()
+				}
+			}
+		}
 		for j := 1; p.peekN(j).kind == tPunct && p.peekN(j).text == "." && p.peekN(j+1).kind == tIdent; j += 2 {
 			if n := p.peekN(j + 2); n.kind == tPunct && n.text == "(" {
 				return nil, unsupported(t.pos, "namespaced function %s.%s() is not supported", t.text, p.peekN(j+1).text)
@@ -1025,6 +1033,10 @@ func (p *parser) peekAt(j int) token {
 func (p *parser) parseCall() (Expr, error) {
 	nameTok := p.next()
 	name := strings.ToLower(nameTok.text)
+	if p.isPunct(".") { // a namespaced function; parseAtom checked it exists
+		p.next()
+		name += "." + strings.ToLower(p.next().text)
+	}
 	p.next() // (
 	f := &FuncCall{Name: name}
 	if name == "count" && p.isPunct("*") {

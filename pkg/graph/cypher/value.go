@@ -8,12 +8,15 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Values in this package are plain Go: nil, bool, int64, float64, string,
 // []any, map[string]any, *Node, *Rel and *Path. Keeping them plain is what
 // lets a result row go straight to encoding/json and to a test's
-// reflect.DeepEqual without an adapter in between.
+// reflect.DeepEqual without an adapter in between. While a query runs there
+// are also Date, DateTime and Duration (temporal.go); a result row carries
+// their ISO 8601 strings instead.
 
 // Node is a matched graph node.
 //
@@ -31,6 +34,10 @@ type Node struct {
 	// counts labels passes over thousands of nodes whose JSON nobody reads.
 	raw     string
 	decoded bool
+	// createdAt and updatedAt are the row's timestamp columns as the driver
+	// returned them; n.created_at and n.updated_at read them when the
+	// properties carry no such key.
+	createdAt, updatedAt string
 }
 
 // Rel is a matched relationship (an edge).
@@ -42,8 +49,9 @@ type Rel struct {
 	Weight     float64        `json:"weight"`
 	Properties map[string]any `json:"properties"`
 
-	raw     string
-	decoded bool
+	raw       string
+	decoded   bool
+	createdAt string // r.created_at, when the properties carry no such key
 }
 
 func (n *Node) props() (map[string]any, error) {
@@ -198,6 +206,8 @@ func NormalizeParam(v any) (any, error) {
 		return x, nil
 	case json.Number:
 		return normalizeJSON(x), nil
+	case time.Time:
+		return DateTime{x}, nil
 	case []string:
 		out := make([]any, len(x))
 		for i, s := range x {
@@ -250,6 +260,12 @@ func typeName(v any) string {
 		return "relationship"
 	case *Path:
 		return "path"
+	case Date:
+		return "date"
+	case DateTime:
+		return "datetime"
+	case Duration:
+		return "duration"
 	}
 	return fmt.Sprintf("%T", v)
 }
@@ -386,6 +402,15 @@ func equals(a, b any) tri {
 			}
 		}
 		return triTrue
+	case Date:
+		y, ok := b.(Date)
+		return triOf(ok && x.t.Equal(y.t))
+	case DateTime:
+		y, ok := b.(DateTime)
+		return triOf(ok && x.t.Equal(y.t) && offsetOf(x.t) == offsetOf(y.t))
+	case Duration:
+		y, ok := b.(Duration)
+		return triOf(ok && x == y)
 	}
 	return triFalse
 }
@@ -446,8 +471,25 @@ func compare(a, b any) (int, bool) {
 			}
 		}
 		return cmpInt(int64(len(x)), int64(len(y))), true
+	case Date:
+		if y, ok := b.(Date); ok {
+			return x.t.Compare(y.t), true
+		}
+	case DateTime:
+		if y, ok := b.(DateTime); ok {
+			return cmpDateTime(x, y), true
+		}
 	}
 	return 0, false
+}
+
+// cmpDateTime orders by instant; two spellings of one instant are told apart
+// by offset so the order stays total and agrees with equality.
+func cmpDateTime(a, b DateTime) int {
+	if c := a.t.Compare(b.t); c != 0 {
+		return c
+	}
+	return cmpInt(int64(offsetOf(a.t)), int64(offsetOf(b.t)))
 }
 
 func cmpInt(a, b int64) int {
@@ -481,7 +523,8 @@ func cmpBool(a, b bool) int {
 }
 
 // orderRank is the openCypher global sort order between types, ascending:
-// map, node, relationship, list, path, string, boolean, number, null.
+// map, node, relationship, list, path, datetime, date, duration, string,
+// boolean, number, null.
 func orderRank(v any) int {
 	switch x := v.(type) {
 	case map[string]any:
@@ -494,21 +537,27 @@ func orderRank(v any) int {
 		return 3
 	case *Path:
 		return 4
-	case string:
+	case DateTime:
 		return 5
-	case bool:
+	case Date:
 		return 6
-	case int64:
+	case Duration:
 		return 7
+	case string:
+		return 8
+	case bool:
+		return 9
+	case int64:
+		return 10
 	case float64:
 		if math.IsNaN(x) {
-			return 8
+			return 11
 		}
-		return 7
+		return 10
 	case nil:
-		return 9
+		return 12
 	}
-	return 10
+	return 13
 }
 
 // orderCompare is the total order ORDER BY, min and max use. Unlike compare
@@ -579,6 +628,21 @@ func orderCompare(a, b any) int {
 			}
 		}
 		return cmpInt(int64(len(x.Rels)), int64(len(y.Rels)))
+	case Date:
+		return x.t.Compare(b.(Date).t)
+	case DateTime:
+		return cmpDateTime(x, b.(DateTime))
+	case Duration:
+		y := b.(Duration)
+		if c := cmpFloat(durationOrder(x), durationOrder(y)); c != 0 {
+			return c
+		}
+		for _, p := range [][2]int64{{x.Months, y.Months}, {x.Days, y.Days}, {x.Seconds, y.Seconds}, {x.Nanos, y.Nanos}} {
+			if c := cmpInt(p[0], p[1]); c != 0 {
+				return c
+			}
+		}
+		return 0
 	}
 	return 0
 }
@@ -669,6 +733,14 @@ func writeKey(b *bytes.Buffer, v any) {
 			writeKey(b, r)
 		}
 		b.WriteString(")")
+	case Date:
+		b.WriteString("d")
+		b.WriteString(x.String())
+	case DateTime:
+		b.WriteString("t")
+		b.WriteString(x.String())
+	case Duration:
+		fmt.Fprintf(b, "P%d,%d,%d,%d", x.Months, x.Days, x.Seconds, x.Nanos)
 	default:
 		fmt.Fprintf(b, "?%v", x)
 	}

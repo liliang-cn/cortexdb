@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 - `aggregate_metadata` (`db.Aggregate`) answers analysis questions in one call: several `measures` per group (count, sum, avg, min, max, median, any percentile such as `p95`, stddev), a `time_bucket` by day, week, month or year on the record's stored time or on a metadata timestamp, `created_since` / `created_before`, an `order`, and filters with operators (`eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `exists`). In such a request a value that is not a number is left out of a measure and counted in `skipped`, not read as 0. Requests without the new options are answered as before. For Go callers, `ToolAggregateMetadataRequest.Filters` is now `map[string]any`.
 
+- `graph_cypher_query` answers trend and distribution questions: the aggregates `stDev`, `stDevP`, `percentileCont` and `percentileDisc`; `date()` and `datetime()` over `YYYY-MM-DD` and RFC 3339 strings with components (`.year`, `.quarter`, `.month`, `.week`, `.dayOfWeek`, `.hour`), `date.truncate` / `datetime.truncate` by day, week, month, quarter or year, and durations (`duration()`, `duration.between`, `duration.inDays`, `duration.inSeconds`, date ± duration); `exp`, `log`, `log10` and `round(x, digits)`. Dates sort and group as dates and come back as ISO strings; text that is not a date is an error. `n.created_at`, `n.updated_at` and `r.created_at` read a row's stored timestamps.
+
 ## [2.151.1] - 2026-11-14
 
 ### Changed
