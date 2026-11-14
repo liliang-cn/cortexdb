@@ -123,7 +123,7 @@ func Execute(ctx context.Context, b Backend, query string, opts Options) (*Resul
 		nodes: map[string]*Node{},
 		rels:  map[string]*Rel{},
 	}
-	x.ev = &evaluator{params: params, nodeAt: x.nodeByID, work: new(int)}
+	x.ev = &evaluator{params: params, nodeAt: x.nodeByID, work: new(int), now: start.UTC()}
 	nodeSrc, nodeArgs := b.NodeSource(ctx)
 	edgeSrc, edgeArgs := b.EdgeSource(ctx)
 	x.src = &sources{
@@ -170,10 +170,11 @@ func Execute(ctx context.Context, b Backend, query string, opts Options) (*Resul
 		res.Truncated = true
 	}
 	for _, r := range all {
-		for _, v := range r {
+		for i, v := range r {
 			if err := materialize(v); err != nil {
 				return nil, err
 			}
+			r[i] = externalize(v)
 		}
 	}
 	if all == nil {
@@ -524,12 +525,12 @@ func (x *executor) runPlan(c *MatchClause, p *clausePlan) ([]row, error) {
 		rels  []rawRel
 	}
 	var raws []rawRow
-	ncols := len(p.nodes)*4 + 0
+	ncols := len(p.nodes) * nodeCols
 	for _, r := range p.rels {
 		if r.pat.VarLen {
 			ncols++
 		} else {
-			ncols += 6
+			ncols += relCols
 		}
 	}
 	dest := make([]any, ncols)
@@ -538,7 +539,7 @@ func (x *executor) runPlan(c *MatchClause, p *clausePlan) ([]row, error) {
 	for rows.Next() {
 		i := 0
 		for range p.nodes {
-			for k := 0; k < 4; k++ {
+			for k := 0; k < nodeCols; k++ {
 				dest[i] = &strs[i]
 				i++
 			}
@@ -549,7 +550,7 @@ func (x *executor) runPlan(c *MatchClause, p *clausePlan) ([]row, error) {
 				i++
 				continue
 			}
-			for k := 0; k < 6; k++ {
+			for k := 0; k < relCols; k++ {
 				if k == 4 {
 					dest[i] = &weights[ri]
 				} else {
@@ -566,15 +567,15 @@ func (x *executor) runPlan(c *MatchClause, p *clausePlan) ([]row, error) {
 		for _, ne := range p.nodes {
 			if ne.light {
 				rr.nodes = append(rr.nodes, &Node{ID: strs[i].String})
-				i += 4
+				i += nodeCols
 				continue
 			}
-			n, err := x.internNode(strs[i].String, strs[i+1].String, strs[i+2].String, strs[i+3].String)
+			n, err := x.internNode(strs[i].String, strs[i+1].String, strs[i+2].String, strs[i+3].String, strs[i+4].String, strs[i+5].String)
 			if err != nil {
 				return nil, err
 			}
 			rr.nodes = append(rr.nodes, n)
-			i += 4
+			i += nodeCols
 		}
 		for ri, r := range p.rels {
 			if r.pat.VarLen {
@@ -582,12 +583,12 @@ func (x *executor) runPlan(c *MatchClause, p *clausePlan) ([]row, error) {
 				i++
 				continue
 			}
-			rel, err := x.internRel(strs[i].String, strs[i+1].String, strs[i+2].String, strs[i+3].String, weights[ri].Float64, strs[i+5].String)
+			rel, err := x.internRel(strs[i].String, strs[i+1].String, strs[i+2].String, strs[i+3].String, weights[ri].Float64, strs[i+5].String, strs[i+6].String)
 			if err != nil {
 				return nil, err
 			}
 			rr.rels = append(rr.rels, rawRel{fixed: rel})
-			i += 6
+			i += relCols
 		}
 		raws = append(raws, rr)
 		x.stats.CandidateRows++
@@ -906,11 +907,18 @@ func (x *executor) mapMatches(m *MapLit, target any, env row) (bool, error) {
 	return true, nil
 }
 
-func (x *executor) internNode(id, typ, props, content string) (*Node, error) {
+// nodeCols and relCols are how many columns a MATCH selects for each node
+// and each fixed-length relationship (see compile and loadNodes/loadRels).
+const (
+	nodeCols = 6 // id, node_type, properties, content, created_at, updated_at
+	relCols  = 7 // id, from, to, edge_type, weight, properties, created_at
+)
+
+func (x *executor) internNode(id, typ, props, content, created, updated string) (*Node, error) {
 	if n := x.nodes[id]; n != nil {
 		return n, nil
 	}
-	n := &Node{ID: id, Content: content, raw: props, Labels: []string{}}
+	n := &Node{ID: id, Content: content, raw: props, Labels: []string{}, createdAt: created, updatedAt: updated}
 	if typ != "" {
 		n.Labels = []string{typ}
 	}
@@ -918,7 +926,7 @@ func (x *executor) internNode(id, typ, props, content string) (*Node, error) {
 	return n, nil
 }
 
-func (x *executor) internRel(id, from, to, typ string, weight float64, props string) (*Rel, error) {
+func (x *executor) internRel(id, from, to, typ string, weight float64, props, created string) (*Rel, error) {
 	if r := x.rels[id]; r != nil {
 		return r, nil
 	}
@@ -931,7 +939,7 @@ func (x *executor) internRel(id, from, to, typ string, weight float64, props str
 			weight = f
 		}
 	}
-	r := &Rel{ID: id, StartID: from, EndID: to, Type: typ, Weight: weight, raw: props}
+	r := &Rel{ID: id, StartID: from, EndID: to, Type: typ, Weight: weight, raw: props, createdAt: created}
 	x.rels[id] = r
 	return r, nil
 }
@@ -968,7 +976,7 @@ func (x *executor) loadNodes(ids []string) error {
 		} else {
 			s.w("NULL")
 		}
-		s.w(" FROM ")
+		s.w(", n.created_at, n.updated_at FROM ")
 		x.src.nodeFrom(&s, "n")
 		s.w(" WHERE n.id IN ")
 		s.argList(chunk)
@@ -978,12 +986,12 @@ func (x *executor) loadNodes(ids []string) error {
 			return err
 		}
 		for rows.Next() {
-			var id, typ, props, content sql.NullString
-			if err := rows.Scan(&id, &typ, &props, &content); err != nil {
+			var id, typ, props, content, created, updated sql.NullString
+			if err := rows.Scan(&id, &typ, &props, &content, &created, &updated); err != nil {
 				_ = rows.Close()
 				return err
 			}
-			if _, err := x.internNode(id.String, typ.String, props.String, content.String); err != nil {
+			if _, err := x.internNode(id.String, typ.String, props.String, content.String, created.String, updated.String); err != nil {
 				_ = rows.Close()
 				return err
 			}
@@ -1010,7 +1018,7 @@ func (x *executor) loadRels(ids []string) error {
 		chunk := missing[:min(len(missing), 500)]
 		missing = missing[len(chunk):]
 		var s sqlBuilder
-		s.w("SELECT e.id, e.from_node_id, e.to_node_id, COALESCE(e.edge_type, ''), COALESCE(e.weight, 0), e.properties FROM ")
+		s.w("SELECT e.id, e.from_node_id, e.to_node_id, COALESCE(e.edge_type, ''), COALESCE(e.weight, 0), e.properties, e.created_at FROM ")
 		x.src.edgeFrom(&s, "e")
 		s.w(" WHERE e.id IN ")
 		s.argList(chunk)
@@ -1020,13 +1028,13 @@ func (x *executor) loadRels(ids []string) error {
 			return err
 		}
 		for rows.Next() {
-			var id, from, to, typ, props sql.NullString
+			var id, from, to, typ, props, created sql.NullString
 			var w sql.NullFloat64
-			if err := rows.Scan(&id, &from, &to, &typ, &w, &props); err != nil {
+			if err := rows.Scan(&id, &from, &to, &typ, &w, &props, &created); err != nil {
 				_ = rows.Close()
 				return err
 			}
-			if _, err := x.internRel(id.String, from.String, to.String, typ.String, w.Float64, props.String); err != nil {
+			if _, err := x.internRel(id.String, from.String, to.String, typ.String, w.Float64, props.String, created.String); err != nil {
 				_ = rows.Close()
 				return err
 			}

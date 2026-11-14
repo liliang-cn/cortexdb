@@ -158,9 +158,10 @@ type sources struct {
 //
 // name and content are excluded: their filters also accept a fallback (title,
 // the content column), and an OR across two expressions is not an index
-// lookup.
+// lookup. So are created_at and updated_at, which fall back to a column no
+// SQL filter is written for.
 func (src *sources) indexedExpr(alias, key string) (string, bool) {
-	if !src.indexedProps[key] || key == "name" || key == "content" || !identKey.MatchString(key) {
+	if !src.indexedProps[key] || key == "name" || key == "content" || columnTimestamp(true, key) || !identKey.MatchString(key) {
 		return "", false
 	}
 	return src.dialect.JSONTextGuarded(alias+".properties", key), true
@@ -265,6 +266,13 @@ func safeJSONKey(k string) bool {
 // filter is never narrower than the exact Go check.
 func (src *sources) propCond(isNode bool, key, op string, vals []string) cond {
 	return func(s *sqlBuilder, alias string) {
+		if columnTimestamp(isNode, key) {
+			// n.created_at falls back to the row's timestamp column, which
+			// each driver spells its own way: there is no SQL test that is
+			// a superset of the comparison made in Go, so none is made.
+			s.w("(1 = 1)")
+			return
+		}
 		if isNode && src.indexedLookup(key, op) {
 			ex, _ := src.indexedExpr(alias, key)
 			s.w("(", ex)
@@ -317,6 +325,12 @@ func (src *sources) propCond(isNode bool, key, op string, vals []string) cond {
 		}
 		s.w(")")
 	}
+}
+
+// columnTimestamp reports whether key is answered from a timestamp column
+// when the properties do not carry it (see propertyOf).
+func columnTimestamp(isNode bool, key string) bool {
+	return key == "created_at" || (isNode && key == "updated_at")
 }
 
 func likeEscape(s string) string {
@@ -426,6 +440,9 @@ func (src *sources) pushOne(l Expr, op string, vals []string, nodeByVar map[stri
 		if !ok {
 			return
 		}
+		if columnTimestamp(nodeByVar[v.Name] != nil, t.Key) {
+			return // no SQL filter exists for the column fallback; see propCond
+		}
 		if n := nodeByVar[v.Name]; n != nil {
 			n.conds = append(n.conds, src.propCond(true, t.Key, op, vals))
 			n.score += 4
@@ -517,7 +534,7 @@ func (src *sources) mapPushdown(m *MapLit, isNode bool, params map[string]any) (
 		return nil, 0, false
 	}
 	for i, k := range m.Keys {
-		if v, ok := stringValue(m.Values[i], params); ok {
+		if v, ok := stringValue(m.Values[i], params); ok && !columnTimestamp(isNode, k) {
 			conds = append(conds, src.propCond(isNode, k, "=", []string{v}))
 			score += 4
 			if isNode && src.indexedLookup(k, "=") {
@@ -721,9 +738,9 @@ func (src *sources) compile(c *MatchClause, params map[string]any, bound map[str
 		n.light = n.varName == "" && !inPath[i] && !hasProps(n.props)
 		col(n.alias, ".id")
 		if n.light {
-			col("NULL")
-			col("NULL")
-			col("NULL")
+			for k := 1; k < nodeCols; k++ {
+				col("NULL")
+			}
 			continue
 		}
 		col(n.alias, ".node_type")
@@ -733,6 +750,8 @@ func (src *sources) compile(c *MatchClause, params map[string]any, bound map[str
 		} else {
 			col("NULL")
 		}
+		col(n.alias, ".created_at")
+		col(n.alias, ".updated_at")
 	}
 	for _, r := range p.rels {
 		if r.pat.VarLen {
@@ -745,6 +764,7 @@ func (src *sources) compile(c *MatchClause, params map[string]any, bound map[str
 		col("COALESCE(", r.alias, ".edge_type, '')")
 		col("COALESCE(", r.alias, ".weight, 0)")
 		col(r.alias, ".properties")
+		col(r.alias, ".created_at")
 	}
 
 	from.w(" FROM ")

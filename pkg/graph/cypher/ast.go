@@ -223,6 +223,16 @@ func (*Quantifier) expr() {}
 // aggregateNames are the aggregates this subset evaluates.
 var aggregateNames = map[string]bool{
 	"count": true, "collect": true, "min": true, "max": true, "sum": true, "avg": true,
+	"stdev": true, "stdevp": true, "percentilecont": true, "percentiledisc": true,
+}
+
+// aggregateArgs is how many arguments an aggregate takes: the percentiles
+// take the value and the percentile.
+func aggregateArgs(name string) int {
+	if name == "percentilecont" || name == "percentiledisc" {
+		return 2
+	}
+	return 1
 }
 
 // containsAggregate reports whether e has an aggregate call outside any

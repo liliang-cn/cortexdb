@@ -45,7 +45,8 @@ type CypherQueryRequest struct {
 // CypherQueryResponse is a query's answer: one row per match, values in
 // column order. Nodes come back as {id, labels, content, properties},
 // relationships as {id, type, start, end, weight, properties}, paths as
-// {nodes, relationships}.
+// {nodes, relationships}, and dates, datetimes and durations as their ISO
+// 8601 strings.
 type CypherQueryResponse struct {
 	Columns   []string     `json:"columns"`
 	Rows      [][]any      `json:"rows"`
@@ -103,16 +104,18 @@ const defaultCypherToolRows = 200
 
 const graphCypherQueryDescription = "Run a READ-ONLY openCypher / GQL MATCH query over the knowledge graph's property graph and get rows back. " +
 	"Call graph_schema first: labels are node types and relationship types are edge types exactly as stored (case-sensitive, often lower_snake like depends_on), and a query naming a type that does not exist returns a confident empty answer. Call graph_property_values before comparing a property to a value. " +
-	"Mapping: (n:T) matches node_type T; -[:R]-> matches edge_type R; n.key reads the node's properties JSON; n.name falls back to the title property; n.content is the node's text; id(n) is the node id; labels(n) is [node_type]; type(r) is the edge type; r.weight is the edge weight. " +
+	"Mapping: (n:T) matches node_type T; -[:R]-> matches edge_type R; n.key reads the node's properties JSON; n.name falls back to the title property; n.content is the node's text; id(n) is the node id; labels(n) is [node_type]; type(r) is the edge type; r.weight is the edge weight; n.created_at, n.updated_at and r.created_at are the row's stored timestamps as RFC 3339 UTC strings (a property of that name wins). " +
 	"Supported: MATCH and OPTIONAL MATCH with comma-separated patterns, directions ->, <-, -, type alternation [:A|B], inline property maps {name: 'x'}, label alternation (n:A|B), GQL (n IS A) and WHERE n IS LABELED A, named paths p = (...), variable-length -[*1..3]- (upper bound at most 6; relationships are never reused within a match); " +
 	"WHERE with = <> < > <= >=, AND OR XOR NOT, IS [NOT] NULL, IN [...], STARTS WITH, ENDS WITH, CONTAINS, =~ (RE2 regex, whole string); " +
 	"WITH (projection, aggregation, WHERE, ORDER BY, SKIP, LIMIT), UNWIND, UNION [ALL], RETURN [DISTINCT] with AS aliases, ORDER BY ... DESC, SKIP, LIMIT; " +
-	"aggregates count(*) count(x) count(DISTINCT x) collect min max sum avg; functions id labels type keys properties size length nodes relationships startNode endNode coalesce head last tail range toLower toUpper trim replace substring split toString toInteger toFloat; CASE; list comprehensions and any/all/none/single; parameters $name (pass values in params). " +
+	"aggregates count(*) count(x) count(DISTINCT x) collect min max sum avg stDev stDevP percentileCont(x, p) percentileDisc(x, p) with p from 0.0 to 1.0; functions id labels type keys properties size length nodes relationships startNode endNode coalesce head last tail range toLower toUpper trim replace substring split toString toInteger toFloat abs sign floor ceil round(x[, digits]) sqrt exp log log10; CASE; list comprehensions and any/all/none/single; parameters $name (pass values in params). " +
+	"Time: date(x) and datetime(x) read a YYYY-MM-DD or RFC 3339 string (text that is not a date is an error; null stays null; epoch numbers go through datetime({epochSeconds: n}) or {epochMillis: n}); components d.year .quarter .month .week .weekYear .day .dayOfWeek .ordinalDay, plus .hour .minute .second .epochSeconds on a datetime; date.truncate(unit, d) and datetime.truncate(unit, t) with unit 'day' 'week' (Monday) 'month' 'quarter' 'year'; duration('P30D'), d + duration, d - duration, duration.between(a, b), duration.inDays(a, b).days, duration.inSeconds(a, b).seconds; date() and datetime() are now. Dates compare, sort and group as dates and come back as ISO strings. " +
 	"Refused with an error naming the construct: CREATE, MERGE, SET, DELETE, REMOVE (read-only by design — use the upsert/delete tools), CALL, shortestPath, pattern predicates in WHERE, EXISTS/COUNT subqueries, map projections, unbounded * that would exceed 6 hops. " +
 	"By default only current edges are matched (temporal facts whose valid_to has passed are hidden; set include_ended_facts or as_of). Without ORDER BY, rows come out ordered by the matched elements' ids; add ORDER BY when order matters. Results are capped at max_rows (default 200) and flagged truncated. " +
 	"Examples: MATCH (p:project)-[:depends_on]->(c {name: 'CortexDB'}) RETURN p.name ORDER BY p.name. " +
 	"MATCH (s)-[r:runs_on|deployed_on]->(h:host {name: 'node-e'}) RETURN s.name, labels(s), type(r). " +
-	"MATCH (n) RETURN labels(n)[0] AS type, count(*) AS c ORDER BY c DESC LIMIT 10."
+	"MATCH (n) RETURN labels(n)[0] AS type, count(*) AS c ORDER BY c DESC LIMIT 10. " +
+	"MATCH (n:order) RETURN date.truncate('month', date(n.created)) AS month, count(*) AS c, avg(toFloat(n.amount)) AS mean, percentileCont(toFloat(n.amount), 0.5) AS median ORDER BY month."
 
 func graphCypherQueryToolDefinition() ToolDefinition {
 	return ToolDefinition{

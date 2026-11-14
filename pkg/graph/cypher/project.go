@@ -278,7 +278,7 @@ func (x *executor) aggregate(items []*ProjectionItem, in []row) ([]row, error) {
 			aggs[f] = v
 		}
 		o := make(row, len(items))
-		sub := &evaluator{params: x.ev.params, regexes: x.ev.regexes, nodeAt: x.ev.nodeAt, aggs: aggs, work: x.ev.work}
+		sub := &evaluator{params: x.ev.params, regexes: x.ev.regexes, nodeAt: x.ev.nodeAt, aggs: aggs, work: x.ev.work, now: x.ev.now}
 		for _, it := range items {
 			if v, ok := g.keys[it.Alias]; ok && !containsAggregate(it.Expr) {
 				o[it.Alias] = v
@@ -384,6 +384,103 @@ func (x *executor) aggValue(f *FuncCall, rows []row) (any, error) {
 			return nil, runtimeErr("avg() overflowed")
 		}
 		return r, nil
+	case "stdev", "stdevp":
+		return stdev(f.Name, vals)
+	case "percentilecont", "percentiledisc":
+		return x.percentile(f, vals, rows)
 	}
 	return nil, runtimeErr("unknown aggregate %s", f.Name)
+}
+
+// stdev is the standard deviation of a group: of a sample for stDev (divide
+// by n-1), of a whole population for stDevP (divide by n). A group too small
+// to have one — empty, or a single value for stDev — gives 0.0, as openCypher
+// implementations do, not null.
+func stdev(name string, vals []any) (any, error) {
+	// Welford's running mean and sum of squares: no catastrophic
+	// cancellation when the values are large and close together.
+	var mean, m2 float64
+	for i, v := range vals {
+		if !isNumber(v) {
+			return nil, runtimeErr("%s() needs numbers, got a %s", aggregateSpelling[name], typeName(v))
+		}
+		f := toFloat(v)
+		d := f - mean
+		mean += d / float64(i+1)
+		m2 += d * (f - mean)
+	}
+	n := float64(len(vals))
+	if name == "stdev" {
+		n--
+	}
+	if n < 1 {
+		return 0.0, nil
+	}
+	return math.Sqrt(m2 / n), nil
+}
+
+var aggregateSpelling = map[string]string{
+	"stdev": "stDev", "stdevp": "stDevP", "percentilecont": "percentileCont", "percentiledisc": "percentileDisc",
+}
+
+// percentile is percentileCont (linear interpolation between the two nearest
+// values, always a float) and percentileDisc (nearest rank: the smallest
+// value with at least that share of the group at or below it, returned as it
+// is). An empty group gives null.
+func (x *executor) percentile(f *FuncCall, vals []any, rows []row) (any, error) {
+	name := aggregateSpelling[f.Name]
+	// The percentile is one value for the group; it is read on the group's
+	// first row. With no rows there is nothing to read a variable from, and
+	// the answer is null whatever the percentile.
+	at := row{}
+	if len(rows) > 0 {
+		at = rows[0]
+	}
+	pv, err := x.ev.eval(f.Args[1], at)
+	if err != nil {
+		if len(rows) == 0 {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if !isNumber(pv) {
+		return nil, runtimeErr("%s() needs a percentile from 0.0 to 1.0, got a %s", name, typeName(pv))
+	}
+	p := toFloat(pv)
+	if math.IsNaN(p) || p < 0 || p > 1 {
+		return nil, runtimeErr("%s() needs a percentile from 0.0 to 1.0, got %s", name, stringify(pv))
+	}
+	if len(vals) == 0 {
+		return nil, nil
+	}
+	sorted := make([]any, len(vals))
+	copy(sorted, vals)
+	for _, v := range sorted {
+		if !isNumber(v) {
+			return nil, runtimeErr("%s() needs numbers, got a %s", name, typeName(v))
+		}
+	}
+	sort.SliceStable(sorted, func(i, j int) bool { return orderCompare(sorted[i], sorted[j]) < 0 })
+	n := len(sorted)
+	if f.Name == "percentiledisc" {
+		// p·n computed in floating point can land a hair above the whole
+		// number it stands for (0.1 × 30); snap it before taking the ceiling.
+		pos := p * float64(n)
+		if r := math.Round(pos); math.Abs(pos-r) < 1e-9 {
+			pos = r
+		}
+		rank := int(math.Ceil(pos))
+		return sorted[min(max(rank, 1), n)-1], nil
+	}
+	pos := p * float64(n-1)
+	lo := int(math.Floor(pos))
+	if lo >= n-1 {
+		return toFloat(sorted[n-1]), nil
+	}
+	frac := pos - float64(lo)
+	a, b := toFloat(sorted[lo]), toFloat(sorted[lo+1])
+	if frac == 0 {
+		return a, nil
+	}
+	return a + (b-a)*frac, nil
 }

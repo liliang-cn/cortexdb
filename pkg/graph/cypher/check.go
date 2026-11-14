@@ -274,8 +274,12 @@ func checkExpr(e Expr, scope map[string]varKind, aggOK bool) error {
 					err = semantic("only count(*) takes *")
 					return false
 				}
-				if !f.Star && len(f.Args) != 1 {
-					err = semantic("%s() takes exactly one argument", f.Name)
+				if want := aggregateArgs(f.Name); !f.Star && len(f.Args) != want {
+					if want == 2 {
+						err = semantic("%s() takes two arguments, the value and a percentile from 0.0 to 1.0", f.Name)
+					} else {
+						err = semantic("%s() takes exactly one argument", f.Name)
+					}
 					return false
 				}
 			} else {

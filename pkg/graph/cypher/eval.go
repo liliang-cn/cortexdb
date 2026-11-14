@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -24,7 +25,12 @@ var functionArity = map[string][2]int{
 	"trim": {1, 1}, "ltrim": {1, 1}, "rtrim": {1, 1}, "replace": {3, 3},
 	"substring": {2, 3}, "left": {2, 2}, "right": {2, 2}, "split": {2, 2},
 	"tostring": {1, 1}, "tointeger": {1, 1}, "tofloat": {1, 1}, "toboolean": {1, 1},
-	"abs": {1, 1}, "ceil": {1, 1}, "floor": {1, 1}, "round": {1, 1}, "sign": {1, 1}, "sqrt": {1, 1},
+	"abs": {1, 1}, "ceil": {1, 1}, "floor": {1, 1}, "round": {1, 2}, "sign": {1, 1}, "sqrt": {1, 1},
+	"log": {1, 1}, "log10": {1, 1}, "exp": {1, 1},
+	"date": {0, 1}, "datetime": {0, 1}, "duration": {1, 1},
+	"date.truncate": {2, 2}, "datetime.truncate": {2, 2},
+	"datetime.fromepoch": {2, 2}, "datetime.fromepochmillis": {1, 1},
+	"duration.between": {2, 2}, "duration.inmonths": {2, 2}, "duration.indays": {2, 2}, "duration.inseconds": {2, 2},
 	"exists": {1, 1}, "isempty": {1, 1}, "char_length": {1, 1}, "character_length": {1, 1},
 }
 
@@ -44,6 +50,9 @@ type evaluator struct {
 	// where [x IN range(1, 100000) | range(1, 100000)] would otherwise
 	// allocate until the process dies.
 	work *int
+	// now is the instant date() and datetime() with no argument read: one
+	// instant for the whole query, so two calls in it agree.
+	now time.Time
 }
 
 // maxEvalWork bounds evaluation work per query.
@@ -292,6 +301,10 @@ func propertyOf(t any, key string) (any, error) {
 			if x.Content != "" {
 				return x.Content, nil
 			}
+		case "created_at":
+			return storedInstant(x.createdAt), nil
+		case "updated_at":
+			return storedInstant(x.updatedAt), nil
 		}
 		return nil, nil
 	case *Rel:
@@ -302,12 +315,17 @@ func propertyOf(t any, key string) (any, error) {
 		if v, ok := props[key]; ok {
 			return v, nil
 		}
-		if key == "weight" {
+		switch key {
+		case "weight":
 			return x.Weight, nil
+		case "created_at":
+			return storedInstant(x.createdAt), nil
 		}
 		return nil, nil
 	case map[string]any:
 		return x[key], nil
+	case Date, DateTime, Duration:
+		return temporalComponent(x, key)
 	}
 	return nil, runtimeErr("cannot read property %s of a %s", key, typeName(t))
 }
@@ -591,12 +609,18 @@ func add(a, b any) (any, error) {
 		out := make([]any, 0, len(y)+1)
 		return append(append(out, a), y...), nil
 	}
+	if v, handled, err := temporalArith("+", a, b); handled {
+		return v, err
+	}
 	return nil, runtimeErr("cannot add a %s and a %s", typeName(a), typeName(b))
 }
 
 func arith(op string, a, b any) (any, error) {
 	if a == nil || b == nil {
 		return nil, nil
+	}
+	if v, handled, err := temporalArith(op, a, b); handled {
+		return v, err
 	}
 	if !isNumber(a) || !isNumber(b) {
 		return nil, runtimeErr("operator %s needs numbers, got a %s and a %s", op, typeName(a), typeName(b))
@@ -776,6 +800,9 @@ func (ev *evaluator) evalFunc(f *FuncCall, r row) (any, error) {
 			return nil, err
 		}
 		args[i] = v
+	}
+	if tf, ok := temporalFunctions[f.Name]; ok {
+		return tf(ev, args)
 	}
 	if f.Name == "coalesce" {
 		for _, a := range args {
@@ -1053,6 +1080,8 @@ func (ev *evaluator) evalFunc(f *FuncCall, r row) (any, error) {
 			return x, nil
 		case int64, float64, bool:
 			return stringify(x), nil
+		case Date, DateTime, Duration:
+			return fmt.Sprint(x), nil
 		}
 	case "tointeger":
 		switch x := a0.(type) {
@@ -1114,7 +1143,15 @@ func (ev *evaluator) evalFunc(f *FuncCall, r row) (any, error) {
 		case float64:
 			return math.Abs(x), nil
 		}
-	case "ceil", "floor", "round", "sqrt":
+	case "round":
+		if isNumber(a0) {
+			if len(args) == 2 {
+				return roundTo(toFloat(a0), args[1])
+			}
+			// openCypher rounds half up (towards positive infinity).
+			return math.Floor(toFloat(a0) + 0.5), nil
+		}
+	case "ceil", "floor", "sqrt", "log", "log10", "exp":
 		if isNumber(a0) {
 			v := toFloat(a0)
 			switch f.Name {
@@ -1122,9 +1159,12 @@ func (ev *evaluator) evalFunc(f *FuncCall, r row) (any, error) {
 				return math.Ceil(v), nil
 			case "floor":
 				return math.Floor(v), nil
-			case "round":
-				// openCypher rounds half up (towards positive infinity).
-				return math.Floor(v + 0.5), nil
+			case "log":
+				return math.Log(v), nil
+			case "log10":
+				return math.Log10(v), nil
+			case "exp":
+				return math.Exp(v), nil
 			}
 			return math.Sqrt(v), nil
 		}
@@ -1141,6 +1181,50 @@ func (ev *evaluator) evalFunc(f *FuncCall, r row) (any, error) {
 		}
 	}
 	return nil, runtimeErr("%s() cannot take a %s", f.Name, typeName(a0))
+}
+
+// roundTo is round(x, precision): x to that many decimal places, ties away
+// from zero. It rounds the number as it is written in decimal — the shortest
+// text that reads back as x — so round(2.675, 2) is 2.68, not the 2.67 that
+// rounding the binary value underneath would give.
+func roundTo(x float64, precision any) (any, error) {
+	if precision == nil {
+		return nil, nil
+	}
+	p, ok := precision.(int64)
+	if !ok || p < 0 {
+		return nil, runtimeErr("round() precision must be a non-negative integer")
+	}
+	if math.IsNaN(x) || math.IsInf(x, 0) || p > 17 {
+		return x, nil
+	}
+	s := strconv.FormatFloat(math.Abs(x), 'f', -1, 64)
+	dot := strings.IndexByte(s, '.')
+	if dot < 0 || len(s)-dot-1 <= int(p) {
+		return x, nil
+	}
+	up := s[dot+1+int(p)] >= '5'
+	digits := []byte(s[:dot] + s[dot+1:dot+1+int(p)])
+	if up {
+		i := len(digits) - 1
+		for ; i >= 0 && digits[i] == '9'; i-- {
+			digits[i] = '0'
+		}
+		if i >= 0 {
+			digits[i]++
+		} else {
+			digits = append([]byte{'1'}, digits...)
+		}
+	}
+	whole := len(digits) - int(p)
+	out, err := strconv.ParseFloat(string(digits[:whole])+"."+string(digits[whole:])+"0", 64)
+	if err != nil {
+		return nil, runtimeErr("round() could not round %v", x)
+	}
+	if x < 0 && out != 0 {
+		out = -out
+	}
+	return out, nil
 }
 
 func stringList(ss []string) []any {
