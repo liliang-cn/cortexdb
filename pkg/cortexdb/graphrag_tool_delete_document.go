@@ -115,8 +115,7 @@ func (t *GraphRAGToolbox) deleteDocumentGraphTx(ctx context.Context, tx *sql.Tx,
 	// edges and nodes written without properties carry an empty string, and
 	// reading a JSON field out of one is an error rather than a miss — and so
 	// does the spelling, which is not the same on the two backends.
-	edgeIDs, err := collectIDsTx(ctx, t.db, tx,
-		`SELECT id FROM graph_edges WHERE `+docIDIs(t.db), documentID)
+	edgeIDs, err := collectIDsTx(ctx, t.db, tx, edgesOfDocumentSQL(t.db), documentID)
 	if err != nil {
 		return nil, fmt.Errorf("find relation edges: %w", err)
 	}
@@ -129,9 +128,7 @@ func (t *GraphRAGToolbox) deleteDocumentGraphTx(ctx context.Context, tx *sql.Tx,
 	}
 	var doomed []string
 	var detached []detachment
-	rows, err := t.db.txQuery(ctx, tx, `
-		SELECT id, properties FROM graph_nodes
-		WHERE `+t.db.Dialect().JSONArrayContains("graph_nodes.properties", "source_document_ids"), documentID)
+	rows, err := t.db.txQuery(ctx, tx, entitiesSourcedFromSQL(t.db), documentID)
 	if err != nil {
 		return nil, fmt.Errorf("find entity provenance: %w", err)
 	}
@@ -141,16 +138,13 @@ func (t *GraphRAGToolbox) deleteDocumentGraphTx(ctx context.Context, tx *sql.Tx,
 			rows.Close()
 			return nil, fmt.Errorf("scan entity provenance: %w", err)
 		}
-		var properties map[string]interface{}
-		if err := json.Unmarshal([]byte(propertiesJSON), &properties); err != nil {
+		remaining, listed, err := sourcesWithout(propertiesJSON, documentID)
+		if err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("decode properties of %s: %w", id, err)
 		}
-		remaining := make([]string, 0)
-		for _, source := range toStringSlice(properties["source_document_ids"]) {
-			if source != documentID {
-				remaining = append(remaining, source)
-			}
+		if !listed {
+			continue
 		}
 		if len(remaining) == 0 {
 			doomed = append(doomed, id)
@@ -166,13 +160,11 @@ func (t *GraphRAGToolbox) deleteDocumentGraphTx(ctx context.Context, tx *sql.Tx,
 	// 3. The document's own nodes: its chunks (real and stub) and the document
 	// node itself. Matched by property, and the document node also by its
 	// derived id for graphs written before the property existed.
-	chunkIDs, err := collectIDsTx(ctx, t.db, tx,
-		`SELECT id FROM graph_nodes WHERE node_type = 'chunk' AND `+docIDIs(t.db), documentID)
+	chunkIDs, err := collectIDsTx(ctx, t.db, tx, chunksOfDocumentSQL(t.db), documentID)
 	if err != nil {
 		return nil, fmt.Errorf("find chunk nodes: %w", err)
 	}
-	docNodeIDs, err := collectIDsTx(ctx, t.db, tx,
-		`SELECT id FROM graph_nodes WHERE node_type = 'document' AND ((`+docIDIs(t.db)+`) OR id = ?)`,
+	docNodeIDs, err := collectIDsTx(ctx, t.db, tx, documentNodesOfSQL(t.db),
 		documentID, graphDocumentNodeID(documentID))
 	if err != nil {
 		return nil, fmt.Errorf("find document node: %w", err)
@@ -220,6 +212,31 @@ func (t *GraphRAGToolbox) deleteDocumentGraphTx(ctx context.Context, tx *sql.Tx,
 	return resp, nil
 }
 
+// sourcesWithout reads a node's source_document_ids and returns the sources it
+// keeps without documentID, and whether it listed documentID at all. The
+// lookup that found the node reads an index; the node's own JSON decides, so
+// a row the index should no longer hold detaches or deletes nothing. A list
+// written as the bare string documentID lists it: PostgreSQL's @> matches it,
+// and main deleted such a node with its last source.
+func sourcesWithout(propertiesJSON, documentID string) (remaining []string, listed bool, err error) {
+	var properties map[string]interface{}
+	if err := json.Unmarshal([]byte(propertiesJSON), &properties); err != nil {
+		return nil, false, err
+	}
+	remaining = make([]string, 0)
+	if bare, ok := properties["source_document_ids"].(string); ok {
+		return remaining, bare == documentID, nil
+	}
+	for _, source := range toStringSlice(properties["source_document_ids"]) {
+		if source == documentID {
+			listed = true
+		} else {
+			remaining = append(remaining, source)
+		}
+	}
+	return remaining, listed, nil
+}
+
 // collectIDsTx is collectIDs against a transaction, so the plan is read from
 // the same snapshot the writes will change.
 func collectIDsTx(ctx context.Context, db *DB, tx *sql.Tx, query string, args ...any) ([]string, error) {
@@ -264,6 +281,31 @@ func collectIDs(ctx context.Context, db *DB, query string, args ...any) ([]strin
 
 // docIDIs is the predicate "this row's properties name documentID", written
 // once because four queries in this file need it and each one spelled it out.
+// It is the expression of the provenance indexes (pkg/graph/provenance_index.go),
+// which a query uses only when it repeats it exactly.
 func docIDIs(db *DB) string {
 	return db.Dialect().JSONTextGuarded("properties", "document_id") + " = ?"
+}
+
+// The lookups that find what one document put in the graph, each served by a
+// provenance index. One placeholder, the document id, except where noted.
+
+func edgesOfDocumentSQL(db *DB) string {
+	return `SELECT id FROM graph_edges WHERE ` + docIDIs(db)
+}
+
+func entitiesSourcedFromSQL(db *DB) string {
+	return `SELECT id, properties FROM graph_nodes WHERE ` + graph.NodeSourcedFrom(db.Dialect())
+}
+
+func chunksOfDocumentSQL(db *DB) string {
+	return `SELECT id FROM graph_nodes WHERE node_type = 'chunk' AND ` + docIDIs(db)
+}
+
+// documentNodesOfSQL takes the document id, then the document node's derived
+// id, which graphs written before the property existed are found by. The
+// COALESCE keeps the planner off idx_nodes_type, which would read every
+// document node: either key alone narrows to one row.
+func documentNodesOfSQL(db *DB) string {
+	return `SELECT id FROM graph_nodes WHERE COALESCE(node_type, '') = 'document' AND ((` + docIDIs(db) + `) OR id = ?)`
 }
