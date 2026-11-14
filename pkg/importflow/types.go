@@ -35,7 +35,11 @@ type Schema struct {
 type Goal struct {
 	BuildRAG bool
 	BuildKG  bool
-	Hint     string // domain hint passed to the AI inferer
+	// BuildTables also keeps every table as a table — rows and typed columns
+	// — that cortexdb.DB.QueryImportedTables can aggregate and join. The
+	// inferer is not asked; Plan adds it to whatever it proposed.
+	BuildTables bool
+	Hint        string // domain hint passed to the AI inferer
 }
 
 // Report summarizes an import run. Per repo "no silent caps" rule, dropped /
@@ -44,6 +48,8 @@ type Report struct {
 	RowsRead           int
 	ChunksIndexed      int
 	TriplesCreated     int
+	TablesStored       int // tables kept as queryable tables
+	TableRowsStored    int // rows in those tables
 	Skipped            int
 	UnparsedStatements []string
 	Errors             []error

@@ -12,6 +12,12 @@ All notable changes to this project will be documented in this file.
 
 - `graph_cypher_query` answers trend and distribution questions: the aggregates `stDev`, `stDevP`, `percentileCont` and `percentileDisc`; `date()` and `datetime()` over `YYYY-MM-DD` and RFC 3339 strings with components (`.year`, `.quarter`, `.month`, `.week`, `.dayOfWeek`, `.hour`), `date.truncate` / `datetime.truncate` by day, week, month, quarter or year, and durations (`duration()`, `duration.between`, `duration.inDays`, `duration.inSeconds`, date ± duration); `exp`, `log`, `log10` and `round(x, digits)`. Dates sort and group as dates and come back as ISO strings; text that is not a date is an error. `n.created_at`, `n.updated_at` and `r.created_at` read a row's stored timestamps.
 
+- An imported table can be kept as a table and asked in SQL. `importflow` gains a third sink beside RAG and KG (`TablePlan.Table`, `KeepTables`, `Goal.BuildTables`, `keep_tables` on `importflow_run`) that stores a CSV's or a dump's rows in typed columns, and three read tools, `imported_tables_list`, `imported_tables_describe` and `imported_tables_query`, run one SQLite `SELECT` over them: totals, `GROUP BY`, joins, window functions. The query is held to the imported tables by SQLite's authorizer, so it cannot write or read memories, documents or any other table of the store. Importing a table again replaces its rows. SQLite only; PostgreSQL returns `ErrImportedTablesUnsupported`.
+
+### Fixed
+
+- A SQL dump written with a space after each comma, `VALUES (10, 'Ada')`, no longer imports its quoted values with a leading space.
+
 ## [2.151.1] - 2026-11-14
 
 ### Changed

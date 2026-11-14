@@ -12,7 +12,7 @@ import (
 	"github.com/liliang-cn/cortexdb/v2/pkg/graphflow"
 )
 
-// Importer orchestrates Source -> MappingPlan -> RAG + KG sinks.
+// Importer orchestrates Source -> MappingPlan -> RAG, KG and table sinks.
 type Importer struct {
 	db        *cortexdb.DB
 	inferer   MappingInferer
@@ -85,7 +85,14 @@ func (im *Importer) Plan(ctx context.Context, src Source, goal Goal) (MappingPla
 	if err != nil {
 		return MappingPlan{}, fmt.Errorf("importflow: read schemas: %w", err)
 	}
-	return im.inferer.InferPlan(ctx, schemas, goal)
+	plan, err := im.inferer.InferPlan(ctx, schemas, goal)
+	if err != nil {
+		return MappingPlan{}, err
+	}
+	if goal.BuildTables {
+		plan = KeepTables(plan, schemas)
+	}
+	return plan, nil
 }
 
 // AutoImport runs Plan then Run in one step.
@@ -97,7 +104,7 @@ func (im *Importer) AutoImport(ctx context.Context, src Source, goal Goal) (*Rep
 	return im.Run(ctx, src, plan)
 }
 
-// Run streams every record through the plan into the RAG and KG sinks.
+// Run streams every record through the plan into the RAG, KG and table sinks.
 func (im *Importer) Run(ctx context.Context, src Source, plan MappingPlan) (*Report, error) {
 	rep := &Report{}
 	if ds, ok := src.(*SQLDumpSource); ok {
@@ -105,13 +112,25 @@ func (im *Importer) Run(ctx context.Context, src Source, plan MappingPlan) (*Rep
 	}
 	rag := newRAGSink(im.db, im.batchSize)
 	kg := newKGSink(im.db, im.batchSize, im.provenance)
+	tables, err := im.openTables(ctx, src, plan)
+	if err != nil {
+		return rep, err
+	}
 
-	err := src.Records(ctx, func(r Record) error {
+	err = src.Records(ctx, func(r Record) error {
 		rep.RowsRead++
 		tp, ok := plan.Tables[r.Table]
 		if !ok || tp.Skip {
 			rep.Skipped++
 			return nil
+		}
+		if tables != nil {
+			if err := tables.add(ctx, r); err != nil {
+				if im.strict {
+					return err
+				}
+				rep.addError(err)
+			}
 		}
 		if err := im.processRow(ctx, r, tp, rag, kg, rep); err != nil {
 			if im.strict {
@@ -122,17 +141,68 @@ func (im *Importer) Run(ctx context.Context, src Source, plan MappingPlan) (*Rep
 		return nil
 	})
 	if err != nil {
+		if tables != nil {
+			tables.abort(ctx)
+		}
 		return rep, err
 	}
 	if err := rag.flush(ctx); err != nil {
+		if tables != nil {
+			tables.abort(ctx)
+		}
 		return rep, err
 	}
 	if err := kg.flush(ctx); err != nil {
+		if tables != nil {
+			tables.abort(ctx)
+		}
 		return rep, err
 	}
 	rep.ChunksIndexed = rag.count()
 	rep.TriplesCreated = kg.count()
+	if tables != nil {
+		errs := tables.commit(ctx)
+		rep.TablesStored, rep.TableRowsStored = tables.stored, tables.rows
+		for _, err := range errs {
+			if im.strict {
+				return rep, err
+			}
+			rep.addError(err)
+		}
+	}
 	return rep, nil
+}
+
+// openTables stages a table for every planned table that asks to be kept as
+// one, with the columns and types the source's own schema gives. It returns
+// nil when the plan keeps none.
+func (im *Importer) openTables(ctx context.Context, src Source, plan MappingPlan) (*tableSink, error) {
+	wanted := false
+	for _, tp := range plan.Tables {
+		if !tp.Skip && tp.Table != nil {
+			wanted = true
+			break
+		}
+	}
+	if !wanted {
+		return nil, nil
+	}
+	schemas, err := src.Schemas(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("importflow: read schemas: %w", err)
+	}
+	sink := newTableSink(im.db, im.batchSize, sourceLabel(src), im.provenance)
+	for _, schema := range schemas {
+		tp := plan.Tables[schema.Table]
+		if tp.Skip || tp.Table == nil {
+			continue
+		}
+		if err := sink.open(ctx, schema, tp.Table.Name); err != nil {
+			sink.abort(ctx)
+			return nil, fmt.Errorf("importflow: table %q: %w", schema.Table, err)
+		}
+	}
+	return sink, nil
 }
 
 func (im *Importer) processRow(ctx context.Context, r Record, tp TablePlan, rag *ragSink, kg *kgSink, rep *Report) error {

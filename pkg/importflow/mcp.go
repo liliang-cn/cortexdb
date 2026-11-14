@@ -55,15 +55,10 @@ func NewMCPServer(im *Importer, opts MCPServerOptions) (*mcp.Server, error) {
 			return MappingPlan{}, err
 		}
 		defer src.Close()
-		return im.Plan(ctx, src, Goal{BuildRAG: in.BuildRAG, BuildKG: in.BuildKG, Hint: in.Hint})
+		return im.Plan(ctx, src, Goal{BuildRAG: in.BuildRAG, BuildKG: in.BuildKG, BuildTables: in.BuildTables, Hint: in.Hint})
 	})
 	addImportflowMCPTool(server, definitions["importflow_run"], func(ctx context.Context, in runInput) (*Report, error) {
-		src, err := sourceFromInput(in.Format, in.Table, in.Data)
-		if err != nil {
-			return nil, err
-		}
-		defer src.Close()
-		return im.Run(ctx, src, in.Plan)
+		return runFromInput(ctx, im, in)
 	})
 
 	return server, nil

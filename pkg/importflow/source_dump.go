@@ -468,6 +468,11 @@ func parseValueTuples(s string, dialect Dialect) [][]cell {
 			}
 			switch c {
 			case '\'', '"':
+				// Whitespace between the separator and the quote is layout,
+				// not data: "(10, 'Ada')" holds "Ada".
+				if !quoted && strings.TrimSpace(b.String()) == "" {
+					b.Reset()
+				}
 				quote = c
 				quoted = true
 				i++
@@ -480,7 +485,10 @@ func parseValueTuples(s string, dialect Dialect) [][]cell {
 				tuples = append(tuples, tuple)
 				goto nextTuple
 			default:
-				b.WriteRune(c)
+				// Nor is whitespace after the closing quote.
+				if !(quoted && (c == ' ' || c == '\t' || c == '\n' || c == '\r')) {
+					b.WriteRune(c)
+				}
 				i++
 			}
 		}

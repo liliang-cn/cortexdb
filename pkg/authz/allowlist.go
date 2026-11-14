@@ -342,6 +342,9 @@ var refusedTools = map[string]string{
 	"graph_health":                          "reports on every store",
 	"vector_dimension_repair":               "rewrites every store",
 	"sweep_expired":                         "removes expired rows of every store and every collection",
+	"imported_tables_list":                  "lists every imported table, which no scope field confines",
+	"imported_tables_describe":              "shows rows of an imported table, which no scope field confines",
+	"imported_tables_query":                 "queries every imported table, which no scope field confines",
 }
 
 // defaultRefusal is why a tool with no reason of its own is refused: the

@@ -931,6 +931,15 @@ inferer, `im.AutoImport(ctx, src, importflow.Goal{BuildRAG: true, BuildKG: true}
 plan + run in one step. RAG works with no embedder (lexical FTS5). The mapping inferer
 reuses the same `graphflow.JSONGenerator` interface.
 
+To aggregate or join imported rows (totals, `GROUP BY`, joins), keep the table as a
+table: `Table: &importflow.TableStorePlan{}` in a `TablePlan`, `importflow.KeepTables(plan,
+schemas)` for every table, `Goal{BuildTables: true}`, or `"keep_tables": true` on
+`importflow_run`. Then `db.QueryImportedTables(ctx, cortexdb.ImportedTableQueryRequest{SQL: ...})`
+or the `imported_tables_list` / `imported_tables_describe` / `imported_tables_query` tools
+run one read-only SQLite `SELECT` that can read the imported tables and nothing else in
+the store (enforced by SQLite's authorizer, not by inspecting the SQL). Re-importing a
+table replaces its rows. SQLite stores only; PostgreSQL returns `ErrImportedTablesUnsupported`.
+
 `importflow.MappingFromDDL(ddl, importflow.DDLMappingOptions{})` turns a `CREATE TABLE`
 DDL subset (Postgres/MySQL) into a reviewable `MappingPlan` **deterministically, no LLM** —
 tables→entity classes, PK→entity id, FK→relations, columns→RAG content + props (no
@@ -1141,6 +1150,7 @@ Important tools:
 - History: `graph_history`, `knowledge_graph_history`, `ontology_history`; `as_of` on `knowledge_graph_query`, `knowledge_graph_find`, `expand_graph`, `graph_cypher_query`
 - Aggregates and thresholds: `aggregate_metadata`, `representative_records`, `search_vector_range`
 - Graph introspection: `graph_schema`, `graph_property_values`, `graph_statistics`, `graph_health`
+- Imported tables (SQLite only): `imported_tables_list`, `imported_tables_describe`, `imported_tables_query` — read-only SQL (`GROUP BY`, joins, window functions) over tables `importflow` kept as tables
 - Claim checking: `verify_claims`, `fact_provenance`, `uncited_facts`, `check_against_sources`
 - Graph analytics: `rank_graph_nodes`, `predict_graph_edges`
 - Disambiguation: `disambiguate_mentions`
