@@ -30,7 +30,7 @@ Planning a launch or community post? See [docs/LAUNCH_KIT.md](LAUNCH_KIT.md) for
 - **Knowledge graph** — RDF triples/quads on the same file, **and the property graph readable as RDF**: everything extraction and `upsert_entities` write answers SPARQL, inference and SHACL as read-only triples (`cxn:` nodes, `cxt:` types, `cxr:` relations, `cxp:` properties) with no copy to keep in sync. **RDF 1.2**: triple terms `<<( s p o )>>`, reified triples and `{| |}` annotations, so a statement about a fact — who said it, how sure — is itself queryable; base-directed literals. SPARQL 1.1 and 1.2 — queries, updates with graph management (`ADD`/`COPY`/`MOVE`/`CLEAR`/`DROP`), every property path, results as JSON/XML/CSV/TSV, and `SERVICE` through a handler the application sets — passing the W3C test suites on both backends: RDF 1.2 and RDF/XML in full, SPARQL 1.2 269/269, SPARQL 1.1 query 329/331 (the two are a deliberate leniency: `"1" + "2"` is 3), update 157/157, results formats and federation in full. Semi-naive materialized inference over RDFS and the OWL 2 RL rules — `inverseOf`, symmetric, transitive, `equivalentClass`/`equivalentProperty`, `sameAs`, **keys** (`FunctionalProperty` / `InverseFunctionalProperty` / `hasKey` derive `sameAs`: the same e-mail is the same person), **property chains**, and class expressions (`someValuesFrom`, `allValuesFrom`, `hasValue`, `intersectionOf`, `unionOf`, `oneOf`, max cardinality) — kept current **automatically** as facts change (delete-and-rederive, asynchronous, `WaitForInference` to read your own writes), every inferred triple explainable. Contradictions (`disjointWith` and `AllDisjointClasses`, disjoint properties, two values of a functional property, `differentFrom` and `AllDifferent` against a derived `sameAs`, irreflexive and asymmetric properties, negative property assertions, `complementOf`, `owl:Nothing`, a cardinality of 0) are reported with the conflicting triples, never resolved by guessing. **SHACL Core in full** — every property path, qualified value shapes, `sh:lessThan`, implicit class targets; the W3C Core suite passes 98/98 — and **SHACL-SPARQL** (`sh:sparql` constraints and SPARQL-based constraint components, with pre-binding; 21 of 22, the optional `$shapesGraph` aside), and **SHACL-AF rules** (`sh:TripleRule` with conditions, order and node expressions, run to a fixpoint, results explainable). **Read-only Cypher / GQL** over the property graph (`graph_cypher_query`: MATCH / OPTIONAL MATCH / WITH / variable-length paths up to 6 hops / aggregation; 0 wrong answers across 3,897 openCypher TCK scenarios — what it cannot do, it refuses). N-Triples/N-Quads/Turtle/TriG/JSON-LD I/O and RDF/XML import (how most OWL ontologies are published), where JSON-LD never fetches a remote context; property-graph `apply_inference` materializes two-hop relation compositions with provenance; entities track asserting documents, and `delete_document_graph` is deletion shaped like ingest.
 - **Ontology (Palantir-style)** — typed object/link/interface types with primary keys and cardinality, an object-set algebra (union / intersect / filter / `search_around`), governed **action types** with audit trail, generated typed agent tools, and a breaking-change schema diff; `strict` or `vocabulary` enforcement.
 - **History** — every version of an entity, relation, triple or schema, and which one is in effect: `graph_history` (one line per subject and predicate, with an `in_effect` reason on each current version), `knowledge_graph_history` and `as_of` on the SPARQL, find, expand and Cypher tools, `ontology_history` with `version` / `as_of` / `from_version` on the ontology tools. The live view has an entity timeline, an As of pin and an ontology version list. See History below.
-- **Pipelines** — `memoryflow` (transcript → recall → wake-up → promotion), `graphflow` (corpus → graph → HTML report), `importflow` (CSV / SQL dumps / live Postgres-MySQL → RAG + KG), `connector` (PII masking, signed plans, reversible vault, CDC sync).
+- **Pipelines** — `memoryflow` (transcript → recall → wake-up → promotion), `graphflow` (corpus → graph → HTML report), `importflow` (CSV / SQL dumps / live Postgres-MySQL → RAG + KG, and the tables themselves kept queryable in SQL), `connector` (PII masking, signed plans, reversible vault, CDC sync).
 - **Tools & MCP** — 100+ tools with the same names in-process and over MCP, plus `render_graph_html`, an interactive graph view, `serve_graph_3d`, a live 3D view you can search across the whole store, ask, query with Cypher and expand node by node (read-only, phone-friendly, every view a shareable link: `?focus=`, `?ask=`, `?cypher=`) or walk as a library of memories shelved by project, `import_agent_memory`, which brings in what Claude Code and Codex already remember (memory notes, `CLAUDE.md` / `AGENTS.md`, Codex's memories, and past sessions distilled on request), and paged bulk listings (`memory_list_all`, `graph_list_all`) — `graph_list_all` defaults to the most-connected core; `order: "id"` walks the whole graph instead, returning `next_cursor` page by page like `memory_list_all` does.
 - **Questions about the whole store** — retrieval says what is relevant to a query; these say what is there. A *range* search returns everything within a distance of the query and nothing outside it, which is the honest answer when a top-K would invent a K (`search_vector_range`, and the response says when a cap hid matches). `Aggregate` counts, sums and groups by a metadata field (`aggregate_metadata`); for analysis questions one call takes several `measures` per group (count, sum, avg, min, max, median, any percentile, stddev), a `time_bucket` (day, week, month or year, on the record's stored time or on a metadata timestamp), `created_since` / `created_before`, and filters with operators (`eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `exists`) — see the example below. And `VectorAggregate` reduces the vectors themselves — centroid, geometric median, and the **medoid**, the stored record closest to all the others in its group, which answers "which of these near-duplicates is canonical" and "what is this cluster about" arithmetically, with no model in the loop (`representative_records`). All identical on both backends, with one test body per behaviour run against each.
 
@@ -147,6 +147,9 @@ different rows for the same query depending on where it ran.
   allowed to `CREATE EXTENSION`. A missing extension degrades the graph's vector
   search to the in-Go scan that was already there and says so once, rather than
   refusing to start.
+- **Imported tables are SQLite only.** The read-only SQL over imported tables
+  (`imported_tables_query`) is confined by SQLite's authorizer. On PostgreSQL it,
+  and the table sink of `importflow`, return `ErrImportedTablesUnsupported`.
 
 ### Proving it, rather than believing it
 
@@ -625,7 +628,7 @@ tools := db.GraphRAGTools()                             // in-process tool calli
 server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 ```
 
-Tool groups (100+ tools, same names in-process and over MCP): GraphRAG (`ingest_document`, `search_text`, `build_context`, `expand_graph`, `search_paths`, `find_nodes`, `delete_document_graph`), unified retrieval (`cortex_query`), knowledge/memory (`knowledge_save`, `memory_search`, …), KnowledgeMemory (`knowledge_memory_recall`, `_reflect`, `_consolidate`, `extract_conversation`), KG (`knowledge_graph_query`, `_shacl_validate`, `apply_inference`), ontology (`ontology_save`, `ontology_history`, `ontology_action_apply`, `object_set_resolve`), history (`graph_history`, `knowledge_graph_history`), media (`ingest_media`, `search_media`), and maintenance (`vector_dimension_repair`, `sweep_expired`). The `cortexdb-mcp-stdio` binary adds `render_graph_html` (an interactive knowledge-graph view), `serve_graph_3d`, `side_graph_*`, `import_agent_memory`, and in local mode `global_search` / `build_community_hierarchy`; `db.NewMCPServer` serves the facade's tools only. `memoryflow`/`graphflow`/`importflow`/`connector` expose their own toolboxes too.
+Tool groups (100+ tools, same names in-process and over MCP): GraphRAG (`ingest_document`, `search_text`, `build_context`, `expand_graph`, `search_paths`, `find_nodes`, `delete_document_graph`), unified retrieval (`cortex_query`), knowledge/memory (`knowledge_save`, `memory_search`, …), KnowledgeMemory (`knowledge_memory_recall`, `_reflect`, `_consolidate`, `extract_conversation`), KG (`knowledge_graph_query`, `_shacl_validate`, `apply_inference`), ontology (`ontology_save`, `ontology_history`, `ontology_action_apply`, `object_set_resolve`), history (`graph_history`, `knowledge_graph_history`), media (`ingest_media`, `search_media`), imported tables (`imported_tables_list`, `_describe`, `_query`), and maintenance (`vector_dimension_repair`, `sweep_expired`). The `cortexdb-mcp-stdio` binary adds `render_graph_html` (an interactive knowledge-graph view), `serve_graph_3d`, `side_graph_*`, `import_agent_memory`, and in local mode `global_search` / `build_community_hierarchy`; `db.NewMCPServer` serves the facade's tools only. `memoryflow`/`graphflow`/`importflow`/`connector` expose their own toolboxes too.
 
 ### The live view
 
@@ -850,6 +853,53 @@ did. `search_media` searches that space alone, with `query` text or an image
 as `data`, which finds the images and frames that look like it. An unchanged
 file is not embedded again; another model embeds it again and replaces its
 vectors. The scan is exact, which suits a media library, not millions of images.
+
+### Imported tables — SQL over what was imported
+
+An import turns each row into text to search and facts to walk. Neither answers
+"average order value by region by month": that is a `GROUP BY` over every row, and
+a search returns the few most similar ones. So `importflow` can also keep a table
+as a table. Ask for it per table in the plan, or for every table at once:
+
+```go
+plan := importflow.MappingPlan{Tables: map[string]importflow.TablePlan{
+    "orders": {RAG: &importflow.RAGPlan{ContentTmpl: "{note}"}, Table: &importflow.TableStorePlan{}},
+}}
+// or: plan = importflow.KeepTables(plan, schemas)        every table the plan does not skip
+// or: importflow.Goal{BuildTables: true} with Plan / AutoImport; "keep_tables": true on importflow_run
+rep, _ := importflow.New(db).Run(ctx, src, plan)           // rep.TablesStored, rep.TableRowsStored
+
+res, _ := db.QueryImportedTables(ctx, cortexdb.ImportedTableQueryRequest{SQL: `
+    SELECT region, strftime('%Y-%m', ordered_at) AS month, avg(total)
+    FROM orders GROUP BY region, month ORDER BY region, month`})
+```
+
+Column types are the ones the source already reports (`integer`, `number`, `text`,
+`timestamp`; a CSV's are inferred from its values, a dump's read from its `CREATE
+TABLE`). Numbers are stored as numbers, an empty numeric cell as NULL, a timestamp
+as the text the source held. Importing the same table again **replaces** its rows
+when the run ends, which is what the RAG and KG sinks amount to (same chunk id,
+same triples); a run that fails leaves the previous import in place.
+
+Three read tools serve an agent: `imported_tables_list` (tables, columns, types,
+row counts, source), `imported_tables_describe` (one table and its first rows) and
+`imported_tables_query` (one SQLite `SELECT`: joins, CTEs, window functions,
+`params` for `?`, `max_rows` default 200 and at most 10000, `timeout_ms` default
+10 s and at most 60 s, `truncated` when rows were cut). In Go:
+`ListImportedTables`, `DescribeImportedTable`, `QueryImportedTables`,
+`DropImportedTable`.
+
+The query cannot write and cannot read the rest of the brain, and that is not
+decided by looking at the SQL. The rows live in tables named `imported_tbl_…`, listed
+in the `imported_tables` registry under the name the source gave them; a name out
+of a dump is never used as a table name. For the length of one query the
+connection carries a SQLite authorizer that allows `SELECT` and reads of those
+tables and denies every other action (writes, DDL, `PRAGMA`, `ATTACH`, reads of
+`messages`, `documents`, `sqlite_master`, virtual tables), `PRAGMA query_only`, and
+a progress handler for the deadline; the text must compile to exactly one
+read-only statement. A confined key (one with a scope) is refused all three tools,
+since imported rows carry no scope. SQLite only: on PostgreSQL the calls return
+`ErrImportedTablesUnsupported` and run nothing.
 
 ## Claude Code and Codex plugin
 

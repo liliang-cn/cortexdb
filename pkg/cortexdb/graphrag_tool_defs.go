@@ -570,6 +570,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 	// --- end point-in-time reads ---
 	definitions = append(definitions, changeToolDefinitions()...)
 	definitions = append(definitions, recallLogToolDefinitions()...)
+	definitions = append(definitions, importedTablesToolDefinitions()...)
 	return append(definitions, KnowledgeMemoryFacadeToolDefinitions()...)
 }
 
@@ -596,6 +597,9 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 		return resp, err
 	}
 	if resp, handled, err := t.callExpiryTool(ctx, name, input); handled {
+		return resp, err
+	}
+	if resp, handled, err := t.callImportedTablesTool(ctx, name, input); handled {
 		return resp, err
 	}
 	if resp, handled, err := t.callMediaTool(ctx, name, input); handled {

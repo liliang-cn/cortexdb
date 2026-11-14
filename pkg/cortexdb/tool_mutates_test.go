@@ -172,6 +172,13 @@ var toolWrites = map[string]bool{
 	"vacuum_graph":           true,
 	"sweep_expired":          true,
 
+	// Imported tables. All three read; the query one is held to that by
+	// SQLite itself (core.RunGuardedSQLiteRead), and the import that writes
+	// them is pkg/importflow, outside this toolbox.
+	"imported_tables_list":     false,
+	"imported_tables_describe": false,
+	"imported_tables_query":    false,
+
 	// KnowledgeMemory facade.
 	"knowledge_memory_remember":             true,
 	"knowledge_memory_promote_to_knowledge": true,
@@ -191,7 +198,7 @@ var toolWrites = map[string]bool{
 // table so that a tool added without a decision cannot slip through by sharing
 // a name with one already listed, and so that a tool quietly disappearing is
 // noticed too. Change it in the same commit that adds the tool and its row.
-const toolCount = 111
+const toolCount = 114
 
 // TestEveryToolDeclaresWhetherItWrites is the test the Mutates doc comment
 // promises: it makes forgetting impossible rather than merely unlikely.

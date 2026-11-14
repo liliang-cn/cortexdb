@@ -92,3 +92,15 @@ func TestDumpSourceMySQLBackslashEscape(t *testing.T) {
 		t.Fatalf("a = %q; want line1<newline>line2 (MySQL unescape)", v)
 	}
 }
+
+// pg_dump --inserts and most hand-written dumps put a space after each comma.
+func TestParseValueTuplesIgnoresLayoutAroundQuotedValues(t *testing.T) {
+	tuples := parseValueTuples(`(10, 'Ada' , ' padded ', NULL), ( 11,'Grace')`, DialectAuto)
+	if len(tuples) != 2 || len(tuples[0]) != 4 {
+		t.Fatalf("tuples = %+v", tuples)
+	}
+	if tuples[0][0].value != "10" || tuples[0][1].value != "Ada" || tuples[0][2].value != " padded " || !tuples[0][3].isNull ||
+		tuples[1][0].value != "11" || tuples[1][1].value != "Grace" {
+		t.Fatalf("tuples = %+v", tuples)
+	}
+}

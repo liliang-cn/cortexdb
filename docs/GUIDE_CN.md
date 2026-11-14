@@ -30,7 +30,7 @@
 - **知识图谱** — 同一文件上的 RDF 三元组/四元组,**属性图也能当 RDF 读**:抽取和 `upsert_entities` 写进去的一切,都以只读三元组的形式参与 SPARQL、推理和 SHACL(`cxn:` 节点、`cxt:` 类型、`cxr:` 关系、`cxp:` 属性),不复制数据,也就没有同步问题。**RDF 1.2**:三元组项 `<<( s p o )>>`、具名化三元组和 `{| |}` 注解,于是"关于一条事实的事实"(谁说的、多大把握)本身也能查询;支持带书写方向的字面量。SPARQL 1.1 和 1.2——查询、带图管理(`ADD`/`COPY`/`MOVE`/`CLEAR`/`DROP`)的更新、全部属性路径、JSON/XML/CSV/TSV 结果格式,以及通过应用设置的处理器执行的 `SERVICE`——在两种后端上通过 W3C 官方测试:RDF 1.2 与 RDF/XML 全部通过,SPARQL 1.2 269/269,SPARQL 1.1 查询 329/331(两条是有意的宽松处理:`"1" + "2"` 得 3)、更新 157/157、结果格式和联邦查询全部通过。半朴素求值的物化推理,覆盖 RDFS 和 OWL 2 RL 规则——`inverseOf`、对称、传递、`equivalentClass`/`equivalentProperty`、`sameAs`、**键**(`FunctionalProperty` / `InverseFunctionalProperty` / `hasKey` 推出 `sameAs`:邮箱相同就是同一个人)、**属性链**,以及类表达式(`someValuesFrom`、`allValuesFrom`、`hasValue`、`intersectionOf`、`unionOf`、`oneOf`、最大基数)——事实变化时**自动**保持最新(删除再重推,异步执行,`WaitForInference` 可读到自己刚写入的结果),每条推理结果都能解释来源。矛盾(`disjointWith` 与 `AllDisjointClasses`、不相交属性、函数型属性出现两个值、`differentFrom` 与 `AllDifferent` 和推出的 `sameAs` 冲突、非自反和非对称属性、否定属性断言、`complementOf`、`owl:Nothing`、基数为 0)会连同冲突的三元组一起报告,绝不靠猜来消解。**完整的 SHACL Core**——全部属性路径、限定值形状、`sh:lessThan`、隐式类目标;W3C Core 测试 98/98——以及 **SHACL-SPARQL**(`sh:sparql` 约束和基于 SPARQL 的约束组件,支持预绑定;22 条通过 21 条,规范中可选的 `$shapesGraph` 除外),还有 **SHACL-AF 规则**(`sh:TripleRule`,支持条件、顺序和节点表达式,迭代到不动点,结果可解释)。属性图上的**只读 Cypher / GQL**(`graph_cypher_query`:MATCH / OPTIONAL MATCH / WITH / 最多 6 跳的变长路径 / 聚合;3,897 个 openCypher TCK 场景 0 错答——做不到的直接拒绝)。N-Triples/N-Quads/Turtle/TriG/JSON-LD 读写和 RDF/XML 导入(大多数 OWL 本体以此发布),JSON-LD 绝不拉取远程 context;属性图侧 `apply_inference` 物化两跳关系组合并带出处;实体记录断言文档,`delete_document_graph` 是按摄入形状做的删除。
 - **Ontology(Palantir 风格)** — 带主键与基数的对象/链接/接口类型,对象集代数(union / intersect / filter / `search_around`),带审计的受治理**动作类型**,自动生成的类型化 agent 工具,以及破坏性变更的 schema diff;`strict` 与 `vocabulary` 两种执行模式。
 - **历史** — 实体、关系、三元组、schema 的每个版本，以及现在生效的是哪一个：`graph_history`（按主语和谓词归成线，每个当前版本带 `in_effect` 原因）、`knowledge_graph_history`，SPARQL、查找、展开和 Cypher 工具上的 `as_of`，ontology 工具上的 `ontology_history` 与 `version` / `as_of` / `from_version`。实时视图有实体时间线、As of 固定时刻和 ontology 版本列表。详见下文“历史”一节。
-- **流水线** — `memoryflow`(转录 → 召回 → 唤醒 → 晋升)、`graphflow`(语料 → 图 → HTML 报告)、`importflow`(CSV / SQL dump / 在线 Postgres-MySQL → RAG + KG)、`connector`(PII 脱敏、签名计划、可逆保险库、CDC 同步)。
+- **流水线** — `memoryflow`(转录 → 召回 → 唤醒 → 晋升)、`graphflow`(语料 → 图 → HTML 报告)、`importflow`(CSV / SQL dump / 在线 Postgres-MySQL → RAG + KG,表本身也可以保留下来用 SQL 查)、`connector`(PII 脱敏、签名计划、可逆保险库、CDC 同步)。
 - **工具与 MCP** — 100+ 工具,进程内与 MCP 同名同义,另有交互式图谱视图 `render_graph_html`,实时 3D 视图 `serve_graph_3d`(可在全库查找、提问、用 Cypher 查询、逐个节点展开邻居;只读、适配手机,每个视角都是可分享的链接:`?focus=`、`?ask=`、`?cypher=`;也可以切成按项目上架的记忆图书馆),`import_agent_memory`(把 Claude Code 和 Codex 已有的记忆导进来:记忆笔记、`CLAUDE.md` / `AGENTS.md`、Codex 的记忆库,按需把历史会话提炼成记忆),以及会分页的批量列举工具 `memory_list_all`、`graph_list_all`——`graph_list_all` 默认只给连接最密的核心子图,传 `order: "id"` 才会逐页走完整张图,像 `memory_list_all` 一样返回 `next_cursor`。
 - **对整个库发问** — 检索回答"什么与这个查询相关"，这几个回答"里面有什么"。*范围*检索返回距离查询一定距离内的全部、以外的一个不要，当 top-K 只是在编造一个 K 时这才是诚实的答案（`search_vector_range`，而且响应会说明是否有匹配被上限挡住）。`Aggregate` 按元数据字段计数、求和、分组（`aggregate_metadata`）；做数据分析时，一次调用可以为每个分组同时算多个 `measures`（count、sum、avg、min、max、median、任意百分位、stddev），按 `time_bucket` 分桶（日、周、月、年，取记录的写入时间或某个元数据时间字段），用 `created_since` / `created_before` 限定时间，过滤条件支持运算符（`eq`、`neq`、`gt`、`gte`、`lt`、`lte`、`in`、`exists`）—— 见下面的例子。`VectorAggregate` 归约向量本身 —— 质心、几何中位数，以及 **medoid**：组内距离其余成员最近的那条**真实记录**，它用算术回答"这批近重复里哪条是正本""这一簇到底在讲什么"，全程不需要模型（`representative_records`）。两个后端行为一致，每种行为一份测试体、两边都跑。
 
@@ -138,6 +138,9 @@ store 之上的一切都没变：向量、混合检索、记忆、RDF 图谱、S
   延迟曲线里推断。
 - **pgvector 是可选的。** CortexDB 连接用的账号未必有 `CREATE EXTENSION` 权限。
   扩展缺失时，图谱的向量检索降级回原本就有的 Go 内扫描并提示一次，而不是拒绝启动。
+- **导入的表只支持 SQLite。** 对导入表的只读 SQL（`imported_tables_query`）靠 SQLite 的
+  authorizer 限制范围。在 PostgreSQL 上，它和 `importflow` 的表 sink 都返回
+  `ErrImportedTablesUnsupported`。
 
 ### 用验证代替相信
 
@@ -497,7 +500,7 @@ tools := db.GraphRAGTools()                             // 进程内 tool callin
 server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 ```
 
-工具分组（100+ 个工具，进程内与 MCP 同名）：GraphRAG（`ingest_document`、`search_text`、`build_context`、`expand_graph`、`search_paths`、`find_nodes`、`delete_document_graph`）、统一检索（`cortex_query`）、knowledge/memory（`knowledge_save`、`memory_search` …）、KnowledgeMemory（`knowledge_memory_recall`、`_reflect`、`_consolidate`、`extract_conversation`）、KG（`knowledge_graph_query`、`_shacl_validate`、`apply_inference`）、ontology（`ontology_save`、`ontology_history`、`ontology_action_apply`、`object_set_resolve`）、历史（`graph_history`、`knowledge_graph_history`）、媒体（`ingest_media`、`search_media`）、维护（`vector_dimension_repair`、`sweep_expired`）。`cortexdb-mcp-stdio` 这个二进制额外提供 `render_graph_html`（交互式知识图谱视图）、`serve_graph_3d`、`side_graph_*`、`import_agent_memory`，本地模式下还有 `global_search` / `build_community_hierarchy`；`db.NewMCPServer` 只提供 facade 自己的工具。`memoryflow`/`graphflow`/`importflow`/`connector` 各自也暴露自己的 toolbox。
+工具分组（100+ 个工具，进程内与 MCP 同名）：GraphRAG（`ingest_document`、`search_text`、`build_context`、`expand_graph`、`search_paths`、`find_nodes`、`delete_document_graph`）、统一检索（`cortex_query`）、knowledge/memory（`knowledge_save`、`memory_search` …）、KnowledgeMemory（`knowledge_memory_recall`、`_reflect`、`_consolidate`、`extract_conversation`）、KG（`knowledge_graph_query`、`_shacl_validate`、`apply_inference`）、ontology（`ontology_save`、`ontology_history`、`ontology_action_apply`、`object_set_resolve`）、历史（`graph_history`、`knowledge_graph_history`）、媒体（`ingest_media`、`search_media`）、导入的表（`imported_tables_list`、`_describe`、`_query`）、维护（`vector_dimension_repair`、`sweep_expired`）。`cortexdb-mcp-stdio` 这个二进制额外提供 `render_graph_html`（交互式知识图谱视图）、`serve_graph_3d`、`side_graph_*`、`import_agent_memory`，本地模式下还有 `global_search` / `build_community_hierarchy`；`db.NewMCPServer` 只提供 facade 自己的工具。`memoryflow`/`graphflow`/`importflow`/`connector` 各自也暴露自己的 toolbox。
 
 ### 实时视图
 
@@ -629,6 +632,45 @@ infinity 等带 `modality` 的 `/embeddings` 接口后面的 CLIP、SigLIP 或 C
 这个空间，可以用 `query` 文字，也可以把图片作为 `data`，找出看起来像它的图片和视频帧。
 没变的文件不会被再嵌入一次；换了模型会重新嵌入并替换它的向量。检索是精确扫描，适合一个
 媒体库，不适合上百万张图片。
+
+### 导入的表 —— 用 SQL 分析导入的数据
+
+导入会把每一行变成可检索的文字和可遍历的事实，但这两样都回答不了"各地区每月的平均订单金额"：
+那是对所有行做 `GROUP BY`，而检索只返回最相似的几条。所以 `importflow` 还可以把表原样保留成表。
+在方案里按表声明，或者一次性对所有表声明：
+
+```go
+plan := importflow.MappingPlan{Tables: map[string]importflow.TablePlan{
+    "orders": {RAG: &importflow.RAGPlan{ContentTmpl: "{note}"}, Table: &importflow.TableStorePlan{}},
+}}
+// 或：plan = importflow.KeepTables(plan, schemas)        方案没有跳过的每一张表
+// 或：Plan / AutoImport 时用 importflow.Goal{BuildTables: true}；importflow_run 传 "keep_tables": true
+rep, _ := importflow.New(db).Run(ctx, src, plan)           // rep.TablesStored、rep.TableRowsStored
+
+res, _ := db.QueryImportedTables(ctx, cortexdb.ImportedTableQueryRequest{SQL: `
+    SELECT region, strftime('%Y-%m', ordered_at) AS month, avg(total)
+    FROM orders GROUP BY region, month ORDER BY region, month`})
+```
+
+列类型用的是数据源本来就报告的类型（`integer`、`number`、`text`、`timestamp`；CSV 从取值推断，
+dump 读自 `CREATE TABLE`）。数字按数字存，空的数字单元格存成 NULL，时间戳按源里的文字存。
+同一张表再导入一次，会在本次导入结束时**整表替换**，和 RAG、KG 两个 sink 的效果一致
+（同一个 chunk id、同样的三元组）；导入中途失败，上一次导入的数据保持不变。
+
+给 agent 用的是三个只读工具：`imported_tables_list`（表、列、类型、行数、来源）、
+`imported_tables_describe`（一张表和它的前几行）、`imported_tables_query`（一条 SQLite `SELECT`：
+连接、CTE、窗口函数都可以，`params` 对应 `?`，`max_rows` 默认 200、最多 10000，`timeout_ms` 默认
+10 秒、最多 60 秒，结果被截断时带 `truncated`）。Go 里对应 `ListImportedTables`、
+`DescribeImportedTable`、`QueryImportedTables`、`DropImportedTable`。
+
+查询不能写，也读不到大脑的其他数据，而且这不是靠检查 SQL 文本做到的。数据行放在名为
+`imported_tbl_…` 的表里，在 `imported_tables` 注册表中按源里的名字登记；dump 里的名字从不直接
+用作表名。一次查询期间，连接上挂着 SQLite 的 authorizer：只放行 `SELECT` 和对这些表的读取，
+其他动作一律拒绝（写入、DDL、`PRAGMA`、`ATTACH`，以及读取 `messages`、`documents`、
+`sqlite_master`、虚拟表），同时打开 `PRAGMA query_only`，并用 progress handler 执行时间上限；
+SQL 文本必须恰好编译成一条只读语句。受限的 key（带 scope 的）不能调用这三个工具，因为导入的行
+没有 scope。只支持 SQLite：在 PostgreSQL 上这些调用返回 `ErrImportedTablesUnsupported`，
+不执行任何 SQL。
 
 ## Claude Code 和 Codex 插件
 

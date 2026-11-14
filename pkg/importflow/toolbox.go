@@ -23,29 +23,31 @@ func (t *Toolbox) Definitions() []cortexdb.ToolDefinition {
 	return []cortexdb.ToolDefinition{
 		{
 			Name:        "importflow_plan",
-			Description: "Infer a CortexDB import MappingPlan from CSV/SQL-dump schemas using the configured AI inferer.",
+			Description: "Infer a CortexDB import MappingPlan from CSV/SQL-dump schemas using the configured AI inferer. With build_tables the plan also keeps every table as a queryable table.",
 			InputSchema: ifObjectSchema(
 				[]string{"format", "data"},
 				map[string]any{
-					"format":    ifEnumSchema("Source format.", "csv", "dump"),
-					"table":     ifStringSchema("Logical table name for CSV input."),
-					"data":      ifStringSchema("Raw CSV text or SQL dump text."),
-					"build_rag": ifBoolSchema("Build RAG text index."),
-					"build_kg":  ifBoolSchema("Build knowledge-graph triples."),
-					"hint":      ifStringSchema("Domain hint for the inferer."),
+					"format":       ifEnumSchema("Source format.", "csv", "dump"),
+					"table":        ifStringSchema("Logical table name for CSV input."),
+					"data":         ifStringSchema("Raw CSV text or SQL dump text."),
+					"build_rag":    ifBoolSchema("Build RAG text index."),
+					"build_kg":     ifBoolSchema("Build knowledge-graph triples."),
+					"build_tables": ifBoolSchema("Also keep each table as a queryable table (see importflow_run keep_tables)."),
+					"hint":         ifStringSchema("Domain hint for the inferer."),
 				},
 			),
 		},
 		{
 			Name:        "importflow_run",
-			Description: "Run an import of CSV/SQL-dump data into CortexDB using a MappingPlan, building RAG and/or KG.",
+			Description: "Run an import of CSV/SQL-dump data into CortexDB using a MappingPlan, building RAG and/or KG. A table whose plan entry has \"table\": {} — or every table, with keep_tables — is also kept as a table with typed columns, which imported_tables_query can then aggregate, group and join in SQL; importing it again replaces its rows. A plan may hold nothing but that: {\"tables\": {}} with keep_tables stores the tables and builds neither RAG nor KG. Kept tables need a SQLite store.",
 			InputSchema: ifObjectSchema(
 				[]string{"format", "data", "plan"},
 				map[string]any{
-					"format": ifEnumSchema("Source format.", "csv", "dump"),
-					"table":  ifStringSchema("Logical table name for CSV input."),
-					"data":   ifStringSchema("Raw CSV text or SQL dump text."),
-					"plan":   ifObjectSchema(nil, map[string]any{"tables": map[string]any{"type": "object"}}),
+					"format":      ifEnumSchema("Source format.", "csv", "dump"),
+					"table":       ifStringSchema("Logical table name for CSV input."),
+					"data":        ifStringSchema("Raw CSV text or SQL dump text."),
+					"plan":        ifObjectSchema(nil, map[string]any{"tables": map[string]any{"type": "object"}}),
+					"keep_tables": ifBoolSchema("Keep every table of the source that the plan does not skip as a queryable table, whether or not the plan mentions it."),
 				},
 			),
 		},
@@ -95,15 +97,18 @@ type runInput struct {
 	Table  string      `json:"table"`
 	Data   string      `json:"data"`
 	Plan   MappingPlan `json:"plan"`
+	// KeepTables applies KeepTables to the plan over the source's schemas.
+	KeepTables bool `json:"keep_tables,omitempty"`
 }
 
 type planInput struct {
-	Format   string `json:"format"`
-	Table    string `json:"table"`
-	Data     string `json:"data"`
-	BuildRAG bool   `json:"build_rag"`
-	BuildKG  bool   `json:"build_kg"`
-	Hint     string `json:"hint"`
+	Format      string `json:"format"`
+	Table       string `json:"table"`
+	Data        string `json:"data"`
+	BuildRAG    bool   `json:"build_rag"`
+	BuildKG     bool   `json:"build_kg"`
+	BuildTables bool   `json:"build_tables,omitempty"`
+	Hint        string `json:"hint"`
 }
 
 func sourceFromInput(format, table, data string) (Source, error) {
@@ -122,12 +127,25 @@ func (t *Toolbox) callRun(ctx context.Context, input json.RawMessage) (any, erro
 	if err := json.Unmarshal(input, &in); err != nil {
 		return nil, err
 	}
+	return runFromInput(ctx, t.im, in)
+}
+
+// runFromInput is importflow_run, shared by the toolbox and the MCP server.
+func runFromInput(ctx context.Context, im *Importer, in runInput) (*Report, error) {
 	src, err := sourceFromInput(in.Format, in.Table, in.Data)
 	if err != nil {
 		return nil, err
 	}
 	defer src.Close()
-	return t.im.Run(ctx, src, in.Plan)
+	plan := in.Plan
+	if in.KeepTables {
+		schemas, err := src.Schemas(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("importflow: read schemas: %w", err)
+		}
+		plan = KeepTables(plan, schemas)
+	}
+	return im.Run(ctx, src, plan)
 }
 
 func (t *Toolbox) callPlan(ctx context.Context, input json.RawMessage) (any, error) {
@@ -140,7 +158,7 @@ func (t *Toolbox) callPlan(ctx context.Context, input json.RawMessage) (any, err
 		return nil, err
 	}
 	defer src.Close()
-	return t.im.Plan(ctx, src, Goal{BuildRAG: in.BuildRAG, BuildKG: in.BuildKG, Hint: in.Hint})
+	return t.im.Plan(ctx, src, Goal{BuildRAG: in.BuildRAG, BuildKG: in.BuildKG, BuildTables: in.BuildTables, Hint: in.Hint})
 }
 
 // --- local JSON-schema helpers (mirror cortexdb's unexported helpers) ---

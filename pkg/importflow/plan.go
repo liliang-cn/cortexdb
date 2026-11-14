@@ -2,16 +2,26 @@ package importflow
 
 import "strings"
 
-// MappingPlan declares, per table, how source rows route to RAG and KG.
+// MappingPlan declares, per table, how source rows route to RAG, to the KG,
+// and to a table kept as a table.
 type MappingPlan struct {
 	Tables map[string]TablePlan `json:"tables"`
 }
 
 // TablePlan is the per-table routing decision.
 type TablePlan struct {
-	Skip bool     `json:"skip,omitempty"`
-	RAG  *RAGPlan `json:"rag,omitempty"`
-	KG   *KGPlan  `json:"kg,omitempty"`
+	Skip  bool            `json:"skip,omitempty"`
+	RAG   *RAGPlan        `json:"rag,omitempty"`
+	KG    *KGPlan         `json:"kg,omitempty"`
+	Table *TableStorePlan `json:"table,omitempty"`
+}
+
+// TableStorePlan keeps the table's rows and columns as a queryable table
+// (cortexdb.DB.QueryImportedTables). Column types are the source schema's.
+// Importing the table again replaces its rows.
+type TableStorePlan struct {
+	// Name is the name to store the table under; default the source's.
+	Name string `json:"name,omitempty"`
 }
 
 // RAGPlan describes how a row becomes a retrievable text chunk.
