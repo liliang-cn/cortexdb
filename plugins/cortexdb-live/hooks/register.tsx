@@ -16,10 +16,12 @@ const FALLBACK_SERVER = 'plugin:cortexdb:cortexdb'
 const SHELL_HEADER = 'Relevant CortexDB memories for this prompt'
 const TOP_K = 3
 const SNIPPET = 220
-// Planning is worth a second, not more: past this the lexical plan stands in.
-const PLAN_TIMEOUT_MS = 2500
+// The planner answered inside 2.5 s for 48 of 561 logged recalls; the rest ran
+// on the lexical plan. Past this that plan stands in.
+const PLAN_TIMEOUT_MS = 5000
 // A recall runs before every prompt: past this the prompt goes on without it.
-const RECALL_BUDGET_MS = 6000
+// It leaves the search the same 3.5 s after the slowest plan.
+const RECALL_BUDGET_MS = 8500
 const STATS_EVERY_MS = 5 * 60 * 1000
 const CONNECT_RETRY_MS = 5 * 1000
 // session.end gets 1.5 s, too little for a model call, so a session is
