@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.152.0] - 2026-11-15
+
 ### Added
 
 - The Python client turns tool results into tables: `cortexdb_client.tabular.records()` returns the rows of `graph_cypher_query`, the groups of `aggregate_metadata`, search and recall hits and the `memory_list_all` / `graph_list_all` listings as flat dicts, `to_csv()` writes them with the standard library, and `to_pandas()` returns a DataFrame with the optional extra `cortexdb-client[pandas]`. The guide gains "Data analysis": reading a snapshot of the SQLite file with `sqlite3`, DuckDB and pandas — which table holds what, example queries, the vector encoding.
