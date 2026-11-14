@@ -24,6 +24,8 @@ Repository = "https://github.com/liliang-cn/cortexdb"
 
 [project.optional-dependencies]
 dev = ["grpcio-tools>=1.60", "build", "twine"]
+# tabular.to_pandas(); the rest of cortexdb_client.tabular needs nothing extra.
+pandas = ["pandas>=1.5"]
 
 [build-system]
 requires = ["hatchling"]
