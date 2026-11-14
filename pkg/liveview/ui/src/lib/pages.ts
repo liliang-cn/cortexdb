@@ -9,7 +9,7 @@
 // link to it. The graph and the entity page cannot be left out.
 
 /** The pages a host can leave out, by their path under the view's root. */
-export type OptionalPage = "changes" | "activity" | "recalls" | "library" | "ontology" | "ontology-history";
+export type OptionalPage = "changes" | "activity" | "recalls" | "library" | "ontology" | "ontology-history" | "analysis";
 
 const META = 'meta[name="cortexdb-hidden-pages"]';
 

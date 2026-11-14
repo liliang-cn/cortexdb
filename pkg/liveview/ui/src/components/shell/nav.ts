@@ -1,4 +1,4 @@
-import { Activity, GitCommitHorizontal, History, Library, Network, ScanSearch, Shapes, type LucideIcon } from "lucide-react";
+import { Activity, ChartColumn, GitCommitHorizontal, History, Library, Network, ScanSearch, Shapes, type LucideIcon } from "lucide-react";
 import { hiddenPages, pageShown } from "@/lib/pages";
 import type { NavKey } from "@/lib/shellStrings";
 
@@ -12,7 +12,8 @@ export interface NavItem {
 /**
  * The app's pages, in the groups the top bar separates: the brain as it is and
  * as it changes, then the views of it that each read one thing — the recall
- * log, the brain as a reading room, the declared model and its versions.
+ * log, the brain as a reading room, the declared model and its versions, and
+ * the brain in numbers.
  */
 export const NAV_GROUPS: NavItem[][] = [
   [
@@ -25,6 +26,7 @@ export const NAV_GROUPS: NavItem[][] = [
     { to: "/library", icon: Library },
     { to: "/ontology", icon: Shapes },
     { to: "/ontology-history", icon: History },
+    { to: "/analysis", icon: ChartColumn },
   ],
 ];
 
