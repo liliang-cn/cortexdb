@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.151.1] - 2026-11-14
+
 ### Changed
 
 - The cortexdb-live mod waits up to 5 s for its query planner, up from 2.5 s, and up to 8.5 s for the whole recall, up from 6 s. On the shared brain's recall log the planner had answered in time for 48 of 561 prompts; the rest were searched with the lexical plan.
