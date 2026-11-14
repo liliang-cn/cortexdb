@@ -65,7 +65,7 @@ func fetch(t *testing.T, url string, header map[string]string) (*http.Response, 
 
 func TestTheIndexIsServedOnEveryClientRouteAndNeverCached(t *testing.T) {
 	ts := serveApp(t, theApp, "")
-	for _, route := range []string{"/", "/changes", "/entity", "/activity", "/recalls", "/library", "/ontology", "/ontology-history"} {
+	for _, route := range []string{"/", "/changes", "/entity", "/activity", "/recalls", "/library", "/ontology", "/ontology-history", "/analysis"} {
 		resp, body := fetch(t, ts.URL+route, nil)
 		if resp.StatusCode != 200 || !strings.Contains(body, "<title>app</title>") {
 			t.Errorf("%s: %d %q", route, resp.StatusCode, body)
@@ -84,7 +84,7 @@ func TestTheIndexIsServedOnEveryClientRouteAndNeverCached(t *testing.T) {
 
 func TestTheIndexIsBasedAtTheMountPrefix(t *testing.T) {
 	ts := serveApp(t, theApp, "/graph")
-	for _, route := range []string{"/", "/changes", "/entity", "/activity", "/recalls", "/library", "/ontology", "/ontology-history"} {
+	for _, route := range []string{"/", "/changes", "/entity", "/activity", "/recalls", "/library", "/ontology", "/ontology-history", "/analysis"} {
 		_, body := fetch(t, ts.URL+"/graph"+route, nil)
 		if !strings.Contains(body, `<base href="/graph/" data-cortexdb-base>`) {
 			t.Errorf("/graph%s: base not rewritten to the mount prefix: %q", route, body)

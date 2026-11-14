@@ -535,9 +535,16 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
   schema 草稿供审阅，页面上不会保存它。有 schema 保存时页面会自己重读。
 - **Versions**（`/ontology-history`）：一个 schema 保存过的各个版本；任选两个比较，这一对版本
   会写进链接（`?schema=&from=&to=`）。
+- **Analysis**（`/analysis`）：用数字看大脑。概览画出写入的记忆（按作用域）、新增的文档、召回次数
+  和其中没有结果的次数、召回延迟（中位数和 p95）、变更日志里各类写入，以及图谱按类型的节点和边，
+  范围可选 7、30、90 天或全部。每张图走的都是其他页面已经在用的读取途径；数据源没开（比如大脑
+  没开召回日志）或者只能回溯到某一天时，图上会直接说明。探索用来拼一个 `aggregate_metadata`
+  问题：对某个元数据字段计数、求和、取平均值、中位数、p95、最小值或最大值，按字段分组、按时间
+  分桶，或两者都要，范围是文档或分块；结果同时画成图和表格，表格可以复制或下载为 CSV。整个问题
+  都写在链接里。它读的是知识库；记忆在另一张表里，数量在概览中。
 
-Recalls 和 Library 支持中文和英文，按 `?lang=`，否则按浏览器语言。这四个页面在第一次打开时
-才加载。
+Recalls、Library 和 Analysis 支持中文和英文，按 `?lang=`，否则按浏览器语言。这五个页面在
+第一次打开时才加载。
 
 应用由一条 Server-Sent Events 流 `/api/stream` 驱动。连接后先发 `snapshot`，带着拍快照时
 变更日志的游标；之后发 `delta`（图变了）、`activity` 和 `change` 事件，`change` 用自己的
@@ -570,9 +577,10 @@ sv, _ := liveview.New(ctx, src, 2*time.Second, false,
 去掉的页面不出现在导航、命令面板和路由里，其他页面也不会再链接到它，访问它的路径返回 404。
 只有它读的 API 也一起返回 404：去掉 Recalls 时是 `/api/recalls*`（图谱的"按召回着色"和召回回放
 也一起去掉），去掉 Library 时是 `/api/library*`，去掉 Versions 时是 `/api/ontology/history` 和
-`/api/ontology/diff`，Ontology 和 Versions 都去掉时才去掉 `/api/ontology`。去掉 Changes 时
+`/api/ontology/diff`，Ontology 和 Versions 都去掉时才去掉 `/api/ontology`，去掉 Analysis 时是
+`/api/analysis/*`。去掉 Changes 时
 `/api/changes` 保留，因为图谱的检查面板和实体页要读它。可以去掉的页面是 `PageChanges`、
-`PageActivity`、`PageRecalls`、`PageLibrary`、`PageOntology` 和 `PageVersions`；图谱和实体页
+`PageActivity`、`PageRecalls`、`PageLibrary`、`PageOntology`、`PageVersions` 和 `PageAnalysis`；图谱和实体页
 不能去掉，传其他名字时 `New` 会报错。`Start` 接受同样的选项。
 
 前端源码在 `pkg/liveview/ui`，构建结果提交在 `pkg/liveview/dist` 并嵌入二进制，所以

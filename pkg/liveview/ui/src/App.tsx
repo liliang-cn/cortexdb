@@ -13,7 +13,7 @@ import { useText } from "@/lib/i18n";
 import { pageShown } from "@/lib/pages";
 import { SHELL_TEXT } from "@/lib/shellStrings";
 
-// The recalls, ontology and versions pages are each a few hundred lines that
+// The recalls, ontology, versions and analysis pages are each a few hundred lines that
 // most visits never open, so they load when they are first visited rather
 // than with every page. (The graph and the library lazy-load their own scenes,
 // and three with them.)
@@ -22,6 +22,8 @@ const OntologyPage = lazy(() => import("@/pages/OntologyPage").then((m) => ({ de
 const OntologyHistoryPage = lazy(() =>
   import("@/pages/OntologyHistoryPage").then((m) => ({ default: m.OntologyHistoryPage })),
 );
+
+const AnalysisPage = lazy(() => import("@/pages/AnalysisPage").then((m) => ({ default: m.AnalysisPage })));
 
 function Loading({ children }: { children: ReactNode }) {
   const t = useText(SHELL_TEXT);
@@ -56,6 +58,7 @@ export function App() {
           {shown("/library") && <Route path="library" element={<LibraryPage />} />}
           {shown("/ontology") && <Route path="ontology" element={<Loading><OntologyPage /></Loading>} />}
           {shown("/ontology-history") && <Route path="ontology-history" element={<Loading><OntologyHistoryPage /></Loading>} />}
+          {shown("/analysis") && <Route path="analysis" element={<Loading><AnalysisPage /></Loading>} />}
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

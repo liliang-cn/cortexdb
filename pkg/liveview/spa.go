@@ -16,8 +16,9 @@ package liveview
 //   - Build files are named by a hash of their content, so they are cached for
 //     good (immutable) and compressed once.
 //   - The app's own routes (/, /changes, /entity, /activity, /recalls,
-//     /library, /ontology, /ontology-history) all answer with the index and
-//     the router takes it from there. The last four were pages of their own,
+//     /library, /ontology, /ontology-history, /analysis) all answer with the
+//     index and the router takes it from there. Recalls, the library, the
+//     ontology and its versions were pages of their own,
 //     written into Go strings, until the app took them over; their paths and
 //     query options are unchanged, so a bookmark or a link from a tool's
 //     answer (serve_graph_3d's library_url, /recalls?trace=) still lands.
@@ -77,6 +78,7 @@ func rebase(index []byte, prefix string, hidden []Page) []byte {
 var spaRoutes = map[string]bool{
 	"/": true, "/changes": true, "/entity": true, "/activity": true,
 	"/recalls": true, "/library": true, "/ontology": true, "/ontology-history": true,
+	"/analysis": true,
 }
 
 // mountPrefix is what a parent mux stripped from the request's path before the

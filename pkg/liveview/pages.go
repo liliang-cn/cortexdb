@@ -49,12 +49,16 @@ const (
 	// PageVersions is every saved version of a schema and what changed
 	// between them; "Versions" in the navigation.
 	PageVersions Page = "ontology-history"
+	// PageAnalysis is the brain in numbers: the overview's charts and the
+	// builder over aggregate_metadata.
+	PageAnalysis Page = "analysis"
 )
 
 // optionalPages is every page WithoutPages accepts.
 var optionalPages = map[Page]bool{
 	PageChanges: true, PageActivity: true, PageRecalls: true,
 	PageLibrary: true, PageOntology: true, PageVersions: true,
+	PageAnalysis: true,
 }
 
 // Option configures a view built by New or Start.

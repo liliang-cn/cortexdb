@@ -25,7 +25,7 @@ describe("pages a host left out", () => {
   });
 
   it("drops a left-out page from the navigation, and a group left empty with it", () => {
-    const groups = visibleNav(NAV_GROUPS, parseHiddenPages("recalls library ontology ontology-history"));
+    const groups = visibleNav(NAV_GROUPS, parseHiddenPages("recalls library ontology ontology-history analysis"));
     expect(groups.map((g) => g.map((i) => i.to))).toEqual([["/", "/changes", "/activity"]]);
     expect(visibleNav(NAV_GROUPS, parseHiddenPages(""))).toEqual(NAV_GROUPS);
   });

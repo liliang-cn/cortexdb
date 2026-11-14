@@ -680,9 +680,21 @@ Changing the token signs every browser out.
   page saves it. The page reads itself again when a schema is saved.
 - **Versions** (`/ontology-history`): a schema's saved versions; pick two to
   compare, and the pair stays in the link (`?schema=&from=&to=`).
+- **Analysis** (`/analysis`): the brain in numbers. The overview charts memories
+  written (by scope), documents added, recalls and how many returned nothing,
+  recall latency (median and p95), writes by kind from the change feed, and the
+  graph's nodes and edges by type, over 7, 30 or 90 days or all time. Each
+  chart reads through a door another page already uses, and says so when its
+  source is off (a brain without a recall log) or reaches back only so far.
+  Explore builds one `aggregate_metadata` question: a count, sum, average,
+  median, p95, minimum or maximum of a metadata field, grouped by a field, a
+  time bucket or both, over documents or chunks, drawn as a chart and as a
+  table that copies and downloads as CSV. The question is in the link. It
+  reads the knowledge store; memories are a separate table and are counted in
+  the overview.
 
-Recalls and Library speak Chinese and English, by `?lang=` or else the
-browser's language. These four load when first visited.
+Recalls, Library and Analysis speak Chinese and English, by `?lang=` or else
+the browser's language. These five load when first visited.
 
 The app is fed by one Server-Sent Events stream, `/api/stream`. It opens with a
 `snapshot` that carries the change-log cursor it was taken at, then sends
@@ -725,10 +737,12 @@ router, no other page links to it, and its path answers 404. So do the API
 routes only it reads: `/api/recalls*` with Recalls (which also takes the graph's
 colour-by-recalls mode and recall replay), `/api/library*` with Library,
 `/api/ontology/history` and `/api/ontology/diff` with Versions, and
-`/api/ontology` once both Ontology and Versions are out. `/api/changes` stays
+`/api/ontology` once both Ontology and Versions are out, and `/api/analysis/*`
+with Analysis. `/api/changes` stays
 when Changes is left out, because the graph's inspector and the entity page
 read it. The pages that can be left out are `PageChanges`, `PageActivity`,
-`PageRecalls`, `PageLibrary`, `PageOntology` and `PageVersions`; the graph and
+`PageRecalls`, `PageLibrary`, `PageOntology`, `PageVersions` and
+`PageAnalysis`; the graph and
 the entity page cannot be, and `New` refuses any other name. `Start` takes the
 same options.
 

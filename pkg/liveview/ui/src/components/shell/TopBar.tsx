@@ -44,7 +44,8 @@ export function TopBar() {
         <Wordmark />
       </Link>
 
-      <nav aria-label={t.pages} className="hidden items-center lg:flex">
+      {/* Eight pages, the counts and the controls fit one line from 1280px; below that the pages are in the menu. */}
+      <nav aria-label={t.pages} className="hidden items-center xl:flex">
         {NAV.map((group, i) => (
           <Fragment key={i}>
             {i > 0 && <span aria-hidden className="mx-2 h-4 w-px bg-border" />}
@@ -70,7 +71,7 @@ export function TopBar() {
         <ConnectionPill />
         <LangToggle />
         <ThemeToggle />
-        <Button variant="ghost" size="icon" className="lg:hidden" aria-label={t.menu} onClick={() => setOpen(true)}>
+        <Button variant="ghost" size="icon" className="xl:hidden" aria-label={t.menu} onClick={() => setOpen(true)}>
           <Menu />
         </Button>
       </div>

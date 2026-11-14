@@ -137,8 +137,8 @@ type Source struct {
 	Draft func(ctx context.Context, q OntologyDraftQuery) (OntologyDraftView, error)
 	// Call runs one of the brain's read-only tools for the page — find,
 	// expand, ask, Cypher; see explore.go. Nil hides those controls. The
-	// callers this package builds refuse every tool not on [ExploreTools] or
-	// [RecallTools].
+	// callers this package builds refuse every tool not on [ExploreTools],
+	// [RecallTools] or [AnalysisTools].
 	Call  Caller
 	Close func() error
 }
@@ -212,6 +212,8 @@ type Server struct {
 	// token is the access token every route asks for; empty serves anyone who
 	// can reach the listener (access.go).
 	token string
+	// analysis keeps the analysis page's scans between requests (analysis.go).
+	analysis analysisState
 }
 
 // fullReadEvery bounds how stale the view can be when the feed says nothing
@@ -318,6 +320,10 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 	mux.HandleFunc("/api/recalls/heat", s.serves(s.handleRecallHeat, PageRecalls))
 	mux.HandleFunc("/api/recalls/feedback", s.serves(s.handleRecallFeedback, PageRecalls))
 	mux.HandleFunc("/api/recalls/golden", s.serves(s.handleRecallGolden, PageRecalls))
+	// The analysis page: the overview's charts and the builder. See analysis.go.
+	mux.HandleFunc("/api/analysis/overview", s.serves(s.handleAnalysisOverview, PageAnalysis))
+	mux.HandleFunc("/api/analysis/fields", s.serves(s.handleAnalysisFields, PageAnalysis))
+	mux.HandleFunc("/api/analysis/query", s.serves(s.handleAnalysisQuery, PageAnalysis))
 	s.mux = mux
 
 	go s.poll(ctx)

@@ -11,7 +11,8 @@
 // embedded, so installing the module needs no Node. Go serves only /api/*, the
 // app's hashed build files under /assets/ (cached for good, compressed once),
 // and the app's own routes (/, /changes, /entity, /activity, /recalls,
-// /library, /ontology, /ontology-history), which all answer with the index.
+// /library, /ontology, /ontology-history, /analysis), which all answer with
+// the index.
 // The index is never cached and carries one tag the server rewrites,
 // <base href="/" data-cortexdb-base>: when the view is mounted under a prefix
 // of another mux, the prefix the mux stripped becomes the base, and since
@@ -181,7 +182,8 @@
 // [Source.Call] — the toolbox for a local file, the ToolsService for a shared
 // brain — so a shared brain also gets the inspector it lacked. Only tools on
 // [ExploreTools] can be run that way, every one a read, beside the recall-log
-// tools of [RecallTools] (recalls.go). Every starting point is
+// tools of [RecallTools] (recalls.go) and the analysis page's
+// [AnalysisTools] (analysis.go). Every starting point is
 // a URL parameter too (?focus, ?ask, ?cypher, ...), so a view is a link that
 // can be shared, and on a phone the inspector is a bottom sheet and the corner
 // panels start folded.
@@ -192,6 +194,14 @@
 // hit (useful or noise) that downloads as recall-eval golden cases. The graph
 // page shades nodes by how often recalls reached them (?color=recalls) and
 // replays one recall (?replay=<id>). See recalls.go.
+//
+// A page at /analysis shows the brain in numbers: an overview of charts
+// (memories written, documents added, recalls and their latency, writes by
+// kind, the graph by type) and a builder that asks aggregate_metadata one
+// question and draws the answer. Every number comes through a hook another
+// page already reads — [Source.Call] with the tools of [AnalysisTools],
+// [Source.ChangeLog], [Source.Ontology] — so a Source gets the charts its
+// hooks can fill and the rest say why they are empty. See analysis.go.
 //
 // A caller supplies a [Source], which is anything that can read nodes and
 // edges. [OpenSource] builds one from the ambient CortexDB configuration

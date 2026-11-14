@@ -64,6 +64,21 @@
   --link-wait: #b45309;
   --link-pinned: #4f46e5;
   --link-off: #b42318;
+
+  /*
+   * Chart series, in a fixed order: a chart takes them from the first and
+   * never cycles, and the eighth series and beyond are folded into "other".
+   * The order is what keeps neighbours apart under colour-blindness; both
+   * themes were checked as sets against their card surface.
+   */
+  --chart-1: #4f46e5;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-6: #008300;
+  --chart-7: #2a78d6;
+  --chart-other: #8f9bb0;
 }
 
 .dark {
@@ -111,6 +126,15 @@
   --link-wait: #fbbf24;
   --link-pinned: #8b85f7;
   --link-off: #f87171;
+
+  --chart-1: #857ef5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #0ca30c;
+  --chart-7: #3987e5;
+  --chart-other: #64708a;
 }
 
 @theme inline {
@@ -200,6 +224,15 @@
   --color-link-wait: var(--link-wait);
   --color-link-pinned: var(--link-pinned);
   --color-link-off: var(--link-off);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-other: var(--chart-other);
 
   /* A row that just arrived: a wash of the accent that fades out. */
   --animate-arrive: arrive 2.6s ease-out;
