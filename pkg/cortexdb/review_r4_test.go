@@ -152,7 +152,7 @@ func TestAnAcceptedFilterOnTheAggregatesCountsTheDocumentsWithNoStatus(t *testin
 			t.Fatal(err)
 		}
 		filter := map[string]string{reviewStatusKey: ReviewAccepted}
-		agg, err := db.GraphRAGTools().AggregateMetadata(ctx(), ToolAggregateMetadataRequest{Type: "count", Filters: filter})
+		agg, err := db.GraphRAGTools().AggregateMetadata(ctx(), ToolAggregateMetadataRequest{Type: "count", Filters: map[string]any{reviewStatusKey: ReviewAccepted}})
 		if err != nil || agg.Results[0].Count != 3 {
 			t.Errorf("gate %v: aggregate_metadata accepted counted %+v (%v), want k-plain, k-empty and k-acc", gate, agg, err)
 		}

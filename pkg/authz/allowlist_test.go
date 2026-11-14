@@ -462,6 +462,7 @@ func TestAConfinedKeyDeclaresNoEntityOrRelationAndNoEngineKey(t *testing.T) {
 		{notes, "knowledge_save", `{"knowledge_id":"n1","collection":"notes","content":"Project Nightshade is a name I heard.","metadata":{"color":"blue"}}`},
 		{hermes, "memory_save", `{"memory_id":"m1","user_id":"hermes","content":"x","metadata":{"document_id":"a reference of mine"}}`},
 		{notes, "aggregate_metadata", `{"collection":"notes","type":"group_by","group_by":["document_id"],"filters":{"document_id":"n1"}}`},
+		{notes, "aggregate_metadata", `{"collection":"notes","measures":[{"type":"count"},{"type":"percentile","field":"latency","percentile":95,"alias":"p95"}],"time_bucket":{"unit":"month","field":"at","alias":"m","timezone":"UTC"},"group_by":["kind"],"filters":{"score":{"gte":0.5},"kind":{"in":["a","b"]}},"created_since":"2026-10-01","created_before":"2026-11-01","order_by":"p95","order":"asc"}`},
 	} {
 		if err := c.key.AuthorizeToolArgs(c.tool, []byte(c.args)); err != nil {
 			t.Errorf("%s %s: the caller's own data was refused: %v", c.key.ID, c.tool, err)

@@ -33,6 +33,11 @@ import (
 func (db *DB) Aggregate(ctx context.Context, req core.AggregationRequest) (*core.AggregationResponse, error) {
 	want, statusFiltered := req.Filters[reviewStatusKey]
 	if statusFiltered {
+		// The status is read off the document, not the row, so it is a
+		// condition of its own and takes a status, not an operator object.
+		if _, isOperators := want.(map[string]interface{}); isOperators {
+			return nil, fmt.Errorf("a filter on %s takes a plain status value, not an operator object", reviewStatusKey)
+		}
 		req.Filters = withoutKey(req.Filters, reviewStatusKey)
 		req.OnlyDocuments, req.OnlyDocumentsArgs = db.reviewStatusIs(want)
 	}
@@ -127,13 +132,27 @@ func (db *DB) VectorAggregate(ctx context.Context, req core.VectorAggregateReque
 // ToolAggregateMetadataRequest asks a question about a metadata field across
 // the whole store rather than about one query's neighbourhood.
 type ToolAggregateMetadataRequest struct {
-	Type       string            `json:"type"`
-	Field      string            `json:"field,omitempty"`
-	GroupBy    []string          `json:"group_by,omitempty"`
-	Filters    map[string]string `json:"filters,omitempty"`
-	Collection string            `json:"collection,omitempty"`
-	OrderBy    string            `json:"order_by,omitempty"`
-	Limit      int               `json:"limit,omitempty"`
+	// Type is the single aggregation; not needed when Measures is set.
+	Type    string   `json:"type,omitempty"`
+	Field   string   `json:"field,omitempty"`
+	GroupBy []string `json:"group_by,omitempty"`
+	// Filters maps a metadata field to a value it must equal, or to an
+	// operator object such as {"gte": 0.5, "lt": 1}; see
+	// core.AggregationRequest and aggregate_measures.go for the operators.
+	Filters    map[string]any `json:"filters,omitempty"`
+	Collection string         `json:"collection,omitempty"`
+	OrderBy    string         `json:"order_by,omitempty"`
+	Order      string         `json:"order,omitempty"`
+	Limit      int            `json:"limit,omitempty"`
+	// Measures are computed together per group, each reported under its
+	// alias in the group's Values.
+	Measures []core.AggregationMeasure `json:"measures,omitempty"`
+	// TimeBucket groups by a timestamp truncated to day, week, month or year.
+	TimeBucket *core.AggregationTimeBucket `json:"time_bucket,omitempty"`
+	// CreatedSince (inclusive) and CreatedBefore (exclusive) bound the row's
+	// own created-at time.
+	CreatedSince  string `json:"created_since,omitempty"`
+	CreatedBefore string `json:"created_before,omitempty"`
 	// IncludeProposed counts the proposed documents too under the review
 	// gate; rejected ones stay out.
 	IncludeProposed bool `json:"include_proposed,omitempty"`
@@ -144,6 +163,13 @@ type ToolAggregateMetadataGroup struct {
 	Keys  map[string]any `json:"keys,omitempty"`
 	Value any            `json:"value,omitempty"`
 	Count int            `json:"count"`
+	// Values holds every measure by alias when the request asked for
+	// measures, a time bucket, a created-at bound or an operator filter. A
+	// measure over no numeric value is null.
+	Values map[string]any `json:"values,omitempty"`
+	// Skipped is, per measure alias, how many of the group's rows carried the
+	// field with a value that is not a number and were left out of it.
+	Skipped map[string]int `json:"skipped,omitempty"`
 }
 
 // ToolAggregateMetadataResponse carries the rows and how many there were.
@@ -155,22 +181,40 @@ type ToolAggregateMetadataResponse struct {
 // AggregateMetadata answers a counting question for a tool caller.
 func (t *GraphRAGToolbox) AggregateMetadata(ctx context.Context, req ToolAggregateMetadataRequest) (*ToolAggregateMetadataResponse, error) {
 	ctx = includeProposed(ctx, req.IncludeProposed)
-	// The tool takes string values because that is what a metadata equality
-	// filter compares against in storage; core's map is `any` for callers that
-	// already hold typed values.
+	// A string is an equality filter, compared as text because that is what
+	// metadata is in storage, and an object is an operator object. A bare
+	// number or boolean is the eq operator, so that it compares by value: as
+	// a plain equality it would be compared against the stored text and
+	// match nothing.
 	filters := make(map[string]any, len(req.Filters))
 	for k, v := range req.Filters {
-		filters[k] = v
+		switch v.(type) {
+		case string, map[string]any:
+			filters[k] = v
+		case float64, int, int64, bool:
+			if k == reviewStatusKey {
+				filters[k] = v
+				continue
+			}
+			filters[k] = map[string]any{"eq": v}
+		default:
+			return nil, fmt.Errorf("a filter value must be a string, a number, a boolean or an operator object such as {\"gte\": 1}")
+		}
 	}
 
 	res, err := t.db.Aggregate(ctx, core.AggregationRequest{
-		Type:       core.AggregationType(req.Type),
-		Field:      req.Field,
-		GroupBy:    req.GroupBy,
-		Filters:    filters,
-		Collection: req.Collection,
-		OrderBy:    req.OrderBy,
-		Limit:      req.Limit,
+		Type:          core.AggregationType(req.Type),
+		Field:         req.Field,
+		GroupBy:       req.GroupBy,
+		Filters:       filters,
+		Collection:    req.Collection,
+		OrderBy:       req.OrderBy,
+		Order:         req.Order,
+		Limit:         req.Limit,
+		Measures:      req.Measures,
+		TimeBucket:    req.TimeBucket,
+		CreatedSince:  req.CreatedSince,
+		CreatedBefore: req.CreatedBefore,
 	})
 	if err != nil {
 		return nil, err
@@ -178,7 +222,7 @@ func (t *GraphRAGToolbox) AggregateMetadata(ctx context.Context, req ToolAggrega
 
 	out := make([]ToolAggregateMetadataGroup, 0, len(res.Results))
 	for _, r := range res.Results {
-		out = append(out, ToolAggregateMetadataGroup{Keys: r.GroupKeys, Value: r.Value, Count: r.Count})
+		out = append(out, ToolAggregateMetadataGroup{Keys: r.GroupKeys, Value: r.Value, Count: r.Count, Values: r.Values, Skipped: r.Skipped})
 	}
 	return &ToolAggregateMetadataResponse{Results: out, Total: res.Total}, nil
 }

@@ -179,7 +179,7 @@ func TestAStatusFilterOnTheAggregatesListsWhatWaits(t *testing.T) {
 	}
 	tools := db.GraphRAGTools()
 	count := func(status string) int {
-		resp, err := tools.AggregateMetadata(c, ToolAggregateMetadataRequest{Type: "count", Collection: "ops", Filters: map[string]string{reviewStatusKey: status}})
+		resp, err := tools.AggregateMetadata(c, ToolAggregateMetadataRequest{Type: "count", Collection: "ops", Filters: map[string]any{reviewStatusKey: status}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -200,7 +200,7 @@ func TestAStatusFilterOnTheAggregatesListsWhatWaits(t *testing.T) {
 	}
 	// The caller's other keys stay in the filter beside the status.
 	both := map[string]string{reviewStatusKey: ReviewProposed, "document_id": "c-prop"}
-	agg, err := tools.AggregateMetadata(c, ToolAggregateMetadataRequest{Type: "count", Collection: "ops", Filters: both})
+	agg, err := tools.AggregateMetadata(c, ToolAggregateMetadataRequest{Type: "count", Collection: "ops", Filters: map[string]any{reviewStatusKey: ReviewProposed, "document_id": "c-prop"}})
 	if err != nil || agg.Results[0].Count != 1 {
 		t.Fatalf("aggregate_metadata with the status and a document_id counted %+v (%v), want 1", agg, err)
 	}
@@ -236,7 +236,7 @@ func TestTheCuratorListFollowsTheDecisionOnTheRecord(t *testing.T) {
 	if _, err := db.UpdateKnowledge(c, KnowledgeUpdateRequest{KnowledgeID: "d", ReviewStatus: ReviewRejected, ReviewedBy: "r"}); err != nil {
 		t.Fatal(err)
 	}
-	waiting, err := tools.AggregateMetadata(c, ToolAggregateMetadataRequest{Type: "group_by", GroupBy: []string{"document_id"}, Collection: "ops", Filters: map[string]string{reviewStatusKey: ReviewProposed}})
+	waiting, err := tools.AggregateMetadata(c, ToolAggregateMetadataRequest{Type: "group_by", GroupBy: []string{"document_id"}, Collection: "ops", Filters: map[string]any{reviewStatusKey: ReviewProposed}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +248,7 @@ func TestTheCuratorListFollowsTheDecisionOnTheRecord(t *testing.T) {
 	if got := strings.Join(ids, ","); got != "b,c" {
 		t.Fatalf("the curator list after a decision holds %q, want b,c", got)
 	}
-	rejected, err := tools.AggregateMetadata(c, ToolAggregateMetadataRequest{Type: "count", Collection: "ops", Filters: map[string]string{reviewStatusKey: ReviewRejected}})
+	rejected, err := tools.AggregateMetadata(c, ToolAggregateMetadataRequest{Type: "count", Collection: "ops", Filters: map[string]any{reviewStatusKey: ReviewRejected}})
 	if err != nil || rejected.Results[0].Count != 1 {
 		t.Fatalf("rejected count %+v %v, want d's one chunk", rejected, err)
 	}

@@ -42,6 +42,23 @@ type AggregationRequest struct {
 	OnlyDocumentsArgs []interface{} `json:"-"`
 	OrderBy           string        `json:"order_by"` // Field to order results by
 	Limit             int           `json:"limit"`    // Max results
+
+	// The options below are answered by aggregate_measures.go; a request
+	// that sets none of them is answered as it always was. A filter whose
+	// value is an operator object ({"gte": 0.5}) is one of them too.
+
+	// Measures are computed together for every group. With Measures set,
+	// Type and Field are not read.
+	Measures []AggregationMeasure `json:"measures,omitempty"`
+	// TimeBucket adds a group key: a timestamp truncated to a unit.
+	TimeBucket *AggregationTimeBucket `json:"time_bucket,omitempty"`
+	// CreatedSince (inclusive) and CreatedBefore (exclusive) bound the row's
+	// own created-at time: RFC 3339, or a YYYY-MM-DD date read as UTC.
+	CreatedSince  string `json:"created_since,omitempty"`
+	CreatedBefore string `json:"created_before,omitempty"`
+	// Order is asc or desc. Without it a time series reads oldest first and
+	// everything else largest first.
+	Order string `json:"order,omitempty"`
 }
 
 // AggregationResult represents a single aggregation result
@@ -49,6 +66,12 @@ type AggregationResult struct {
 	GroupKeys map[string]interface{} `json:"group_keys"` // Group by field values
 	Value     interface{}            `json:"value"`      // Aggregated value
 	Count     int                    `json:"count"`      // Number of items in group
+	// Values holds every measure by its alias when the request used the
+	// measure path; Value is then the first of them.
+	Values map[string]interface{} `json:"values,omitempty"`
+	// Skipped says, per measure alias, how many rows of the group carried
+	// the field with a value that is not a number and were left out.
+	Skipped map[string]int `json:"skipped,omitempty"`
 }
 
 // AggregationResponse contains the aggregation results
@@ -70,6 +93,14 @@ func (s *SQLiteStore) Aggregate(ctx context.Context, req AggregationRequest) (*A
 	// Validate request
 	if err := validateAggregationRequest(req); err != nil {
 		return nil, wrapError("aggregate", err)
+	}
+
+	if req.usesMeasurePath() {
+		res, err := s.aggregateMeasures(ctx, req)
+		if err != nil {
+			return nil, wrapError("aggregate", err)
+		}
+		return res, nil
 	}
 
 	switch req.Type {
@@ -457,7 +488,7 @@ func validateSQLIdentifier(role, name string) error {
 
 // validateAggregationRequest validates the aggregation request
 func validateAggregationRequest(req AggregationRequest) error {
-	if req.Type == "" {
+	if req.Type == "" && !req.usesMeasurePath() {
 		return fmt.Errorf("aggregation type is required")
 	}
 
@@ -487,6 +518,11 @@ func validateAggregationRequest(req AggregationRequest) error {
 		if err := validateMetadataIdentifier("filter", k); err != nil {
 			return err
 		}
+	}
+
+	if len(req.Measures) > 0 {
+		// The measures say what is computed; compileMeasurePlan checks them.
+		return nil
 	}
 
 	// Validate field requirement for certain aggregations
