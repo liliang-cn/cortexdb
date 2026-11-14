@@ -33,6 +33,14 @@ func (s *PostgresStore) Aggregate(ctx context.Context, req AggregationRequest) (
 		return nil, wrapError("aggregate", err)
 	}
 
+	if req.usesMeasurePath() {
+		res, err := s.aggregateMeasures(ctx, req)
+		if err != nil {
+			return nil, wrapError("aggregate", err)
+		}
+		return res, nil
+	}
+
 	switch req.Type {
 	case AggregationCount:
 		return s.aggregateCount(ctx, req)

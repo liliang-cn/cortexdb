@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 - The Python client turns tool results into tables: `cortexdb_client.tabular.records()` returns the rows of `graph_cypher_query`, the groups of `aggregate_metadata`, search and recall hits and the `memory_list_all` / `graph_list_all` listings as flat dicts, `to_csv()` writes them with the standard library, and `to_pandas()` returns a DataFrame with the optional extra `cortexdb-client[pandas]`. The guide gains "Data analysis": reading a snapshot of the SQLite file with `sqlite3`, DuckDB and pandas — which table holds what, example queries, the vector encoding.
 
+- `aggregate_metadata` (`db.Aggregate`) answers analysis questions in one call: several `measures` per group (count, sum, avg, min, max, median, any percentile such as `p95`, stddev), a `time_bucket` by day, week, month or year on the record's stored time or on a metadata timestamp, `created_since` / `created_before`, an `order`, and filters with operators (`eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `exists`). In such a request a value that is not a number is left out of a measure and counted in `skipped`, not read as 0. Requests without the new options are answered as before. For Go callers, `ToolAggregateMetadataRequest.Filters` is now `map[string]any`.
+
 ## [2.151.1] - 2026-11-14
 
 ### Changed

@@ -32,7 +32,26 @@
 - **历史** — 实体、关系、三元组、schema 的每个版本，以及现在生效的是哪一个：`graph_history`（按主语和谓词归成线，每个当前版本带 `in_effect` 原因）、`knowledge_graph_history`，SPARQL、查找、展开和 Cypher 工具上的 `as_of`，ontology 工具上的 `ontology_history` 与 `version` / `as_of` / `from_version`。实时视图有实体时间线、As of 固定时刻和 ontology 版本列表。详见下文“历史”一节。
 - **流水线** — `memoryflow`(转录 → 召回 → 唤醒 → 晋升)、`graphflow`(语料 → 图 → HTML 报告)、`importflow`(CSV / SQL dump / 在线 Postgres-MySQL → RAG + KG)、`connector`(PII 脱敏、签名计划、可逆保险库、CDC 同步)。
 - **工具与 MCP** — 100+ 工具,进程内与 MCP 同名同义,另有交互式图谱视图 `render_graph_html`,实时 3D 视图 `serve_graph_3d`(可在全库查找、提问、用 Cypher 查询、逐个节点展开邻居;只读、适配手机,每个视角都是可分享的链接:`?focus=`、`?ask=`、`?cypher=`;也可以切成按项目上架的记忆图书馆),`import_agent_memory`(把 Claude Code 和 Codex 已有的记忆导进来:记忆笔记、`CLAUDE.md` / `AGENTS.md`、Codex 的记忆库,按需把历史会话提炼成记忆),以及会分页的批量列举工具 `memory_list_all`、`graph_list_all`——`graph_list_all` 默认只给连接最密的核心子图,传 `order: "id"` 才会逐页走完整张图,像 `memory_list_all` 一样返回 `next_cursor`。
-- **对整个库发问** — 检索回答"什么与这个查询相关"，这几个回答"里面有什么"。*范围*检索返回距离查询一定距离内的全部、以外的一个不要，当 top-K 只是在编造一个 K 时这才是诚实的答案（`search_vector_range`，而且响应会说明是否有匹配被上限挡住）。`Aggregate` 按元数据字段计数、求和、分组（`aggregate_metadata`）。`VectorAggregate` 归约向量本身 —— 质心、几何中位数，以及 **medoid**：组内距离其余成员最近的那条**真实记录**，它用算术回答"这批近重复里哪条是正本""这一簇到底在讲什么"，全程不需要模型（`representative_records`）。两个后端行为一致，每种行为一份测试体、两边都跑。
+- **对整个库发问** — 检索回答"什么与这个查询相关"，这几个回答"里面有什么"。*范围*检索返回距离查询一定距离内的全部、以外的一个不要，当 top-K 只是在编造一个 K 时这才是诚实的答案（`search_vector_range`，而且响应会说明是否有匹配被上限挡住）。`Aggregate` 按元数据字段计数、求和、分组（`aggregate_metadata`）；做数据分析时，一次调用可以为每个分组同时算多个 `measures`（count、sum、avg、min、max、median、任意百分位、stddev），按 `time_bucket` 分桶（日、周、月、年，取记录的写入时间或某个元数据时间字段），用 `created_since` / `created_before` 限定时间，过滤条件支持运算符（`eq`、`neq`、`gt`、`gte`、`lt`、`lte`、`in`、`exists`）—— 见下面的例子。`VectorAggregate` 归约向量本身 —— 质心、几何中位数，以及 **medoid**：组内距离其余成员最近的那条**真实记录**，它用算术回答"这批近重复里哪条是正本""这一簇到底在讲什么"，全程不需要模型（`representative_records`）。两个后端行为一致，每种行为一份测试体、两边都跑。
+
+  按月、按 kind 统计十月以来写入的 incident 和 note：条数、平均 score、p95 延迟：
+
+  ```json
+  {
+    "measures": [
+      {"type": "count"},
+      {"type": "avg", "field": "score"},
+      {"type": "p95", "field": "latency_ms"}
+    ],
+    "time_bucket": {"unit": "month"},
+    "group_by": ["kind"],
+    "filters": {"kind": {"in": ["incident", "note"]}},
+    "created_since": "2026-10-01"
+  }
+  ```
+
+  每条结果带 `keys`（`{"month": "2026-10", "kind": "incident"}`）、`count` 和 `values`（`{"count": 3, "avg_score": 0.7, "p95_latency_ms": 462}`）。这类请求里，measure 只读数值 —— JSON 数字，或整体是十进制数的字符串；其他值不参与计算，不会被当成 0，并按 measure 计入 `skipped`；没有任何数值可算时结果是 `null`。百分位是精确值（线性插值）；为此需要保留超过 2,000,000 个值、或分组超过 100,000 个的请求会被拒绝。只带单个 `type`、不用上述任何选项的请求和以前一样回答，包括把非数值当作 0 的旧行为。
+
 - **图自己描述自己** — `graph_schema` 报告**观察到的** schema（有哪些节点类型和边类型、每种边实际连接哪对类型、每种节点带哪些属性键），`graph_property_values` 报告某个键实际取哪些值——因为照着键名写的过滤（`color == "black"` 而库里存的是 `BLK`）返回空，而空看起来像个事实。声明的本体是可选的，恰恰在"没人知道形状"的那些图上不存在；这个是从行里量出来的，还附带一份**可以直接贴进 prompt** 的文本形式。同组还有 `rank_graph_nodes`（这个大脑在结构上到底关于什么；结果带计算时间缓存，只在图变了之后才重算）、`graph_statistics`（连通分量远大于 1 说明实体写进去了却从没被连上）、`graph_health`（按 producer 的增长突增、度数长尾里的枢纽节点、每天的 supersede 次数、单值关系同时存在多个值）和 `predict_graph_edges`（缺的事实，或同一实体存了两份）。
 - **整库问题** — `global_search` 把 GraphRAG 全局检索做成调用方显式选择的工具：`build_community_hierarchy` 用 Leiden 保留每一层社区（每一层的每个社区都内部连通，Louvain 保证不了这一点），自底向上写社区报告；`global_search` 在指定 `level` 的报告上做 map-reduce。有模型时由模型写报告和答案，没有模型时报告按确定性规则生成，按词面相关度排序后原样返回，不做综合。
 - **沿着图走的检索** — `retrieval_mode: "ppr"` 从问题点名的实体出发做个性化 PageRank（HippoRAG 2 的做法），再和词法或混合检索的第一阶段结果按排名融合。没有 embedder 时，问题点名了足够具体的实体（不是大多数段落都提到的那种，比如对话里的说话人），`auto` 就走这条路，否则保持词法检索。不管有没有 embedder，`SaveKnowledge` 都会建好这张实体图；读起来像名字的标题会关联到文档的每个分块。经 `SaveKnowledge`/`SearchKnowledge` 实测（`cortexdb-bench`，无 embedder），recall@5 词法 → `auto`：2WikiMultiHopQA 0.657 → 0.807，MuSiQue 0.457 → 0.542，LoCoMo 0.493 → 0.495，LongMemEval 0.861 → 0.862；p95 低于 30 ms。`graph` 模式按排名融合词法、实体关联和扩展出来的片段，精确的词法命中不会被图上的邻居挤下去。

@@ -166,7 +166,7 @@ func TestIncludeProposedCountsWhatWaitsInTheAggregates(t *testing.T) {
 		}
 	}
 	tools := db.GraphRAGTools()
-	count := func(include bool, filters map[string]string) int {
+	count := func(include bool, filters map[string]any) int {
 		t.Helper()
 		resp, err := tools.AggregateMetadata(c, ToolAggregateMetadataRequest{Type: "count", Collection: "ops", Filters: filters, IncludeProposed: include})
 		if err != nil {
@@ -180,7 +180,7 @@ func TestIncludeProposedCountsWhatWaitsInTheAggregates(t *testing.T) {
 	if got := count(true, nil); got != 3 {
 		t.Fatalf("include_proposed counted %d, want the accepted chunk and the two proposed", got)
 	}
-	if got := count(true, map[string]string{reviewStatusKey: ReviewRejected}); got != 1 {
+	if got := count(true, map[string]any{reviewStatusKey: ReviewRejected}); got != 1 {
 		t.Fatalf("include_proposed with a rejected filter counted %d, want 1", got)
 	}
 	rep, err := tools.RepresentativeRecords(c, ToolRepresentativeRecordsRequest{Collection: "ops"})

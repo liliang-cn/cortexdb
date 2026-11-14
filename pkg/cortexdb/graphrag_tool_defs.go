@@ -170,16 +170,35 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 		},
 		{
 			Name:        "aggregate_metadata",
-			Description: "Count, sum, average or group the stored records by a metadata field — a question about the collection as a whole, not about one query's neighbourhood. Use it for \"how many records of each kind are there\", \"what values does this field take\", \"what is the average score across this source\": questions a search cannot answer, because a search returns the top few and this returns the totals. type is one of count, sum, avg, min, max, group_by; sum/avg/min/max need a field, group_by needs group_by. A group_by is also how to ask what values a field takes and how often, which is what facet counts are for. Field names must be plain identifiers.",
+			Description: "Count, sum, average or group the stored records by a metadata field — a question about the collection as a whole, not about one query's neighbourhood. Use it for \"how many records of each kind are there\", \"what values does this field take\", \"what is the average score across this source\", \"per month and per kind: count, average score and p95 latency since October\": questions a search cannot answer, because a search returns the top few and this returns the totals. Two ways to ask. One aggregation: type is one of count, sum, avg, min, max, group_by; sum/avg/min/max need a field, group_by needs group_by; the answer is in value and count. Several at once: pass measures (type is then not needed), optionally with group_by and time_bucket; each result carries keys (the group), count (its rows) and values (one entry per measure alias). A group_by is also how to ask what values a field takes and how often, which is what facet counts are for. With measures, time_bucket, created_since, created_before, order or an operator filter, a measure reads only values that are numbers (a JSON number, or a string that is a decimal number in full); other values are left out, never read as 0, and counted per measure in skipped, and a measure over no number is null. A single aggregation with none of those options keeps its older reading, where a non-numeric value counts as 0. Field names must be plain identifiers.",
 			InputSchema: toolObjectSchema(
-				[]string{"type"},
+				nil,
 				map[string]any{
-					"type":             toolEnumSchema("Which aggregation to run.", "count", "sum", "avg", "min", "max", "group_by"),
-					"field":            toolStringSchema("Metadata field to aggregate. Required for sum, avg, min and max."),
-					"group_by":         toolStringArraySchema("Metadata fields to group by. Required for group_by."),
-					"filters":          toolMapSchema("Optional metadata equality filter, applied before aggregating. Expired documents are never counted. A filter on _review_status counts rows of that status only, which is how a curator lists what waits for review (_review_status: proposed) under the review gate. " + ReviewGateNote),
+					"type":  toolEnumSchema("Which single aggregation to run. Required unless measures is given; ignored when it is.", "count", "sum", "avg", "min", "max", "group_by"),
+					"field": toolStringSchema("Metadata field to aggregate. Required for a single sum, avg, min or max."),
+					"measures": map[string]any{
+						"type":        "array",
+						"description": "Values to compute together for every group, e.g. [{\"type\":\"count\"},{\"type\":\"avg\",\"field\":\"score\"},{\"type\":\"p95\",\"field\":\"latency_ms\"}].",
+						"items": toolObjectSchema([]string{"type"}, map[string]any{
+							"type":       toolStringSchema("count, sum, avg, min, max, median, percentile, stddev (sample), stddev_pop, or pNN as a short form of percentile (p50, p95, p99.9). Percentiles are exact, by linear interpolation."),
+							"field":      toolStringSchema("Metadata field holding the numbers. Required except for count: count without a field is the group's rows, count with a field is the rows that carry it."),
+							"alias":      toolStringSchema("Name of this value in each result's values, and a valid order_by. Defaults to type_field, e.g. avg_score, p95_latency_ms; count for a bare count."),
+							"percentile": toolNumberSchema("Rank for type percentile, above 0 and at most 100."),
+						}),
+					},
+					"group_by": toolStringArraySchema("Metadata fields to group by. Required for type group_by; optional with measures."),
+					"time_bucket": toolDescribed("Adds a group key: a timestamp truncated to a unit, for per-day / week / month / year series.", toolObjectSchema([]string{"unit"}, map[string]any{
+						"unit":     toolEnumSchema("Truncate the timestamp to this unit. The key is a sortable string: 2026-10-03 for day, the Monday's date for week, 2026-10 for month, 2026 for year.", "day", "week", "month", "year"),
+						"field":    toolStringSchema("Metadata field holding an RFC 3339 timestamp or a YYYY-MM-DD date. Omit to bucket by the time the record was stored."),
+						"alias":    toolStringSchema("Group key the bucket is reported under. Defaults to the unit."),
+						"timezone": toolStringSchema("IANA zone to truncate in, e.g. Asia/Shanghai. Defaults to UTC; a timestamp without a zone is read as UTC."),
+					})),
+					"filters":          toolMapSchema("Optional metadata filter, applied before aggregating. Each key is a metadata field; its value is either a string the field must equal, or an operator object with any of eq, neq, gt, gte, lt, lte, in (a list), exists (true or false), all of which must hold, e.g. {\"kind\":\"incident\",\"score\":{\"gte\":0.5,\"lt\":1},\"team\":{\"in\":[\"core\",\"infra\"]}}. gt/gte/lt/lte compare numerically when the bound is a number, as times when it is an RFC 3339 timestamp or date, otherwise as text. A record without the field matches only exists: false. Expired documents are never counted. A filter on _review_status takes a plain status and counts rows of that status only, which is how a curator lists what waits for review (_review_status: proposed) under the review gate. " + ReviewGateNote),
+					"created_since":    toolStringSchema("Only records stored at or after this time: RFC 3339, or a YYYY-MM-DD date read as UTC."),
+					"created_before":   toolStringSchema("Only records stored before this time: RFC 3339, or a YYYY-MM-DD date read as UTC."),
 					"collection":       toolStringSchema("Optional collection name."),
-					"order_by":         toolStringSchema("Optional ordering: count, agg_value, or a group-by field name."),
+					"order_by":         toolStringSchema("Optional ordering: count, agg_value (the first measure), a measure alias, or a group key. Without it a time_bucket request is ordered by bucket and any other by count."),
+					"order":            toolEnumSchema("Direction of the ordering. Defaults to desc, and to asc for a time_bucket request with no order_by.", "asc", "desc"),
 					"limit":            toolIntegerSchema("Optional maximum number of groups."),
 					"include_proposed": toolBooleanSchema(includeProposedDescription),
 				},
@@ -1025,6 +1044,12 @@ func toolObjectSchema(required []string, properties map[string]any) map[string]a
 	if len(required) > 0 {
 		schema["required"] = required
 	}
+	return schema
+}
+
+// toolDescribed adds a description to a schema built by another helper.
+func toolDescribed(description string, schema map[string]any) map[string]any {
+	schema["description"] = description
 	return schema
 }
 

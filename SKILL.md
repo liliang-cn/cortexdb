@@ -525,8 +525,14 @@ unlabelled top-K.
 
 **Counting.** `Aggregate` runs count, sum, avg, min, max and group_by over a
 metadata field, optionally filtered and scoped to a collection. A `group_by` is
-also how to ask what values a field takes and how often. Tool:
-`aggregate_metadata`.
+also how to ask what values a field takes and how often. For analysis, one
+request takes several `Measures` per group (count, sum, avg, min, max, median,
+pNN / percentile, stddev), a `TimeBucket` (day, week, month, year, on the
+record's stored time or a metadata timestamp), `CreatedSince` / `CreatedBefore`,
+and filters whose value is an operator object (`{"gte": 0.5}`, `{"in": [...]}`,
+also `eq`, `neq`, `gt`, `lt`, `lte`, `exists`); each result then carries
+`values` by measure alias, and `skipped` counts the non-numeric values a
+measure left out instead of reading them as 0. Tool: `aggregate_metadata`.
 
 ```go
 byKind, err := db.Aggregate(ctx, core.AggregationRequest{
