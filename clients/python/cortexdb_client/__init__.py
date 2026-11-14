@@ -16,10 +16,14 @@ Example::
 The sub-client accessors mirror the Rust crate: ``client.knowledge``,
 ``client.memory``, ``client.graph``, ``client.graphrag``, ``client.tools``,
 ``client.admin``.
+
+``cortexdb_client.tabular`` turns a tool result into flat records, a pandas
+DataFrame or CSV.
 """
 
 from .client import CortexClient
 from . import proto
+from . import tabular
 
-__all__ = ["CortexClient", "proto"]
+__all__ = ["CortexClient", "proto", "tabular"]
 __version__ = "0.1.0"

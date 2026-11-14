@@ -798,6 +798,137 @@ CORTEXDB_PATH=my.db CORTEXDB_GRPC_TOKEN=s3cret cortexdb-grpc   # 127.0.0.1:47821
 cargo add cortexdb-client   # pip install cortexdb-client   # npm install cortexdb-client
 ```
 
+## 数据分析 —— DataFrame、CSV，或者直接读文件
+
+进 pandas、DuckDB 或 notebook 有两条路：把工具返回的结果变成表，或者直接查那个 SQLite 文件。
+
+**工具结果变成表（Python）。** `cortexdb_client.tabular` 把工具结果里成行的那部分——Cypher 查询的行、
+`aggregate_metadata` 的分组、搜索和召回的命中、`memory_list_all` / `graph_list_all`——变成扁平记录、
+DataFrame 或 CSV。嵌套对象变成带点的列（`metadata.project`），列表变成 JSON 文本；pandas 是可选依赖
+（`pip install "cortexdb-client[pandas]"`）。
+
+```python
+import json
+from cortexdb_client import CortexClient, proto, tabular
+
+with CortexClient.connect("127.0.0.1:47821", token="s3cret") as client:
+    res = client.tools.CallTool(proto.CallToolRequest(
+        name="aggregate_metadata",
+        args_json=json.dumps({"type": "group_by", "group_by": ["team", "year"]})))
+rows = tabular.records(res)        # [{"team": "platform", "year": 2026, "value": 2, "count": 2}, …]
+df = tabular.to_pandas(res)        # 同样的行，DataFrame 形式
+tabular.to_csv(res, "groups.csv")  # 只用标准库
+```
+
+结果里有多个列表时按名字取：`graph_list_all` 用 `tabular.records(res, "edges")`，
+`knowledge_memory_recall` 用 `"memories"` / `"knowledge"` / `"chunks"` / `"graph_facts"`。
+
+### 直接分析数据库文件
+
+SQLite 后端下整个大脑就是一个文件，所以 `sqlite3`、DuckDB 和 pandas 都能绕过 CortexDB 直接读。
+在快照上分析，不要碰线上文件：
+
+```bash
+sqlite3 -readonly ~/.cortexdb/cortexdb.db ".backup analysis.db"
+```
+
+线上文件是 WAL 模式：最近的写入在 checkpoint 之前都还在 `cortexdb.db-wal` 里，只 `cp` 主文件可能漏掉它们，
+也可能拷到写了一半的状态。`.backup` 在服务照常运行时拷出一个一致的状态；在 Go 里 `db.Backup(ctx, path)`
+同样写出一致的副本。永远不要从外部写线上文件：CortexDB 在内存里维护向量索引和缓存，外部写入不会更新它们，
+而且外部写入方会和它抢唯一的写锁。对线上文件开只读连接（`file:cortexdb.db?mode=ro`）临时看一眼没问题；
+在上面跑长查询会拖住 checkpoint，让 WAL 一直变大。
+
+什么在哪张表：
+
+| 表 | 内容 | 值得知道的列 |
+| --- | --- | --- |
+| `messages` | 记忆（以及聊天消息） | `id`、`session_id`、`role`、`content`、`metadata`、`vector`、`created_at`。记忆的 `metadata.kind = "memory"`，另有 `scope`、`namespace`、`importance`，被召回过之后还有 `recall_count` / `last_recalled_at`；它的 `session_id` 是所在的桶 `memory:<scope>:[<user 或 session>:]<namespace>` |
+| `documents` | 知识文档 | `id`、`title`、`content`、`source_url`、`author`、`metadata`、`created_at`、`updated_at` |
+| `embeddings` | 这些文档的分块 | `id`、`doc_id`、`collection_id`、`content`、`metadata`、`vector`、`created_at`；`collections` 记录每个集合的名字和 `dimensions` |
+| `graph_nodes`、`graph_edges` | 属性图的当前状态 | 节点：`id`、`node_type`、`content`、`properties`；边：`from_node_id`、`to_node_id`、`edge_type`、`weight`、`properties`。被替换掉的版本在 `graph_node_history` / `graph_edge_history` |
+| `kg_triples` | RDF 三元组 | `subject_value`、`predicate_value`、`object_value`、`inferred` |
+| `change_log` | 变更流（保留期以内的部分） | `seq`、`at`、`kind`（`node`、`edge`、`triple`、`memory`、`knowledge`、`ontology_schema`）、`op`、`entity_id`、`before_state`、`after_state` |
+| `recall_log`、`recall_log_hits`、`recall_feedback` | 召回了什么，开了召回日志（`CORTEXDB_RECALL_LOG=1`）才有 | `recall_log`：`ts_ms`、`query`、`tool`、`project`、`latency_ms`、`hit_count`；`recall_log_hits`：`recall_id`、`kind`、`record_id`、`rank`、`ts_ms` |
+
+`metadata`、`properties`、`before_state` 和 `after_state` 是 JSON，用 `json_extract` 取字段。同一列里有的行存成
+TEXT、有的存成 BLOB，所以先 CAST——老版本 SQLite 不接受 BLOB 里的 JSON，DuckDB 不接受类型混杂的列。
+`created_at` 是 UTC 的 `YYYY-MM-DD HH:MM:SS`，`change_log.at` 是 ISO-8601，`ts_ms` 是 Unix 毫秒。
+名字里带 `_fts` 的表是全文索引，不是数据。
+
+```sql
+-- 每天、每个项目写入了多少条记忆
+SELECT date(created_at) AS day,
+       json_extract(CAST(metadata AS TEXT), '$.project') AS project,
+       count(*) AS memories
+FROM messages
+WHERE json_extract(CAST(metadata AS TEXT), '$.kind') = 'memory'
+GROUP BY day, project ORDER BY day, project;
+
+-- 图里每种节点有多少（边用 graph_edges 的 edge_type）
+SELECT node_type, count(*) AS nodes
+FROM graph_nodes GROUP BY node_type ORDER BY nodes DESC;
+
+-- 被召回最多的记录（需要召回日志）
+SELECT h.kind, h.record_id,
+       coalesce(d.title, substr(m.content, 1, 60)) AS what,
+       count(*) AS recalls, min(h.rank) AS best_rank,
+       datetime(max(h.ts_ms) / 1000, 'unixepoch') AS last_recalled
+FROM recall_log_hits h
+LEFT JOIN documents d ON h.kind = 'knowledge' AND d.id = h.record_id
+LEFT JOIN messages  m ON h.kind = 'memory'    AND m.id = h.record_id
+GROUP BY h.kind, h.record_id ORDER BY recalls DESC LIMIT 20;
+
+-- 每天的写入，按写了什么、怎么写的分
+SELECT substr("at", 1, 10) AS day, kind, op, count(*) AS changes
+FROM change_log GROUP BY day, kind, op ORDER BY day, changes DESC;
+```
+
+**DuckDB** 通过 `sqlite` 扩展挂载这个文件。`sqlite_all_varchar` 让它把所有列都当文本读，类型混杂的 JSON 列和
+图的时间戳列都需要它；`at` 在 DuckDB 里是关键字，所以上面加了引号。
+
+```sql
+INSTALL sqlite; LOAD sqlite;
+SET sqlite_all_varchar = true;
+ATTACH 'analysis.db' AS brain (TYPE sqlite, READ_ONLY);
+
+SELECT CAST(created_at AS DATE) AS day, metadata->>'$.project' AS project, count(*) AS memories
+FROM brain.messages WHERE metadata->>'$.kind' = 'memory'
+GROUP BY ALL ORDER BY day, project;
+
+COPY (SELECT id, node_type, content, properties FROM brain.graph_nodes)
+  TO 'nodes.parquet' (FORMAT parquet);
+```
+
+**pandas** 走 Python 自带的 `sqlite3`：
+
+```python
+import sqlite3
+import pandas as pd
+
+con = sqlite3.connect("file:analysis.db?mode=ro", uri=True)
+df = pd.read_sql(
+    """SELECT id, created_at, content,
+              json_extract(CAST(metadata AS TEXT), '$.project')    AS project,
+              json_extract(CAST(metadata AS TEXT), '$.importance') AS importance
+       FROM messages
+       WHERE json_extract(CAST(metadata AS TEXT), '$.kind') = 'memory'""",
+    con, parse_dates=["created_at"])
+print(df.groupby([df.created_at.dt.date, "project"]).size())
+```
+
+**向量**（`messages.vector`、`embeddings.vector`、`graph_nodes.vector`）是 BLOB：一个小端 int32 的元素个数，
+后面跟着这么多个小端 float32。没有 embedder 时保存的记忆，`messages.vector` 是 NULL。
+
+```python
+import struct
+
+(blob,) = con.execute("SELECT vector FROM embeddings LIMIT 1").fetchone()
+(n,) = struct.unpack_from("<i", blob)
+vector = struct.unpack_from(f"<{n}f", blob, 4)   # numpy: np.frombuffer(blob, dtype="<f4", offset=4)
+```
+
+以上都是 SQLite 后端。
+
 ## 质量
 
 检索质量是**被测量**的,不是假设的:`pkg/eval` 用标注查询集跑真实检索路径,报告 recall@k / precision@k / MRR / nDCG,并在 CI 里设回归下限(`go test ./pkg/eval -run TestLexicalRetrievalQuality -v`)。解析/检索面(FTS5、SPARQL、SQL dump 导入)有 Go fuzz 测试(`go test ./... -run Fuzz`),其保存的语料是永久回归种子。

@@ -1,6 +1,6 @@
 # CortexDB — full documentation
 
-> Generated from README.md and docs/GUIDE.md at commit dda835d. Summary: https://liliang-cn.github.io/cortexdb/llms.txt
+> Generated from README.md and docs/GUIDE.md at commit 4bcad33. Summary: https://liliang-cn.github.io/cortexdb/llms.txt
 
 # CortexDB
 
@@ -1185,6 +1185,150 @@ go install github.com/liliang-cn/cortexdb/v2/cmd/cortexdb-grpc@latest
 CORTEXDB_PATH=my.db CORTEXDB_GRPC_TOKEN=s3cret cortexdb-grpc   # 127.0.0.1:47821
 cargo add cortexdb-client   # pip install cortexdb-client   # npm install cortexdb-client
 ```
+
+## Data analysis — DataFrames, CSV, or the file itself
+
+Two routes into pandas, DuckDB or a notebook: tabulate what a tool returned, or
+query the SQLite file.
+
+**Tool results as tables (Python).** `cortexdb_client.tabular` turns the
+row-shaped part of a tool result — a Cypher query's rows, the groups of
+`aggregate_metadata`, search and recall hits, `memory_list_all` /
+`graph_list_all` — into flat records, a DataFrame or CSV. Nested objects become
+dotted columns (`metadata.project`), lists become JSON text; pandas is an
+optional extra (`pip install "cortexdb-client[pandas]"`).
+
+```python
+import json
+from cortexdb_client import CortexClient, proto, tabular
+
+with CortexClient.connect("127.0.0.1:47821", token="s3cret") as client:
+    res = client.tools.CallTool(proto.CallToolRequest(
+        name="aggregate_metadata",
+        args_json=json.dumps({"type": "group_by", "group_by": ["team", "year"]})))
+rows = tabular.records(res)        # [{"team": "platform", "year": 2026, "value": 2, "count": 2}, …]
+df = tabular.to_pandas(res)        # same rows as a DataFrame
+tabular.to_csv(res, "groups.csv")  # standard library only
+```
+
+A result with several lists is asked for by name: `tabular.records(res, "edges")`
+for `graph_list_all`, `"memories"` / `"knowledge"` / `"chunks"` / `"graph_facts"`
+for `knowledge_memory_recall`.
+
+### Analysing the file directly
+
+On the SQLite backend the whole brain is one file, so `sqlite3`, DuckDB and
+pandas can read it without CortexDB in between. Work on a snapshot, not the live
+file:
+
+```bash
+sqlite3 -readonly ~/.cortexdb/cortexdb.db ".backup analysis.db"
+```
+
+The live file runs in WAL mode: recent writes sit in `cortexdb.db-wal` until a
+checkpoint, so `cp` of the main file alone can miss them or catch a half-written
+state. `.backup` copies one consistent state while the server keeps running; from
+Go, `db.Backup(ctx, path)` writes a consistent copy too. Never write to the live file from
+outside: CortexDB keeps vector indexes and caches in memory that a foreign write
+does not update, and an outside writer competes with it for the one write lock. A
+read-only connection to the live file (`file:cortexdb.db?mode=ro`) is fine for a
+quick look; a long-running query on it holds back checkpoints and lets the WAL
+grow.
+
+What is where:
+
+| Table | Holds | Columns worth knowing |
+| --- | --- | --- |
+| `messages` | memories (and chat messages) | `id`, `session_id`, `role`, `content`, `metadata`, `vector`, `created_at`. A memory has `metadata.kind = "memory"` plus `scope`, `namespace`, `importance`, and `recall_count` / `last_recalled_at` once recalled; its `session_id` is the bucket `memory:<scope>:[<user or session>:]<namespace>` |
+| `documents` | knowledge documents | `id`, `title`, `content`, `source_url`, `author`, `metadata`, `created_at`, `updated_at` |
+| `embeddings` | the chunks of those documents | `id`, `doc_id`, `collection_id`, `content`, `metadata`, `vector`, `created_at`; `collections` names each collection and its `dimensions` |
+| `graph_nodes`, `graph_edges` | the property graph as it is now | nodes: `id`, `node_type`, `content`, `properties`; edges: `from_node_id`, `to_node_id`, `edge_type`, `weight`, `properties`. Replaced versions are in `graph_node_history` / `graph_edge_history` |
+| `kg_triples` | RDF triples | `subject_value`, `predicate_value`, `object_value`, `inferred` |
+| `change_log` | the change feed, within its retention | `seq`, `at`, `kind` (`node`, `edge`, `triple`, `memory`, `knowledge`, `ontology_schema`), `op`, `entity_id`, `before_state`, `after_state` |
+| `recall_log`, `recall_log_hits`, `recall_feedback` | what was recalled, when the recall log is on (`CORTEXDB_RECALL_LOG=1`) | `recall_log`: `ts_ms`, `query`, `tool`, `project`, `latency_ms`, `hit_count`; `recall_log_hits`: `recall_id`, `kind`, `record_id`, `rank`, `ts_ms` |
+
+`metadata`, `properties`, `before_state` and `after_state` are JSON; read a field
+with `json_extract`. The same column holds some rows as TEXT and some as BLOB,
+so cast first — an older SQLite refuses JSON in a BLOB, and DuckDB refuses the
+mixed column. `created_at` is UTC `YYYY-MM-DD HH:MM:SS`, `change_log.at` is
+ISO-8601, `ts_ms` is Unix milliseconds. Tables with `_fts` in the name are full-text
+indexes, not data.
+
+```sql
+-- memories written per day, per project
+SELECT date(created_at) AS day,
+       json_extract(CAST(metadata AS TEXT), '$.project') AS project,
+       count(*) AS memories
+FROM messages
+WHERE json_extract(CAST(metadata AS TEXT), '$.kind') = 'memory'
+GROUP BY day, project ORDER BY day, project;
+
+-- the graph by node type (edge_type on graph_edges for the edges)
+SELECT node_type, count(*) AS nodes
+FROM graph_nodes GROUP BY node_type ORDER BY nodes DESC;
+
+-- the records recall returns most (needs the recall log)
+SELECT h.kind, h.record_id,
+       coalesce(d.title, substr(m.content, 1, 60)) AS what,
+       count(*) AS recalls, min(h.rank) AS best_rank,
+       datetime(max(h.ts_ms) / 1000, 'unixepoch') AS last_recalled
+FROM recall_log_hits h
+LEFT JOIN documents d ON h.kind = 'knowledge' AND d.id = h.record_id
+LEFT JOIN messages  m ON h.kind = 'memory'    AND m.id = h.record_id
+GROUP BY h.kind, h.record_id ORDER BY recalls DESC LIMIT 20;
+
+-- writes per day, by what was written and how
+SELECT substr("at", 1, 10) AS day, kind, op, count(*) AS changes
+FROM change_log GROUP BY day, kind, op ORDER BY day, changes DESC;
+```
+
+**DuckDB** attaches the file through its `sqlite` extension. `sqlite_all_varchar`
+makes it read every column as text, which the mixed JSON columns and the graph's
+timestamp columns need; `at` is a keyword there, hence the quotes above.
+
+```sql
+INSTALL sqlite; LOAD sqlite;
+SET sqlite_all_varchar = true;
+ATTACH 'analysis.db' AS brain (TYPE sqlite, READ_ONLY);
+
+SELECT CAST(created_at AS DATE) AS day, metadata->>'$.project' AS project, count(*) AS memories
+FROM brain.messages WHERE metadata->>'$.kind' = 'memory'
+GROUP BY ALL ORDER BY day, project;
+
+COPY (SELECT id, node_type, content, properties FROM brain.graph_nodes)
+  TO 'nodes.parquet' (FORMAT parquet);
+```
+
+**pandas** reads through Python's own `sqlite3`:
+
+```python
+import sqlite3
+import pandas as pd
+
+con = sqlite3.connect("file:analysis.db?mode=ro", uri=True)
+df = pd.read_sql(
+    """SELECT id, created_at, content,
+              json_extract(CAST(metadata AS TEXT), '$.project')    AS project,
+              json_extract(CAST(metadata AS TEXT), '$.importance') AS importance
+       FROM messages
+       WHERE json_extract(CAST(metadata AS TEXT), '$.kind') = 'memory'""",
+    con, parse_dates=["created_at"])
+print(df.groupby([df.created_at.dt.date, "project"]).size())
+```
+
+**Vectors** (`messages.vector`, `embeddings.vector`, `graph_nodes.vector`) are
+BLOBs: a little-endian int32 element count, then that many little-endian
+float32 values. `messages.vector` is NULL for a memory saved without an embedder.
+
+```python
+import struct
+
+(blob,) = con.execute("SELECT vector FROM embeddings LIMIT 1").fetchone()
+(n,) = struct.unpack_from("<i", blob)
+vector = struct.unpack_from(f"<{n}f", blob, 4)   # numpy: np.frombuffer(blob, dtype="<f4", offset=4)
+```
+
+All of this is the SQLite backend.
 
 ## Quality
 
