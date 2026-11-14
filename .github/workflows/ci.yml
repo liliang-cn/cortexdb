@@ -31,11 +31,12 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      # 25 minutes rather than go test's default 10: under -race and coverage on a
-      # shared runner the biggest packages take most of ten minutes, and runner
-      # speed varies by a third between runs.
+      # 45 minutes rather than go test's default 10: under -race and coverage on a
+      # shared runner pkg/cortexdb alone takes 23 to 25 minutes, and runner speed
+      # varies by a third between runs. At 25 it timed out on four runs of code
+      # that passed on the run before.
       - name: Run library tests
-        run: go test -v -race -timeout 25m -coverprofile=coverage.txt -covermode=atomic ./...
+        run: go test -v -race -timeout 45m -coverprofile=coverage.txt -covermode=atomic ./...
 
       # Tests that skip themselves under -race because they are single-goroutine
       # and heavy enough that the race detector only makes them slow, or count
