@@ -330,7 +330,7 @@ func (h *HNSW) liveNodeExistsLocked(id string) bool {
 	}
 	delete(h.Nodes, id)
 	if h.EntryPoint == id {
-		h.EntryPoint = ""
+		h.EntryPoint = h.highestLiveLocked()
 	}
 	for _, other := range h.Nodes {
 		for layer, links := range other.Neighbors {
@@ -344,6 +344,26 @@ func (h *HNSW) liveNodeExistsLocked(id string) bool {
 		}
 	}
 	return false
+}
+
+// highestLiveLocked is the live node on the highest layer, or "" when every
+// node is deleted. It is where a walk starts once the entry point is gone:
+// Delete leaves the entry point on the last node of an index it empties, and
+// the nodes written after that are live around it. Dropping that node with
+// no other entry point made the next insert the first node of an empty
+// index, linked to nothing, with every live node out of reach behind it.
+// The caller must hold h.mu.
+func (h *HNSW) highestLiveLocked() string {
+	highest := ""
+	for id, node := range h.Nodes {
+		if node.Deleted {
+			continue
+		}
+		if highest == "" || node.Level > h.Nodes[highest].Level {
+			highest = id
+		}
+	}
+	return highest
 }
 
 // Insert adds a new vector to the index. An id the index already holds is
