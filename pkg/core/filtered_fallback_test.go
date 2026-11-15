@@ -7,39 +7,47 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync/atomic"
 	"testing"
 )
 
-// peakLiveHeap runs fn and returns the most heap that was still reachable
-// at any collection while it ran, above what was reachable before.
-func peakLiveHeap(fn func()) uint64 {
+// heldWhileScoring measures what a search holds while it scores its rows.
+// At the first comparison of a vector with the query, and at every eighth
+// after it, the heap is collected and what is still reachable is read; most
+// is the largest reading above what was reachable when start was called.
+// The readings are taken at the same points of the search at every run:
+// nothing is sampled from another goroutine.
+type heldWhileScoring struct {
+	base, most uint64
+	scored     int
+}
+
+func (h *heldWhileScoring) reachable() uint64 {
 	var stats runtime.MemStats
 	runtime.GC()
 	runtime.ReadMemStats(&stats)
-	base := stats.HeapAlloc
+	return stats.HeapAlloc
+}
 
-	var stop atomic.Bool
-	peak := make(chan uint64)
-	go func() {
-		var most uint64
-		for !stop.Load() {
-			runtime.GC()
-			runtime.ReadMemStats(&stats)
-			most = max(most, stats.HeapAlloc)
+func (h *heldWhileScoring) start() {
+	h.most, h.scored = 0, 0
+	h.base = h.reachable()
+}
+
+// similarity is the store's similarity function, which counts and reads.
+func (h *heldWhileScoring) similarity(a, b []float32) float64 {
+	h.scored++
+	if h.scored%8 == 1 {
+		if now := h.reachable(); now > h.base && now-h.base > h.most {
+			h.most = now - h.base
 		}
-		peak <- most
-	}()
-	fn()
-	stop.Store(true)
-	if most := <-peak; most > base {
-		return most - base
 	}
-	return 0
+	return CosineSimilarity(a, b)
 }
 
 // seedTwoRegions fills a store with a small collection near +x and a large
-// one near -x whose rows carry rowBytes of content each.
+// one near -x whose rows carry rowBytes of metadata each: the full-text
+// index reads the content of a row, not its metadata, so the rows are heavy
+// to hold and cheap to write.
 func seedTwoRegions(t *testing.T, store *SQLiteStore, farRows, rowBytes int) {
 	t.Helper()
 	ctx := context.Background()
@@ -62,8 +70,8 @@ func seedTwoRegions(t *testing.T, store *SQLiteStore, farRows, rowBytes int) {
 			far = append(far, &Embedding{
 				ID: fmt.Sprintf("far%04d", i), Collection: "far",
 				Vector:   []float32{-1, float32(i) / 10000, 0, 0},
-				Content:  body,
-				Metadata: map[string]string{"parity": fmt.Sprint(i % 2)},
+				Content:  "far",
+				Metadata: map[string]string{"parity": fmt.Sprint(i % 2), "body": body},
 			})
 		}
 		if err := store.UpsertBatch(ctx, far); err != nil {
@@ -78,7 +86,7 @@ func seedTwoRegions(t *testing.T, store *SQLiteStore, farRows, rowBytes int) {
 // to collect every matching row first, vectors, content and metadata, and a
 // search scoped to a large collection held that collection in memory.
 func TestFilteredFallbackHoldsOnlyTheBestRows(t *testing.T) {
-	const farRows, rowBytes = 160, 64 << 10 // 10 MiB of content
+	const farRows, rowBytes = 96, 32 << 10 // 3 MiB of metadata
 	for _, indexed := range []struct {
 		name   string
 		mutate func(*Config)
@@ -87,8 +95,10 @@ func TestFilteredFallbackHoldsOnlyTheBestRows(t *testing.T) {
 		{"binary", func(c *Config) { c.IndexType = IndexTypeBinary }},
 	} {
 		t.Run(indexed.name, func(t *testing.T) {
+			var held heldWhileScoring
 			store := openResourceStore(t, filepath.Join(t.TempDir(), "s.db"), func(c *Config) {
 				c.VectorDim = 4
+				c.SimilarityFn = held.similarity
 				if indexed.mutate != nil {
 					indexed.mutate(c)
 				}
@@ -97,16 +107,23 @@ func TestFilteredFallbackHoldsOnlyTheBestRows(t *testing.T) {
 			seedTwoRegions(t, store, farRows, rowBytes)
 			ctx := context.Background()
 
-			for _, opts := range []SearchOptions{
-				{TopK: 5, Collection: "far"},
-				{TopK: 5, Filter: map[string]string{"parity": "1"}},
-				{TopK: 9, Collection: "far"},
+			// selected is the rows the options select, which the scan scores
+			// one by one. The binary index shortlists enough far rows for a
+			// TopK of 9 and does not fall back: it holds its shortlist.
+			for _, searched := range []struct {
+				opts     SearchOptions
+				selected int
+			}{
+				{SearchOptions{TopK: 5, Collection: "far"}, farRows},
+				{SearchOptions{TopK: 5, Filter: map[string]string{"parity": "1"}}, farRows / 2},
+				{SearchOptions{TopK: 9, Collection: "far"}, farRows},
 			} {
-				var hits []ScoredEmbedding
-				var err error
-				held := peakLiveHeap(func() {
-					hits, err = store.Search(ctx, []float32{1, 0, 0, 0}, opts)
-				})
+				opts := searched.opts
+				if indexed.name == "binary" && opts.TopK == 9 {
+					searched.selected = 0
+				}
+				held.start()
+				hits, err := store.Search(ctx, []float32{1, 0, 0, 0}, opts)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -118,11 +135,14 @@ func TestFilteredFallbackHoldsOnlyTheBestRows(t *testing.T) {
 						t.Fatalf("%+v: got %s of collection %q", opts, hit.ID, hit.Collection)
 					}
 				}
-				// The old scan held the whole collection and more; this one
-				// holds a few rows, and what the rest of the process
-				// allocates meanwhile. Three quarters tell them apart.
-				if limit := uint64(farRows * rowBytes / 4 * 3); held > limit {
-					t.Fatalf("%+v: the search held %d KiB at once, three quarters of the collection are %d KiB", opts, held>>10, limit>>10)
+				// The old scan held the whole collection while it scored it;
+				// this one holds TopK rows and the one it reads. Half the
+				// collection tells them apart.
+				if held.scored < searched.selected {
+					t.Fatalf("%+v: %d vectors scored, the search did not score the %d rows the options select", opts, held.scored, searched.selected)
+				}
+				if limit := uint64(farRows * rowBytes / 2); held.most > limit {
+					t.Fatalf("%+v: the search held %d KiB while it scored, half the collection is %d KiB", opts, held.most>>10, limit>>10)
 				}
 			}
 		})
@@ -193,8 +213,10 @@ func TestFilteredFallbackTakesAnyTopK(t *testing.T) {
 		{"none", func(c *Config) { c.IndexType = IndexTypeFlat; c.HNSW.Enabled = false }},
 	} {
 		t.Run(indexed.name, func(t *testing.T) {
+			var held heldWhileScoring
 			store := openResourceStore(t, filepath.Join(t.TempDir(), "s.db"), func(c *Config) {
 				c.VectorDim = 4
+				c.SimilarityFn = held.similarity
 				if indexed.mutate != nil {
 					indexed.mutate(c)
 				}
@@ -203,19 +225,19 @@ func TestFilteredFallbackTakesAnyTopK(t *testing.T) {
 			seedTwoRegions(t, store, 60, 16)
 			ctx := context.Background()
 			for _, topK := range []int{5_000_000, math.MaxInt} {
-				var hits []ScoredEmbedding
-				var err error
-				held := peakLiveHeap(func() {
-					hits, err = store.Search(ctx, []float32{1, 0, 0, 0}, SearchOptions{TopK: topK, Collection: "far"})
-				})
+				held.start()
+				hits, err := store.Search(ctx, []float32{1, 0, 0, 0}, SearchOptions{TopK: topK, Collection: "far"})
 				if err != nil {
 					t.Fatal(err)
 				}
 				if len(hits) != 60 {
 					t.Fatalf("TopK %d: %d results, want the 60 far rows", topK, len(hits))
 				}
-				if held > 8<<20 {
-					t.Fatalf("TopK %d: the search held %d MiB at once for 60 small rows", topK, held>>20)
+				if held.scored < 60 {
+					t.Fatalf("TopK %d: %d vectors scored, the search did not score the 60 rows", topK, held.scored)
+				}
+				if held.most > 8<<20 {
+					t.Fatalf("TopK %d: the search held %d MiB while it scored 60 small rows", topK, held.most>>20)
 				}
 			}
 		})
