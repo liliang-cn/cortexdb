@@ -1,6 +1,11 @@
 // pkg/importflow/types.go
 package importflow
 
+import (
+	"encoding/json"
+	"errors"
+)
+
 // Column is one source column with a best-effort type label.
 type Column struct {
 	Name string
@@ -59,4 +64,59 @@ func (rep *Report) addError(err error) {
 	if err != nil {
 		rep.Errors = append(rep.Errors, err)
 	}
+}
+
+// reportJSON is a Report on the wire: the same fields under the same names,
+// with each error as its message.
+type reportJSON struct {
+	RowsRead           int
+	ChunksIndexed      int
+	TriplesCreated     int
+	TablesStored       int
+	TableRowsStored    int
+	Skipped            int
+	UnparsedStatements []string
+	Errors             []string
+}
+
+// MarshalJSON writes Errors as messages. An error value has no fields for
+// encoding/json to write, so a tool that returned a Report told its caller
+// that rows had failed and not why: a list of empty objects.
+func (rep Report) MarshalJSON() ([]byte, error) {
+	out := reportJSON{
+		RowsRead:           rep.RowsRead,
+		ChunksIndexed:      rep.ChunksIndexed,
+		TriplesCreated:     rep.TriplesCreated,
+		TablesStored:       rep.TablesStored,
+		TableRowsStored:    rep.TableRowsStored,
+		Skipped:            rep.Skipped,
+		UnparsedStatements: rep.UnparsedStatements,
+	}
+	for _, err := range rep.Errors {
+		if err != nil {
+			out.Errors = append(out.Errors, err.Error())
+		}
+	}
+	return json.Marshal(out)
+}
+
+// UnmarshalJSON reads what MarshalJSON writes.
+func (rep *Report) UnmarshalJSON(data []byte) error {
+	var in reportJSON
+	if err := json.Unmarshal(data, &in); err != nil {
+		return err
+	}
+	*rep = Report{
+		RowsRead:           in.RowsRead,
+		ChunksIndexed:      in.ChunksIndexed,
+		TriplesCreated:     in.TriplesCreated,
+		TablesStored:       in.TablesStored,
+		TableRowsStored:    in.TableRowsStored,
+		Skipped:            in.Skipped,
+		UnparsedStatements: in.UnparsedStatements,
+	}
+	for _, msg := range in.Errors {
+		rep.Errors = append(rep.Errors, errors.New(msg))
+	}
+	return nil
 }

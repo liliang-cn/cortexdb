@@ -133,9 +133,7 @@ func (db *DB) releaseDocumentSourcesTx(ctx context.Context, tx *sql.Tx, document
 // documentSourcesTx lists the nodes that name documentID as a source, each
 // with the sources it keeps without it.
 func (db *DB) documentSourcesTx(ctx context.Context, tx *sql.Tx, documentID string) ([]sourceRelease, error) {
-	rows, err := db.txQuery(ctx, tx, `
-		SELECT id, properties FROM graph_nodes
-		WHERE `+db.Dialect().JSONArrayContains("graph_nodes.properties", "source_document_ids"), documentID)
+	rows, err := db.txQuery(ctx, tx, entitiesSourcedFromSQL(db), documentID)
 	if err != nil {
 		return nil, err
 	}
@@ -143,21 +141,18 @@ func (db *DB) documentSourcesTx(ctx context.Context, tx *sql.Tx, documentID stri
 	var releases []sourceRelease
 	for rows.Next() {
 		var id, propertiesJSON string
-		var properties map[string]interface{}
+		var remaining []string
+		listed := false
 		err := rows.Scan(&id, &propertiesJSON)
 		if err == nil {
-			err = json.Unmarshal([]byte(propertiesJSON), &properties)
+			remaining, listed, err = sourcesWithout(propertiesJSON, documentID)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("read the sources of %s: %w", id, err)
 		}
-		remaining := make([]string, 0)
-		for _, source := range toStringSlice(properties["source_document_ids"]) {
-			if source != documentID {
-				remaining = append(remaining, source)
-			}
+		if listed {
+			releases = append(releases, sourceRelease{id: id, remaining: remaining})
 		}
-		releases = append(releases, sourceRelease{id: id, remaining: remaining})
 	}
 	return releases, rows.Err()
 }
@@ -190,12 +185,7 @@ func (db *DB) graphEdgeIDsByDocumentTx(ctx context.Context, querier graphStringQ
 		return nil, nil
 	}
 
-	rows, err := db.querierQuery(ctx, querier, `
-		SELECT id
-		FROM graph_edges
-		WHERE `+db.dialect.JSONTextGuarded("properties", "document_id")+` = ?
-		ORDER BY id ASC
-	`, documentID)
+	rows, err := db.querierQuery(ctx, querier, edgesOfDocumentSQL(db)+` ORDER BY id ASC`, documentID)
 	if err != nil {
 		return nil, fmt.Errorf("query document graph edges: %w", err)
 	}

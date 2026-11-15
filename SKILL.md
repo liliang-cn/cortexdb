@@ -940,6 +940,18 @@ run one read-only SQLite `SELECT` that can read the imported tables and nothing 
 the store (enforced by SQLite's authorizer, not by inspecting the SQL). Re-importing a
 table replaces its rows. SQLite stores only; PostgreSQL returns `ErrImportedTablesUnsupported`.
 
+An agent runs the import itself through the stock binaries: `importflow_plan` (or
+`importflow_ddl_plan` from `CREATE TABLE`) → `importflow_run` with `"keep_tables": true`
+(`{"tables": {}}` is plan enough for tables alone) → `imported_tables_list` / `_describe` /
+`_query`. `cortexdb-mcp-stdio` registers the four import tools in local mode
+(`importflow.AddMCPTools`, with `importflow.WithLocalFiles()` so a call may name a `path`) and
+`cortexdb-grpc` serves them to a shared brain through `rpcserver.Options.ExtraTools`. Source
+text is sent inline as `data`, at most 1 MiB per call (`importflow.MaxInlineBytes`); a shared
+brain refuses `path`. No model is needed: without one `importflow_plan` answers
+`"mode": "no_model"` from the column list and `importflow_ddl_plan_ai` returns the baseline
+with `"llm_used": false`. `importflow_run` needs a read-write key; a confined key is refused
+all four tools.
+
 `importflow.MappingFromDDL(ddl, importflow.DDLMappingOptions{})` turns a `CREATE TABLE`
 DDL subset (Postgres/MySQL) into a reviewable `MappingPlan` **deterministically, no LLM** —
 tables→entity classes, PK→entity id, FK→relations, columns→RAG content + props (no
@@ -1161,7 +1173,7 @@ Separate workflow toolboxes:
 
 - memoryflow: `memoryflow_resolve_taxonomy`, `memoryflow_ingest_transcript`, `memoryflow_recall`, `memoryflow_wake_up_layers`, `memoryflow_close_session`, `memoryflow_list_episodes`, `memoryflow_get_transcript`, `memoryflow_append_diary`, `memoryflow_list_diary`, `memoryflow_prepare_reply`, `memoryflow_apply_memory_edits`
 - graphflow: `graphflow_build`, `graphflow_analyze`, `graphflow_report`, `graphflow_export`, `graphflow_run`, `global_search`, `build_community_hierarchy`
-- importflow: `importflow_plan`, `importflow_run`, `importflow_ddl_plan` (deterministic `CREATE TABLE` DDL → reviewable knowledge-graph MappingPlan, no LLM), `importflow_ddl_plan_ai` (LLM-refined DDL→KG plan; returns refined plan + deterministic baseline + `llm_used`; needs an `LLMInferer`) (via `importflow.NewToolbox(im)` or `importflow.NewMCPServer(im, opts)` / `importflow.RunMCPStdio(ctx, im, opts)`)
+- importflow: `importflow_plan`, `importflow_run`, `importflow_ddl_plan` (deterministic `CREATE TABLE` DDL → reviewable knowledge-graph MappingPlan, no LLM), `importflow_ddl_plan_ai` (LLM-refined DDL→KG plan; returns refined plan + deterministic baseline + `llm_used`; without an `LLMInferer` it returns the baseline) (via `importflow.NewToolbox(im)`, `importflow.AddMCPTools(server, toolbox)`, or `importflow.NewMCPServer(im, opts)` / `importflow.RunMCPStdio(ctx, im, opts)`; also served by `cortexdb-mcp-stdio` and, for a shared brain, by `cortexdb-grpc`)
 - connector: `connector_introspect`, `connector_plan`, `connector_run`, `connector_unmask` — privacy gate over a live DB/source feeding RAG + KG. Wire via `connector.NewMCPServer(tb, opts)` / `connector.RunMCPStdio(ctx, tb, opts)`, `connector.RegisterMCPTools(server, tb)` to ride another server, or run `cmd/cortexdb-connector-mcp`.
 
 ### Shared brain — one CortexDB, many agents and machines

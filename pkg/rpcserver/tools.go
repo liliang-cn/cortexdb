@@ -15,10 +15,12 @@ import (
 type toolsService struct {
 	rpcv1.UnimplementedToolsServiceServer
 	db *cortexdb.DB
+	// extras are the tools served beside the toolbox (Options.ExtraTools).
+	extras *extraTools
 }
 
 func (s *toolsService) ListTools(context.Context, *rpcv1.ListToolsRequest) (*rpcv1.ListToolsResponse, error) {
-	defs := s.db.GraphRAGTools().Definitions()
+	defs := append(s.db.GraphRAGTools().Definitions(), s.extras.definitions()...)
 	tools := make([]*rpcv1.ToolDefinition, 0, len(defs))
 	for _, d := range defs {
 		schema, err := json.Marshal(d.InputSchema)
@@ -39,6 +41,9 @@ func (s *toolsService) CallTool(ctx context.Context, req *rpcv1.CallToolRequest)
 	if args == "" {
 		args = "{}"
 	}
+	if tool, ok := s.extras.get(req.GetName()); ok {
+		return s.callExtra(ctx, tool, args)
+	}
 	if err := guardToolRows(ctx, s.db, req.GetName(), args); err != nil {
 		return nil, err
 	}
@@ -48,6 +53,21 @@ func (s *toolsService) CallTool(ctx context.Context, req *rpcv1.CallToolRequest)
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, oneNotFound(ctx, toStatus(err))
+	}
+	payload, err := json.Marshal(result)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "marshal result: %v", err)
+	}
+	return &rpcv1.CallToolResponse{ResultJson: string(payload)}, nil
+}
+
+// callExtra runs a tool served beside the toolbox. It has no row guard: the
+// interceptor refuses every extra tool to a confined key, and an interceptor
+// that was not given the extras refuses them to every key.
+func (s *toolsService) callExtra(ctx context.Context, tool Tool, args string) (*rpcv1.CallToolResponse, error) {
+	result, err := tool.Call(ctx, json.RawMessage(args))
+	if err != nil {
+		return nil, extraToolStatus(err)
 	}
 	payload, err := json.Marshal(result)
 	if err != nil {

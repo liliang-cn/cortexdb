@@ -12,6 +12,7 @@ import (
 	cortexdbroot "github.com/liliang-cn/cortexdb/v2"
 	cortexdb "github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graphflow"
+	"github.com/liliang-cn/cortexdb/v2/pkg/importflow"
 )
 
 func main() {
@@ -255,20 +256,36 @@ func main() {
 		}
 	}()
 
-	// Built rather than run directly so the local renderer can be registered
-	// alongside the facade's tools — the same surface the shared-brain path
-	// offers, so an agent sees one contract in both modes.
+	server := newLocalMCPServer(db, dbPath)
+	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+		log.Fatalf("run mcp stdio server: %v", err)
+	}
+}
+
+// newLocalMCPServer is the MCP server of local mode: the facade's tools and
+// the ones that live beside it.
+//
+// Built rather than run directly so the local renderer can be registered
+// alongside the facade's tools — the same surface the shared-brain path
+// offers, so an agent sees one contract in both modes.
+func newLocalMCPServer(db *cortexdb.DB, dbPath string) *mcp.Server {
 	server := db.NewMCPServer(cortexdb.MCPServerOptions{})
 	addRenderGraphHTMLTool(server)
 	addServeGraph3DTool(server)
 	addSideGraphTools(server, sideGraphs_)
 	addImportAgentMemoryTool(server, localBrain{db}, dbPath)
+	llm := newOrganizeLLM()
 	// global_search / build_community_hierarchy live in graphflow, which the
 	// facade cannot import, so they are registered here. The model is the
 	// same CORTEXDB_LLM_* one the CLI modes use; without it both tools run
 	// in their no-model mode rather than disappearing.
-	graphflow.AddGlobalSearchMCPTools(server, db, newOrganizeLLM())
-	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
-		log.Fatalf("run mcp stdio server: %v", err)
-	}
+	graphflow.AddGlobalSearchMCPTools(server, db, llm)
+	// importflow sits above the facade too: importflow_plan, importflow_run
+	// and the two DDL planners, which are how an imported table (the
+	// imported_tables_* tools) comes to exist. Without a model the planners
+	// answer in their no-model mode. This process is the caller's own, so a
+	// call may name a file on this machine; a shared brain serves the same
+	// tools (cmd/cortexdb-grpc) and takes the text inline only.
+	importflow.AddMCPTools(server, importflow.NewToolbox(importflow.New(db, importflow.WithLLM(llm)), importflow.WithLocalFiles()))
+	return server
 }

@@ -20,15 +20,21 @@ type MCPServerOptions struct {
 	Implementation *mcp.Implementation
 	Instructions   string
 	Logger         *slog.Logger
+	// LocalFiles lets the tools read the file a call names under path; see
+	// WithLocalFiles for when that is safe.
+	LocalFiles bool
 }
 
 // NewMCPServer returns an MCP server that exposes the importflow tool surface
-// (importflow_plan, importflow_run) backed by the given Importer.
+// (every tool of the Toolbox) backed by the given Importer.
 func NewMCPServer(im *Importer, opts MCPServerOptions) (*mcp.Server, error) {
 	if im == nil {
 		return nil, fmt.Errorf("importflow: importer is required")
 	}
-	toolbox := NewToolbox(im)
+	var toolboxOpts []ToolboxOption
+	if opts.LocalFiles {
+		toolboxOpts = append(toolboxOpts, WithLocalFiles())
+	}
 
 	impl := opts.Implementation
 	if impl == nil {
@@ -43,25 +49,23 @@ func NewMCPServer(im *Importer, opts MCPServerOptions) (*mcp.Server, error) {
 		Instructions: opts.Instructions,
 		Logger:       opts.Logger,
 	})
+	AddMCPTools(server, NewToolbox(im, toolboxOpts...))
+	return server, nil
+}
 
-	definitions := make(map[string]cortexdb.ToolDefinition, len(toolbox.Definitions()))
+// AddMCPTools registers every tool of the toolbox on an MCP server. The
+// cortexdb-mcp-stdio binary calls this beside the facade's tools, which
+// cannot import this package; NewMCPServer calls it for the importflow
+// surface. Each tool runs the code Toolbox.Call runs for it.
+func AddMCPTools(server *mcp.Server, toolbox *Toolbox) {
+	definitions := make(map[string]cortexdb.ToolDefinition)
 	for _, definition := range toolbox.Definitions() {
 		definitions[definition.Name] = definition
 	}
-
-	addImportflowMCPTool(server, definitions["importflow_plan"], func(ctx context.Context, in planInput) (MappingPlan, error) {
-		src, err := sourceFromInput(in.Format, in.Table, in.Data)
-		if err != nil {
-			return MappingPlan{}, err
-		}
-		defer src.Close()
-		return im.Plan(ctx, src, Goal{BuildRAG: in.BuildRAG, BuildKG: in.BuildKG, BuildTables: in.BuildTables, Hint: in.Hint})
-	})
-	addImportflowMCPTool(server, definitions["importflow_run"], func(ctx context.Context, in runInput) (*Report, error) {
-		return runFromInput(ctx, im, in)
-	})
-
-	return server, nil
+	addImportflowMCPTool(server, definitions[planToolName], toolbox.plan)
+	addImportflowMCPTool(server, definitions[runToolName], toolbox.run)
+	addImportflowMCPTool(server, definitions[ddlPlanToolName], toolbox.ddlPlan)
+	addImportflowMCPTool(server, definitions[ddlPlanAIToolName], toolbox.ddlPlanAI)
 }
 
 // RunMCPStdio runs the importflow MCP server over stdio until the context is done.

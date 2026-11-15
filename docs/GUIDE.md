@@ -628,7 +628,7 @@ tools := db.GraphRAGTools()                             // in-process tool calli
 server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 ```
 
-Tool groups (100+ tools, same names in-process and over MCP): GraphRAG (`ingest_document`, `search_text`, `build_context`, `expand_graph`, `search_paths`, `find_nodes`, `delete_document_graph`), unified retrieval (`cortex_query`), knowledge/memory (`knowledge_save`, `memory_search`, …), KnowledgeMemory (`knowledge_memory_recall`, `_reflect`, `_consolidate`, `extract_conversation`), KG (`knowledge_graph_query`, `_shacl_validate`, `apply_inference`), ontology (`ontology_save`, `ontology_history`, `ontology_action_apply`, `object_set_resolve`), history (`graph_history`, `knowledge_graph_history`), media (`ingest_media`, `search_media`), imported tables (`imported_tables_list`, `_describe`, `_query`), and maintenance (`vector_dimension_repair`, `sweep_expired`). The `cortexdb-mcp-stdio` binary adds `render_graph_html` (an interactive knowledge-graph view), `serve_graph_3d`, `side_graph_*`, `import_agent_memory`, and in local mode `global_search` / `build_community_hierarchy`; `db.NewMCPServer` serves the facade's tools only. `memoryflow`/`graphflow`/`importflow`/`connector` expose their own toolboxes too.
+Tool groups (100+ tools, same names in-process and over MCP): GraphRAG (`ingest_document`, `search_text`, `build_context`, `expand_graph`, `search_paths`, `find_nodes`, `delete_document_graph`), unified retrieval (`cortex_query`), knowledge/memory (`knowledge_save`, `memory_search`, …), KnowledgeMemory (`knowledge_memory_recall`, `_reflect`, `_consolidate`, `extract_conversation`), KG (`knowledge_graph_query`, `_shacl_validate`, `apply_inference`), ontology (`ontology_save`, `ontology_history`, `ontology_action_apply`, `object_set_resolve`), history (`graph_history`, `knowledge_graph_history`), media (`ingest_media`, `search_media`), imported tables (`imported_tables_list`, `_describe`, `_query`), and maintenance (`vector_dimension_repair`, `sweep_expired`). The `cortexdb-mcp-stdio` binary adds `render_graph_html` (an interactive knowledge-graph view), `serve_graph_3d`, `side_graph_*`, `import_agent_memory`, the import tools (`importflow_plan`, `importflow_run`, `importflow_ddl_plan`, `importflow_ddl_plan_ai`; in shared-brain mode `cortexdb-grpc` serves them), and in local mode `global_search` / `build_community_hierarchy`; `db.NewMCPServer` serves the facade's tools only. `memoryflow`/`graphflow`/`importflow`/`connector` expose their own toolboxes too.
 
 ### The live view
 
@@ -902,6 +902,37 @@ row counts, source), `imported_tables_describe` (one table and its first rows) a
 10 s and at most 60 s, `truncated` when rows were cut). In Go:
 `ListImportedTables`, `DescribeImportedTable`, `QueryImportedTables`,
 `DropImportedTable`.
+
+An agent imports the table itself, through the stock binaries, in local mode and
+against a shared brain alike. `importflow_plan` proposes a plan from the data
+(`build_tables`, `build_rag`, `build_kg`), `importflow_ddl_plan` derives one from
+`CREATE TABLE` statements, and `importflow_run` runs it: with `"keep_tables": true`
+every table of the source is kept, and `{"tables": {}}` is plan enough when the
+table is all that is wanted. Then `imported_tables_list`, `_describe` and `_query`
+read it. None of this needs a model: without one `importflow_plan` answers from the
+column list (`"mode": "no_model"`) and `importflow_ddl_plan_ai` returns the
+deterministic baseline with `"llm_used": false`; `cortexdb-mcp-stdio` plans with
+`CORTEXDB_LLM_*` when it is set, and `cortexdb-grpc` configures no model.
+
+```json
+{"name": "importflow_run", "arguments": {"format": "csv", "table": "orders",
+  "data": "id,region,total\n1,eu,10.5\n2,us,5.25\n", "plan": {"tables": {}}, "keep_tables": true}}
+{"name": "imported_tables_query", "arguments": {"sql": "SELECT region, sum(total) FROM orders GROUP BY region"}}
+```
+
+The source text travels in the call, as `data`, at most 1 MiB per call (a gRPC
+brain takes messages up to 4 MiB, and the limit leaves room for the client's JSON
+escaping); a larger text is refused whole. There is no chunked upload, and a table
+cannot be sent in parts (a second import replaces it), so a larger file goes by
+`path` or through the Go API. A local `cortexdb-mcp-stdio` takes `path`, a file on
+its own machine of any size. A shared brain refuses `path`: it would
+open the file on the server's disk, which helps no caller and would let any key
+read the server's files. `importflow_run` writes, so a read-only key is refused it
+and may still call the three planning tools; a confined key is refused all four,
+as it is the read tools, because an import is not held to a scope. In Go the same
+tools are `importflow.NewToolbox(im)` and `importflow.AddMCPTools(server, toolbox)`
+(`importflow.WithLocalFiles()` turns `path` on), and a gRPC server offers them, or
+any tool defined above the facade, through `rpcserver.Options.ExtraTools`.
 
 The query cannot write and cannot read the rest of the brain, and that is not
 decided by looking at the SQL. The rows live in tables named `imported_tbl_…`, listed
