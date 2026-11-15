@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
+	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 )
 
 // Document-scoped graph deletion.
@@ -303,9 +304,19 @@ func chunksOfDocumentSQL(db *DB) string {
 }
 
 // documentNodesOfSQL takes the document id, then the document node's derived
-// id, which graphs written before the property existed are found by. The
-// COALESCE keeps the planner off idx_nodes_type, which would read every
-// document node: either key alone narrows to one row.
+// id, which graphs written before the property existed are found by.
 func documentNodesOfSQL(db *DB) string {
-	return `SELECT id FROM graph_nodes WHERE COALESCE(node_type, '') = 'document' AND ((` + docIDIs(db) + `) OR id = ?)`
+	return documentNodesQuery(db.Dialect())
+}
+
+// On SQLite the COALESCE keeps the planner off idx_nodes_type, which would
+// read every document node: either key alone narrows to one row. PostgreSQL
+// has no expression index on document_id, so there the type is asked for as
+// it is and idx_nodes_type serves.
+func documentNodesQuery(d sqldialect.Dialect) string {
+	nodeType := `COALESCE(node_type, '')`
+	if d.Kind() == sqldialect.Postgres {
+		nodeType = `node_type`
+	}
+	return `SELECT id FROM graph_nodes WHERE ` + nodeType + ` = 'document' AND ((` + d.JSONTextGuarded("properties", "document_id") + ` = ?) OR id = ?)`
 }

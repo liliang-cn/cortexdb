@@ -2,7 +2,10 @@ package graph
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -144,6 +147,25 @@ func TestNodeSourcedFromFollowsEveryWriteOfTheSources(t *testing.T) {
 			checkSourcedFrom(t, g, "written again", map[string][]string{
 				"b": {"src:twice"},
 				"c": {"src:b", "src:two"},
+			})
+			// An update that names a document twice, on a node that is
+			// there: main takes it, and so does every writer once a brain
+			// has the triggers, an older binary included.
+			if err := g.UpsertNode(ctx, &GraphNode{ID: "src:two", Properties: map[string]any{"source_document_ids": []string{"c", "c"}}}); err != nil {
+				t.Fatalf("update with a repeated source: %v", err)
+			}
+			if err := g.UpsertNode(ctx, &GraphNode{ID: "src:two", Properties: map[string]any{"source_document_ids": []string{"d", "c", "d", "d"}}}); err != nil {
+				t.Fatalf("update with a repeated new source: %v", err)
+			}
+			// A member leaves and one comes in the same write.
+			if err := g.UpsertNode(ctx, &GraphNode{ID: "src:b", Properties: map[string]any{"source_document_ids": []string{"e", "e"}}}); err != nil {
+				t.Fatal(err)
+			}
+			checkSourcedFrom(t, g, "repeated", map[string][]string{
+				"b": {"src:twice"},
+				"c": {"src:two"},
+				"d": {"src:two"},
+				"e": {"src:b"},
 			})
 		})
 	}
@@ -360,6 +382,269 @@ func TestProvenanceLookupsHaveAnIndex(t *testing.T) {
 	} {
 		if plan := explain(t, g, q, "doc"); strings.Contains(plan, "SCAN graph_") {
 			t.Errorf("%s scans:\n%s", name, plan)
+		}
+	}
+}
+
+// The update trigger writes only when the id or the list changed: a write
+// that leaves the list as it was touches no source row. An entity many
+// documents name has its other properties written far more often than its
+// list. A changed list is written again whole.
+func TestTheSourceTriggerWritesOnlyWhatChanged(t *testing.T) {
+	ctx := context.Background()
+	_, g, cleanup := setupTestGraph(t)
+	t.Cleanup(cleanup)
+	if err := g.UpsertNode(ctx, &GraphNode{ID: "e", Content: "first", Properties: map[string]any{"source_document_ids": []string{"a", "b", "c"}, "name": "E"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`CREATE TABLE source_writes (what TEXT, document_id TEXT, node_id TEXT)`,
+		`CREATE TRIGGER source_writes_ins AFTER INSERT ON graph_node_sources BEGIN INSERT INTO source_writes VALUES ('+', NEW.document_id, NEW.node_id); END`,
+		`CREATE TRIGGER source_writes_del AFTER DELETE ON graph_node_sources BEGIN INSERT INTO source_writes VALUES ('-', OLD.document_id, OLD.node_id); END`,
+	} {
+		if _, err := g.exec(ctx, stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writes := func() []string {
+		t.Helper()
+		rows, err := g.query(ctx, `SELECT what || document_id || '@' || node_id FROM source_writes ORDER BY 1`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = rows.Close() }()
+		out := []string{}
+		for rows.Next() {
+			var w string
+			if err := rows.Scan(&w); err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, w)
+		}
+		if _, err := g.exec(ctx, `DELETE FROM source_writes`); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	for _, c := range []struct {
+		step  string
+		write func() error
+		want  []string
+	}{
+		{"the same list, other properties", func() error {
+			return g.UpsertNode(ctx, &GraphNode{ID: "e", Content: "second", Properties: map[string]any{"source_document_ids": []string{"a", "b", "c"}, "name": "E2"}})
+		}, []string{}},
+		{"one member leaves, one comes", func() error {
+			return g.UpsertNode(ctx, &GraphNode{ID: "e", Properties: map[string]any{"source_document_ids": []string{"a", "c", "d", "d"}}})
+		}, []string{"+a@e", "+c@e", "+d@e", "-a@e", "-b@e", "-c@e"}},
+		{"the list is no longer a list", func() error {
+			_, err := g.exec(ctx, `UPDATE graph_nodes SET properties = 'not json' WHERE id = 'e'`)
+			return err
+		}, []string{"-a@e", "-c@e", "-d@e"}},
+		{"a list again", func() error {
+			_, err := g.exec(ctx, `UPDATE graph_nodes SET properties = '{"source_document_ids":["a"]}' WHERE id = 'e'`)
+			return err
+		}, []string{"+a@e"}},
+		{"the same list in another order of keys", func() error {
+			_, err := g.exec(ctx, `UPDATE graph_nodes SET properties = '{"name":"E","source_document_ids":["a"]}' WHERE id = 'e'`)
+			return err
+		}, []string{}},
+		{"renamed", func() error {
+			_, err := g.exec(ctx, `UPDATE graph_nodes SET id = 'f' WHERE id = 'e'`)
+			return err
+		}, []string{"+a@f", "-a@e"}},
+	} {
+		if err := c.write(); err != nil {
+			t.Fatalf("%s: %v", c.step, err)
+		}
+		if got := writes(); !slices.Equal(got, c.want) {
+			t.Errorf("%s: source rows written %v, want %v", c.step, got, c.want)
+		}
+	}
+	checkSourcedFrom(t, g, "after the writes", map[string][]string{"a": {"f"}, "b": {}, "c": {}, "d": {}})
+}
+
+// A trigger whose body a release corrected is installed again: a brain keeps
+// the triggers it was opened with otherwise, since their names are there.
+func TestACorrectedSourceTriggerReplacesTheOneInTheFile(t *testing.T) {
+	ctx := context.Background()
+	store, g, cleanup := setupTestGraph(t)
+	t.Cleanup(cleanup)
+	if err := g.UpsertNode(ctx, &GraphNode{ID: "kept", Properties: map[string]any{"source_document_ids": []string{"a"}}}); err != nil {
+		t.Fatal(err)
+	}
+	for name := range nodeSourcesTriggers {
+		// The same name with another body: here one that indexes nothing.
+		for _, stmt := range []string{`DROP TRIGGER ` + name, `CREATE TRIGGER ` + name + ` AFTER DELETE ON graph_edges BEGIN SELECT 1; END`} {
+			if _, err := g.exec(ctx, stmt); err != nil {
+				t.Fatalf("%s: %v", stmt, err)
+			}
+		}
+		// A write the stand-in misses.
+		if err := g.UpsertNode(ctx, &GraphNode{ID: "missed-" + name, Properties: map[string]any{"source_document_ids": []string{"m"}}}); err != nil {
+			t.Fatal(err)
+		}
+		reopened := NewGraphStore(store)
+		if err := reopened.InitGraphSchema(ctx); err != nil {
+			t.Fatal(err)
+		}
+		var body string
+		if err := g.queryRow(ctx, `SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?`, name).Scan(&body); err != nil || body != installedTrigger(name) {
+			t.Errorf("%s after reopen (%v):\n got %s\nwant %s", name, err, body, installedTrigger(name))
+		}
+	}
+	checkSourcedFrom(t, g, "reopened", map[string][]string{"a": {"kept"}, "m": {"missed-graph_node_sources_del", "missed-graph_node_sources_ins", "missed-graph_node_sources_upd"}})
+}
+
+// A brain that has the triggers of this version is opened without a write.
+func TestOpeningABrainThatHasTheSourceIndexWritesNothing(t *testing.T) {
+	ctx := context.Background()
+	store, g, cleanup := setupTestGraph(t)
+	t.Cleanup(cleanup)
+	if err := g.UpsertNode(ctx, &GraphNode{ID: "kept", Properties: map[string]any{"source_document_ids": []string{"a"}}}); err != nil {
+		t.Fatal(err)
+	}
+	// A row the table should not have: a rebuild would remove it.
+	if _, err := g.exec(ctx, `INSERT INTO graph_node_sources VALUES ('left', 'alone')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewGraphStore(store).InitGraphSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := g.queryRow(ctx, `SELECT COUNT(*) FROM graph_node_sources WHERE document_id = 'left'`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("the table was rebuilt on a brain that had its triggers (%d, %v)", n, err)
+	}
+}
+
+// sourcePairs is graph_node_sources against the lists it indexes: the pairs
+// only the table holds and the pairs only the lists hold.
+func sourcePairs(t *testing.T, g *GraphStore) (stale, missing []string) {
+	t.Helper()
+	read := func(q string) map[string]bool {
+		rows, err := g.db.Query(q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		pairs := map[string]bool{}
+		for rows.Next() {
+			var doc, node string
+			if err := rows.Scan(&doc, &node); err != nil {
+				t.Fatal(err)
+			}
+			pairs[doc+" @ "+node] = true
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		return pairs
+	}
+	table := read(`SELECT document_id, node_id FROM graph_node_sources`)
+	lists := read(`SELECT je.value, n.id FROM graph_nodes n, json_each(` + sourceListOf("n") + `) je WHERE je.type = 'text'`)
+	for pair := range table {
+		if !lists[pair] {
+			stale = append(stale, pair)
+		}
+	}
+	for pair := range lists {
+		if !table[pair] {
+			missing = append(missing, pair)
+		}
+	}
+	sort.Strings(stale)
+	sort.Strings(missing)
+	return stale, missing
+}
+
+// A row that takes the place of another fires no delete trigger for it. The
+// sources of the row replaced must not stay under the id.
+func TestARowThatReplacesAnotherLeavesNoSourceOfIt(t *testing.T) {
+	_, g, cleanup := setupTestGraph(t)
+	defer cleanup()
+	ctx := context.Background()
+	if err := g.InitGraphSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`INSERT INTO graph_nodes (id, vector, content, node_type, properties) VALUES ('e', x'', '', 't', '{"source_document_ids":["a","b"]}')`,
+		`INSERT OR REPLACE INTO graph_nodes (id, vector, content, node_type, properties) VALUES ('e', x'', '', 't', '{"source_document_ids":["c"]}')`,
+		`INSERT INTO graph_nodes (id, vector, content, node_type, properties) VALUES ('f', x'', '', 't', '{"source_document_ids":["d","c"]}')`,
+		`UPDATE OR REPLACE graph_nodes SET id = 'f' WHERE id = 'e'`,
+		`INSERT OR REPLACE INTO graph_nodes (id, vector, content, node_type, properties) VALUES ('f', x'', '', 't', '{}')`,
+	} {
+		if _, err := g.exec(ctx, stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+		if stale, missing := sourcePairs(t, g); len(stale)+len(missing) != 0 {
+			t.Fatalf("after %s\nonly in the table: %v\nonly in the lists: %v", stmt, stale, missing)
+		}
+	}
+}
+
+// Every kind of write, drawn at random on a few ids: after each one the
+// table holds the pairs the lists hold, and no write fails.
+func TestTheSourceIndexEqualsTheListsAfterRandomWrites(t *testing.T) {
+	_, g, cleanup := setupTestGraph(t)
+	defer cleanup()
+	ctx := context.Background()
+	if err := g.InitGraphSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	rng := rand.New(rand.NewSource(1))
+	members := []string{`"a"`, `"b"`, `"c"`, `"A"`, `" a"`, `""`, `1`, `null`, `["a"]`, `{"a":"b"}`}
+	list := func() string {
+		picked := make([]string, rng.Intn(6))
+		for i := range picked {
+			picked[i] = members[rng.Intn(len(members))]
+		}
+		return "[" + strings.Join(picked, ",") + "]"
+	}
+	properties := func() string {
+		switch rng.Intn(8) {
+		case 0:
+			return `{}`
+		case 1:
+			return `{"source_document_ids":"a"}`
+		case 2:
+			return `not json`
+		}
+		return `{"source_document_ids":` + list() + `}`
+	}
+	id := func() string { return fmt.Sprintf("n%d", rng.Intn(6)) }
+	const upsert = `INSERT INTO graph_nodes (id, vector, content, node_type, properties) VALUES (?, x'', '', 't', ?)
+		ON CONFLICT(id) DO UPDATE SET properties = excluded.properties`
+	for op := 0; op < 1500; op++ {
+		var what string
+		var err error
+		switch rng.Intn(8) {
+		case 0, 1:
+			what = "upsert"
+			_, err = g.exec(ctx, upsert, id(), properties())
+		case 2:
+			what = "replace"
+			_, err = g.exec(ctx, `INSERT OR REPLACE INTO graph_nodes (id, vector, content, node_type, properties) VALUES (?, x'', '', 't', ?)`, id(), properties())
+		case 3:
+			what = "list set in place"
+			_, err = g.exec(ctx, `UPDATE graph_nodes SET properties = json_set(properties, '$.source_document_ids', json(?)) WHERE id = ? AND json_valid(properties)`, list(), id())
+		case 4:
+			what = "member added"
+			_, err = g.exec(ctx, `UPDATE graph_nodes SET properties = json_insert(properties, '$.source_document_ids[#]', json(?)) WHERE id = ? AND json_valid(properties)`, members[rng.Intn(len(members))], id())
+		case 5:
+			what = "another property"
+			_, err = g.exec(ctx, `UPDATE graph_nodes SET content = ?, properties = json_set(properties, '$.seen', ?) WHERE id = ? AND json_valid(properties)`, what, op, id())
+		case 6:
+			what = "delete"
+			_, err = g.exec(ctx, `DELETE FROM graph_nodes WHERE id = ?`, id())
+		case 7:
+			what = "rename"
+			_, err = g.exec(ctx, `UPDATE OR REPLACE graph_nodes SET id = ? WHERE id = ?`, id(), id())
+		}
+		if err != nil {
+			t.Fatalf("operation %d (%s): %v", op, what, err)
+		}
+		if stale, missing := sourcePairs(t, g); len(stale)+len(missing) != 0 {
+			t.Fatalf("after operation %d (%s)\nonly in the table: %v\nonly in the lists: %v", op, what, stale, missing)
 		}
 	}
 }

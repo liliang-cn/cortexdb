@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
+	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 )
 
 // Every lookup that finds what one document put in the graph — the edges it
@@ -312,5 +313,18 @@ func TestDeleteDocumentGraphStopsOnASourceListItCannotRead(t *testing.T) {
 	var n int
 	if err := db.SQL().QueryRowContext(ctx, `SELECT COUNT(*) FROM graph_nodes WHERE node_type = 'entity'`).Scan(&n); err != nil || n != 1 {
 		t.Errorf("the stopped delete changed the entities: %d left (%v)", n, err)
+	}
+}
+
+// The document node is asked for by its type as a plain column on
+// PostgreSQL, which has no expression index on document_id for the rewrite
+// to steer the planner to: there the rewrite would only keep idx_nodes_type
+// from being used. On SQLite the rewrite stays.
+func TestTheDocumentNodeLookupLeavesTheTypeIndexToPostgres(t *testing.T) {
+	if q := documentNodesQuery(sqldialect.For(sqldialect.Postgres)); !strings.Contains(q, "WHERE node_type = 'document' AND") || strings.Contains(q, "COALESCE(node_type") {
+		t.Errorf("postgres: %s", q)
+	}
+	if q := documentNodesQuery(sqldialect.For(sqldialect.SQLite)); !strings.Contains(q, "WHERE COALESCE(node_type, '') = 'document' AND") {
+		t.Errorf("sqlite: %s", q)
 	}
 }
