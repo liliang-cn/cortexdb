@@ -883,6 +883,8 @@ hermes gateway restart
 
 ## 在其他语言中使用（gRPC sidecar）
 
+想把 CortexDB 接进你自己的 agent，不管走哪条路（MCP、Go 库、这些客户端或 REST），见[把 CortexDB 接进你自己的 agent](INTEGRATION_CN.md)。
+
 `cortexdb-grpc` 通过 gRPC 暴露完整 facade，并提供 Rust/Python/Node 的类型化客户端：
 
 ```bash
