@@ -1157,6 +1157,8 @@ backend.
 
 ## Other languages (gRPC sidecar)
 
+For wiring CortexDB into an agent of your own, whichever way in (MCP, the Go library, these clients or REST), see [Integrating CortexDB into your own agent](INTEGRATION.md).
+
 `cortexdb-grpc` serves the full facade over gRPC, with typed clients for Rust/Python/Node:
 
 ```bash

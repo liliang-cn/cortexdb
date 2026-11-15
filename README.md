@@ -120,7 +120,7 @@ Haiku runs on Claude Code's own model access, so no API key is needed. Language:
 
 ## Docs
 
-[Website](https://liliang-cn.github.io/cortexdb/) · [Guide](docs/GUIDE.md) (full feature reference) · [Examples](examples/README.md) · [Changelog](CHANGELOG.md) · [中文](README_CN.md)
+[Website](https://liliang-cn.github.io/cortexdb/) · [Guide](docs/GUIDE.md) (full feature reference) · [Integrating your agent](docs/INTEGRATION.md) (MCP, Go, gRPC clients, REST) · [Examples](examples/README.md) · [Changelog](CHANGELOG.md) · [中文](README_CN.md)
 
 ## License
 

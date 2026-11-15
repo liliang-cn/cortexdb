@@ -118,7 +118,7 @@ haiku 用的是 Claude Code 自己的模型额度，不需要 API key。语言�
 
 ## 文档
 
-[官网](https://liliang-cn.github.io/cortexdb/zh/) · [指南](docs/GUIDE_CN.md)（完整功能一览） · [示例](examples/README.md) · [更新日志](CHANGELOG.md) · [English](README.md)
+[官网](https://liliang-cn.github.io/cortexdb/zh/) · [指南](docs/GUIDE_CN.md)（完整功能一览） · [接入你的 agent](docs/INTEGRATION_CN.md)（MCP、Go、gRPC 客户端、REST） · [示例](examples/README.md) · [更新日志](CHANGELOG.md) · [English](README.md)
 
 ## License
 
