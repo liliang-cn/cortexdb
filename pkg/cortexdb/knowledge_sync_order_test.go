@@ -15,10 +15,15 @@ import (
 // the index syncs, and what it does inside that place.
 type watchedStore struct {
 	core.BrainStore
-	db     *DB
-	doc    string
-	probe  []float32
-	events []string
+	db    *DB
+	doc   string
+	probe []float32
+	// committed counts the rows of doc a reader sees; empty, it counts the
+	// document itself.
+	committed string
+	// atReserve, when set, runs as the place is reserved.
+	atReserve func()
+	events    []string
 }
 
 // graphIndex says what the graph's HNSW index gives nearest to the vector
@@ -38,13 +43,20 @@ func (w *watchedStore) graphIndex() string {
 func (w *watchedStore) ReserveIndexSync() func(apply func()) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	query := w.committed
+	if query == "" {
+		query = `SELECT COUNT(*) FROM documents WHERE id = ?`
+	}
 	var committed int
-	if err := w.db.SQL().QueryRowContext(ctx, `SELECT COUNT(*) FROM documents WHERE id = ?`, w.doc).Scan(&committed); err != nil {
+	if err := w.db.SQL().QueryRowContext(ctx, query, w.doc).Scan(&committed); err != nil {
 		w.events = append(w.events, "reserve: "+err.Error())
 	} else if committed == 0 {
 		w.events = append(w.events, "reserve, document absent")
 	} else {
 		w.events = append(w.events, "reserve, document present")
+	}
+	if w.atReserve != nil {
+		w.atReserve()
 	}
 	place := w.BrainStore.ReserveIndexSync()
 	return func(apply func()) {
@@ -70,11 +82,11 @@ func (w *watchedStore) SyncUpsertedEmbeddings(ctx context.Context, embs []*core.
 	w.BrainStore.SyncUpsertedEmbeddings(ctx, embs)
 }
 
-// A saved document and a deleted one reserve their place before they commit
-// and bring the indexes, of the store and of the graph, up to date inside
-// it. Outside the place, two documents written at once reach the indexes in
-// an order that is not the order of their commits.
-func TestAKnowledgeWriteSyncsTheIndexesInItsPlace(t *testing.T) {
+// brainWithAGraphIndex opens a brain that holds the document "seed" and has
+// held the document "x", with the graph's HNSW index on. It gives the save
+// request of x and the vector the nodes of x take.
+func brainWithAGraphIndex(t *testing.T) (*DB, KnowledgeSaveRequest, []float32) {
+	t.Helper()
 	db, err := Open(DefaultConfig(filepath.Join(t.TempDir(), "brain.db")))
 	if err != nil {
 		t.Fatal(err)
@@ -105,6 +117,16 @@ func TestAKnowledgeWriteSyncsTheIndexesInItsPlace(t *testing.T) {
 	if err := db.graph.EnableHNSWIndex(len(probe)); err != nil {
 		t.Fatal(err)
 	}
+	return db, x, probe
+}
+
+// A saved document and a deleted one reserve their place before they commit
+// and bring the indexes, of the store and of the graph, up to date inside
+// it. Outside the place, two documents written at once reach the indexes in
+// an order that is not the order of their commits.
+func TestAKnowledgeWriteSyncsTheIndexesInItsPlace(t *testing.T) {
+	db, x, probe := brainWithAGraphIndex(t)
+	ctx := context.Background()
 	watched := &watchedStore{BrainStore: db.store, db: db, doc: "x", probe: probe}
 	db.store = watched
 	t.Cleanup(func() { db.store = watched.BrainStore })
