@@ -240,3 +240,13 @@ func (s *PostgresStore) SyncDeletedEmbeddingIDs(context.Context, []string) {}
 // SyncUpsertedEmbeddings is a no-op: pgvector's index is maintained by
 // PostgreSQL, in the same transaction as the write. See the note above.
 func (s *PostgresStore) SyncUpsertedEmbeddings(context.Context, []*Embedding) {}
+
+// ReserveIndexSync has no order to keep: pgvector's index is written in the
+// transaction. apply runs at once, for what the caller syncs beside it.
+func (s *PostgresStore) ReserveIndexSync() func(apply func()) {
+	return func(apply func()) {
+		if apply != nil {
+			apply()
+		}
+	}
+}

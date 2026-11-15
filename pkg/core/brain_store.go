@@ -78,6 +78,11 @@ type BrainStore interface {
 	// correctness one: the rows are already right.
 	SyncDeletedEmbeddingIDs(ctx context.Context, ids []string)
 	SyncUpsertedEmbeddings(ctx context.Context, embs []*Embedding)
+
+	// ReserveIndexSync orders the syncs of two transactions as their
+	// commits: reserve just before the commit, run the Sync calls inside the
+	// function it returns. See SQLiteStore.ReserveIndexSync.
+	ReserveIndexSync() func(apply func())
 }
 
 // SQLiteStore is one, which is the claim DB has been relying on all along
