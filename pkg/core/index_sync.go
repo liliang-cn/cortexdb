@@ -11,8 +11,11 @@ func (s *SQLiteStore) SyncDeletedEmbeddingIDs(_ context.Context, ids []string) {
 		return
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// Shared, as in SyncUpsertedEmbeddings: each index locks itself. Asked
+	// for exclusively, the lock made this call wait for any sync under way,
+	// and every new search wait behind it.
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	s.forgetIndexedIDs(ids)
 }
 

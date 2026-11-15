@@ -81,8 +81,11 @@ func (s *SQLiteStore) SyncUpsertedEmbeddings(ctx context.Context, embs []*Embedd
 		return
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// Shared, as in UpsertBatch: each index has its own lock, and this one
+	// only keeps the indexes from being swapped. Held exclusively, it made
+	// every search wait until the last vector of the document was indexed.
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	if s.config.HNSW.Enabled && s.hnswIndex != nil {
 		for _, emb := range embs {
