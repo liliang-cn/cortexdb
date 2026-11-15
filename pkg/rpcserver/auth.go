@@ -34,6 +34,14 @@ func authInterceptor(keys *authz.KeySet, db *cortexdb.DB) grpc.UnaryServerInterc
 // authInterceptorFrom is authInterceptor over the key set src holds at each
 // call, so a key file is applied as it stands now.
 func authInterceptorFrom(src *authz.KeySource, db *cortexdb.DB) grpc.UnaryServerInterceptor {
+	return authInterceptorWith(src, db, nil)
+}
+
+// authInterceptorWith is authInterceptorFrom for a server that also serves
+// extras. A CallTool that names one is decided by that tool's own line
+// (authz.AuthorizeExtensionTool) in place of the toolbox's classification and
+// allowlist, neither of which knows the name.
+func authInterceptorWith(src *authz.KeySource, db *cortexdb.DB, extras *extraTools) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		keys := src.Current()
 		if !keys.Enabled() {
@@ -62,6 +70,12 @@ func authInterceptorFrom(src *authz.KeySource, db *cortexdb.DB) grpc.UnaryServer
 			if err := authz.CheckUnambiguous([]byte(call.GetArgsJson())); err != nil {
 				return nil, status.Error(codes.InvalidArgument, err.Error())
 			}
+		}
+		if policy, ok := extras.policy(info.FullMethod, req); ok {
+			if err := key.AuthorizeExtensionTool(policy); err != nil {
+				return nil, status.Error(codes.PermissionDenied, err.Error())
+			}
+			return handler(withCallerKey(key.CallerContext(ctx), key), req)
 		}
 		// AuthorizeCall rather than AuthorizeMethod: the interceptor can read
 		// the request, so it can tell the policy which tool a CallTool names

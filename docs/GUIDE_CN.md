@@ -500,7 +500,7 @@ tools := db.GraphRAGTools()                             // 进程内 tool callin
 server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 ```
 
-工具分组（100+ 个工具，进程内与 MCP 同名）：GraphRAG（`ingest_document`、`search_text`、`build_context`、`expand_graph`、`search_paths`、`find_nodes`、`delete_document_graph`）、统一检索（`cortex_query`）、knowledge/memory（`knowledge_save`、`memory_search` …）、KnowledgeMemory（`knowledge_memory_recall`、`_reflect`、`_consolidate`、`extract_conversation`）、KG（`knowledge_graph_query`、`_shacl_validate`、`apply_inference`）、ontology（`ontology_save`、`ontology_history`、`ontology_action_apply`、`object_set_resolve`）、历史（`graph_history`、`knowledge_graph_history`）、媒体（`ingest_media`、`search_media`）、导入的表（`imported_tables_list`、`_describe`、`_query`）、维护（`vector_dimension_repair`、`sweep_expired`）。`cortexdb-mcp-stdio` 这个二进制额外提供 `render_graph_html`（交互式知识图谱视图）、`serve_graph_3d`、`side_graph_*`、`import_agent_memory`，本地模式下还有 `global_search` / `build_community_hierarchy`；`db.NewMCPServer` 只提供 facade 自己的工具。`memoryflow`/`graphflow`/`importflow`/`connector` 各自也暴露自己的 toolbox。
+工具分组（100+ 个工具，进程内与 MCP 同名）：GraphRAG（`ingest_document`、`search_text`、`build_context`、`expand_graph`、`search_paths`、`find_nodes`、`delete_document_graph`）、统一检索（`cortex_query`）、knowledge/memory（`knowledge_save`、`memory_search` …）、KnowledgeMemory（`knowledge_memory_recall`、`_reflect`、`_consolidate`、`extract_conversation`）、KG（`knowledge_graph_query`、`_shacl_validate`、`apply_inference`）、ontology（`ontology_save`、`ontology_history`、`ontology_action_apply`、`object_set_resolve`）、历史（`graph_history`、`knowledge_graph_history`）、媒体（`ingest_media`、`search_media`）、导入的表（`imported_tables_list`、`_describe`、`_query`）、维护（`vector_dimension_repair`、`sweep_expired`）。`cortexdb-mcp-stdio` 这个二进制额外提供 `render_graph_html`（交互式知识图谱视图）、`serve_graph_3d`、`side_graph_*`、`import_agent_memory`、导入工具（`importflow_plan`、`importflow_run`、`importflow_ddl_plan`、`importflow_ddl_plan_ai`；共享大脑模式下由 `cortexdb-grpc` 提供），本地模式下还有 `global_search` / `build_community_hierarchy`；`db.NewMCPServer` 只提供 facade 自己的工具。`memoryflow`/`graphflow`/`importflow`/`connector` 各自也暴露自己的 toolbox。
 
 ### 实时视图
 
@@ -670,6 +670,30 @@ dump 读自 `CREATE TABLE`）。数字按数字存，空的数字单元格存成
 连接、CTE、窗口函数都可以，`params` 对应 `?`，`max_rows` 默认 200、最多 10000，`timeout_ms` 默认
 10 秒、最多 60 秒，结果被截断时带 `truncated`）。Go 里对应 `ListImportedTables`、
 `DescribeImportedTable`、`QueryImportedTables`、`DropImportedTable`。
+
+表也由 agent 自己导入，用发布的二进制就行，本地模式和共享大脑模式都一样。`importflow_plan`
+根据数据给出方案（`build_tables`、`build_rag`、`build_kg`），`importflow_ddl_plan` 根据
+`CREATE TABLE` 语句给出方案，`importflow_run` 执行方案：带上 `"keep_tables": true` 就把源里的
+每一张表都保留下来，只想要表的话，方案写 `{"tables": {}}` 就够了。之后用 `imported_tables_list`、
+`_describe`、`_query` 读。整个过程不需要模型：没有模型时 `importflow_plan` 只按列名给方案
+（`"mode": "no_model"`），`importflow_ddl_plan_ai` 返回确定性的基线方案并带 `"llm_used": false`；
+`cortexdb-mcp-stdio` 在设置了 `CORTEXDB_LLM_*` 时用模型做方案，`cortexdb-grpc` 不配置模型。
+
+```json
+{"name": "importflow_run", "arguments": {"format": "csv", "table": "orders",
+  "data": "id,region,total\n1,eu,10.5\n2,us,5.25\n", "plan": {"tables": {}}, "keep_tables": true}}
+{"name": "imported_tables_query", "arguments": {"sql": "SELECT region, sum(total) FROM orders GROUP BY region"}}
+```
+
+源数据的文本放在调用里，用 `data` 传，每次调用最多 1 MiB（gRPC 大脑接受的消息上限是 4 MiB）；
+超过就整体拒绝，不会只导入一部分。没有分块上传，一张表也不能分几次传（再导入一次是整表替换），
+更大的文件用 `path` 或者走 Go API。本地的 `cortexdb-mcp-stdio` 还接受 `path`，读它自己机器上的文件，
+大小不限。共享大脑拒绝 `path`：那会打开服务器磁盘上的文件，对调用方没有用，还会让任何一个 key
+都能读服务器的文件。`importflow_run` 是写操作，只读 key 不能调用，但仍可以调用三个做方案的工具；
+受限的 key 四个都不能调用，和三个读工具一样，因为导入不受 scope 约束。Go 里对应
+`importflow.NewToolbox(im)` 和 `importflow.AddMCPTools(server, toolbox)`
+（`importflow.WithLocalFiles()` 打开 `path`）；gRPC 服务器通过 `rpcserver.Options.ExtraTools`
+提供这些工具，以及任何定义在 facade 之上的工具。
 
 查询不能写，也读不到大脑的其他数据，而且这不是靠检查 SQL 文本做到的。数据行放在名为
 `imported_tbl_…` 的表里，在 `imported_tables` 注册表中按源里的名字登记；dump 里的名字从不直接

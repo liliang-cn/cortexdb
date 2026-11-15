@@ -47,16 +47,24 @@ func runRemoteMCPStdio(ctx context.Context, addr, token string) error {
 	}
 	defer func() { _ = conn.Close() }()
 
-	client := rpcv1.NewToolsServiceClient(conn)
+	server, err := newRemoteMCPServer(ctx, rpcv1.NewToolsServiceClient(conn), addr)
+	if err != nil {
+		return err
+	}
+	return server.Run(ctx, &mcp.StdioTransport{})
+}
 
+// newRemoteMCPServer is the MCP server of remote mode: every tool the brain
+// lists, forwarded to it, and the few that are handled on this machine.
+func newRemoteMCPServer(ctx context.Context, client rpcv1.ToolsServiceClient, addr string) (*mcp.Server, error) {
 	discoverCtx, cancel := context.WithTimeout(ctx, remoteDialTimeout)
 	defer cancel()
 	list, err := client.ListTools(discoverCtx, &rpcv1.ListToolsRequest{})
 	if err != nil {
-		return fmt.Errorf("discover tools from %s: %w (is cortexdb-grpc running and is CORTEXDB_GRPC_TOKEN correct?)", addr, err)
+		return nil, fmt.Errorf("discover tools from %s: %w (is cortexdb-grpc running and is CORTEXDB_GRPC_TOKEN correct?)", addr, err)
 	}
 	if len(list.GetTools()) == 0 {
-		return fmt.Errorf("remote %s exposed no tools", addr)
+		return nil, fmt.Errorf("remote %s exposed no tools", addr)
 	}
 
 	server := mcp.NewServer(&mcp.Implementation{
@@ -73,6 +81,10 @@ func runRemoteMCPStdio(ctx context.Context, addr, token string) error {
 	// and the brain's span is a child of it.
 	server.AddReceivingMiddleware(cortexdb.MCPCallMiddleware(cortexdb.LocalClientInfo()))
 
+	// The brain's catalogue holds the facade's toolbox and what the server
+	// offers beside it — importflow's tools (cortexdb-grpc's import_tools.go)
+	// — so those are forwarded like any other, and their source text travels
+	// inline: the brain opens no path for a caller.
 	for _, def := range list.GetTools() {
 		addRemoteTool(server, client, def)
 	}
@@ -85,7 +97,7 @@ func runRemoteMCPStdio(ctx context.Context, addr, token string) error {
 	// Also handled here: the files it imports are on this machine, not the
 	// brain's. See import_agent.go.
 	addImportAgentMemoryTool(server, remoteBrain{client}, addr)
-	return server.Run(ctx, &mcp.StdioTransport{})
+	return server, nil
 }
 
 // addRemoteTool registers one discovered remote tool, forwarding calls over

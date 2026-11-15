@@ -357,7 +357,7 @@ Both adapters call the existing gRPC `ToolsService` and prefer
 `knowledge_memory_recall`; do not implement a separate retrieval or storage path
 inside an agent plugin. The `skills/cortexdb-memory-*` directories remain the
 lighter explicit-tool integration.
-- importflow: `importflow_plan`, `importflow_run` (via `importflow.NewToolbox(im)` / `importflow.NewMCPServer(im, opts)` / `importflow.RunMCPStdio(ctx, im, opts)`)
+- importflow: `importflow_plan`, `importflow_run`, `importflow_ddl_plan`, `importflow_ddl_plan_ai` — served by `cortexdb-mcp-stdio` in local mode and by `cortexdb-grpc` for a shared brain (also `importflow.NewToolbox(im)` / `importflow.AddMCPTools(server, toolbox)` / `importflow.NewMCPServer(im, opts)` / `importflow.RunMCPStdio(ctx, im, opts)`). To get a table an agent can query in SQL: `importflow_plan` or `importflow_ddl_plan` → `importflow_run` with `"keep_tables": true` (CSV or dump text inline as `data`, at most 1 MiB per call; `path` only on a local server) → `imported_tables_list` / `imported_tables_describe` / `imported_tables_query`. No model is needed.
 - connector: `connector_introspect`, `connector_plan`, `connector_run`, `connector_unmask` — privacy gate over a live DB/source feeding RAG + KG; pseudonymized join keys become deterministic tokens so KG edges survive while raw PII never enters the graph or the vault-free retrieval path. Wire via `connector.NewToolbox(db, opts)` + `connector.NewMCPServer(tb, opts)` / `connector.RunMCPStdio(ctx, tb, opts)`, `connector.RegisterMCPTools(server, tb)` to ride another server, or run `cmd/cortexdb-connector-mcp`.
 
 ## Optional Semantic Router
