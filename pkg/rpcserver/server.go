@@ -50,6 +50,13 @@ type Options struct {
 	// and may not leave it. Empty means the directory holding DBPath, which is
 	// where the server is already known to be able to write.
 	BackupDir string
+	// ExtraTools are served beside the facade's toolbox by ListTools and
+	// CallTool: the tools of workflow packages the facade cannot import. See
+	// Tool. NewWithPolicy refuses a set it cannot serve; Register serves the
+	// tools of the set that it can. A process that installs AuthInterceptor
+	// in a server of its own gives the same tools to AuthInterceptorWithTools,
+	// or every call to one is refused as naming no tool.
+	ExtraTools []Tool
 }
 
 // New returns a grpc.Server with all cortexdb.v1 services registered.
@@ -69,6 +76,10 @@ func New(db *cortexdb.DB, opts Options) *grpc.Server {
 
 // NewWithPolicy is New, reporting a key-file load failure to the caller.
 func NewWithPolicy(db *cortexdb.DB, opts Options) (*grpc.Server, error) {
+	extras, err := newExtraTools(opts.ExtraTools)
+	if err != nil {
+		return nil, err
+	}
 	src := authz.StaticKeySource(opts.Keys)
 	if opts.Keys == nil {
 		var err error
@@ -77,7 +88,7 @@ func NewWithPolicy(db *cortexdb.DB, opts Options) (*grpc.Server, error) {
 			return nil, err
 		}
 	}
-	chain := append(append([]grpc.UnaryServerInterceptor{CallServerInterceptor()}, opts.Interceptors...), authInterceptorFrom(src, db), recoverInterceptor())
+	chain := append(append([]grpc.UnaryServerInterceptor{CallServerInterceptor()}, opts.Interceptors...), authInterceptorWith(src, db, extras), recoverInterceptor())
 	s := grpc.NewServer(append(rpc.ServerOptions(), grpc.ChainUnaryInterceptor(chain...), grpc.ChainStreamInterceptor(TraceStreamInterceptor()))...)
 	Register(s, db, opts)
 	return s, nil
@@ -102,7 +113,8 @@ func Register(s *grpc.Server, db *cortexdb.DB, opts Options) {
 	rpcv1.RegisterMemoryServiceServer(s, &memoryService{db: db})
 	rpcv1.RegisterKnowledgeGraphServiceServer(s, &graphService{db: db})
 	rpcv1.RegisterGraphRagServiceServer(s, &graphragService{db: db})
-	rpcv1.RegisterToolsServiceServer(s, &toolsService{db: db})
+	extras, _ := newExtraTools(opts.ExtraTools)
+	rpcv1.RegisterToolsServiceServer(s, &toolsService{db: db, extras: extras})
 	rpcv1.RegisterContractServiceServer(s, &contractService{db: db})
 	rpcv1.RegisterDecisionServiceServer(s, &decisionService{db: db})
 }

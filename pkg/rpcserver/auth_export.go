@@ -29,3 +29,14 @@ func AuthInterceptor(keys *authz.KeySet, db *cortexdb.DB) grpc.UnaryServerInterc
 func AuthInterceptorFromSource(src *authz.KeySource, db *cortexdb.DB) grpc.UnaryServerInterceptor {
 	return authInterceptorFrom(src, db)
 }
+
+// AuthInterceptorWithTools is AuthInterceptorFromSource for a server that
+// Register gave Options.ExtraTools: the same tools, so that a call to one is
+// authorized by its own line. It refuses a set NewWithPolicy would refuse.
+func AuthInterceptorWithTools(src *authz.KeySource, db *cortexdb.DB, tools []Tool) (grpc.UnaryServerInterceptor, error) {
+	extras, err := newExtraTools(tools)
+	if err != nil {
+		return nil, err
+	}
+	return authInterceptorWith(src, db, extras), nil
+}

@@ -36,6 +36,20 @@ func WithMappingInferer(m MappingInferer) Option { return func(im *Importer) { i
 // WithTextRefiner sets the AI text refiner used when RAGPlan.Refine is true.
 func WithTextRefiner(r TextRefiner) Option { return func(im *Importer) { im.refiner = r } }
 
+// WithLLM plans and refines with gen: it is WithMappingInferer(LLMInferer) and
+// WithTextRefiner(LLMRefiner) over one model. A nil gen changes nothing, so a
+// caller with an optional model passes what it has; the tools then answer in
+// their no-model mode.
+func WithLLM(gen graphflow.JSONGenerator) Option {
+	return func(im *Importer) {
+		if gen == nil {
+			return
+		}
+		im.inferer = LLMInferer{Client: gen}
+		im.refiner = LLMRefiner{Client: gen}
+	}
+}
+
 // WithExtractor sets the graphflow extractor used for KGPlan.TextExtract columns.
 func WithExtractor(e graphflow.Extractor) Option { return func(im *Importer) { im.extractor = e } }
 

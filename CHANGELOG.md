@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- An agent can import a CSV or a SQL dump through the stock binaries and query the table it becomes. `cortexdb-mcp-stdio` offers `importflow_plan`, `importflow_run`, `importflow_ddl_plan` and `importflow_ddl_plan_ai` in local mode, and `cortexdb-grpc` serves them to a shared brain, so `importflow_run` with `keep_tables` followed by `imported_tables_query` works in both. The source text is sent inline as `data`, at most 1 MiB per call (`importflow.MaxInlineBytes`), and a larger one is refused whole; a local server also reads a file named by `path`, and a shared brain refuses `path`, since it would open the file on the server. No model is needed: without one `importflow_plan` plans from the column list (`"mode": "no_model"`) and `importflow_ddl_plan_ai` returns the deterministic baseline, where both used to fail. `importflow_run` needs a read-write key and a confined key is refused all four tools. For Go callers: `importflow.AddMCPTools`, `importflow.WithLLM`, `importflow.WithLocalFiles`, `importflow.NewMCPServer` now registers all four tools, an `importflow.Report` encodes its `Errors` as messages, and `rpcserver.Options.ExtraTools` lets a gRPC server offer tools defined above the facade, each with its definition, handler, `Mutates` class and the reason a confined key is refused it.
+
 ## [2.152.0] - 2026-11-15
 
 ### Added

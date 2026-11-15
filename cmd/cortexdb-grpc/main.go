@@ -175,6 +175,9 @@ func main() {
 		KeyFile:   *keys,
 		DBPath:    *dbPath,
 		BackupDir: *backup,
+		// importflow's tools live above the facade, so the toolbox cannot
+		// list them; they are served beside it. See import_tools.go.
+		ExtraTools: importTools(db),
 		Interceptors: []grpc.UnaryServerInterceptor{
 			rpcserver.MetricsInterceptor(metrics),
 			// Inside the metrics, so its stages belong to the call it logs.

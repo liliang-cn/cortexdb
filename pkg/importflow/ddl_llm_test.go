@@ -181,11 +181,30 @@ func TestToolbox_DDLPlanAI(t *testing.T) {
 	}
 }
 
+// With no model the tool still answers: the baseline, marked as not the
+// model's, the way it answers when a model's reply cannot be used.
 func TestToolbox_DDLPlanAI_NoInferer(t *testing.T) {
-	tb := NewToolbox(New(nil))
-	in := []byte(`{"ddl":` + mustJSONString(llmTestDDL) + `}`)
-	if _, err := tb.Call(context.Background(), "importflow_ddl_plan_ai", in); err == nil {
-		t.Fatal("expected error when no LLM-backed inferer is configured")
+	for name, tb := range map[string]*Toolbox{
+		"no inferer":       NewToolbox(New(nil)),
+		"inferer no model": NewToolbox(New(nil, WithMappingInferer(LLMInferer{}))),
+		"nil llm":          NewToolbox(New(nil, WithLLM(nil))),
+		"no importer":      NewToolbox(nil),
+	} {
+		in := []byte(`{"ddl":` + mustJSONString(llmTestDDL) + `}`)
+		out, err := tb.Call(context.Background(), "importflow_ddl_plan_ai", in)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		res := out.(ddlPlanAIResult)
+		if res.LLMUsed {
+			t.Fatalf("%s: llm_used without a model", name)
+		}
+		if got := res.MappingPlan.Tables["orders"].KG.Relations[0].Predicate; got != "customer" {
+			t.Fatalf("%s: plan is not the baseline: predicate %q", name, got)
+		}
+		if len(res.Notes) == 0 || !strings.Contains(res.Notes[len(res.Notes)-1], "no model is configured") {
+			t.Fatalf("%s: notes do not say there is no model: %v", name, res.Notes)
+		}
 	}
 }
 
