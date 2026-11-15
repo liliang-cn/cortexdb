@@ -82,6 +82,10 @@ type DB struct {
 	memorySearches memorySearchFlights
 	// recallLog, when set, records every recall; see recall_log.go.
 	recallLog *recallLogRuntime
+	// observeTxQuery, when set, sees every statement txQuery and querierQuery
+	// run. Tests set it to read the plans of the statements a real delete
+	// makes.
+	observeTxQuery func(query string, args []any)
 }
 
 // Config represents database configuration

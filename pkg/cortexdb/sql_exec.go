@@ -37,7 +37,11 @@ func (db *DB) txExec(ctx context.Context, tx *sql.Tx, q string, args ...any) (sq
 }
 
 func (db *DB) txQuery(ctx context.Context, tx *sql.Tx, q string, args ...any) (*sql.Rows, error) {
-	return tx.QueryContext(ctx, db.Dialect().Rebind(q), args...)
+	q = db.Dialect().Rebind(q)
+	if db.observeTxQuery != nil {
+		db.observeTxQuery(q, args)
+	}
+	return tx.QueryContext(ctx, q, args...)
 }
 
 // Two narrow interfaces rather than one wide one, because the package already
@@ -53,7 +57,11 @@ type queryRowContexter interface {
 }
 
 func (db *DB) querierQuery(ctx context.Context, q queryContexter, query string, args ...any) (*sql.Rows, error) {
-	return q.QueryContext(ctx, db.Dialect().Rebind(query), args...)
+	query = db.Dialect().Rebind(query)
+	if db.observeTxQuery != nil {
+		db.observeTxQuery(query, args)
+	}
+	return q.QueryContext(ctx, query, args...)
 }
 
 func (db *DB) querierQueryRow(ctx context.Context, q queryRowContexter, query string, args ...any) *sql.Row {

@@ -406,6 +406,12 @@ func (g *GraphStore) createGraphSchema(ctx context.Context) error {
 		return err
 	}
 
+	// What a document put in the graph, findable without reading all of it
+	// (provenance_index.go).
+	if err := g.createProvenanceIndexes(ctx); err != nil {
+		return err
+	}
+
 	// Last, and guarded the same way: the bitemporal columns and the history
 	// tables. A brain written before this release gains them here, with every
 	// existing row reading as current.
