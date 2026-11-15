@@ -315,11 +315,17 @@ func (h *HNSW) selectLevel() int {
 }
 
 // liveNodeExistsLocked reports whether id is held by a node that has not been
-// deleted. A soft-deleted node does not count: it is dropped here, along with
-// every link to it, so the id can be inserted again, the way a store re-upserts
-// a row it deleted. Links have to go with it: left in place they would resolve
-// to the node about to be inserted, which would then find itself as its own
-// neighbour. The caller must hold h.mu.
+// deleted. A soft-deleted node does not count: it is dropped here, so the id
+// can be inserted again, the way a store re-upserts a row it deleted. The
+// caller must hold h.mu.
+//
+// Dropping it reads the nodes it linked to, not every node of the index: each
+// of them loses its link back. A link that only went one way, from a node the
+// dropped one did not link to, stays. It names the id, so it resolves to the
+// node the insert is about to place: a link to a live node, measured like any
+// other the next time its owner's list is pruned. The search that places the
+// node can walk such a link into the node itself, so the insert leaves it out
+// of what that search finds (closestOtherLocked, closestOthers).
 func (h *HNSW) liveNodeExistsLocked(id string) bool {
 	node, exists := h.Nodes[id]
 	if !exists {
@@ -332,15 +338,9 @@ func (h *HNSW) liveNodeExistsLocked(id string) bool {
 	if h.EntryPoint == id {
 		h.EntryPoint = h.highestLiveLocked()
 	}
-	for _, other := range h.Nodes {
-		for layer, links := range other.Neighbors {
-			kept := links[:0]
-			for _, to := range links {
-				if to != id {
-					kept = append(kept, to)
-				}
-			}
-			other.Neighbors[layer] = kept
+	for layer, links := range node.Neighbors {
+		for _, to := range links {
+			h.dropConnection(to, id, layer)
 		}
 	}
 	return false
@@ -364,6 +364,32 @@ func (h *HNSW) highestLiveLocked() string {
 		}
 	}
 	return highest
+}
+
+// droppedLevelLocked is the level of the deleted node id names, which the
+// insert is about to drop and write again, or -1 when there is none. The node
+// written keeps that level: a link another node holds to the id stays on a
+// layer the node has. The caller must hold h.mu.
+func (h *HNSW) droppedLevelLocked(id string) int {
+	if node, exists := h.Nodes[id]; exists && node.Deleted {
+		return node.Level
+	}
+	return -1
+}
+
+// dropConnection removes the link from→to on a layer, if it is there.
+func (h *HNSW) dropConnection(from, to string, layer int) {
+	fromNode, exists := h.Nodes[from]
+	if !exists || layer >= len(fromNode.Neighbors) {
+		return
+	}
+	links := fromNode.Neighbors[layer]
+	for i, neighbor := range links {
+		if neighbor == to {
+			fromNode.Neighbors[layer] = append(links[:i], links[i+1:]...)
+			return
+		}
+	}
 }
 
 // Insert adds a new vector to the index. An id the index already holds is
@@ -443,6 +469,7 @@ func (h *HNSW) insertLocked(id string, vector []float32, replace bool) error {
 
 	// Last of the checks: it drops a deleted node, which must only happen
 	// when the insert goes ahead.
+	level := h.droppedLevelLocked(id)
 	if h.liveNodeExistsLocked(id) {
 		return fmt.Errorf("node %s already exists", id)
 	}
@@ -465,7 +492,9 @@ func (h *HNSW) insertLocked(id string, vector []float32, replace bool) error {
 	}
 
 	// Create new node
-	level := h.selectLevel()
+	if level < 0 {
+		level = h.selectLevel()
+	}
 	node := &HNSWNode{
 		ID:        id,
 		Vector:    storedVector,
@@ -493,7 +522,7 @@ func (h *HNSW) insertLocked(id string, vector []float32, replace bool) error {
 	// Search from top layer to target layer
 	entryNode := h.Nodes[h.EntryPoint]
 	for lc := entryNode.Level; lc > level; lc-- {
-		currNearest = h.searchLayerClosest(vector, currNearest, 1, lc)
+		currNearest = h.closestOtherLocked(vector, currNearest, id, lc)
 	}
 
 	// Insert into all layers from level to 0
@@ -504,7 +533,7 @@ func (h *HNSW) insertLocked(id string, vector []float32, replace bool) error {
 		}
 
 		candidates := h.searchLayer(vector, currNearest, h.EfConstruction, lc)
-		neighbors := closestOf(candidates, m)
+		neighbors := closestOthers(candidates, id, m)
 
 		// Add bidirectional links
 		node.Neighbors[lc] = neighbors
@@ -639,14 +668,34 @@ func (h *HNSW) selectNeighborsHeuristic(query []float32, candidates []string, m 
 	return result
 }
 
-// closestOf is the first m of candidates. searchLayer returns its result
-// nearest first, so there is nothing to measure again: re-measuring every
-// candidate to sort them was most of an insert's distance computations.
-func closestOf(candidates []string, m int) []string {
-	if len(candidates) <= m {
-		return candidates
+// closestOtherLocked is the node of a layer closest to query, other than
+// self, the node being placed. A search one wide that ends on self is run
+// again two wide, which keeps the closest other node beside it. The caller
+// must hold h.mu.
+func (h *HNSW) closestOtherLocked(query []float32, entryPoints []string, self string, layer int) []string {
+	found := h.searchLayerClosest(query, entryPoints, 1, layer)
+	if len(found) == 1 && found[0] == self {
+		return closestOthers(h.searchLayer(query, entryPoints, 2, layer), self, 1)
 	}
-	return append([]string(nil), candidates[:m]...)
+	return found
+}
+
+// closestOthers is the first m of candidates that are not self. searchLayer
+// returns its result nearest first, so there is nothing to measure again:
+// re-measuring every candidate to sort them was most of an insert's distance
+// computations. self is the node being placed, which a search reaches when a
+// one-way link to its id outlived the node it replaces.
+func closestOthers(candidates []string, self string, m int) []string {
+	out := make([]string, 0, min(len(candidates), m))
+	for _, candidate := range candidates {
+		if len(out) == m {
+			break
+		}
+		if candidate != self {
+			out = append(out, candidate)
+		}
+	}
+	return out
 }
 
 // linkBack adds the edge neighbor→id and keeps the neighbor's list bounded.
@@ -983,6 +1032,7 @@ func (h *HNSW) InsertBatch(vectors []struct {
 	h.mutations.Add(1)
 
 	for _, v := range vectors {
+		level := h.droppedLevelLocked(v.ID)
 		if h.liveNodeExistsLocked(v.ID) {
 			continue // Skip duplicates
 		}
@@ -1000,7 +1050,9 @@ func (h *HNSW) InsertBatch(vectors []struct {
 		}
 
 		// Create new node
-		level := h.selectLevel()
+		if level < 0 {
+			level = h.selectLevel()
+		}
 		node := &HNSWNode{
 			ID:        v.ID,
 			Vector:    storedVector,
@@ -1028,7 +1080,7 @@ func (h *HNSW) InsertBatch(vectors []struct {
 		// Search from top layer to target layer
 		entryNode := h.Nodes[h.EntryPoint]
 		for lc := entryNode.Level; lc > level; lc-- {
-			currNearest = h.searchLayerClosest(v.Vector, currNearest, 1, lc)
+			currNearest = h.closestOtherLocked(v.Vector, currNearest, v.ID, lc)
 		}
 
 		// Insert into all layers from level to 0
@@ -1039,7 +1091,7 @@ func (h *HNSW) InsertBatch(vectors []struct {
 			}
 
 			candidates := h.searchLayer(v.Vector, currNearest, h.EfConstruction, lc)
-			neighbors := closestOf(candidates, m)
+			neighbors := closestOthers(candidates, v.ID, m)
 
 			// Add bidirectional links
 			node.Neighbors[lc] = neighbors
