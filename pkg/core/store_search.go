@@ -79,7 +79,10 @@ func (s *SQLiteStore) searchLinearTopK(ctx context.Context, query []float32, opt
 	defer func() { _ = rows.Close() }()
 
 	textWeight := s.getTextWeight(opts)
-	best := make(scoredMinHeap, 0, opts.TopK)
+	// The heap grows as rows are kept. Sized by TopK up front, it set aside
+	// room for rows the table may not hold: 648 MiB for a TopK of five
+	// million over sixty rows.
+	best := make(scoredMinHeap, 0, min(opts.TopK, topKHeapStart))
 	for rows.Next() {
 		c, err := s.scanEmbedding(rows)
 		if err != nil {
@@ -109,6 +112,9 @@ func (s *SQLiteStore) searchLinearTopK(ctx context.Context, query []float32, opt
 	}
 	return out, nil
 }
+
+// topKHeapStart is the room a scan sets aside before it reads a row.
+const topKHeapStart = 64
 
 // scoredMinHeap keeps the lowest score on top, so the weakest of the best
 // TopK is the one a better row replaces.
@@ -239,8 +245,9 @@ func (s *SQLiteStore) searchWithHNSW(ctx context.Context, query []float32, opts 
 	//
 	// PostgreSQL does not have this: the filter is in the WHERE clause, so the
 	// index is asked the question that was actually asked. Here the honest
-	// fallback is a linear pass, which fetchCandidates already scopes to the
-	// collection — bounded by that collection's size, not the store's.
+	// fallback is a linear pass, which buildSearchQuery already scopes to the
+	// collection — its time bounded by that collection's size, not the
+	// store's, and its memory by TopK.
 	if len(results) < opts.TopK && (opts.Collection != "" || len(opts.Filter) > 0) {
 		return s.searchLinear(ctx, query, opts)
 	}
@@ -275,15 +282,14 @@ func (s *SQLiteStore) searchWithIVF(ctx context.Context, query []float32, opts S
 	return s.processCandidates(query, candidates, opts)
 }
 
-// searchLinear performs linear vector search without HNSW index
+// searchLinear is the scan an indexed search falls back to: when the index
+// has nothing for the query, or when too few of the rows it returned pass
+// the collection or metadata filter. It keeps the best TopK as it reads.
+// It used to collect every row the options select, vector, content and
+// metadata, and sort them: a search scoped to a large collection held that
+// collection in memory for the length of one query.
 func (s *SQLiteStore) searchLinear(ctx context.Context, query []float32, opts SearchOptions) ([]ScoredEmbedding, error) {
-	candidates, err := s.fetchCandidates(ctx, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	results := s.scoreCandidates(query, candidates, opts)
-	return results, nil
+	return s.searchLinearTopK(ctx, query, opts)
 }
 
 // processCandidates applies scoring and filtering to candidates

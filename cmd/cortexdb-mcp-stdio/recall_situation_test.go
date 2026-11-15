@@ -167,6 +167,7 @@ func TestAPromptThatIsAllMachineryRecallsNothing(t *testing.T) {
 
 func recallFor(t *testing.T, prompt string) string {
 	t.Helper()
+	withoutTheMachinesModels(t)
 	payload, _ := json.Marshal(hookInput{Prompt: prompt})
 	stdin, err := os.CreateTemp(t.TempDir(), "stdin")
 	if err != nil {
