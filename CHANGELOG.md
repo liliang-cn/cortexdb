@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.154.5] - 2026-11-16
+
+### Changed
+
+- The live view's Library is a view of the Graph page, picked with a Graph / Library switch (`/?view=library`); `/library` redirects there, the top bar has one entry for both, and a host that hides `PageLibrary` gets the graph with no switch. Switching views releases the graph's WebGL context, which its teardown used to keep. (#211)
+
 ## [2.154.4] - 2026-11-16
 
 ### Changed
