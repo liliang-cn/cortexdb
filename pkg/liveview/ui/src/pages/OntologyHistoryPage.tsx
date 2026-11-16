@@ -3,7 +3,7 @@ import { ArrowRight, ArrowUp, Shapes, X } from "lucide-react";
 import { Link, useSearchParams } from "react-router";
 import { Empty, Page, PageHeader } from "@/components/Page";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ComparePanel, CompareSummary } from "@/components/versions/ComparePanel";
 import { captureAnchor, isWide, restoreAnchor, useWide, type ScrollAnchor } from "@/components/versions/layout";
@@ -33,7 +33,6 @@ import {
 } from "@/lib/ontologyHistory";
 import { useSchemaIndex, useVersionDiff, useVersionHistory } from "@/lib/ontologyHistoryHooks";
 import { useNow } from "@/lib/useNow";
-import { useCapabilities, useLive } from "@/live";
 import { pageShown } from "@/lib/pages";
 import { useLang } from "@/lib/i18n";
 import { VERSIONS_TEXT, type VersionsText } from "@/lib/versionsStrings";
@@ -66,27 +65,14 @@ function TryAgain({ onClick }: { onClick: () => void }) {
   );
 }
 
-/** One line on where the schema stands: how many versions, which is latest, and whether it validates writes. */
+/** The schema's name when it differs from its id, its version count, and whether it was deleted. */
 function Standing({ list, t }: { list: VersionList; t: VersionsText }) {
-  const count = t.versionsN(list.total);
   const name = list.versions[0]?.name;
-  const named = name && name !== list.schema ? <span className="font-medium text-foreground">{name}. </span> : null;
-  if (!list.exists) {
-    return (
-      <>
-        {named}
-        {t.deleted(count, list.total)}
-      </>
-    );
-  }
-  // Only the current version can be active, and it is always on the first page.
-  const active = list.versions.some((v) => v.active && v.version === list.currentVersion);
   return (
     <>
-      {named}
-      {count}. <span className="font-medium text-foreground">v{list.currentVersion}</span>
-      {t.latestIs}
-      {active ? t.andActive : t.notValidating}
+      {name && name !== list.schema && <span className="font-medium text-foreground">{name} · </span>}
+      <span className="tabular-nums">{t.versionsN(list.total)}</span>
+      {!list.exists && <span className="text-destructive"> · {t.deleted}</span>}
     </>
   );
 }
@@ -131,8 +117,6 @@ export function OntologyHistoryPage() {
   const tRef = useRef(t);
   tRef.current = t;
   const wide = useWide();
-  const caps = useCapabilities();
-  const ready = useLive((s) => s.ready);
 
   // ---- the picks: the page holds them, the URL is told (see settleEcho) ---
   const urlPicks = useMemo(() => picksFromParams(params), [params]);
@@ -279,21 +263,12 @@ export function OntologyHistoryPage() {
     } else if (index.index && !index.index.available) {
       body = <Empty title={t.noOntologySource}>{index.index.reason}</Empty>;
     } else {
-      body = (
-        <Empty title={t.noSchemaYet}>
-          {t.noSchemaYetBody}
-        </Empty>
-      );
+      body = <Empty title={t.noSchemaYet} />;
     }
   } else if (history.status === "loading" || history.status === "idle") {
     body = <ListSkeleton />;
   } else if (history.status === "missing") {
-    body = (
-      <Empty title={t.noVersionsFor(schema)}>
-        {t.noVersionsBody}
-        {options.length > 1 ? t.pickAnother : ""}
-      </Empty>
-    );
+    body = <Empty title={t.noVersionsFor(schema)} />;
   } else if (history.status === "error" || !list) {
     body = (
       <Empty title={t.readFailed}>
@@ -301,7 +276,6 @@ export function OntologyHistoryPage() {
       </Empty>
     );
   } else {
-    const oldest = list.versions.at(-1)?.version ?? 1;
     body = (
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:items-start">
         <section aria-label={t.versionsLabel} className="min-w-0">
@@ -332,19 +306,19 @@ export function OntologyHistoryPage() {
               </li>
             ))}
           </ol>
-          <div className="flex flex-col items-center gap-2 py-5 text-center text-sm text-muted-foreground">
-            {list.hasMore ? (
-              <>
-                <Button variant="outline" size="sm" onClick={history.loadOlder} disabled={history.loadingOlder}>
-                  {history.loadingOlder ? t.loadingOlder : t.loadOlder}
-                </Button>
-                <p>{t.newestOf(list.versions.length, list.total)}</p>
-              </>
-            ) : (
-              <p>{list.total === 1 ? t.onlyVersion : t.everyVersion(oldest)}</p>
-            )}
-            {history.olderError && <p className="text-destructive">{history.olderError}</p>}
-          </div>
+          {(list.hasMore || history.olderError) && (
+            <div className="flex flex-col items-center gap-2 py-5 text-center text-sm text-muted-foreground">
+              {list.hasMore && (
+                <>
+                  <Button variant="outline" size="sm" onClick={history.loadOlder} disabled={history.loadingOlder}>
+                    {history.loadingOlder ? t.loadingOlder : t.loadOlder}
+                  </Button>
+                  <p>{t.newestOf(list.versions.length, list.total)}</p>
+                </>
+              )}
+              {history.olderError && <p className="text-destructive">{history.olderError}</p>}
+            </div>
+          )}
         </section>
         <aside
           aria-label={t.comparison}
@@ -363,7 +337,6 @@ export function OntologyHistoryPage() {
     <Page className="max-w-6xl [overflow-anchor:none]">
       <PageHeader
         title={t.title}
-        description={t.description}
         actions={
           schema ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -383,7 +356,6 @@ export function OntologyHistoryPage() {
       {list && history.status === "ready" && (
         <p className="-mt-2 mb-4 text-sm text-muted-foreground">
           <Standing list={list} t={t} />
-          {ready && !caps.changes && t.noChangeEvents}
         </p>
       )}
       {body}
@@ -398,7 +370,7 @@ export function OntologyHistoryPage() {
           ) : (
             <span className="text-sm">
               <span className="font-semibold tabular-nums">v{picks[0]}</span>
-              {t.pickedOneMore}
+              {t.picked}
             </span>
           )}
           <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -414,7 +386,7 @@ export function OntologyHistoryPage() {
         </div>
       )}
       <Sheet open={sheetOpen && !wide && pair !== null} onOpenChange={setSheetOpen}>
-        <SheetContent side="bottom" className="max-h-[88dvh] gap-0 overflow-y-auto rounded-t-xl lg:hidden">
+        <SheetContent side="bottom" className="max-h-[88dvh] gap-0 overflow-y-auto rounded-t-xl lg:hidden" aria-describedby={undefined}>
           <SheetHeader className="pr-12 pb-0">
             <SheetTitle className="flex items-center gap-1.5 tabular-nums">
               {pair && (
@@ -424,7 +396,6 @@ export function OntologyHistoryPage() {
                 </>
               )}
             </SheetTitle>
-            <SheetDescription>{t.sheetDescription(schema)}</SheetDescription>
           </SheetHeader>
           {panel(true)}
         </SheetContent>

@@ -46,7 +46,7 @@ const NONE = "-";
 /** How many table rows are drawn before "Show all". */
 const TABLE_PAGE = 30;
 
-function Labeled({ label, help, children, className }: { label: string; help?: string; children: (id: string) => ReactNode; className?: string }) {
+function Labeled({ label, children, className }: { label: string; children: (id: string) => ReactNode; className?: string }) {
   const id = useId();
   return (
     <div className={cn("min-w-0", className)}>
@@ -54,7 +54,6 @@ function Labeled({ label, help, children, className }: { label: string; help?: s
         {label}
       </label>
       {children(id)}
-      {help && <p className="mt-1 text-xs text-muted-foreground">{help}</p>}
     </div>
   );
 }
@@ -134,7 +133,7 @@ function Builder({ q, set, fields, t }: { q: Query; set: (patch: Partial<Query>)
   return (
     <section className="rounded-xl border bg-card p-4 sm:p-5">
       <div className="grid gap-x-3 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Labeled label={t.of} help={t.ofHelp[q.of]}>
+        <Labeled label={t.of}>
           {(id) => (
             <Select value={q.of} onValueChange={(v) => set({ of: v as RowKind })}>
               <SelectTrigger id={id} className="w-full">
@@ -237,9 +236,7 @@ function Builder({ q, set, fields, t }: { q: Query; set: (patch: Partial<Query>)
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t pt-3">
-        <p className="min-w-0 text-xs text-muted-foreground">
-          {fields.error ? t.sampleFailed : !fields.data ? t.loading : fields.data.sampled === 0 ? t.sampleEmpty : t.sampled(fields.data.sampled)}
-        </p>
+        <p className="min-w-0 text-xs text-destructive">{fields.error ? t.sampleFailed : null}</p>
         <Button variant="ghost" size="sm" disabled={!changed} onClick={() => set(DEFAULT_QUERY)}>
           <RotateCcw aria-hidden />
           {t.reset}
@@ -372,11 +369,9 @@ function ResultChart({ result, t, lang }: { result: AnalysisResult; t: AnalysisT
     return {};
   }, [result, shape, adds, q.bucket, q.measure, measureName, t]);
 
-  const skipped = result.rows.reduce((a, r) => a + (r.skipped ?? 0), 0);
   const undated = q.bucket ? result.rows.filter((r) => typeof r.bucket !== "string").reduce((a, r) => a + r.rows, 0) : 0;
   const left = drawn.bars?.left && !adds ? drawn.bars.left : (drawn.time?.left ?? 0);
   const notes = [
-    skipped > 0 && t.skippedNote(formatNumber(skipped, lang)),
     undated > 0 && t.undated(formatNumber(undated, lang)),
     left > 0 && t.leftOut(left),
     result.truncated && t.truncated(formatNumber(result.rows.length, lang)),
@@ -459,7 +454,7 @@ interface Props {
 }
 
 export function Explore({ q, set, fields, result, usable, t, lang }: Props) {
-  if (!usable) return <ChartEmpty title={t.unavailableTitle}>{t.noTools}</ChartEmpty>;
+  if (!usable) return <ChartEmpty title={t.unavailableTitle} />;
   const missing = incomplete(q);
 
   let answer: ReactNode;
@@ -482,7 +477,7 @@ export function Explore({ q, set, fields, result, usable, t, lang }: Props) {
       </div>
     );
   else if (result.data.rows.length === 0 || (shapeOf(result.data.query) === "number" && result.data.rows[0]?.rows === 0))
-    answer = <ChartEmpty title={t.noRows}>{t.noRowsHint}</ChartEmpty>;
+    answer = <ChartEmpty title={t.noRows} />;
   else
     answer = (
       <div className={cn("space-y-4 transition-opacity", result.loading && "opacity-60")} aria-busy={result.loading || undefined}>
@@ -493,10 +488,6 @@ export function Explore({ q, set, fields, result, usable, t, lang }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="max-w-3xl space-y-1 text-sm text-muted-foreground">
-        <p>{t.exploreIntro}</p>
-        <p>{t.exploreScope}</p>
-      </div>
       <Builder q={q} set={set} fields={fields} t={t} />
       {result.loading && result.data && (
         <p className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
@@ -505,7 +496,6 @@ export function Explore({ q, set, fields, result, usable, t, lang }: Props) {
         </p>
       )}
       {answer}
-      <p className="text-xs text-muted-foreground">{t.linkNote}</p>
     </div>
   );
 }

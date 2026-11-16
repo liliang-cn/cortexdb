@@ -245,15 +245,7 @@ export function outsideTheModel(rep: OntologyAnswer, show: boolean, lang: Lang =
   const u = rep.usage;
   if (!show || !u.available || (u.undeclared_nodes.length === 0 && u.undeclared_edges.length === 0)) return null;
   const t = FINDING_TEXT[lang];
-  const lead = isDraft(rep)
-    ? // On a draft this band is the deriver's own exclusions, drawn where a
-      // reader already knows to look for what a model leaves out. The reasons
-      // are named because only the last of them is the reader's own doing.
-      t.outsideDraft
-    : rep.saved
-      ? t.outsideSaved
-      : t.outsideNone;
-  const runs: Run[] = [lead, ...t.outsideCounts(u.undeclared_node_count, u.nodes, u.undeclared_edge_count, u.edges)];
+  const runs: Run[] = [...t.outsideCounts(u.undeclared_node_count, u.nodes, u.undeclared_edge_count, u.edges)];
   const groups: StrayGroup[] = [];
   if (u.undeclared_nodes.length) groups.push(strayGroup(t.nodeTypes, u.undeclared_nodes, u.undeclared_node_types, u.node_list_truncated, lang));
   if (u.undeclared_edges.length) groups.push(strayGroup(t.edgeTypes, u.undeclared_edges, u.undeclared_edge_types, u.edge_list_truncated, lang));

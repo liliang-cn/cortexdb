@@ -12,10 +12,4 @@ describe("feed strings", () => {
     expect(FEED_TEXT.en.newChanges(3)).toBe("3 new changes");
     expect(FEED_TEXT.zh.newChanges(3)).toBe("3 条新变更");
   });
-  it("keeps the slots the Activity page cuts its sentences at", () => {
-    for (const t of [FEED_TEXT.en, FEED_TEXT.zh]) {
-      expect(t.noCallsViewBody.split("{tool}")).toHaveLength(2);
-      expect(t.changesStillLists.split("{changes}")).toHaveLength(2);
-    }
-  });
 });

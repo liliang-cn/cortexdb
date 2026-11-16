@@ -222,7 +222,7 @@ function Status({ ready }: { ready: boolean }) {
   if (n === 0) {
     return (
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
-        <div className="max-w-sm"><Empty title={t.emptyTitle}>{t.emptyBody}</Empty></div>
+        <div className="max-w-sm"><Empty title={t.emptyTitle} /></div>
       </div>
     );
   }

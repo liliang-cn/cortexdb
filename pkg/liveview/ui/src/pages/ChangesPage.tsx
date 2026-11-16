@@ -115,9 +115,7 @@ export function ChangesPage() {
   let body;
   if (feed.status === "loading" && all.length === 0) body = <ListSkeleton />;
   else if (noFeed) {
-    body = (
-      <Empty title={t.noFeedTitle}>{t.noFeedBody}</Empty>
-    );
+    body = <Empty title={t.noFeedTitle} />;
   } else if (feed.status === "error" && all.length === 0) {
     body = (
       <Empty title={t.readErrorTitle}>
@@ -130,14 +128,12 @@ export function ChangesPage() {
   } else if (all.length === 0) {
     body = hasFilters(filters) ? (
       <Empty title={t.noMatchTitle}>
-        {t.noMatchLead}{" "}
         <button type="button" className="text-primary underline underline-offset-4" onClick={() => setFilters(noFilters)}>
           {t.clearThemAll}
         </button>
-        {t.noMatchTail}
       </Empty>
     ) : (
-      <Empty title={t.noChangesTitle}>{t.noChangesBody}</Empty>
+      <Empty title={t.noChangesTitle} />
     );
   } else {
     body = (
@@ -157,12 +153,10 @@ export function ChangesPage() {
           </section>
         ))}
         <div ref={endRef} className="flex flex-col items-center gap-2 pb-8 text-sm text-muted-foreground">
-          {feed.hasMore ? (
+          {feed.hasMore && (
             <Button variant="outline" size="sm" onClick={feed.loadMore} disabled={feed.loadingMore}>
               {feed.loadingMore ? t.loadingOlder : t.loadOlder}
             </Button>
-          ) : (
-            <p>{t.oldest}</p>
           )}
           {feed.error && feed.status === "ready" && <p className="text-destructive">{feed.error}</p>}
         </div>
@@ -174,7 +168,6 @@ export function ChangesPage() {
     <Page>
       <PageHeader
         title={t.changesTitle}
-        description={t.changesDescription}
         actions={
           <Button variant="outline" size="sm" onClick={() => setPaused((p) => !p)} aria-pressed={paused}>
             {paused ? <Play aria-hidden /> : <Pause aria-hidden />}

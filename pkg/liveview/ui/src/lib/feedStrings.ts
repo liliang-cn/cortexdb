@@ -72,21 +72,15 @@ export interface FeedText {
 
   // ---- Changes page -----------------------------------------------------
   changesTitle: string;
-  changesDescription: string;
   loadingChanges: string;
   noFeedTitle: string;
-  noFeedBody: string;
   readErrorTitle: string;
   tryAgain: string;
   noMatchTitle: string;
-  noMatchLead: string;
   clearThemAll: string;
-  noMatchTail: string;
   noChangesTitle: string;
-  noChangesBody: string;
   loadingOlder: string;
   loadOlder: string;
-  oldest: string;
   resumeLive: string;
   pauseLive: string;
   rebuilt: string;
@@ -97,19 +91,11 @@ export interface FeedText {
 
   // ---- Activity page ----------------------------------------------------
   activityTitle: string;
-  activityDescription: string;
   connecting: string;
   waitingStream: string;
   noCallsViewTitle: string;
-  /** Has {tool}, the MCP tool's name in code type. */
-  noCallsViewBody: string;
-  /** Has {changes}, the link to the Changes page. */
-  changesStillLists: string;
-  changesLink: string;
   noKindTitle: string;
-  noKindBody: string;
   noCallsTitle: string;
-  noCallsBody: string;
   resumeNew: (n: number) => string;
   filterByKind: string;
 
@@ -136,7 +122,6 @@ export interface FeedText {
   replacesWord: string;
   loadingEntity: string;
   noEntityTitle: string;
-  noEntityBody: string;
   allChanges: string;
   nothingKnown: string;
   notInGraph: string;
@@ -157,7 +142,6 @@ export interface FeedText {
   nShown: (n: number) => string;
   noEntityChanges: string;
   readingFeed: string;
-  changesWillShow: string;
 }
 
 const s = (n: number, one: string, many: string) => (n === 1 ? one : many);
@@ -239,22 +223,15 @@ export const FEED_TEXT: Strings<FeedText> = {
     underSchema: (schema) => `Under schema ${schema}.`,
 
     changesTitle: "Changes",
-    changesDescription: "Every fact added, replaced or taken back, newest first. Open a row for its ids and links.",
     loadingChanges: "Loading changes",
     noFeedTitle: "This source has no change feed",
-    noFeedBody:
-      "The graph is still live, but writes are not listed here. Changes appear when the view is served by a process that sees the database's change log, such as the agent's MCP server.",
     readErrorTitle: "The changes could not be read",
     tryAgain: "Try again",
     noMatchTitle: "No changes match these filters",
-    noMatchLead: "Nothing in the retained history fits. Loosen a filter, or",
     clearThemAll: "clear them all",
-    noMatchTail: ".",
     noChangesTitle: "No changes yet",
-    noChangesBody: "New writes show up here the moment they are committed.",
     loadingOlder: "Loading older changes",
     loadOlder: "Load older changes",
-    oldest: "That is the oldest change this source has kept.",
     resumeLive: "Resume live",
     pauseLive: "Pause live",
     rebuilt: "The change history moved past where this page was reading, so the list was rebuilt from the newest changes.",
@@ -264,17 +241,11 @@ export const FEED_TEXT: Strings<FeedText> = {
     newChanges: (n) => `${n} new ${s(n, "change", "changes")}`,
 
     activityTitle: "Activity",
-    activityDescription: "Tool calls the brain just handled: what was read, written and linked, and the terms each one named.",
     connecting: "Connecting",
     waitingStream: "Waiting for the live stream.",
     noCallsViewTitle: "This view cannot see tool calls",
-    noCallsViewBody: "Tool calls only show when the view is served by the agent's MCP server ({tool}); the command-line view reads the database alone.",
-    changesStillLists: "{changes} still lists every write.",
-    changesLink: "Changes",
     noKindTitle: "No calls of that kind",
-    noKindBody: "Pick another kind, or clear the filter to see every call.",
     noCallsTitle: "No calls yet",
-    noCallsBody: "Calls appear here the moment an agent makes them.",
     resumeNew: (n) => `Resume (${n} new)`,
     filterByKind: "Filter by kind",
 
@@ -299,7 +270,6 @@ export const FEED_TEXT: Strings<FeedText> = {
     replacesWord: "replaces",
     loadingEntity: "Loading entity",
     noEntityTitle: "No entity chosen",
-    noEntityBody: "Press Ctrl or Cmd K to search for one, or open one from a change in the Changes page.",
     allChanges: "All changes",
     nothingKnown: "Nothing is known about this id: it is not in the graph and no change mentions it.",
     notInGraph: "This entity is not in the graph right now. It may have been merged, retracted or deleted; what is known about it is below.",
@@ -320,7 +290,6 @@ export const FEED_TEXT: Strings<FeedText> = {
     nShown: (n) => `${n} shown`,
     noEntityChanges: "No changes recorded for this entity",
     readingFeed: "Reading the change feed.",
-    changesWillShow: "Changes that touch it will show up here as they happen.",
   },
   zh: {
     reasons: {
@@ -397,21 +366,15 @@ export const FEED_TEXT: Strings<FeedText> = {
     underSchema: (schema) => `依据模式 ${schema}。`,
 
     changesTitle: "变更",
-    changesDescription: "每一条新增、替换或撤回的事实，最新的在前。展开一行可查看它的 id 和链接。",
     loadingChanges: "正在加载变更",
     noFeedTitle: "这个数据源没有变更流",
-    noFeedBody: "图谱仍在实时更新，但写入不会列在这里。只有当视图由能看到数据库变更日志的进程（比如 agent 的 MCP 服务器）提供时，才会显示变更。",
     readErrorTitle: "无法读取变更",
     tryAgain: "重试",
     noMatchTitle: "没有符合这些筛选条件的变更",
-    noMatchLead: "保留的历史中没有符合条件的记录。放宽某个筛选条件，或",
     clearThemAll: "全部清除",
-    noMatchTail: "。",
     noChangesTitle: "还没有变更",
-    noChangesBody: "新的写入一提交就会出现在这里。",
     loadingOlder: "正在加载更早的变更",
     loadOlder: "加载更早的变更",
-    oldest: "这是该数据源保留的最早一条变更。",
     resumeLive: "恢复实时",
     pauseLive: "暂停实时",
     rebuilt: "变更历史已越过本页正在读取的位置，所以列表已从最新的变更重新构建。",
@@ -421,17 +384,11 @@ export const FEED_TEXT: Strings<FeedText> = {
     newChanges: (n) => `${n} 条新变更`,
 
     activityTitle: "活动",
-    activityDescription: "大脑刚处理的工具调用：读了什么、写了什么、关联了什么，以及每次调用提到的词。",
     connecting: "连接中",
     waitingStream: "正在等待实时数据流。",
     noCallsViewTitle: "这个视图看不到工具调用",
-    noCallsViewBody: "只有当视图由 agent 的 MCP 服务器（{tool}）提供时才会显示工具调用；命令行视图只读取数据库。",
-    changesStillLists: "{changes}页面仍会列出每一次写入。",
-    changesLink: "变更",
     noKindTitle: "没有这一类的调用",
-    noKindBody: "换一个类别，或清除筛选以查看所有调用。",
     noCallsTitle: "还没有调用",
-    noCallsBody: "agent 一发起调用，就会出现在这里。",
     resumeNew: (n) => `恢复（${n} 条新的）`,
     filterByKind: "按类别筛选",
 
@@ -456,7 +413,6 @@ export const FEED_TEXT: Strings<FeedText> = {
     replacesWord: "替换",
     loadingEntity: "正在加载实体",
     noEntityTitle: "未选择实体",
-    noEntityBody: "按 Ctrl 或 Cmd K 搜索一个实体，或从变更页面的某条变更中打开。",
     allChanges: "全部变更",
     nothingKnown: "对这个 id 一无所知：它不在图谱中，也没有任何变更提到它。",
     notInGraph: "这个实体目前不在图谱中。它可能已被合并、撤回或删除；下面是关于它的已知信息。",
@@ -477,6 +433,5 @@ export const FEED_TEXT: Strings<FeedText> = {
     nShown: (n) => `显示 ${n} 条`,
     noEntityChanges: "这个实体没有记录到变更",
     readingFeed: "正在读取变更流。",
-    changesWillShow: "涉及它的变更发生时会出现在这里。",
   },
 };

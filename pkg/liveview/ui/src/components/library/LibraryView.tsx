@@ -428,7 +428,7 @@ function Status({ lib, error, empty, reload, t }: { lib: boolean; error: string;
     return (
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
         <div className="max-w-sm bg-card/90">
-          <Empty title={t.empty}>{t.emptyHint}</Empty>
+          <Empty title={t.empty} />
         </div>
       </div>
     );

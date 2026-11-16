@@ -18,7 +18,6 @@ export interface GraphText {
   loadingGraph: string;
   readingBrain: string;
   emptyTitle: string;
-  emptyBody: string;
 
   // panels and their buttons
   relation: string;
@@ -172,7 +171,6 @@ export interface GraphText {
   noRelationsYet: string;
   hideCoOccurs: string;
   showCoOccurs: string;
-  coOccursHidden: string;
   showAll: string;
   howEstablished: string;
   reachedByRecalls: string;
@@ -208,10 +206,8 @@ export interface GraphText {
   noGradesShort: string;
   show: string;
   coOccursLabel: string;
-  coOccursHint: string;
   namesOnCanvas: string;
   pulses: string;
-  pulsesHint: string;
 
   // the knowledge contract
   nodes: string;
@@ -222,7 +218,6 @@ export interface GraphText {
   nothingOnShelf: string;
   /** Around two bold counts: before the nodes, between, after the edges. */
   noneGraded: [string, string, string];
-  countedWhole: string;
   needsPerson: string;
   nothingHeld: string;
   byWhom: (refused: boolean, by: string) => string;
@@ -242,7 +237,6 @@ const en: GraphText = {
   loadingGraph: "Loading the graph",
   readingBrain: "Reading the brain",
   emptyTitle: "Nothing in the graph yet",
-  emptyBody: "Entities and relations show up here as they are written.",
 
   relation: "Relation",
   key: "Key",
@@ -350,7 +344,7 @@ const en: GraphText = {
   shareTitle: "Copy a link that opens here",
   untyped: "untyped",
   relations: (n) => `${n} ${n === 1 ? "relation" : "relations"}`,
-  notDrawn: "Not drawn in the scene. The store can still answer about it.",
+  notDrawn: "Not drawn in the scene.",
   relationsTitle: "Relations",
   latestChanges: "Latest changes",
   record: "Record",
@@ -359,11 +353,10 @@ const en: GraphText = {
   openSource: "Open source",
   openTarget: "Open target",
 
-  noRecords:
-    "This view's source cannot look a record up, so there is nothing to show about where this came from. That is not the same as a record that carries nothing.",
+  noRecords: "This view's source cannot look a record up.",
   readingRecord: "Reading the record...",
   cannotLookUp: "This view cannot look the record up.",
-  recordGone: "The source has no record with this id any more: it was on screen and is not on the shelf.",
+  recordGone: "The source has no record with this id any more.",
   saved: "Saved",
   scope: "Scope",
   importance: "Importance",
@@ -396,16 +389,14 @@ const en: GraphText = {
   hideX: (label) => `Hide ${label}`,
   showX: (label) => `Show ${label}`,
   showAllN: (n) => `Show all ${n}`,
-  noGrades:
-    "This source does not report grades, so nothing here can be coloured by one. That is not the same as a store where nothing is graded.",
-  recallLogOff: "The recall log is off on this brain. Start it with CORTEXDB_RECALL_LOG=1.",
+  noGrades: "This source does not report grades.",
+  recallLogOff: "The recall log is off on this brain.",
   readingRecallLog: "Reading the recall log...",
   never: "never",
-  reachedN: (n) => `${n} nodes reached by recalls. Grey was never recalled.`,
+  reachedN: (n) => `${n} nodes reached by recalls`,
   noRelationsYet: "No relations yet.",
   hideCoOccurs: "Hide co_occurs",
   showCoOccurs: "Show co_occurs: two names appeared together, nothing more",
-  coOccursHidden: "co_occurs only says two names appeared together, so it is hidden.",
   showAll: "Show all",
   howEstablished: "How well established",
   reachedByRecalls: "Reached by recalls",
@@ -418,7 +409,7 @@ const en: GraphText = {
   changesTitle: "Rows written to the store",
   callsTitle: "Tool calls an agent made",
   railNoSource: "This source reports the graph but no changes or tool calls.",
-  railEmpty: "Nothing yet. Changes and tool calls appear here as they happen, newest first.",
+  railEmpty: "Nothing yet.",
 
   pickInstant: "Pick an instant first.",
   notInstant: "That is not an instant.",
@@ -439,10 +430,8 @@ const en: GraphText = {
   noGradesShort: "This source does not report grades.",
   show: "Show",
   coOccursLabel: "co_occurs relations",
-  coOccursHint: "Only says two names appeared together.",
   namesOnCanvas: "Names on the canvas",
   pulses: "Pulses along new relations",
-  pulsesHint: "Light that runs from source to target.",
 
   nodes: "nodes",
   edges: "edges",
@@ -450,16 +439,14 @@ const en: GraphText = {
   blank: "(blank)",
   cannotReadContract: "This view cannot read the knowledge contract.",
   nothingOnShelf: "Nothing on this shelf yet: no records to grade.",
-  noneGraded: ["", " nodes and ", " edges, and not one carries a grade. Nothing here says how it is known."],
-  countedWhole: "Counted over the whole store; the scene draws its most-connected part.",
+  noneGraded: ["", " nodes and ", " edges, none graded."],
   needsPerson: "Needs a person",
   nothingHeld: "Nothing held, nothing refused.",
   byWhom: (refused, by) => `${refused ? "refused" : "held"} by ${by}`,
   edge: "edge",
   noReason: "No reason given: the contract requires one.",
   showingOf: (shown, of) => `Showing ${shown} of ${of}.`,
-  pinnedContract:
-    "The view is pinned to a past instant. This tally counts the store as it is now, so it is not read while the scene shows then.",
+  pinnedContract: "The view is pinned to a past instant.",
   readingContract: "Reading the contract...",
 
   pinnedBanner: ["Showing the graph as it stood at ", ". This is the past, and it is not updating."],
@@ -470,7 +457,6 @@ const zh: GraphText = {
   loadingGraph: "正在加载图谱",
   readingBrain: "正在读取大脑",
   emptyTitle: "图谱里还没有内容",
-  emptyBody: "实体和关系一写入就会出现在这里。",
 
   relation: "关系",
   key: "图例",
@@ -578,7 +564,7 @@ const zh: GraphText = {
   shareTitle: "复制一个打开到这里的链接",
   untyped: "无类型",
   relations: (n) => `${n} 条关系`,
-  notDrawn: "场景中没有绘制它，但存储仍然可以回答关于它的问题。",
+  notDrawn: "场景中没有绘制它。",
   relationsTitle: "关系",
   latestChanges: "最近变更",
   record: "记录",
@@ -587,10 +573,10 @@ const zh: GraphText = {
   openSource: "打开起点",
   openTarget: "打开终点",
 
-  noRecords: "这个视图的数据源不能查询记录，所以无法显示它的来历。这和一条什么都没带的记录不是一回事。",
+  noRecords: "这个视图的数据源不能查询记录。",
   readingRecord: "正在读取记录...",
   cannotLookUp: "这个视图查不了这条记录。",
-  recordGone: "数据源里已经没有这个 id 的记录了：它曾出现在屏幕上，但已不在存储中。",
+  recordGone: "数据源里已经没有这个 id 的记录了。",
   saved: "保存于",
   scope: "范围",
   importance: "重要度",
@@ -623,15 +609,14 @@ const zh: GraphText = {
   hideX: (label) => `隐藏 ${label}`,
   showX: (label) => `显示 ${label}`,
   showAllN: (n) => `显示全部 ${n} 个`,
-  noGrades: "这个数据源不报告等级，所以这里没法按等级着色。这和一个什么都没评级的存储不是一回事。",
-  recallLogOff: "这个大脑的召回日志没有开启。用 CORTEXDB_RECALL_LOG=1 开启。",
+  noGrades: "这个数据源不报告等级。",
+  recallLogOff: "这个大脑的召回日志没有开启。",
   readingRecallLog: "正在读取召回日志...",
   never: "从未",
-  reachedN: (n) => `召回触达了 ${n} 个节点。灰色的从未被召回。`,
+  reachedN: (n) => `召回触达了 ${n} 个节点`,
   noRelationsYet: "还没有关系。",
   hideCoOccurs: "隐藏 co_occurs",
   showCoOccurs: "显示 co_occurs：只表示两个名字一起出现过",
-  coOccursHidden: "co_occurs 只表示两个名字一起出现过，所以默认隐藏。",
   showAll: "全部显示",
   howEstablished: "可信程度",
   reachedByRecalls: "召回触达",
@@ -644,7 +629,7 @@ const zh: GraphText = {
   changesTitle: "写入存储的记录",
   callsTitle: "智能体发起的工具调用",
   railNoSource: "这个数据源只报告图谱，没有变更和工具调用。",
-  railEmpty: "还没有内容。变更和工具调用发生时会出现在这里，最新的在最上面。",
+  railEmpty: "还没有内容。",
 
   pickInstant: "请先选一个时间点。",
   notInstant: "这不是一个有效的时间点。",
@@ -665,10 +650,8 @@ const zh: GraphText = {
   noGradesShort: "这个数据源不报告等级。",
   show: "显示",
   coOccursLabel: "co_occurs 关系",
-  coOccursHint: "只表示两个名字一起出现过。",
   namesOnCanvas: "画布上的名称",
   pulses: "新关系上的脉冲",
-  pulsesHint: "从起点流向终点的光。",
 
   nodes: "节点",
   edges: "边",
@@ -676,15 +659,14 @@ const zh: GraphText = {
   blank: "（空）",
   cannotReadContract: "这个视图读不了知识契约。",
   nothingOnShelf: "这里还什么都没有：没有可评级的记录。",
-  noneGraded: ["", " 个节点和 ", " 条边，没有一条带等级。这里没有任何东西说明它是怎么知道的。"],
-  countedWhole: "按整个存储统计；场景只绘制连接最多的那部分。",
+  noneGraded: ["", " 个节点和 ", " 条边，都没有等级。"],
   needsPerson: "需要人工处理",
   nothingHeld: "没有待定的，也没有拒绝的。",
   byWhom: (refused, by) => `由 ${by} ${refused ? "拒绝" : "搁置"}`,
   edge: "边",
   noReason: "没有给出原因：契约要求必须说明。",
   showingOf: (shown, of) => `显示 ${of} 条中的 ${shown} 条。`,
-  pinnedContract: "视图固定在过去某一刻。这份统计按存储的当前状态计算，所以在场景显示过去时不会读取。",
+  pinnedContract: "视图固定在过去某一刻。",
   readingContract: "正在读取契约...",
 
   pinnedBanner: ["显示的是图谱在 ", " 时的样子。这是过去的状态，不会更新。"],

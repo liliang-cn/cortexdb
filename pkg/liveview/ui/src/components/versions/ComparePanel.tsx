@@ -75,7 +75,7 @@ function Group({ g }: { g: DiffGroup }) {
   );
 }
 
-function DiffBody({ diff, pair }: { diff: OntologyDiff; pair: Pair }) {
+function DiffBody({ diff }: { diff: OntologyDiff }) {
   const groups = groupDiff(diff.changes);
   const counts = diffCounts(diff.changes);
   const n = diff.changes.length;
@@ -94,18 +94,10 @@ function DiffBody({ diff, pair }: { diff: OntologyDiff; pair: Pair }) {
           )}
         </p>
         {n > 0 && <CountChips counts={counts} />}
-        {n > 0 && (
-          <p className={cn("text-sm", diff.has_breaking_changes ? "text-destructive" : "text-muted-foreground")}>
-            {diff.has_breaking_changes ? t.breakingSentence(pair.from, pair.to) : t.safeSentence(pair.from, pair.to)}
-          </p>
-        )}
       </div>
       {groups.map((g) => (
         <Group key={`${g.subject}:${g.name}`} g={g} />
       ))}
-      <p className="text-xs text-muted-foreground">
-        {t.notCompared}
-      </p>
     </div>
   );
 }
@@ -152,15 +144,12 @@ export function ComparePanel({ picks, pair, diff, latest, infoOf, onPair, onClea
           <div className="rounded-lg border border-dashed px-4 py-6 text-center">
             <GitCompareArrows aria-hidden className="mx-auto mb-2 size-5 text-muted-foreground" />
             <p className="text-sm font-medium">{t.pickTwo}</p>
-            <p className="mx-auto mt-1 max-w-xs text-sm text-muted-foreground">
-              {t.pickTwoBody}
-            </p>
           </div>
         ) : (
           <div className="space-y-3">
             <p className="text-sm">
               <span className="font-semibold tabular-nums">v{one}</span>
-              {t.pickedPickMore}
+              {t.picked}
             </p>
             <div className="flex flex-wrap gap-2">
               {one > 1 && (
@@ -215,7 +204,7 @@ export function ComparePanel({ picks, pair, diff, latest, infoOf, onPair, onClea
           </p>
         </div>
       ) : diff.diff ? (
-        <DiffBody diff={diff.diff} pair={pair} />
+        <DiffBody diff={diff.diff} />
       ) : null}
     </div>
   );

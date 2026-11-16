@@ -10,7 +10,7 @@ import { RecallFilters } from "@/components/recalls/RecallFilters";
 import { RecallRow } from "@/components/recalls/RecallRow";
 import { RecordsView } from "@/components/recalls/RecordsView";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLang, type Lang } from "@/lib/i18n";
@@ -77,7 +77,7 @@ function DetailPane({ detail, t, lang, markError, onMark, onFilter }: DetailPane
     return (
       <div className="p-4">
         {missing ? (
-          <Empty title={t.detailMissing}>{t.detailMissingHint}</Empty>
+          <Empty title={t.detailMissing} />
         ) : (
           <ReadFailure error={detail.error ?? { message: "", status: 0 }} title={t.detailError} t={t} onRetry={detail.reload} />
         )}
@@ -211,13 +211,12 @@ export function RecallsPage() {
   else if (timeline.items.length === 0) {
     list = hasFilters(opts) ? (
       <Empty title={t.noMatch}>
-        {t.noMatchHint}{" "}
         <button type="button" className="text-primary underline underline-offset-4" onClick={() => setOpts(withoutFilters(opts))}>
           {t.clearAll}
         </button>
       </Empty>
     ) : (
-      <Empty title={t.none}>{t.noneHint}</Empty>
+      <Empty title={t.none} />
     );
   } else {
     list = (
@@ -230,12 +229,10 @@ export function RecallsPage() {
           ))}
         </ol>
         <div className="flex flex-col items-center gap-2 py-4 text-sm text-muted-foreground">
-          {timeline.hasMore ? (
+          {timeline.hasMore && (
             <Button variant="outline" size="sm" onClick={timeline.loadMore} disabled={timeline.loadingMore}>
               {timeline.loadingMore ? t.loadingOlder : t.older}
             </Button>
-          ) : (
-            <p>{t.oldest}</p>
           )}
           {timeline.moreError && <p className="text-destructive">{timeline.moreError}</p>}
         </div>
@@ -251,14 +248,11 @@ export function RecallsPage() {
       <PageHeader
         title={t.title}
         description={
-          <>
-            {t.description}
-            {source && (
-              <span className="mt-1 block truncate font-mono text-xs" title={source}>
-                {t.source}: {source}
-              </span>
-            )}
-          </>
+          source && (
+            <span className="block truncate font-mono text-xs" title={source}>
+              {t.source}: {source}
+            </span>
+          )
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -341,10 +335,9 @@ export function RecallsPage() {
 
       {!wide && (
         <Sheet open={timelineShown && Boolean(opts.recall)} onOpenChange={(open) => !open && closeSheet()}>
-          <SheetContent side="right" className="w-full gap-0 overflow-y-auto p-0 sm:max-w-xl">
+          <SheetContent side="right" className="w-full gap-0 overflow-y-auto p-0 sm:max-w-xl" aria-describedby={undefined}>
             <SheetHeader className="sr-only">
               <SheetTitle>{detail.entry?.query ?? t.title}</SheetTitle>
-              <SheetDescription>{t.pick}</SheetDescription>
             </SheetHeader>
             <div className="pt-8">{detailPane}</div>
           </SheetContent>

@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { Pause, Play } from "lucide-react";
-import { Link } from "react-router";
 import { ActivityRow } from "@/components/feed/ActivityRow";
 import { Chip } from "@/components/semantic";
 import { Empty, Page, PageHeader } from "@/components/Page";
@@ -12,7 +11,6 @@ import { useLang } from "@/lib/i18n";
 import { ACTIVITY_KINDS, semLabel } from "@/lib/semantics";
 import { useNow } from "@/lib/useNow";
 import { useActivity, useCapabilities, useLive } from "@/live";
-import { pageShown } from "@/lib/pages";
 
 /** Tool calls as they happen: what an agent read, wrote and linked. */
 export function ActivityPage() {
@@ -28,35 +26,14 @@ export function ActivityPage() {
   const firstSeen = useMemo(() => Date.now(), []);
   const lang = useLang();
   const t = FEED_TEXT[lang];
-  const [toolLead, toolTail] = t.noCallsViewBody.split("{tool}");
-  const [changesLead, changesTail] = t.changesStillLists.split("{changes}");
 
   let body;
   if (!ready) {
     body = <Empty title={t.connecting}>{t.waitingStream}</Empty>;
   } else if (!caps.activity && events.length === 0) {
-    body = (
-      <Empty title={t.noCallsViewTitle}>
-        {toolLead}
-        <span className="font-mono">serve_graph_3d</span>
-        {toolTail}
-        {pageShown("/changes") && (
-          <>
-            {" "}
-            {changesLead}
-            <Link to="/changes" className="text-primary underline underline-offset-4">{t.changesLink}</Link>
-            {changesTail}
-          </>
-        )}
-      </Empty>
-    );
+    body = <Empty title={t.noCallsViewTitle} />;
   } else if (shown.length === 0) {
-    body =
-      kinds.length > 0 ? (
-        <Empty title={t.noKindTitle}>{t.noKindBody}</Empty>
-      ) : (
-        <Empty title={t.noCallsTitle}>{t.noCallsBody}</Empty>
-      );
+    body = <Empty title={kinds.length > 0 ? t.noKindTitle : t.noCallsTitle} />;
   } else {
     body = (
       <ol className="divide-y overflow-hidden rounded-xl border bg-card">
@@ -73,7 +50,6 @@ export function ActivityPage() {
     <Page>
       <PageHeader
         title={t.activityTitle}
-        description={t.activityDescription}
         actions={
           caps.activity ? (
             <Button variant="outline" size="sm" aria-pressed={pausedAt !== null} onClick={() => setPausedAt((p) => (p === null ? Date.now() : null))}>

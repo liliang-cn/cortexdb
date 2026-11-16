@@ -205,7 +205,7 @@ export function EntityPage() {
   if (!id) {
     return (
       <Page>
-        <Empty title={t.noEntityTitle}>{t.noEntityBody}</Empty>
+        <Empty title={t.noEntityTitle} />
       </Page>
     );
   }
@@ -321,7 +321,7 @@ export function EntityPage() {
 
       <Section title={t.recentChanges} aside={recent.length > 0 ? t.nShown(recent.length) : undefined}>
         {recent.length === 0 ? (
-          <Empty title={t.noEntityChanges}>{data.loading ? t.readingFeed : t.changesWillShow}</Empty>
+          <Empty title={data.loading ? t.readingFeed : t.noEntityChanges} />
         ) : (
           <ol className="divide-y overflow-hidden rounded-xl border bg-card">
             {recent.map((c) => (
