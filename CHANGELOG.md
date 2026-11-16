@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.154.3] - 2026-11-16
+
+### Changed
+
+- The live view's Ontology page shows its counts as fields and its decisions as names and data, and the graph page's Find and Ask results drop their summary lines; an answer brings the objects it touched into view by itself. (#207)
+
 ## [2.154.2] - 2026-11-16
 
 ### Changed
