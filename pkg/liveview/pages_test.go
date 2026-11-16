@@ -47,6 +47,26 @@ func TestTheOntologyRouteStaysWhileEitherOfItsTabsDoes(t *testing.T) {
 	}
 }
 
+// The library is a view of the graph page at /, which cannot be left out, so
+// / answers either way; /library, which the app redirects to the view,
+// answers only while the library is shown, and so does its API.
+func TestTheGraphRouteStaysAndTheLibraryRouteGoesWithTheLibrary(t *testing.T) {
+	for _, c := range []struct {
+		hidden                 []Page
+		graph, library, apiLib int
+	}{
+		{nil, http.StatusOK, http.StatusOK, http.StatusOK},
+		{[]Page{PageLibrary}, http.StatusOK, http.StatusNotFound, http.StatusNotFound},
+	} {
+		ts := serveApp(t, theApp, "", WithoutPages(c.hidden...))
+		for path, want := range map[string]int{"/": c.graph, "/?view=library": c.graph, "/library": c.library, "/api/library": c.apiLib, "/api/graph": http.StatusOK} {
+			if resp, _ := fetch(t, ts.URL+path, nil); resp.StatusCode != want {
+				t.Errorf("without %v, GET %s: status %d, want %d", c.hidden, path, resp.StatusCode, want)
+			}
+		}
+	}
+}
+
 func TestTheIndexNamesTheLeftOutPagesBesideTheBaseTag(t *testing.T) {
 	ts := serveApp(t, theApp, "/kg", WithoutPages(PageRecalls, PageOntology, PageRecalls))
 	_, body := fetch(t, ts.URL+"/kg/library", nil)

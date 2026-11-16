@@ -41,7 +41,8 @@ export function pageShown(path: string, hidden: ReadonlySet<string> = hiddenPage
 /**
  * Pages drawn as tabs of another page's route: the versions page is a tab of
  * /ontology, and its own path only redirects there. A route is shown while
- * any page drawn on it is.
+ * any page drawn on it is. (The library is a view of the graph at /, which
+ * cannot be left out; /library only redirects there, and goes with the library.)
  */
 const ROUTE_PAGES: Readonly<Record<string, readonly string[]>> = {
   ontology: ["ontology", "ontology-history"],

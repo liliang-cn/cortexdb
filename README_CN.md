@@ -4,7 +4,7 @@
 
 一个 SQLite 文件装下 AI 记忆与知识图谱。纯 Go，不用额外跑服务，没有 embedding 模型也能用。
 
-![CortexDB 实时视图：两次召回点亮图谱，然后是召回、本体和图书馆页面](docs/assets/img/live-view-zh.gif)
+![CortexDB 实时视图：两次召回点亮图谱，然后是召回、本体页面和图书馆视图](docs/assets/img/live-view-zh.gif)
 
 ## 安装
 

@@ -11,7 +11,7 @@
 // newer snapshot re-reads the room and rebuilds it; a call that names books
 // lights them where they stand.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useSearchParams } from "react-router";
 import { House, Library as LibraryIcon, Loader2 } from "lucide-react";
 import { api, isAbort, type ActivityEvent, type FindResult } from "@/api";
@@ -37,7 +37,8 @@ const callKey = (e: ActivityEvent) => `${e.seq}:${e.at}`;
 
 type HoverFn = (spot: BookSpot | null, x: number, y: number) => void;
 
-export default function LibraryView() {
+/** `switcher` is the graph page's view switch, drawn where the room's panels leave room for it. */
+export default function LibraryView({ switcher }: { switcher?: ReactNode }) {
   const lang = useLang();
   const t = LIBRARY_TEXT[lang];
   const narrow = useIsNarrow();
@@ -322,7 +323,8 @@ export default function LibraryView() {
             </div>
 
             <div className="relative min-w-0 flex-1">
-              <Toast text={note} className="top-0" />
+              {switcher && <div className="absolute inset-x-0 top-0 flex justify-center">{switcher}</div>}
+              <Toast text={note} className={switcher ? "top-11" : "top-0"} />
               <div className="absolute inset-x-0 bottom-0 flex justify-center">
                 <Card occludes="bottom" className="flex-row items-center gap-0.5 rounded-full p-1">
                   <IconButton label={t.home} icon={<House />} onClick={home} className="rounded-full" />
@@ -364,8 +366,9 @@ export default function LibraryView() {
                   <FindResults found={found} t={t} onPick={pick} />
                 </Card>
               )}
+              {switcher && !showResults && <div className="flex justify-center">{switcher}</div>}
             </div>
-            <Toast text={note} className="top-[4.75rem] px-3" />
+            <Toast text={note} className={cn("px-3", switcher ? "top-[7.25rem]" : "top-[4.75rem]")} />
             {!panel && (
               <Card occludes="bottom" className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 flex-row rounded-full p-1">
                 <IconButton label={t.home} icon={<House />} onClick={home} className="rounded-full" />

@@ -1030,5 +1030,14 @@ export class GraphScene {
     this.labels.clear();
     this.G.pauseAnimation();
     this.G._destructor();
+    // The force graph's destructor stops its loop and empties the graph but
+    // keeps its renderer: let go of the context now, so switching to the
+    // library and back does not pile up WebGL contexts.
+    (this.G.controls() as unknown as { dispose?: () => void }).dispose?.();
+    this.G.postProcessingComposer()?.dispose();
+    const renderer = this.G.renderer();
+    renderer.dispose();
+    renderer.forceContextLoss();
+    this.el.replaceChildren();
   }
 }

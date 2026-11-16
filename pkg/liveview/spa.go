@@ -23,7 +23,9 @@ package liveview
 //     query options are unchanged, so a bookmark or a link from a tool's
 //     answer (serve_graph_3d's library_url, /recalls?trace=) still lands. The
 //     versions page is the Versions tab of /ontology now; the app redirects
-//     /ontology-history there, query options and all.
+//     /ontology-history there, query options and all. The library is the
+//     Library view of the graph page in the same way (/?view=library), and
+//     the app redirects /library there.
 
 import (
 	"bytes"

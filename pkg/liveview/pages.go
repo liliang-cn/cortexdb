@@ -42,7 +42,10 @@ const (
 	// colour-by-recalls mode and replaying a recall on the graph, which read
 	// the same log.
 	PageRecalls Page = "recalls"
-	// PageLibrary is the brain as a reading room.
+	// PageLibrary is the brain as a reading room: the Library view of the
+	// graph page (/?view=library). Its old path, /library, still answers while
+	// it is shown and the app redirects it to the view. Leaving it out leaves
+	// the graph page with the graph alone and no switch.
 	PageLibrary Page = "library"
 	// PageOntology is the declared model, drawn.
 	PageOntology Page = "ontology"
@@ -108,7 +111,9 @@ func (s *Server) HiddenPages() []Page {
 
 // routePages names the pages an app route draws when that is more than the
 // page its path names: /ontology draws the Ontology page and the Versions
-// page as two tabs, and stays while either of them does.
+// page as two tabs, and stays while either of them does. / draws the graph
+// and the Library view too, but the graph cannot be left out, so / always
+// answers; /library, which only redirects to the view, goes with PageLibrary.
 var routePages = map[string][]Page{
 	"/ontology": {PageOntology, PageVersions},
 }

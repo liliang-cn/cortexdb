@@ -7,17 +7,17 @@ import { ActivityPage } from "@/pages/ActivityPage";
 import { ChangesPage } from "@/pages/ChangesPage";
 import { EntityPage } from "@/pages/EntityPage";
 import { GraphPage } from "@/pages/GraphPage";
-import { LibraryPage } from "@/pages/LibraryPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { useText } from "@/lib/i18n";
 import { routeShown } from "@/lib/pages";
+import { legacyLibrarySearch } from "@/lib/graphViews";
 import { legacyVersionsSearch } from "@/lib/ontologyTabs";
 import { SHELL_TEXT } from "@/lib/shellStrings";
 
 // The recalls, ontology (with its versions tab) and analysis pages are each a few hundred lines that
 // most visits never open, so they load when they are first visited rather
-// than with every page. (The graph and the library lazy-load their own scenes,
-// and three with them.)
+// than with every page. (The graph page lazy-loads its two views' scenes, the
+// graph and the library, and three with them.)
 const RecallsPage = lazy(() => import("@/pages/RecallsPage").then((m) => ({ default: m.RecallsPage })));
 const OntologyPage = lazy(() => import("@/pages/OntologyPage").then((m) => ({ default: m.OntologyPage })));
 
@@ -37,6 +37,12 @@ function Loading({ children }: { children: ReactNode }) {
       {children}
     </Suspense>
   );
+}
+
+/** /library was the library page; it is the graph page's library view now. */
+function ToLibraryView() {
+  const { search, hash } = useLocation();
+  return <Navigate replace to={{ pathname: "/", search: legacyLibrarySearch(search), hash }} />;
 }
 
 /** /ontology-history was the versions page; it is the ontology page's versions tab now. */
@@ -59,7 +65,7 @@ export function App() {
           <Route path="entity" element={<EntityPage />} />
           {shown("/activity") && <Route path="activity" element={<ActivityPage />} />}
           {shown("/recalls") && <Route path="recalls" element={<Loading><RecallsPage /></Loading>} />}
-          {shown("/library") && <Route path="library" element={<LibraryPage />} />}
+          {shown("/library") && <Route path="library" element={<ToLibraryView />} />}
           {shown("/ontology") && <Route path="ontology" element={<Loading><OntologyPage /></Loading>} />}
           {shown("/ontology-history") && <Route path="ontology-history" element={<ToVersionsTab />} />}
           {shown("/analysis") && <Route path="analysis" element={<Loading><AnalysisPage /></Loading>} />}

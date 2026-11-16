@@ -4,7 +4,7 @@
 
 AI memory and a knowledge graph in one SQLite file. Pure Go, no service to run, works without an embedding model.
 
-![The CortexDB live view: two recalls light up the graph, then the Recalls, Ontology and Library pages](docs/assets/img/live-view-en.gif)
+![The CortexDB live view: two recalls light up the graph, then the Recalls and Ontology pages and the Library view](docs/assets/img/live-view-en.gif)
 
 ## Install
 

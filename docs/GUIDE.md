@@ -666,7 +666,8 @@ Changing the token signs every browser out.
 
 - **Recalls** (`/recalls`): the recall log, described under "Observability" below.
   A new recall joins the list as it is logged.
-- **Library** (`/library`): the same graph as a reading room. A memory is a
+- **Library** (a view of the Graph page, `/?view=library`; old `/library`
+  links redirect there): the same graph as a reading room. A memory is a
   book on its project's shelf, an entity is an index card, and a book opens on
   a lectern.
 - **Ontology** (`/ontology`): the active schema drawn as lanes, one per
@@ -744,7 +745,8 @@ when Changes is left out, because the graph's inspector and the entity page
 read it. The pages that can be left out are `PageChanges`, `PageActivity`,
 `PageRecalls`, `PageLibrary`, `PageOntology`, `PageVersions` and
 `PageAnalysis`; the graph and
-the entity page cannot be, and `New` refuses any other name. `Start` takes the
+the entity page cannot be, and `New` refuses any other name. Leaving out
+`PageLibrary` leaves the Graph page without its Library switch. `Start` takes the
 same options.
 
 The frontend's source is in

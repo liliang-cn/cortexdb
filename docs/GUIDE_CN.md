@@ -528,7 +528,7 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
   提供视图时才有，因为只有它能看到调用。
 
 - **Recalls**（`/recalls`）：召回日志，见下文"可观测性"一节。新的召回记下来就出现在列表里。
-- **Library**（`/library`）：同一张图画成阅览室。记忆是它所属项目书架上的一本书，实体是一张
+- **Library**（Graph 页面的一个视图，`/?view=library`；旧的 `/library` 链接会跳转过去）：同一张图画成阅览室。记忆是它所属项目书架上的一本书，实体是一张
   索引卡，书在阅读台上打开。
 - **Ontology**（`/ontology`）：把当前生效的 schema 按接口分成一条条泳道画出来，再对照记录
   实际带的类型；以某个类型的别名存下的节点算作那个类型，没有被声明的类型列在模型之外。存储自己写的种类（`memory`、`document`、`chunk`；`mentions`、`has_chunk`、`next`、`co_occurs`）单独列一行，不算作模式漏掉的，除非模式自己声明了其中某个。`?draft=1` 改画一份从库里已有词汇推出来的
@@ -581,7 +581,7 @@ sv, _ := liveview.New(ctx, src, 2*time.Second, false,
 `/api/analysis/*`。去掉 Changes 时
 `/api/changes` 保留，因为图谱的检查面板和实体页要读它。可以去掉的页面是 `PageChanges`、
 `PageActivity`、`PageRecalls`、`PageLibrary`、`PageOntology`、`PageVersions` 和 `PageAnalysis`；图谱和实体页
-不能去掉，传其他名字时 `New` 会报错。`Start` 接受同样的选项。
+不能去掉，传其他名字时 `New` 会报错。去掉 `PageLibrary` 后，Graph 页面不再有 Library 切换。`Start` 接受同样的选项。
 
 前端源码在 `pkg/liveview/ui`，构建结果提交在 `pkg/liveview/dist` 并嵌入二进制，所以
 `go install` 不需要 Node。

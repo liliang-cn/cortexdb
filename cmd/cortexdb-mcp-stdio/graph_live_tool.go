@@ -39,7 +39,8 @@ type serveGraph3DIn struct {
 type serveGraph3DOut struct {
 	Graph string `json:"graph,omitempty"`
 	URL   string `json:"url"`
-	// LibraryURL is the reading-room view of the same brain.
+	// LibraryURL is the reading-room view of the same brain: the graph page
+	// with its library view open.
 	LibraryURL string `json:"library_url"`
 	Nodes      int    `json:"nodes"`
 	Edges      int    `json:"edges"`
@@ -93,7 +94,7 @@ func addServeGraph3DTool(server *mcp.Server) {
 		snap := sv.Snapshot()
 		out := serveGraph3DOut{
 			URL:        sv.URL(),
-			LibraryURL: strings.TrimRight(sv.URL(), "/") + "/library",
+			LibraryURL: strings.TrimRight(sv.URL(), "/") + "/?view=library",
 			Nodes:      len(snap.Nodes),
 			Edges:      len(snap.Edges),
 			Source:     sv.SourceName(),
