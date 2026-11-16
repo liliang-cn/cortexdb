@@ -262,7 +262,10 @@ func (g *readGuard) run(ctx context.Context, dc any, q GuardedRead, args []drive
 	}
 	g.mode = guardEnforce
 
-	rows, err := queryer.QueryContext(ctx, q.SQL, args)
+	// The progress handler above ends the query when ctx ends. The driver is
+	// not given ctx: its own interrupt can land after the statement it was
+	// meant for (see queuedConn.watch).
+	rows, err := queryer.QueryContext(context.Background(), q.SQL, args)
 	if err != nil {
 		return nil, false, err
 	}

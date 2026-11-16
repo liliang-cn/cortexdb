@@ -41,6 +41,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"modernc.org/libc"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 // writeTurnWait bounds how long a writer queues for its turn. A variable so a
@@ -118,7 +121,11 @@ func (c *queuedConnector) Connect(context.Context) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &queuedConn{Conn: conn, turn: c.turn}, nil
+	qc := &queuedConn{Conn: conn, turn: c.turn}
+	if h, err := sqliteHandleOf(conn); err == nil {
+		qc.handle = &h
+	}
+	return qc, nil
 }
 
 func (c *queuedConnector) Driver() driver.Driver { return c.driver }
@@ -131,22 +138,89 @@ type queuedConn struct {
 	driver.Conn
 	turn *writeTurn
 	inTx bool
+	// handle reaches the connection's sqlite3*, to see what it still holds
+	// when it goes back to the pool; nil if the driver is not the shape this
+	// build knows, and then the driver's own checks are all there is.
+	handle *sqliteHandle
+	// broken is set when a transaction did not end cleanly.
+	broken bool
 }
 
 func (c *queuedConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
 	if opts.ReadOnly {
-		return c.Conn.(driver.ConnBeginTx).BeginTx(ctx, opts)
+		// No turn, but wrapped all the same, so that a read transaction that
+		// fails to end marks the connection too.
+		tx, err := c.beginTx(ctx, opts)
+		if err != nil {
+			return nil, err
+		}
+		return &queuedTx{Tx: tx, conn: c}, nil
 	}
 	if err := c.turn.take(ctx); err != nil {
 		return nil, err
 	}
-	tx, err := c.Conn.(driver.ConnBeginTx).BeginTx(ctx, opts)
+	tx, err := c.beginTx(ctx, opts)
 	if err != nil {
 		c.turn.give()
 		return nil, err
 	}
 	c.inTx = true
 	return &queuedTx{Tx: tx, conn: c}, nil
+}
+
+func (c *queuedConn) beginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
+	dctx, stop := c.watch(ctx)
+	tx, err := c.Conn.(driver.ConnBeginTx).BeginTx(dctx, opts)
+	return tx, stop(err)
+}
+
+// watch ends a statement when ctx ends, in place of the driver.
+//
+// modernc.org/sqlite (v1.38) interrupts the connection from a goroutine when
+// a statement's context ends, and checks that the statement is still running
+// before it does, but without a lock: the interrupt can arrive after the
+// statement has returned, on the next one, a ROLLBACK among them, or on a
+// connection already closed, where it reads the sqlite3* that Close is
+// clearing. And a query whose context ends just as its first row arrives
+// returns the context's error without closing the rows it opened. The driver
+// is given a context that never ends, so none of that runs, and the
+// interrupt is sent here only while the statement is running: stop takes
+// the same lock, and once it has returned nothing is interrupted. stop
+// returns ctx's error in place of the one an interrupted statement fails
+// with, as the driver did.
+func (c *queuedConn) watch(ctx context.Context) (context.Context, func(error) error) {
+	if c.handle == nil || ctx.Done() == nil {
+		return ctx, func(err error) error { return err }
+	}
+	if err := ctx.Err(); err != nil {
+		return ctx, func(error) error { return err }
+	}
+	h := *c.handle
+	var mu sync.Mutex
+	running, interrupted := true, false
+	finished := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			mu.Lock()
+			if running {
+				sqlite3.Xsqlite3_interrupt(h.tls, h.db)
+				interrupted = true
+			}
+			mu.Unlock()
+		case <-finished:
+		}
+	}()
+	return context.Background(), func(err error) error {
+		mu.Lock()
+		running = false
+		mu.Unlock()
+		close(finished)
+		if interrupted && err != nil {
+			return ctx.Err()
+		}
+		return err
+	}
 }
 
 func (c *queuedConn) Begin() (driver.Tx, error) {
@@ -171,7 +245,9 @@ func (c *queuedConn) ExecContext(ctx context.Context, query string, args []drive
 		return nil, err
 	}
 	defer release()
-	return c.Conn.(driver.ExecerContext).ExecContext(ctx, query, args)
+	dctx, stop := c.watch(ctx)
+	r, err := c.Conn.(driver.ExecerContext).ExecContext(dctx, query, args)
+	return r, stop(err)
 }
 
 func (c *queuedConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
@@ -179,7 +255,9 @@ func (c *queuedConn) QueryContext(ctx context.Context, query string, args []driv
 	if err != nil {
 		return nil, err
 	}
-	rows, err := c.Conn.(driver.QueryerContext).QueryContext(ctx, query, args)
+	dctx, stop := c.watch(ctx)
+	rows, err := c.Conn.(driver.QueryerContext).QueryContext(dctx, query, args)
+	err = stop(err)
 	if err != nil {
 		release()
 		return nil, err
@@ -208,6 +286,9 @@ func (c *queuedConn) Ping(ctx context.Context) error {
 }
 
 func (c *queuedConn) ResetSession(ctx context.Context) error {
+	if !c.reusable() {
+		return driver.ErrBadConn
+	}
 	if r, ok := c.Conn.(driver.SessionResetter); ok {
 		return r.ResetSession(ctx)
 	}
@@ -215,6 +296,9 @@ func (c *queuedConn) ResetSession(ctx context.Context) error {
 }
 
 func (c *queuedConn) IsValid() bool {
+	if !c.reusable() {
+		return false
+	}
 	if v, ok := c.Conn.(driver.Validator); ok {
 		return v.IsValid()
 	}
@@ -222,11 +306,73 @@ func (c *queuedConn) IsValid() bool {
 }
 
 func (c *queuedConn) Close() error {
+	// A statement left running keeps sqlite3_close_v2 from closing: the
+	// connection lives on as a zombie with whatever it held, a write
+	// transaction's lock included. Stop them and end the transaction first.
+	if c.handle != nil {
+		c.handle.release()
+	}
 	if c.inTx { // a connection dropped mid-transaction must not keep the turn
 		c.inTx = false
 		c.turn.give()
 	}
 	return c.Conn.Close()
+}
+
+// A connection goes back to the pool only if it holds nothing: no
+// transaction and no statement still running. Either one pins a read
+// snapshot, and a later write on the connection fails with
+// SQLITE_BUSY_SNAPSHOT (517) once anything else has committed; a transaction
+// that has written also keeps the write lock, and every other writer fails
+// with "database is locked" (#199).
+//
+// modernc.org/sqlite (v1.38) leaves both behind when a context ends at the
+// wrong moment. Its interrupt can land on the statement after the one it was
+// meant for, a ROLLBACK among them, which then fails and leaves the
+// transaction open; and a query whose context ends just as its first row
+// arrives returns the context's error without closing the rows it opened.
+// In both cases the driver's own IsValid passes, the interrupt flag being
+// clear by then, and database/sql reused the connection.
+func (c *queuedConn) reusable() bool {
+	if c.broken {
+		return false
+	}
+	if c.inTx || c.handle == nil {
+		return true
+	}
+	return c.handle.idle()
+}
+
+// idle reports whether the connection is outside any transaction with no
+// statement running.
+func (h *sqliteHandle) idle() bool {
+	if sqlite3.Xsqlite3_get_autocommit(h.tls, h.db) == 0 {
+		return false
+	}
+	for st := sqlite3.Xsqlite3_next_stmt(h.tls, h.db, 0); st != 0; st = sqlite3.Xsqlite3_next_stmt(h.tls, h.db, st) {
+		if sqlite3.Xsqlite3_stmt_busy(h.tls, st) != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// release resets every statement on the connection, which stops the ones
+// still running (their owners can still finalize them), and rolls back an
+// open transaction. SQLite keeps a connection interrupted while any
+// statement on it runs, so the ROLLBACK succeeds only after the reset.
+func (h *sqliteHandle) release() {
+	for st := sqlite3.Xsqlite3_next_stmt(h.tls, h.db, 0); st != 0; st = sqlite3.Xsqlite3_next_stmt(h.tls, h.db, st) {
+		sqlite3.Xsqlite3_reset(h.tls, st)
+	}
+	if sqlite3.Xsqlite3_get_autocommit(h.tls, h.db) == 0 {
+		zSQL, err := libc.CString("ROLLBACK")
+		if err != nil {
+			return
+		}
+		defer libc.Xfree(h.tls, zSQL)
+		sqlite3.Xsqlite3_exec(h.tls, h.db, zSQL, 0, 0, 0)
+	}
 }
 
 type queuedTx struct {
@@ -244,14 +390,34 @@ func (t *queuedTx) end() {
 	})
 }
 
+// A COMMIT or ROLLBACK that fails can leave the connection inside its
+// transaction, and a write transaction holding the write lock. The connection
+// is released before the turn is given up, so the next writer does not meet
+// the lock, and is never reused.
+
 func (t *queuedTx) Commit() error {
 	defer t.end()
-	return t.Tx.Commit()
+	err := t.Tx.Commit()
+	if err != nil {
+		t.abandon()
+	}
+	return err
 }
 
 func (t *queuedTx) Rollback() error {
 	defer t.end()
-	return t.Tx.Rollback()
+	err := t.Tx.Rollback()
+	if err != nil {
+		t.abandon()
+	}
+	return err
+}
+
+func (t *queuedTx) abandon() {
+	t.conn.broken = true
+	if t.conn.handle != nil {
+		t.conn.handle.release()
+	}
 }
 
 type queuedStmt struct {
@@ -266,7 +432,9 @@ func (s *queuedStmt) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		return nil, err
 	}
 	defer release()
-	return s.Stmt.(driver.StmtExecContext).ExecContext(ctx, args)
+	dctx, stop := s.conn.watch(ctx)
+	r, err := s.Stmt.(driver.StmtExecContext).ExecContext(dctx, args)
+	return r, stop(err)
 }
 
 func (s *queuedStmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
@@ -274,7 +442,9 @@ func (s *queuedStmt) QueryContext(ctx context.Context, args []driver.NamedValue)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.Stmt.(driver.StmtQueryContext).QueryContext(ctx, args)
+	dctx, stop := s.conn.watch(ctx)
+	rows, err := s.Stmt.(driver.StmtQueryContext).QueryContext(dctx, args)
+	err = stop(err)
 	if err != nil {
 		release()
 		return nil, err
