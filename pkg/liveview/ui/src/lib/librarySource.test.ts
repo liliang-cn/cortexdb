@@ -1,6 +1,6 @@
 // What the Go tests used to check on the page's HTML, checked on the code the
-// app is built from now: the library is a page of the view like the others,
-// mounted wherever the view is, and drawn in walnut, oak, parchment and brass.
+// app is built from now: the library is a view of the graph page, mounted
+// wherever the view is, loaded only when it is opened, and drawn in walnut, oak, parchment and brass.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "@/api/endpoints";
@@ -10,16 +10,23 @@ import { isViolet } from "./libraryPalette";
 // Every source file the library is made of, tests aside, as text.
 const sources: Record<string, string> = {
   ...import.meta.glob(["../components/library/**/*.{ts,tsx}", "./library*.ts", "!./*.test.ts"], { query: "?raw", import: "default", eager: true }),
-  ...import.meta.glob(["../api/library.ts", "../pages/LibraryPage.tsx"], { query: "?raw", import: "default", eager: true }),
+  ...import.meta.glob(["../api/library.ts", "../pages/GraphPage.tsx"], { query: "?raw", import: "default", eager: true }),
 };
 
 describe("the library's source", () => {
   it("is all there to be read", () => {
     const names = Object.keys(sources);
     expect(names).toContain("../api/library.ts");
-    expect(names).toContain("../pages/LibraryPage.tsx");
+    expect(names).toContain("../pages/GraphPage.tsx");
     expect(names).toContain("./library.ts");
     expect(names.some((n) => n.startsWith("../components/library/"))).toBe(true);
+  });
+
+  it("is loaded by the graph page only when its view is opened, never with the page", () => {
+    const page = sources["../pages/GraphPage.tsx"] ?? "";
+    expect(page).toMatch(/lazy\(\(\) => import\("@\/components\/library\/LibraryView"\)\)/);
+    expect(/^import[^;]*components\/library/m.test(page)).toBe(false);
+    expect(/^import[^;]*["']three["']/m.test(page)).toBe(false);
   });
 
   it("asks for nothing by an absolute path, which would leave an embedder's mount point", () => {

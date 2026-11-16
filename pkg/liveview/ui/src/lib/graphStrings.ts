@@ -16,6 +16,9 @@ export type PathNote =
 
 export interface GraphText {
   loadingGraph: string;
+  loadingLibrary: string;
+  modeGraph: string;
+  modeLibrary: string;
   readingBrain: string;
   emptyTitle: string;
 
@@ -221,6 +224,9 @@ export interface GraphText {
 
 const en: GraphText = {
   loadingGraph: "Loading the graph",
+  loadingLibrary: "Opening the library",
+  modeGraph: "Graph",
+  modeLibrary: "Library",
   readingBrain: "Reading the brain",
   emptyTitle: "Empty graph",
 
@@ -427,6 +433,9 @@ const en: GraphText = {
 
 const zh: GraphText = {
   loadingGraph: "正在加载图谱",
+  loadingLibrary: "正在打开图书馆",
+  modeGraph: "图谱",
+  modeLibrary: "图书馆",
   readingBrain: "正在读取大脑",
   emptyTitle: "空图谱",
 

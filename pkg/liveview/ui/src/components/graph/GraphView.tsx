@@ -6,7 +6,7 @@
 // page-level wiring: keyboard, the messages a framing page may send, and the
 // URL options that open the page somewhere.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { ChevronDown, ChevronUp, Layers, Loader2, Radio, Route, SlidersHorizontal, ScanSearch, X } from "lucide-react";
 import { Empty } from "@/components/Page";
 import { Button } from "@/components/ui/button";
@@ -35,7 +35,8 @@ import { useMerged } from "./hooks";
 
 const FIT_AT = OPTS.fit ? [400, 1600, 3400, 6000] : [400];
 
-export default function GraphView() {
+/** `switcher` is the graph page's view switch, drawn where the panels leave room for it. */
+export default function GraphView({ switcher }: { switcher?: ReactNode }) {
   const stage = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLDivElement>(null);
   const labels = useRef<HTMLDivElement>(null);
@@ -201,7 +202,7 @@ export default function GraphView() {
         <div ref={labels} className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden />
         <HoverTip stage={stage} />
         <Status ready={ready} />
-        {OPTS.panels && (narrow ? <MobileChrome /> : <DesktopChrome />)}
+        {OPTS.panels && (narrow ? <MobileChrome switcher={switcher} /> : <DesktopChrome switcher={switcher} />)}
         <PathChip narrow={narrow} />
         <Toast narrow={narrow} />
       </div>
@@ -257,7 +258,7 @@ function FoldCard({ title, icon, open, onToggle, className, children }: { title:
   );
 }
 
-function DesktopChrome() {
+function DesktopChrome({ switcher }: { switcher?: ReactNode }) {
   const panels = useGraphUI((s) => s.panels);
   const setPanel = useGraphUI((s) => s.setPanel);
   const resultsOpen = useGraphUI((s) => s.resultsOpen);
@@ -291,7 +292,7 @@ function DesktopChrome() {
           <LegendContent />
         </FoldCard>
       </div>
-      <div className="min-w-0 flex-1" />
+      <div className="flex min-w-0 flex-1 justify-center">{switcher && <div className="self-start">{switcher}</div>}</div>
       <div className="flex min-h-0 items-stretch gap-3">
         <div className="self-start"><Toolbar /></div>
         {panels.rail && (
@@ -307,7 +308,7 @@ function DesktopChrome() {
 
 // ---- phone --------------------------------------------------------------
 
-function MobileChrome() {
+function MobileChrome({ switcher }: { switcher?: ReactNode }) {
   const mobile = useGraphUI((s) => s.mobile);
   const set = useGraphUI((s) => s.set);
   const selected = useGraphUI((s) => s.selected);
@@ -321,9 +322,10 @@ function MobileChrome() {
   const t = useText(GRAPH_TEXT);
   return (
     <div className="pointer-events-none absolute inset-0">
-      {showExplore && (
-        <div data-occludes="top" className="absolute inset-x-3 top-3 z-10">
-          <Card><ExploreBar compact /></Card>
+      {(showExplore || switcher) && (
+        <div data-occludes="top" className="absolute inset-x-3 top-3 z-10 flex flex-col gap-2">
+          {showExplore && <Card><ExploreBar compact /></Card>}
+          {switcher && <div className="flex justify-center">{switcher}</div>}
         </div>
       )}
 

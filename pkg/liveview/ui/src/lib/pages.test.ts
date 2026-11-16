@@ -30,6 +30,14 @@ describe("pages a host left out", () => {
     expect(visibleNav(NAV_GROUPS, parseHiddenPages(""))).toEqual(NAV_GROUPS);
   });
 
+  it("has one entry for the graph and its library view", () => {
+    const tos = NAV_GROUPS.flat().map((i) => i.to as string);
+    expect(tos).toContain("/");
+    expect(tos).not.toContain("/library");
+    const nav = (hidden: string) => visibleNav(NAV_GROUPS, parseHiddenPages(hidden)).flat().map((i) => i.to);
+    expect(nav("library")).toContain("/");
+  });
+
   it("has one entry for the ontology and its versions", () => {
     const tos = NAV_GROUPS.flat().map((i) => i.to as string);
     expect(tos).toContain("/ontology");
