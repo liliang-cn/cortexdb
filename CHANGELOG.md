@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.154.0] - 2026-11-16
+
+### Added
+
+- `docs/INTEGRATION.md` (and `docs/INTEGRATION_CN.md`) shows how to wire CortexDB into an agent of your own: over MCP, as a Go library, through the Python, Node.js and Rust gRPC clients, or over REST, with a key file that gives each agent its own clearance and scope. (#201)
+
+### Fixed
+
+- Removing a document (`delete_document_graph`, `knowledge_delete`) finds what it put in the graph through indexes, where each of its four lookups used to read the whole `graph_edges` or `graph_nodes` table. On SQLite, `idx_edges_document_id` and `idx_nodes_document_id` index the document id, and a new `graph_node_sources` table, kept current by triggers and filled the first time a brain is opened, indexes the members of `source_document_ids`. On a graph of 396,000 nodes and 1,043,819 edges the lookups of one delete went from 3.87 s to 0.002 s at the median. PostgreSQL keeps its lookups. (#190)
+- Searches no longer stop while the vectors of a committed document are put into the in-memory indexes: the sync takes the store's lock shared. Syncs of two transactions, and the graph-node removal of `delete_document_graph`, now run in the order the transactions committed, so a save and a delete of the same document can no longer leave the index holding the wrong one. (#193)
+
 ## [2.153.0] - 2026-11-15
 
 ### Added
