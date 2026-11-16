@@ -156,7 +156,7 @@ export function draft(over: Partial<OntologyDraftView> = {}): OntologyDraftView 
     decisions: [
       {
         kind: "primary_key_guess",
-        title: "A key the machine guessed",
+        title: "Guessed primary keys",
         question: "A primary key is what a person promises will stay unique.",
         count: 2,
         decisions: [{ target: "Airport", detail: "the draft guesses \"name\"", evidence: "name is on 3 of 3 \"Airport\" nodes" }],

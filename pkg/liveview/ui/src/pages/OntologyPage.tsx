@@ -2,7 +2,7 @@
 // to talk about, held against what it actually holds.
 //
 // Nothing here decides what is true. Which finding the page shows is the
-// report's state, computed in Go; the page picks a sentence by it and never
+// report's state, computed in Go; the page picks a status by it and never
 // infers one from an empty list. The drawing is lib/ontologyLayout's lanes,
 // for the reasons written at the top of that file, and a draft goes through
 // the same renderer as a saved schema because the overlay is what makes a
@@ -42,7 +42,7 @@ function PillBadge({ p, pal }: { p: Pill; pal: OntologyPalette }) {
         ? { borderColor: `color-mix(in oklab, ${pal.status} 50%, var(--border))`, color: pal.status }
         : undefined;
   return (
-    <Badge variant="outline" title={p.title} data-pill={p.tone} className={cn("font-medium uppercase tracking-wide text-[10px]", p.tone === "cold" && "text-muted-foreground", p.tone === "on" && "border-foreground/30")} style={style}>
+    <Badge variant="outline" data-pill={p.tone} className={cn("font-medium uppercase tracking-wide text-[10px]", p.tone === "cold" && "text-muted-foreground", p.tone === "on" && "border-foreground/30")} style={style}>
       {p.label}
     </Badge>
   );
@@ -54,8 +54,8 @@ function HeaderLine({ rep, pal, lang }: { rep: OntologyAnswer | null; pal: Ontol
   return (
     <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
       {h.title && <b className="font-semibold text-foreground">{h.title}</b>}
-      {h.title && <span aria-hidden>·</span>}
-      <span>{h.detail}</span>
+      {h.title && h.detail && <span aria-hidden>·</span>}
+      {h.detail && <span>{h.detail}</span>}
       {h.pills.map((p) => (
         <PillBadge key={p.label} p={p} pal={pal} />
       ))}
@@ -101,7 +101,7 @@ export function OntologyPage() {
   }, [opts.draft]);
 
   const parts = pageParts(opts);
-  const f = rep ? finding(rep, lang) : null;
+  const f = rep ? finding(rep, lang, opts.gap) : null;
   const band = rep ? outsideTheModel(rep, parts.outside, lang) : null;
   const draft = rep && isDraft(rep) ? rep : null;
 
@@ -115,7 +115,7 @@ export function OntologyPage() {
             actions={
               pageShown("/ontology-history") && (
                 <Button variant="outline" size="sm" asChild>
-                  <Link to={versionsPath(rep)} title={t.versionsTip}>
+                  <Link to={versionsPath(rep)}>
                     <History aria-hidden />
                     {t.versions}
                   </Link>

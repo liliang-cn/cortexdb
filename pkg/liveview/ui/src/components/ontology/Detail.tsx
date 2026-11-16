@@ -14,7 +14,7 @@ import { useIsNarrow } from "@/components/graph/primitives";
 import { cardinalityWord, counted, resolveSelection, type Selection } from "@/lib/ontologyLayout";
 import { useLang, type Lang } from "@/lib/i18n";
 import type { OntologyPalette } from "@/lib/ontologyPalette";
-import { ONTOLOGY_TEXT, type OntologyText } from "@/lib/ontologyStrings";
+import { ONTOLOGY_TEXT, numIn, type OntologyText } from "@/lib/ontologyStrings";
 
 function K({ children }: { children: ReactNode }) {
   return <dt className="mt-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{children}</dt>;
@@ -25,7 +25,7 @@ function V({ children }: { children: ReactNode }) {
 }
 
 function Props({ props, t }: { props: OntologyProp[]; t: OntologyText }) {
-  if (!props.length) return <V><span className="text-muted-foreground">{t.noProps}</span></V>;
+  if (!props.length) return <V><span className="text-muted-foreground">{t.none}</span></V>;
   return (
     <dd>
       <table className="mt-1 w-full border-collapse text-xs">
@@ -49,14 +49,14 @@ function Props({ props, t }: { props: OntologyProp[]; t: OntologyText }) {
   );
 }
 
-function ObjectDetail({ ot, isCounted, t }: { ot: OntologyObjectNode; isCounted: boolean; t: OntologyText }) {
+function ObjectDetail({ ot, isCounted, t, lang }: { ot: OntologyObjectNode; isCounted: boolean; t: OntologyText; lang: Lang }) {
   return (
     <>
       {ot.display_name && ot.display_name !== ot.api_name && <p className="text-sm text-muted-foreground">{ot.display_name}</p>}
       {ot.description && <p className="mt-1 text-sm text-muted-foreground">{ot.description}</p>}
       <dl>
-        <K>{t.inStore}</K>
-        <V>{isCounted ? (ot.instances ? t.nodesCarry(ot.instances) : t.noNodes) : t.notCountedGap}</V>
+        <K>{t.nodes}</K>
+        <V>{isCounted ? <span className="tabular-nums">{numIn(lang, ot.instances)}</span> : <span className="text-muted-foreground">{t.notCounted}</span>}</V>
         <K>{t.primaryKey}</K>
         <V><span className="font-mono">{ot.primary_key || "—"}</span></V>
         {ot.title_property && (
@@ -100,17 +100,17 @@ function Side({ label, s, warn, t, lang }: { label: string; s: OntologyLinkEnd; 
         {label} · {s.api_name || "—"}
       </K>
       <V>
-        {s.object_type} → {t.reaches} <b className="font-semibold">{cardinalityWord(s.cardinality, lang)}</b>
+        {s.object_type} → <b className="font-semibold">{cardinalityWord(s.cardinality, lang)}</b>
         {s.foreign_key ? (
           <span className="block text-xs text-muted-foreground">
-            {t.carriesFk} <span className="font-mono">{s.foreign_key}</span>
+            {t.fk} <span className="font-mono text-foreground">{s.foreign_key}</span>
           </span>
         ) : s.cardinality === "ONE" ? (
           // A ONE side with no key property named is not an error, but it is
           // the half of the declaration that says where the column lives, and
           // its absence is worth seeing rather than reading as "no key here".
           <span className="block text-xs" style={{ color: warn }}>
-            {t.oneNoFk}
+            {t.noFk}
           </span>
         ) : null}
       </V>
@@ -124,9 +124,9 @@ function LinkDetail({ lt, isCounted, warn, t, lang }: { lt: OntologyLinkEdge; is
       {lt.description && <p className="text-sm text-muted-foreground">{lt.description}</p>}
       <dl>
         <K>{t.multiplicity}</K>
-        <V>{lt.multiplicity || t.notBothSides}</V>
-        <K>{t.inStore}</K>
-        <V>{isCounted ? (lt.instances ? t.edgesCarry(lt.instances) : t.noEdges) : t.notCountedGap}</V>
+        <V>{lt.multiplicity || <span className="text-muted-foreground">{t.notDeclared}</span>}</V>
+        <K>{t.edges}</K>
+        <V>{isCounted ? <span className="tabular-nums">{numIn(lang, lt.instances)}</span> : <span className="text-muted-foreground">{t.notCounted}</span>}</V>
         <Side label={t.sideA} s={lt.a} warn={warn} t={t} lang={lang} />
         <Side label={t.sideB} s={lt.b} warn={warn} t={t} lang={lang} />
         {lt.status && (
@@ -153,7 +153,7 @@ function InterfaceDetail({ it, warn, t }: { it: OntologyInterfaceNode; warn: str
           </>
         )}
         <K>{t.implementedBy(impl.length)}</K>
-        <V>{impl.length ? impl.join(", ") : <span style={{ color: warn }}>{t.nothingImplements}</span>}</V>
+        <V>{impl.length ? impl.join(", ") : <span style={{ color: warn }}>{t.none}</span>}</V>
         <K>{t.sharedProps(it.properties.length)}</K>
         <Props props={it.properties} t={t} />
       </dl>
@@ -172,7 +172,7 @@ export function Detail({ rep, sel, pal, onClose }: { rep: OntologyAnswer; sel: S
   const title = hit.kind === "object" ? hit.ot.api_name : hit.kind === "link" ? hit.lt.api_name : hit.it.api_name;
   const body =
     hit.kind === "object" ? (
-      <ObjectDetail ot={hit.ot} isCounted={isCounted} t={t} />
+      <ObjectDetail ot={hit.ot} isCounted={isCounted} t={t} lang={lang} />
     ) : hit.kind === "link" ? (
       <LinkDetail lt={hit.lt} isCounted={isCounted} warn={pal.status} t={t} lang={lang} />
     ) : (

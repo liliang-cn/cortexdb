@@ -1,15 +1,13 @@
 // Everything the ontology page says, in English and Chinese: the page and its
-// controls (OntologyText), and the sentences lib/ontologyFinding and
-// lib/ontologyLayout build from the report (FindingText). The names the
-// schema declares, its api names, enforcement values and tool names are data
-// and are never translated.
+// controls (OntologyText), and the labels lib/ontologyFinding and
+// lib/ontologyLayout put beside the report's numbers (FindingText). The names
+// the schema declares, its api names, enforcement values and tool names are
+// data and are never translated.
 //
-// A sentence that sets something off (a number, a name the reader acts on) is
-// returned as runs, the way lib/ontologyFinding returns it, so each language
-// keeps its own word order around the set-off pieces.
+// Every value here is a title, a label, a unit or a status word. A count is
+// shown beside its label, never inside a sentence.
 
 import type { Lang, Strings } from "@/lib/i18n";
-import type { Run } from "@/lib/ontologyFinding";
 
 const NUMS: Record<Lang, Intl.NumberFormat> = { en: new Intl.NumberFormat("en"), zh: new Intl.NumberFormat("zh-CN") };
 
@@ -17,11 +15,6 @@ const NUMS: Record<Lang, Intl.NumberFormat> = { en: new Intl.NumberFormat("en"),
 export const numIn = (lang: Lang, n: number | undefined | null) => NUMS[lang].format(Number(n || 0));
 
 const one = (n: number | undefined | null) => Number(n || 0) === 1;
-
-/** A set-off run; a number is written in the language's digits. */
-const bIn = (lang: Lang) => (s: string | number): Run => ({ b: typeof s === "number" ? numIn(lang, s) : s });
-const bE = bIn("en");
-const bZ = bIn("zh");
 const nE = (n: number | undefined | null) => numIn("en", n);
 const nZ = (n: number | undefined | null) => numIn("zh", n);
 const pl = (n: number | undefined | null, single: string, many: string) => (one(n) ? single : many);
@@ -32,35 +25,28 @@ export interface OntologyText {
   title: string;
   reading: string;
   versions: string;
-  versionsTip: string;
 
   // controls
   whatToDraw: string;
   gap: string;
-  gapTipDraft: string;
-  gapTip: string;
   strays: string;
-  straysTip: string;
   draft: string;
-  draftTip: string;
   threshold: string;
-  thresholdLabel: string;
   fromUrl: (t: string) => string;
   schema: string;
   chooseSchema: string;
   active: string;
   refresh: string;
-  refreshLabel: string;
 
   found: string;
 
   // the review half of a draft
   toDecide: string;
   howMany: string;
-  moreOfKind: (n: number) => string;
+  /** How many a capped list left out. */
+  more: (n: number) => string;
   against: string;
-  breakingSr: string;
-  moreNotListed: (n: number) => string;
+  breaking: string;
 
   // outside the model
   outside: string;
@@ -85,307 +71,263 @@ export interface OntologyText {
   linkType: string;
   iface: string;
   close: string;
-  noProps: string;
+  none: string;
   searchable: string;
   vectorized: string;
   required: string;
-  inStore: string;
-  nodesCarry: (n: number) => string;
-  noNodes: string;
-  notCountedGap: string;
+  nodes: string;
+  edges: string;
+  notCounted: string;
   primaryKey: string;
   titleProperty: string;
   implementsK: string;
   aliases: string;
   status: string;
   properties: (n: number) => string;
-  reaches: string;
-  carriesFk: string;
-  oneNoFk: string;
+  fk: string;
+  noFk: string;
   multiplicity: string;
-  notBothSides: string;
-  edgesCarry: (n: number) => string;
-  noEdges: string;
+  notDeclared: string;
   sideA: string;
   sideB: string;
   extendsK: string;
   implementedBy: (n: number) => string;
-  nothingImplements: string;
   sharedProps: (n: number) => string;
 
   // the diagram
   ifaceLabel: (name: string) => string;
   linkLabel: (name: string) => string;
-  multNotDeclared: string;
   sideName: (side: string) => string;
   endTitle: (name: string, word: string, type: string, fk: string) => string;
   objectLabel: (name: string, count: string) => string;
-  objectNotCounted: string;
   objectUnused: string;
   objectNodes: (count: string) => string;
-  notCounted: string;
   diagramLabel: (objects: number, lanes: number, links: number) => string;
-  dangling: (n: number, names: string) => string;
+  dangling: string;
 }
 
 export const ONTOLOGY_TEXT: Strings<OntologyText> = {
   en: {
     title: "Ontology",
-    reading: "Reading the ontology…",
+    reading: "Reading…",
     versions: "Versions",
-    versionsTip: "Every saved version of this schema, when it was in effect, and what changed between them",
 
     whatToDraw: "What to draw",
     gap: "Declared vs actual",
-    gapTipDraft: "A draft is derived from the store's own counts, so the overlay is already taken.",
-    gapTip: "Count what the store actually holds and hold the declarations against it. Off reads nothing about the data.",
     strays: "Undeclared",
-    straysTip: "Show the types the store uses that no schema declares.",
     draft: "Draft",
-    draftTip: "Derive an ontology from what this store already holds. Nothing is saved: this page reviews, and a person saves, through ontology_save.",
     threshold: "Threshold",
-    thresholdLabel: "Keep types with fewer records than this out of the drawing",
-    fromUrl: (t) => `${t} (from the URL)`,
+    fromUrl: (t) => `${t} (URL)`,
     schema: "Schema",
-    chooseSchema: "Choose a schema",
+    chooseSchema: "Schema",
     active: "active",
     refresh: "Refresh",
-    refreshLabel: "Read it again now",
 
-    found: "What this page found",
+    found: "Summary",
 
     toDecide: "To decide",
-    howMany: "How many of each kind",
-    moreOfKind: (n) => `and ${nE(n)} more of this kind, not listed`,
-    against: "Against the saved schema",
-    breakingSr: " (breaking)",
-    moreNotListed: (n) => `and ${nE(n)} more, not listed`,
+    howMany: "Kinds",
+    more: (n) => `+${nE(n)}`,
+    against: "Against saved schema",
+    breaking: "breaking",
 
     outside: "Outside the model",
-    noType: "(no type at all)",
+    noType: "(no type)",
 
     key: "Key",
-    keyOne: "This end reaches exactly one object, and it is the end that carries the foreign key.",
-    keyMany: "This end reaches many.",
-    keyFk: "A foreign key property is declared on this side.",
-    keyUndeclared: "The schema leaves this side's cardinality undeclared.",
-    keyDashed: "Dashed box: declared, and nothing in the store is of this type.",
+    keyOne: "One",
+    keyMany: "Many",
+    keyFk: "Foreign key side",
+    keyUndeclared: "Cardinality not declared",
+    keyDashed: "Declared, unused",
     keyNotCountedMark: "not counted",
-    keyNotCounted: "The gap was not measured, so the box has no number, not even zero.",
-    keyLive: "A link type edges in the store carry.",
-    keyIdle: "A link type nothing uses, or one whose count was not taken.",
-    keyLane: "A lane groups the object types implementing one interface.",
-    keyDots: "Dots down a box's edge: the interfaces it implements, in their lanes' colours.",
+    keyNotCounted: "Not counted",
+    keyLive: "Link type in use",
+    keyIdle: "Link type unused or not counted",
+    keyLane: "Interface lane",
+    keyDots: "Implemented interfaces",
 
     objectType: "Object type",
     linkType: "Link type",
     iface: "Interface",
     close: "Close",
-    noProps: "no properties declared",
+    none: "none",
     searchable: "searchable",
     vectorized: "vectorized",
     required: "required",
-    inStore: "In the store",
-    nodesCarry: (n) => `${nE(n)} ${pl(n, "node carries", "nodes carry")} this type`,
-    noNodes: "nothing in the store is of this type",
-    notCountedGap: "not counted — the gap was not measured",
+    nodes: "Nodes",
+    edges: "Edges",
+    notCounted: "not counted",
     primaryKey: "Primary key",
     titleProperty: "Title property",
     implementsK: "Implements",
     aliases: "Aliases",
     status: "Status",
     properties: (n) => `Properties (${n})`,
-    reaches: "reaches",
-    carriesFk: "carries the foreign key:",
-    oneNoFk: "single-valued, but no foreign key property is declared",
+    fk: "FK",
+    noFk: "no FK",
     multiplicity: "Multiplicity",
-    notBothSides: "not declared on both sides",
-    edgesCarry: (n) => `${nE(n)} ${pl(n, "edge carries", "edges carry")} this type`,
-    noEdges: "no edge in the store carries this type",
+    notDeclared: "not declared",
     sideA: "Side A",
     sideB: "Side B",
     extendsK: "Extends",
     implementedBy: (n) => `Implemented by (${n})`,
-    nothingImplements: "nothing implements this interface",
     sharedProps: (n) => `Shared properties (${n})`,
 
-    ifaceLabel: (name) => `Interface ${name}: light its implementors`,
+    ifaceLabel: (name) => `Interface ${name}`,
     linkLabel: (name) => `Link type ${name}`,
-    multNotDeclared: "multiplicity not declared on both sides",
     sideName: (side) => `side ${side.toUpperCase()}`,
-    endTitle: (name, word, type, fk) => `${name}: reaches ${word} ${type}${fk ? `; carries the foreign key ${fk}` : ""}`,
+    endTitle: (name, word, type, fk) => `${name} → ${word} ${type}${fk ? ` · FK ${fk}` : ""}`,
     objectLabel: (name, count) => `Object type ${name}, ${count}`,
-    objectNotCounted: "not counted",
-    objectUnused: "declared, and nothing in the store is of this type",
+    objectUnused: "unused",
     objectNodes: (count) => `${count} nodes`,
-    notCounted: "not counted",
-    diagramLabel: (objects, lanes, links) => `The ontology as lanes: ${objects} object types in ${lanes} lanes, ${links} link types`,
-    dangling: (n, names) =>
-      `${n === 1 ? "One link type names" : `${n} link types name`} a type this schema does not declare, so there is no box to draw it between: ${names}.`,
+    diagramLabel: (objects, lanes, links) => `Ontology: ${objects} object types, ${lanes} lanes, ${links} link types`,
+    dangling: "Undeclared link ends",
   },
   zh: {
     title: "本体",
-    reading: "正在读取本体…",
+    reading: "读取中…",
     versions: "版本",
-    versionsTip: "这个模式保存过的每个版本、各自生效的时间，以及版本之间改了什么",
 
     whatToDraw: "绘制内容",
     gap: "声明与实际",
-    gapTipDraft: "草稿本身就是从存储的计数推导出来的，叠加对比已经包含在内。",
-    gapTip: "统计存储里实际有什么，并拿声明去对照。关闭时不读取任何数据。",
     strays: "未声明",
-    straysTip: "显示存储在用、但没有任何模式声明的类型。",
     draft: "草稿",
-    draftTip: "从这个存储已有的数据推导出一个本体。不会保存任何东西：本页只负责审阅，保存要由人通过 ontology_save 完成。",
     threshold: "阈值",
-    thresholdLabel: "记录数少于此值的类型不画进图里",
-    fromUrl: (t) => `${t}（来自 URL）`,
+    fromUrl: (t) => `${t}（URL）`,
     schema: "模式",
-    chooseSchema: "选择一个模式",
+    chooseSchema: "模式",
     active: "生效中",
     refresh: "刷新",
-    refreshLabel: "立即重新读取",
 
-    found: "本页的发现",
+    found: "概要",
 
     toDecide: "待决定",
-    howMany: "每类各有多少",
-    moreOfKind: (n) => `这一类还有 ${nZ(n)} 条未列出`,
+    howMany: "类别",
+    more: (n) => `+${nZ(n)}`,
     against: "对照已保存的模式",
-    breakingSr: "（破坏性）",
-    moreNotListed: (n) => `还有 ${nZ(n)} 条未列出`,
+    breaking: "破坏性",
 
     outside: "模型之外",
-    noType: "（完全没有类型）",
+    noType: "（无类型）",
 
     key: "图例",
-    keyOne: "这一端恰好指向一个对象，并且是持有外键的那一端。",
-    keyMany: "这一端指向多个。",
-    keyFk: "这一侧声明了外键属性。",
-    keyUndeclared: "模式没有声明这一侧的基数。",
-    keyDashed: "虚线框：已声明，但存储中没有这个类型的任何东西。",
+    keyOne: "一个",
+    keyMany: "多个",
+    keyFk: "外键端",
+    keyUndeclared: "基数未声明",
+    keyDashed: "已声明，未使用",
     keyNotCountedMark: "未统计",
-    keyNotCounted: "没有测量差距，所以框上没有数字，连 0 也没有。",
-    keyLive: "存储中有边在用的链接类型。",
-    keyIdle: "没有被使用的链接类型，或者没有统计数量的链接类型。",
-    keyLane: "一条泳道把实现同一个接口的对象类型归在一起。",
-    keyDots: "框边上的圆点：它实现的接口，颜色与对应泳道一致。",
+    keyNotCounted: "未统计",
+    keyLive: "在用的链接类型",
+    keyIdle: "未使用或未统计的链接类型",
+    keyLane: "接口泳道",
+    keyDots: "实现的接口",
 
     objectType: "对象类型",
     linkType: "链接类型",
     iface: "接口",
     close: "关闭",
-    noProps: "没有声明属性",
+    none: "无",
     searchable: "可搜索",
     vectorized: "已向量化",
     required: "必填",
-    inStore: "存储中",
-    nodesCarry: (n) => `${nZ(n)} 个节点属于这个类型`,
-    noNodes: "存储中没有这个类型的任何东西",
-    notCountedGap: "未统计——没有测量差距",
+    nodes: "节点",
+    edges: "边",
+    notCounted: "未统计",
     primaryKey: "主键",
     titleProperty: "标题属性",
     implementsK: "实现",
     aliases: "别名",
     status: "状态",
     properties: (n) => `属性（${n}）`,
-    reaches: "指向",
-    carriesFk: "持有外键：",
-    oneNoFk: "单值，但没有声明外键属性",
+    fk: "外键",
+    noFk: "无外键",
     multiplicity: "多重性",
-    notBothSides: "两侧没有都声明",
-    edgesCarry: (n) => `${nZ(n)} 条边属于这个类型`,
-    noEdges: "存储中没有边属于这个类型",
+    notDeclared: "未声明",
     sideA: "A 侧",
     sideB: "B 侧",
     extendsK: "扩展",
     implementedBy: (n) => `实现者（${n}）`,
-    nothingImplements: "没有任何类型实现这个接口",
     sharedProps: (n) => `共享属性（${n}）`,
 
-    ifaceLabel: (name) => `接口 ${name}：高亮它的实现者`,
+    ifaceLabel: (name) => `接口 ${name}`,
     linkLabel: (name) => `链接类型 ${name}`,
-    multNotDeclared: "两侧没有都声明多重性",
     sideName: (side) => `${side.toUpperCase()} 侧`,
-    endTitle: (name, word, type, fk) => `${name}：指向${word} ${type}${fk ? `；持有外键 ${fk}` : ""}`,
+    endTitle: (name, word, type, fk) => `${name} → ${word} ${type}${fk ? ` · 外键 ${fk}` : ""}`,
     objectLabel: (name, count) => `对象类型 ${name}，${count}`,
-    objectNotCounted: "未统计",
-    objectUnused: "已声明，但存储中没有这个类型的任何东西",
+    objectUnused: "未使用",
     objectNodes: (count) => `${count} 个节点`,
-    notCounted: "未统计",
-    diagramLabel: (objects, lanes, links) => `以泳道表示的本体：${objects} 个对象类型分布在 ${lanes} 条泳道中，${links} 个链接类型`,
-    dangling: (n, names) => `${n === 1 ? "有 1 个链接类型" : `有 ${n} 个链接类型`}引用了这个模式未声明的类型，所以画不出连接它的框：${names}。`,
+    diagramLabel: (objects, lanes, links) => `本体：${objects} 个对象类型，${lanes} 条泳道，${links} 个链接类型`,
+    dangling: "未声明的链接端",
   },
 };
 
-// ---- the sentences built from the report ----------------------------------
+// ---- the labels beside the report's numbers --------------------------------
 
 export interface FindingText {
-  noReason: string;
-  noState: string;
+  // stat labels
+  objectTypes: string;
+  linkTypes: string;
+  nodes: string;
+  edges: string;
+  nodeTypes: string;
+  edgeTypes: string;
+  unusedDeclarations: string;
+  undeclaredTypes: string;
+  toDecide: string;
+  undeclaredNodes: string;
+  undeclaredEdges: string;
+  changes: string;
+  breaking: string;
 
-  unreadable: Run[];
-  absent: Run[];
-  absentUsage: (nodes: number, nodeTypes: number, edges: number, edgeTypes: number) => Run[];
-  unused: (objects: number, links: number) => Run[];
-  live: (objects: number, links: number, nodes: number, edges: number) => Run[];
-  liveUnused: (n: number) => Run[];
-  liveStrays: (n: number) => Run[];
-  liveClean: Run[];
-  liveUncounted: (objects: number, links: number) => Run[];
-  gapOff: string;
-  /** What a reading counted, worded from the server's values. */
-  scope: (counted: "store" | "graph", returned?: number, total?: number) => string;
-  /** The store's own kinds, set apart from what the schema left out. */
-  storeOwn: (kinds: ReadonlyArray<{ name: string; count: number }>) => string;
-  unknownState: Run[];
+  // status words, one per state
+  unreadable: string;
+  absent: string;
+  unused: string;
+  uncounted: string;
+  unknownState: string;
+  undraftable: string;
+  nothingToDraft: string;
+  drafted: string;
 
-  undraftable: Run[];
-  nothingToDraft: Run[];
-  unknownDraftState: Run[];
-  drafted: (objects: number, links: number, nodes: number, edges: number) => Run[];
-  waiting: (n: number) => Run[];
-  threshold: (minNodes: number, minEdges: number) => Run[];
-  pruned: (nodeTypes: number, nodes: number, edgeTypes: number, edges: number) => Run[];
-  notPruned: Run[];
-  storeCarries: (nodeTypes: number, edgeTypes: number) => Run[];
+  // label → value facts under the numbers
+  gapLabel: string;
+  off: string;
+  countedLabel: string;
+  counted: (counted: "store" | "graph") => string;
+  returnedLabel: string;
+  storeOwnLabel: string;
+  thresholdLabel: string;
+  prunedLabel: string;
+  pruned: (nodeTypes: number, nodes: number, edgeTypes: number, edges: number) => string;
+  missing: string;
 
   // the header
   noDraft: string;
   nothingToDraftFrom: string;
   draftPill: string;
-  draftPillTitle: string;
-  draftEnforcementTitle: string;
   thresholdPill: (minNodes: number, minEdges: number) => string;
-  thresholdTitle: string;
   vs: (against: string) => string;
-  vsTitle: string;
   draftTitle: string;
-  derived: string;
   noAnswer: string;
   noSchema: string;
   active: string;
-  activeTitle: string;
   inactive: string;
-  inactiveTitle: string;
-  enforcementTitle: string;
   strictActions: string;
   actions: (n: number) => string;
   objectSets: (n: number) => string;
 
   // the band outside the model
-  outsideCounts: (undeclaredNodes: number, nodes: number, undeclaredEdges: number, edges: number) => Run[];
-  nodeTypes: string;
-  edgeTypes: string;
-  andMore: (n: number) => string;
-
-  against: (total: number, breaking: boolean, listedBreaking: number) => Run[];
+  nodeTypesGroup: string;
+  edgeTypesGroup: string;
+  more: (n: number) => string;
 
   // the drawing
   notCounted: string;
   unusedBox: string;
   implementsNothing: string;
-  objectTypes: (n: number) => string;
+  objectTypesCount: (n: number) => string;
   extendsList: (list: string) => string;
   sharedProps: (n: number) => string;
   implementors: (n: number) => string;
@@ -395,89 +337,63 @@ export interface FindingText {
 
 export const FINDING_TEXT: Strings<FindingText> = {
   en: {
-    noReason: "no reason given",
-    noState: "no state given",
+    objectTypes: "Object types",
+    linkTypes: "Link types",
+    nodes: "Nodes",
+    edges: "Edges",
+    nodeTypes: "Node types",
+    edgeTypes: "Edge types",
+    unusedDeclarations: "Unused",
+    undeclaredTypes: "Undeclared types",
+    toDecide: "To decide",
+    undeclaredNodes: "Undeclared nodes",
+    undeclaredEdges: "Undeclared edges",
+    changes: "Changes",
+    breaking: "Breaking",
 
-    unreadable: [bE("This view cannot be asked for an ontology.")],
-    absent: [bE("No ontology is saved in this store.")],
-    absentUsage: (nodes, nodeTypes, edges, edgeTypes) => [
-      " Its ", bE(nodes), ` ${pl(nodes, "node", "nodes")} carry `, bE(nodeTypes), ` distinct ${pl(nodeTypes, "type", "types")} and its `,
-      bE(edges), ` ${pl(edges, "edge", "edges")} carry `, bE(edgeTypes), ".",
-    ],
-    unused: (objects, links) => [
-      bE("An ontology is saved, and nothing in the store uses it."), " Every one of its ", bE(objects), ` object ${pl(objects, "type", "types")} and `,
-      bE(links), ` link ${pl(links, "type", "types")} is at zero.`,
-    ],
-    live: (objects, links, nodes, edges) => [bE(objects), " object types and ", bE(links), " link types declared, against ", bE(nodes), " nodes and ", bE(edges), " edges in the store."],
-    liveUnused: (n) => [" ", bE(n), ` ${pl(n, "declaration is", "declarations are")} at zero.`],
-    liveStrays: (n) => [" ", bE(n), ` ${pl(n, "type is", "types are")} in the data that the schema does not describe.`],
-    liveClean: [" Everything declared is in use and nothing in the store is outside the model."],
-    liveUncounted: (objects, links) => [bE(objects), " object types and ", bE(links), " link types declared. ", bE("The gap was not measured"), "."],
-    gapOff: "declared vs actual is switched off",
-    scope: (counted, returned, total) =>
-      counted === "store"
-        ? "counted over every row in the store, chunk nodes included"
-        : `counted over the entity graph this brain returns — chunk nodes and the edges that only wire them are not in it${total ? `; and only the ${numIn("en", returned ?? 0)} most-connected of ${numIn("en", total)} nodes came back` : ""}`,
-    storeOwn: (kinds) =>
-      `not counted as outside the model, the store's own records: ${kinds.map((k) => `${k.name} ${numIn("en", k.count)}`).join(" · ")}`,
-    unknownState: [bE("This report arrived in a state this page does not know how to read.")],
+    unreadable: "Unreadable",
+    absent: "No ontology",
+    unused: "Unused",
+    uncounted: "Not measured",
+    unknownState: "Unknown state",
+    undraftable: "Cannot draft",
+    nothingToDraft: "Nothing to draft",
+    drafted: "Not saved",
 
-    undraftable: [bE("This source cannot draft an ontology.")],
-    nothingToDraft: [bE("There is nothing here to draft from.")],
-    unknownDraftState: [bE("This draft arrived in a state this page does not know how to read.")],
-    drafted: (objects, links, nodes, edges) => [
-      bE("Nobody has saved this."), " It is a first schema derived from what this store already contains: ",
-      bE(objects), ` object ${pl(objects, "type", "types")} and `, bE(links), ` link ${pl(links, "type", "types")} proposed over the `,
-      bE(nodes), ` ${pl(nodes, "node", "nodes")} and `, bE(edges), ` ${pl(edges, "edge", "edges")} that were read.`,
-    ],
-    waiting: (n) => [" ", bE(n), ` ${pl(n, "question is", "questions are")} waiting for a decision below.`],
-    threshold: (minNodes, minEdges) => ["Drawn at ", bE(`min_nodes=${nE(minNodes)}`), ", ", bE(`min_edges=${nE(minEdges)}`), ". "],
-    pruned: (nodeTypes, nodes, edgeTypes, edges) => [
-      "That kept ", bE(nodeTypes), ` node ${pl(nodeTypes, "type", "types")} (${nE(nodes)} nodes) and `,
-      bE(edgeTypes), ` edge ${pl(edgeTypes, "type", "types")} (${nE(edges)} edges) out of the `, { em: "drawing" },
-      ".",
-    ],
-    notPruned: ["Nothing was kept out of the drawing by the threshold."],
-    storeCarries: (nodeTypes, edgeTypes) => [" The store carries ", bE(nodeTypes), " node types and ", bE(edgeTypes), " edge types in all."],
+    gapLabel: "Declared vs actual",
+    off: "off",
+    countedLabel: "Counted over",
+    counted: (counted) => (counted === "store" ? "store, chunks included" : "entity graph, chunks excluded"),
+    returnedLabel: "Nodes returned",
+    storeOwnLabel: "Store records",
+    thresholdLabel: "Threshold",
+    prunedLabel: "Not drawn",
+    pruned: (nt, n, et, e) =>
+      `${nE(nt)} node ${pl(nt, "type", "types")} (${nE(n)}) · ${nE(et)} edge ${pl(et, "type", "types")} (${nE(e)})`,
+    missing: "—",
 
-    noDraft: "no draft from this source",
-    nothingToDraftFrom: "nothing to draft from",
-    draftPill: "draft · nobody signed this",
-    draftPillTitle: "Derived from the store; nothing is saved until a person saves it with ontology_save.",
-    draftEnforcementTitle: "Enforcement the draft would be saved with",
+    noDraft: "no draft",
+    nothingToDraftFrom: "nothing to draft",
+    draftPill: "draft",
     thresholdPill: (minNodes, minEdges) => `min ${nE(minNodes)} / ${nE(minEdges)}`,
-    thresholdTitle: "The threshold the draft ran with: min_nodes / min_edges",
     vs: (against) => `vs ${against}`,
-    vsTitle: "Held against the schema this store already saved",
     draftTitle: "draft",
-    derived: "derived, not saved",
-    noAnswer: "no answer from this source",
-    noSchema: "no schema saved",
+    noAnswer: "no answer",
+    noSchema: "no schema",
     active: "active",
-    activeTitle: "This schema decides what writes are allowed",
     inactive: "inactive",
-    inactiveTitle: "Saved, and not the one in effect",
-    enforcementTitle: "What an active schema does to a write that does not conform",
     strictActions: "strict actions",
     actions: (n) => `${nE(n)} ${pl(n, "action", "actions")}`,
     objectSets: (n) => `${nE(n)} object ${pl(n, "set", "sets")}`,
 
-    outsideCounts: (un, nodes, ue, edges) => [bE(un), " of ", bE(nodes), " nodes and ", bE(ue), " of ", bE(edges), " edges are under one of them."],
-    nodeTypes: "node types",
-    edgeTypes: "edge types",
-    andMore: (n) => `and ${nE(n)} more`,
-
-    against: (total, breaking, listed) => [
-      bE(total), ` ${pl(total, "change", "changes")}`,
-      ...(breaking
-        ? [", of which ", bE(listed), " listed here would stop something already stored from validating."]
-        : [", none of which would invalidate anything already stored."]),
-    ],
+    nodeTypesGroup: "node types",
+    edgeTypesGroup: "edge types",
+    more: (n) => `+${nE(n)}`,
 
     notCounted: "not counted",
     unusedBox: "unused",
-    implementsNothing: "implements nothing",
-    objectTypes: (n) => `${n} object ${pl(n, "type", "types")}`,
+    implementsNothing: "no interface",
+    objectTypesCount: (n) => `${n} object ${pl(n, "type", "types")}`,
     extendsList: (list) => `extends ${list}`,
     sharedProps: (n) => `${n} shared properties`,
     implementors: (n) => `${n} implementors`,
@@ -485,83 +401,62 @@ export const FINDING_TEXT: Strings<FindingText> = {
     many: "many",
   },
   zh: {
-    noReason: "未给出原因",
-    noState: "未给出状态",
+    objectTypes: "对象类型",
+    linkTypes: "链接类型",
+    nodes: "节点",
+    edges: "边",
+    nodeTypes: "节点类型",
+    edgeTypes: "边类型",
+    unusedDeclarations: "未使用",
+    undeclaredTypes: "未声明类型",
+    toDecide: "待决定",
+    undeclaredNodes: "未声明节点",
+    undeclaredEdges: "未声明边",
+    changes: "变更",
+    breaking: "破坏性",
 
-    unreadable: [bZ("无法向这个视图询问本体。")],
-    absent: [bZ("这个存储没有保存本体。")],
-    absentUsage: (nodes, nodeTypes, edges, edgeTypes) => [
-      "它的 ", bZ(nodes), " 个节点带有 ", bZ(nodeTypes), " 种不同的类型，", bZ(edges), " 条边带有 ", bZ(edgeTypes), " 种。",
-    ],
-    unused: (objects, links) => [
-      bZ("已保存了一个本体，但存储中没有任何东西在用它。"), "它的 ", bZ(objects), " 个对象类型和 ", bZ(links),
-      " 个链接类型全部为零。",
-    ],
-    live: (objects, links, nodes, edges) => ["声明了 ", bZ(objects), " 个对象类型和 ", bZ(links), " 个链接类型，对照存储中的 ", bZ(nodes), " 个节点和 ", bZ(edges), " 条边。"],
-    liveUnused: (n) => [bZ(n), " 项声明为零。"],
-    liveStrays: (n) => ["数据中有 ", bZ(n), " 种类型是模式没有描述的。"],
-    liveClean: ["声明的都在使用，存储中也没有任何东西在模型之外。"],
-    liveUncounted: (objects, links) => ["声明了 ", bZ(objects), " 个对象类型和 ", bZ(links), " 个链接类型。", bZ("没有测量差距"), "。"],
-    gapOff: "声明与实际的对照已关闭",
-    scope: (counted, returned, total) =>
-      counted === "store"
-        ? "统计范围：存储中的每一行，包括分块节点"
-        : `统计范围：这个大脑返回的实体图——不含分块节点，也不含只连接分块的边${total ? `；而且只返回了 ${numIn("zh", total)} 个节点中连接最多的 ${numIn("zh", returned ?? 0)} 个` : ""}`,
-    storeOwn: (kinds) => `不算在模型之外的，是存储自身的记录：${kinds.map((k) => `${k.name} ${numIn("zh", k.count)}`).join(" · ")}`,
-    unknownState: [bZ("这份报告的状态是本页不认识的，无法解读。")],
+    unreadable: "无法读取",
+    absent: "无本体",
+    unused: "未使用",
+    uncounted: "未测量",
+    unknownState: "未知状态",
+    undraftable: "无法起草",
+    nothingToDraft: "无可起草内容",
+    drafted: "未保存",
 
-    undraftable: [bZ("这个数据源无法起草本体。")],
-    nothingToDraft: [bZ("这里没有可以用来起草的内容。")],
-    unknownDraftState: [bZ("这份草稿的状态是本页不认识的，无法解读。")],
-    drafted: (objects, links, nodes, edges) => [
-      bZ("还没有人保存它。"), "这是根据存储已有内容推导出的第一版模式：基于读取到的 ",
-      bZ(nodes), " 个节点和 ", bZ(edges), " 条边，提出了 ", bZ(objects), " 个对象类型和 ", bZ(links), " 个链接类型。",
-    ],
-    waiting: (n) => ["下面有 ", bZ(n), " 个问题等待决定。"],
-    threshold: (minNodes, minEdges) => ["绘制阈值为 ", bZ(`min_nodes=${nZ(minNodes)}`), "、", bZ(`min_edges=${nZ(minEdges)}`), "。"],
-    pruned: (nodeTypes, nodes, edgeTypes, edges) => [
-      "因此有 ", bZ(nodeTypes), ` 个节点类型（${nZ(nodes)} 个节点）和 `, bZ(edgeTypes), ` 个边类型（${nZ(edges)} 条边）没有画进`, { em: "图" },
-      "里。",
-    ],
-    notPruned: ["阈值没有把任何东西挡在图外。"],
-    storeCarries: (nodeTypes, edgeTypes) => ["存储中共有 ", bZ(nodeTypes), " 种节点类型和 ", bZ(edgeTypes), " 种边类型。"],
+    gapLabel: "声明与实际",
+    off: "关闭",
+    countedLabel: "统计范围",
+    counted: (counted) => (counted === "store" ? "存储，含分块" : "实体图，不含分块"),
+    returnedLabel: "返回节点",
+    storeOwnLabel: "存储自身记录",
+    thresholdLabel: "阈值",
+    prunedLabel: "未绘制",
+    pruned: (nt, n, et, e) => `${nZ(nt)} 个节点类型（${nZ(n)}）· ${nZ(et)} 个边类型（${nZ(e)}）`,
+    missing: "—",
 
-    noDraft: "这个数据源没有草稿",
-    nothingToDraftFrom: "没有可起草的内容",
-    draftPill: "草稿 · 无人签署",
-    draftPillTitle: "从存储推导而来；在有人用 ontology_save 保存之前，什么都不会保存。",
-    draftEnforcementTitle: "草稿保存时会采用的约束方式",
+    noDraft: "无草稿",
+    nothingToDraftFrom: "无可起草内容",
+    draftPill: "草稿",
     thresholdPill: (minNodes, minEdges) => `最少 ${nZ(minNodes)} / ${nZ(minEdges)}`,
-    thresholdTitle: "草稿使用的阈值：min_nodes / min_edges",
     vs: (against) => `对照 ${against}`,
-    vsTitle: "与这个存储已保存的模式对照",
     draftTitle: "草稿",
-    derived: "推导所得，未保存",
-    noAnswer: "这个数据源没有回答",
-    noSchema: "没有保存模式",
+    noAnswer: "无回答",
+    noSchema: "无模式",
     active: "生效中",
-    activeTitle: "这个模式决定允许哪些写入",
     inactive: "未生效",
-    inactiveTitle: "已保存，但不是当前生效的那个",
-    enforcementTitle: "生效的模式如何处理不符合的写入",
     strictActions: "严格动作",
     actions: (n) => `${nZ(n)} 个动作`,
     objectSets: (n) => `${nZ(n)} 个对象集`,
 
-    outsideCounts: (un, nodes, ue, edges) => [bZ(nodes), " 个节点中有 ", bZ(un), " 个、", bZ(edges), " 条边中有 ", bZ(ue), " 条属于其中某个类型。"],
-    nodeTypes: "节点类型",
-    edgeTypes: "边类型",
-    andMore: (n) => `还有 ${nZ(n)} 个`,
-
-    against: (total, breaking, listed) => [
-      bZ(total), " 处变更",
-      ...(breaking ? ["，其中这里列出的 ", bZ(listed), " 处会让已存储的内容无法通过校验。"] : ["，都不会让已存储的内容失效。"]),
-    ],
+    nodeTypesGroup: "节点类型",
+    edgeTypesGroup: "边类型",
+    more: (n) => `+${nZ(n)}`,
 
     notCounted: "未统计",
     unusedBox: "未使用",
-    implementsNothing: "未实现接口",
-    objectTypes: (n) => `${n} 个对象类型`,
+    implementsNothing: "无接口",
+    objectTypesCount: (n) => `${n} 个对象类型`,
     extendsList: (list) => `扩展 ${list}`,
     sharedProps: (n) => `${n} 个共享属性`,
     implementors: (n) => `${n} 个实现者`,

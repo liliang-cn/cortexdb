@@ -174,7 +174,7 @@ function Actions({ id }: { id: string }) {
   return (
     <div className="flex flex-wrap gap-1.5">
       <Button asChild variant="secondary" size="sm" className="h-8 gap-1.5">
-        <Link to={{ pathname: "/entity", search: `?id=${encodeURIComponent(id)}` }} title={t.historyTitle}>
+        <Link to={{ pathname: "/entity", search: `?id=${encodeURIComponent(id)}` }}>
           <History className="size-3.5" />{t.history}
         </Link>
       </Button>
@@ -191,7 +191,6 @@ function Actions({ id }: { id: string }) {
               .catch((err) => toast(err instanceof Error ? err.message : String(err)))
               .finally(() => setBusy(false));
           }}
-          title={t.expandTitle}
         >
           <Expand className="size-3.5" />{busy ? t.expanding : t.expand}
         </Button>
@@ -199,7 +198,7 @@ function Actions({ id }: { id: string }) {
       <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={() => getScene()?.flyTo(id, 700)} title={t.flyTo}>
         <Maximize className="size-3.5" />{t.frame}
       </Button>
-      <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={() => shareLink([["focus", id]])} title={t.shareTitle}>
+      <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={() => shareLink([["focus", id]])}>
         <Link2 className="size-3.5" />{t.share}
       </Button>
     </div>

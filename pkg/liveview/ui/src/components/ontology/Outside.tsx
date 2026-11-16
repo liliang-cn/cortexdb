@@ -2,7 +2,7 @@ import type { Outside as OutsideT } from "@/lib/ontologyFinding";
 import type { OntologyPalette } from "@/lib/ontologyPalette";
 import { useText } from "@/lib/i18n";
 import { ONTOLOGY_TEXT } from "@/lib/ontologyStrings";
-import { Runs } from "./Finding";
+import { Stats } from "./Finding";
 
 /**
  * The band outside the model: types the store's records carry that nothing
@@ -23,9 +23,7 @@ export function Outside({ band, pal }: { band: OutsideT; pal: OntologyPalette })
       <h2 className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: pal.draftInk }}>
         {t.outside}
       </h2>
-      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-        <Runs runs={band.runs} />
-      </p>
+      <Stats fields={band.stats} className="mt-2" />
       {band.groups.map((g) => (
         <div key={g.label} className="mt-3">
           <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{g.label}</h3>

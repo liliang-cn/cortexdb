@@ -5,7 +5,7 @@ import { CO_OCCURS, heatColor, predicateColor, rankTypes, typeColor } from "@/li
 import { predicateCounts, predicateShown, typeCounts, UNTYPED } from "@/lib/graph/model";
 import { GRAPH_TEXT } from "@/lib/graphStrings";
 import { useLang, useText } from "@/lib/i18n";
-import { GRADES, GRADE_ORDER, grade, semLabel, semMeans } from "@/lib/semantics";
+import { GRADES, GRADE_ORDER, grade, semLabel } from "@/lib/semantics";
 import { useCapabilities } from "@/live";
 import { cn } from "@/lib/utils";
 import { useDark, useMerged } from "./hooks";
@@ -85,10 +85,7 @@ function EntityKey() {
           return (
             <li key={k} className="flex items-start gap-2 px-1.5 py-0.5 text-[13px]">
               <span className={cn("mt-1.5 size-2.5 shrink-0 rounded-full", s.dot)} />
-              <span className="min-w-0 flex-1">
-                <span className="block leading-snug">{semLabel(s, lang)}</span>
-                <span className="block text-xs leading-snug text-muted-foreground">{semMeans(s, lang)}</span>
-              </span>
+              <span className="min-w-0 flex-1 leading-snug">{semLabel(s, lang)}</span>
               <span className="font-mono text-[11px] tabular-nums text-muted-foreground">{byGrade.get(k) ?? 0}</span>
             </li>
           );

@@ -229,19 +229,19 @@ type OntologyDraftView struct {
 // appeared without an entry here would arrive under its raw name rather than
 // be dropped — see groupDecisions.
 var ontologyDecisionKinds = []struct{ kind, title, question string }{
-	{cortexdb.OntologyDecisionMerge, "Two spellings, not merged",
+	{cortexdb.OntologyDecisionMerge, "Spelling variants",
 		"The deriver never merges: two spellings may be two things. For each, decide whether it is one type that needs an alias, or two types that need declaring separately."},
-	{cortexdb.OntologyDecisionRename, "Cannot be an API name",
+	{cortexdb.OntologyDecisionRename, "Invalid API names",
 		"The name in the store cannot be declared at all. Rename it there, or decide what it should be called and add it by hand."},
-	{cortexdb.OntologyDecisionOrphanLink, "A relation with nothing to connect",
+	{cortexdb.OntologyDecisionOrphanLink, "Relations without declared ends",
 		"The relation is real and cannot be drawn: a link type needs two declared ends. Classify the types at its ends, then draft again."},
-	{cortexdb.OntologyDecisionLinkShape, "One relation, several shapes",
+	{cortexdb.OntologyDecisionLinkShape, "Relations with several shapes",
 		"A link type has two ends, and these were observed between more than one pair of declared types. The draft took the commonest — declare an interface over the others, or split the relation."},
-	{cortexdb.OntologyDecisionNoPrimaryKey, "Nothing here identifies anything",
+	{cortexdb.OntologyDecisionNoPrimaryKey, "No primary key",
 		"No property on these records is both near-universal and near-distinct, so the draft declared a placeholder to make the schema valid. Decide what identifies one of these before saving."},
-	{cortexdb.OntologyDecisionPrimaryKey, "A key the machine guessed",
+	{cortexdb.OntologyDecisionPrimaryKey, "Guessed primary keys",
 		"A primary key is what a person promises will stay unique. Nothing in the data can confirm one, and changing it later re-identifies every object of its type."},
-	{cortexdb.OntologyDecisionCardinality, "One-ness that is not evidence",
+	{cortexdb.OntologyDecisionCardinality, "Cardinality candidates",
 		"Every side of every relation is MANY. These are the ones that happen to look like ONE today — tighten one only if a person promises it."},
 }
 

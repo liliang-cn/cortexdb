@@ -53,8 +53,8 @@ export function RailContent() {
           onChange={setFilter}
           options={[
             { value: "all", label: t.all },
-            { value: "changes", label: t.changes, title: t.changesTitle },
-            { value: "calls", label: t.calls, title: t.callsTitle },
+            { value: "changes", label: t.changes },
+            { value: "calls", label: t.calls },
           ]}
         />
       </div>
