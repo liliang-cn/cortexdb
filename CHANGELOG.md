@@ -4,9 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.154.1] - 2026-11-16
+
 ### Fixed
 
 - A write whose context ends while others run no longer leaves a connection that fails later writes. The SQLite driver's interrupt for an ended context could land on the statement after the one it was meant for, a `ROLLBACK` among them, and a query whose context ended as its first row arrived kept that row's statement open; the connection went back to the pool inside its transaction or on an old snapshot. Later writes on it failed with `database is locked (517)`, and after a transaction that had written, every writer failed with `database is locked (5)` until the process restarted. The store now ends statements for an ended context itself, only while they run, and a connection goes back to the pool only when it holds no transaction and no running statement. (#199)
+- The live view's sign-in page is the title, the token field and the button, without the explanatory text. (#203)
 
 ## [2.154.0] - 2026-11-16
 
