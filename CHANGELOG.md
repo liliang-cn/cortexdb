@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.154.6] - 2026-11-16
+
+### Changed
+
+- The fallback scan's memory tests read the heap at fixed points of the search, on a smaller collection: under `-race` they take about 4 s instead of 32 s and no longer fail on timing. (#198)
+
 ## [2.154.5] - 2026-11-16
 
 ### Changed
