@@ -78,7 +78,7 @@ func TestSigningInTradesTheTokenForACookieAndReturnsToThePage(t *testing.T) {
 	}
 	wb, _ := io.ReadAll(wrong.Body)
 	wrong.Body.Close()
-	if wrong.StatusCode != http.StatusUnauthorized || !strings.Contains(string(wb), "not right") {
+	if wrong.StatusCode != http.StatusUnauthorized || !strings.Contains(string(wb), "Wrong token") {
 		t.Fatalf("a wrong token: %d %s", wrong.StatusCode, wb)
 	}
 

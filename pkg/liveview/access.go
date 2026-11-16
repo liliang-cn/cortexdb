@@ -144,9 +144,7 @@ var signInPage = template.Must(template.New("signin").Parse(`<!doctype html>
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 16px; }
 form { width: 100%; max-width: 360px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 28px 24px; }
-h1 { margin: 0 0 4px; font-size: 18px; }
-p { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
-label { display: block; font-size: 13px; margin-bottom: 6px; }
+h1 { margin: 0 0 16px; font-size: 18px; }
 input { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); font: inherit; }
 input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 button { margin-top: 16px; width: 100%; padding: 9px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
@@ -156,11 +154,9 @@ button { margin-top: 16px; width: 100%; padding: 9px; border: 0; border-radius: 
 <body>
 <form method="post" autocomplete="on">
 <h1>CortexDB</h1>
-<p>This live view is private. Enter its access token. · 这个视图需要访问令牌。</p>
-<label for="t">Access token · 访问令牌</label>
-<input id="t" name="` + accessField + `" type="password" autocomplete="current-password" required autofocus>
-<button type="submit">Open · 打开</button>
-{{if .Wrong}}<p class="bad" role="alert">That token is not right. · 令牌不对。</p>{{end}}
+<input name="` + accessField + `" type="password" aria-label="Access token" placeholder="Token" autocomplete="current-password" required autofocus>
+<button type="submit">Open</button>
+{{if .Wrong}}<p class="bad" role="alert">Wrong token</p>{{end}}
 </form>
 </body>
 </html>
