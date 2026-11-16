@@ -15,12 +15,13 @@ import { useRef, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { OntologyDraftView } from "@/api/ontology";
 import { Button } from "@/components/ui/button";
-import { againstSummary, num } from "@/lib/ontologyFinding";
+import { againstStats, num } from "@/lib/ontologyFinding";
 import type { OntologyPalette } from "@/lib/ontologyPalette";
 import { useLang } from "@/lib/i18n";
 import { ONTOLOGY_TEXT } from "@/lib/ontologyStrings";
 import { cn } from "@/lib/utils";
-import { Runs } from "./Finding";
+import { Badge } from "@/components/ui/badge";
+import { Stats } from "./Finding";
 
 function frame(pal: OntologyPalette) {
   return { borderColor: `color-mix(in oklab, ${pal.draft} 35%, var(--border))`, background: `color-mix(in oklab, ${pal.draft} 4%, var(--card))` };
@@ -89,19 +90,17 @@ export function Decisions({ rep, pal }: { rep: OntologyDraftView; pal: OntologyP
             </Button>
             {open && (
               <div className="pl-6">
-                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{g.question}</p>
                 <ul className="mt-2 space-y-2">
                   {shown.map((d, i) => (
                     <li key={`${d.target}-${i}`} className="border-l-2 pl-2.5">
                       <p className="font-mono text-xs font-semibold [overflow-wrap:anywhere]">{d.target}</p>
-                      <p className="text-xs leading-relaxed text-muted-foreground">{d.detail}</p>
                       {d.evidence && <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground/80 tabular-nums">{d.evidence}</p>}
                     </li>
                   ))}
                 </ul>
                 {/* The cap is on the list, never on the count: a reader is told
                     how many there are and shown as many as a page can hold. */}
-                {g.truncated && <p className="mt-2 text-xs text-muted-foreground">{t.moreOfKind(g.count - shown.length)}</p>}
+                {g.truncated && <p className="mt-2 text-xs text-muted-foreground tabular-nums">{t.more(g.count - shown.length)}</p>}
               </div>
             )}
           </div>
@@ -121,8 +120,8 @@ export function Decisions({ rep, pal }: { rep: OntologyDraftView; pal: OntologyP
 export function Against({ rep, pal }: { rep: OntologyDraftView; pal: OntologyPalette }) {
   const lang = useLang();
   const t = ONTOLOGY_TEXT[lang];
-  const runs = againstSummary(rep, lang);
-  if (!runs) return null;
+  const stats = againstStats(rep, lang);
+  if (!stats) return null;
   const changes = rep.changes ?? [];
   const total = rep.changes_total ?? changes.length;
   return (
@@ -130,23 +129,25 @@ export function Against({ rep, pal }: { rep: OntologyDraftView; pal: OntologyPal
       <h2 className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: pal.draftInk }}>
         {t.against} · {rep.against} v{num(rep.against_version, lang)}
       </h2>
-      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-        <Runs runs={runs} />
-      </p>
+      <Stats fields={stats} warnColor="var(--destructive)" className="mt-2" />
       <ul className="mt-2 space-y-1.5">
         {changes.map((c, i) => (
           <li key={`${c.kind}-${c.target}-${i}`} className="grid gap-x-3 text-xs sm:grid-cols-[11rem_minmax(0,1fr)]">
             <span className={cn("font-mono text-[10.5px] uppercase tracking-wide", c.breaking ? "text-destructive" : "text-muted-foreground")}>
               {c.kind.replaceAll("_", " ")}
-              {c.breaking && <span className="sr-only">{t.breakingSr}</span>}
             </span>
-            <span className="[overflow-wrap:anywhere]">
-              <b className="font-semibold">{c.target}</b> <span className="text-muted-foreground">{c.detail}</span>
+            <span className="flex flex-wrap items-center gap-1.5 [overflow-wrap:anywhere]">
+              <b className="font-semibold">{c.target}</b>
+              {c.breaking && (
+                <Badge variant="outline" className="border-destructive/50 text-[10px] uppercase tracking-wide text-destructive">
+                  {t.breaking}
+                </Badge>
+              )}
             </span>
           </li>
         ))}
       </ul>
-      {total > changes.length && <p className="mt-2 text-xs text-muted-foreground">{t.moreNotListed(total - changes.length)}</p>}
+      {total > changes.length && <p className="mt-2 text-xs text-muted-foreground tabular-nums">{t.more(total - changes.length)}</p>}
     </section>
   );
 }

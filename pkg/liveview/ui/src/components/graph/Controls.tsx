@@ -82,9 +82,9 @@ export function ControlsContent() {
         onChange={(v) => set({ colorMode: v })}
         options={[
           { value: "type", label: t.type },
-          { value: "grade", label: t.grade, title: t.gradeTitle },
+          { value: "grade", label: t.grade },
           // Colouring by recalls reads the recall log, which goes with the Recalls page when a host leaves it out.
-          ...(pageShown("/recalls") ? [{ value: "recalls" as const, label: t.recalls, title: t.recallsTitle }] : []),
+          ...(pageShown("/recalls") ? [{ value: "recalls" as const, label: t.recalls }] : []),
         ]}
       />
       {colorMode === "grade" && !caps.grades && <p className="mt-1.5"><Hint tone="bad">{t.noGradesShort}</Hint></p>}

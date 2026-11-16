@@ -1,11 +1,9 @@
-import type { ReactNode } from "react";
 import { FlaskConical, RefreshCw } from "lucide-react";
 import { DRAFT_STATES, isDraft, type OntologyAnswer } from "@/api/ontology";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Toggle } from "@/components/ui/toggle";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { OntologyOptions } from "@/lib/ontology";
 import { schemaChoices } from "@/lib/ontologyFinding";
 import type { OntologyPalette } from "@/lib/ontologyPalette";
@@ -16,25 +14,14 @@ import { cn } from "@/lib/utils";
 /** The thresholds offered without editing the URL; any other value still works from ?min=. */
 const THRESHOLDS = ["0", "1", "2", "3", "5", "10", "25"];
 
-function Tip({ tip, children }: { tip: string; children: ReactNode }) {
+function Labelled({ id, label, checked, disabled, onChange }: { id: string; label: string; checked: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent className="max-w-xs">{tip}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-function Labelled({ id, label, tip, checked, disabled, onChange }: { id: string; label: string; tip: string; checked: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <Tip tip={tip}>
-      <span className={cn("inline-flex items-center gap-2 text-sm", disabled && "text-muted-foreground")}>
-        <Switch id={id} checked={checked} disabled={disabled} onCheckedChange={onChange} />
-        <label htmlFor={id} className={cn(!disabled && "cursor-pointer")}>
-          {label}
-        </label>
-      </span>
-    </Tip>
+    <span className={cn("inline-flex items-center gap-2 text-sm", disabled && "text-muted-foreground")}>
+      <Switch id={id} checked={checked} disabled={disabled} onCheckedChange={onChange} />
+      <label htmlFor={id} className={cn(!disabled && "cursor-pointer")}>
+        {label}
+      </label>
+    </span>
   );
 }
 
@@ -70,34 +57,31 @@ export function Controls({
       <Labelled
         id="ontology-gap"
         label={t.gap}
-        tip={opts.draft ? t.gapTipDraft : t.gapTip}
         checked={opts.gap && !opts.draft}
         disabled={opts.draft}
         onChange={(gap) => set({ gap })}
       />
-      <Labelled id="ontology-strays" label={t.strays} tip={t.straysTip} checked={opts.strays} onChange={(strays) => set({ strays })} />
-      <Tip tip={t.draftTip}>
-        <Toggle
-          variant="outline"
-          size="sm"
-          pressed={opts.draft}
-          onPressedChange={(on) => set({ draft: on })}
-          className="px-2.5"
-          // The one control that changes what the whole page is about wears
-          // the draft's own colour rather than the declarations'.
-          style={opts.draft ? { borderColor: pal.draft, color: pal.draftInk, background: `color-mix(in oklab, ${pal.draft} 12%, var(--card))` } : undefined}
-        >
-          <FlaskConical aria-hidden />
-          {t.draft}
-        </Toggle>
-      </Tip>
+      <Labelled id="ontology-strays" label={t.strays} checked={opts.strays} onChange={(strays) => set({ strays })} />
+      <Toggle
+        variant="outline"
+        size="sm"
+        pressed={opts.draft}
+        onPressedChange={(on) => set({ draft: on })}
+        className="px-2.5"
+        // The one control that changes what the whole page is about wears
+        // the draft's own colour rather than the declarations'.
+        style={opts.draft ? { borderColor: pal.draft, color: pal.draftInk, background: `color-mix(in oklab, ${pal.draft} 12%, var(--card))` } : undefined}
+      >
+        <FlaskConical aria-hidden />
+        {t.draft}
+      </Toggle>
       {opts.draft && (
         <span className="inline-flex items-center gap-2 text-sm">
           <label htmlFor="ontology-min" className="text-muted-foreground">
             {t.threshold}
           </label>
           <Select value={ran} onValueChange={(v) => !v.includes("/") && set({ min: v, minNodes: "", minEdges: "" })}>
-            <SelectTrigger id="ontology-min" size="sm" className="min-w-16" aria-label={t.thresholdLabel}>
+            <SelectTrigger id="ontology-min" size="sm" className="min-w-16">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -130,7 +114,7 @@ export function Controls({
           </Select>
         </span>
       )}
-      <Button variant="ghost" size="sm" onClick={reload} aria-label={t.refreshLabel} className="text-muted-foreground">
+      <Button variant="ghost" size="sm" onClick={reload} className="text-muted-foreground">
         <RefreshCw aria-hidden className={cn(loading && "animate-spin motion-reduce:animate-none")} />
         {t.refresh}
       </Button>

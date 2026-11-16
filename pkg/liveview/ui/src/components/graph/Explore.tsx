@@ -58,9 +58,9 @@ export function ExploreBar({ compact }: { compact?: boolean }) {
             value={mode}
             onChange={(m) => set({ mode: m })}
             options={[
-              { value: "find", label: t.find, title: t.findTitle },
-              { value: "ask", label: t.ask, title: t.askTitle },
-              { value: "cypher", label: t.cypher, title: t.cypherTitle },
+              { value: "find", label: t.find },
+              { value: "ask", label: t.ask },
+              { value: "cypher", label: t.cypher },
             ]}
           />
           {hasResult && (
@@ -150,39 +150,28 @@ function Hit({ n, meta }: { n: FindResult; meta?: string }) {
 }
 
 function FindResults({ results }: { results: FindResult[] }) {
-  const g = useMerged();
   const t = useText(GRAPH_TEXT);
   if (!results.length) return <Hint>{t.findNothing}</Hint>;
-  const inView = results.filter((r) => g.nodes.has(r.id)).length;
-  return (
-    <>
-      <p className="px-2 pb-1 text-xs text-muted-foreground">
-        {t.found(results.length, inView)}{results.length > inView ? t.arrowMarks : ""}
-      </p>
-      <ul>{results.map((n) => <Hit key={n.id} n={n} meta={[n.type, n.match && n.match !== "exact" ? n.match : ""].filter(Boolean).join(" · ")} />)}</ul>
-    </>
-  );
+  return <ul>{results.map((n) => <Hit key={n.id} n={n} meta={[n.type, n.match && n.match !== "exact" ? n.match : ""].filter(Boolean).join(" · ")} />)}</ul>;
 }
 
 function AskResults({ answer }: { answer: AskAnswer }) {
   const g = useMerged();
-  const touched = answer.touched ?? [];
-  const missing = touched.filter((x) => !g.nodes.has(x));
   const nothing = !answer.facts?.length && !answer.memories?.length && !answer.passages?.length;
   const t = useText(GRAPH_TEXT);
+
+  // Every node an answer touched is brought into view when the answer
+  // arrives, once per answer: the scene changing under it must not re-run it.
+  const graphRef = useRef(g);
+  graphRef.current = g;
+  useEffect(() => {
+    const touched = answer.touched ?? [];
+    if (touched.some((x) => !graphRef.current.nodes.has(x))) void bringIn(touched);
+  }, [answer]);
+
   if (nothing) return <Hint>{t.askNothing}</Hint>;
   return (
     <div className="space-y-3 px-1">
-      <p className="text-xs text-muted-foreground">
-        {t.named(touched.length, touched.length - missing.length)}
-        {missing.length > 0 && (
-          <>
-            {". "}
-            <button type="button" className="text-primary hover:underline" onClick={() => void bringIn(touched)}>{t.bringIn(missing.length)}</button>
-          </>
-        )}
-        {answer.mode ? ` · ${answer.mode}` : ""}
-      </p>
       {answer.facts?.length > 0 && (
         <section>
           <h4 className="mb-1 text-xs font-medium text-muted-foreground">{t.facts}</h4>

@@ -253,7 +253,7 @@ const round = (n: number) => Math.round(n * 10) / 10;
 
 function headerLines(lane: LaneDraft, lang: Lang): { title: string; subtitle: string; footnote: string } {
   const t = FINDING_TEXT[lang];
-  if (!lane.iface) return { title: t.implementsNothing, subtitle: t.objectTypes(lane.types.length), footnote: "" };
+  if (!lane.iface) return { title: t.implementsNothing, subtitle: t.objectTypesCount(lane.types.length), footnote: "" };
   const it = lane.iface;
   const ext = it.extends ?? [];
   return {

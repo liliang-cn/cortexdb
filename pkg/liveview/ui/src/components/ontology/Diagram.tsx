@@ -99,7 +99,7 @@ function LinkCurve({ r, pal, chosen, onSelect, t }: { r: LinkRoute; pal: Ontolog
   const stroke = r.live ? pal.link : pal.linkIdle;
   return (
     <g className="cursor-pointer" data-link={r.lt.api_name} {...pressable(t.linkLabel(r.lt.api_name), () => onSelect({ kind: "link", name: r.lt.api_name }))}>
-      <title>{`${r.lt.api_name}: ${r.lt.multiplicity || t.multNotDeclared}`}</title>
+      <title>{r.lt.multiplicity ? `${r.lt.api_name}: ${r.lt.multiplicity}` : r.lt.api_name}</title>
       {/* A wide invisible stroke, so a thin curve can be hit with a finger. */}
       <path d={r.d} fill="none" stroke="transparent" strokeWidth={14} />
       <path d={r.d} fill="none" stroke={stroke} strokeWidth={chosen ? 2.6 : r.live ? 1.6 : 1.2} strokeDasharray={r.live ? undefined : "5 4"} strokeOpacity={0.9} />
@@ -165,7 +165,7 @@ function ObjectBox({ box, pal, chosen, dim, onSelect, t }: { box: Box; pal: Onto
       data-unused={count.unused ? "1" : undefined}
       {...pressable(t.objectLabel(box.ot.api_name, count.text), () => onSelect({ kind: "object", name: box.ot.api_name }))}
     >
-      <title>{`${box.ot.api_name}: ${count.uncounted ? t.objectNotCounted : count.unused ? t.objectUnused : t.objectNodes(count.text)}`}</title>
+      <title>{`${box.ot.api_name}: ${count.uncounted ? t.notCounted : count.unused ? t.objectUnused : t.objectNodes(count.text)}`}</title>
       {/* Dashed and unlit: declared, and nothing in the store is of this type.
           Only ever drawn when the count was actually taken. */}
       <rect
@@ -269,9 +269,12 @@ export function Diagram({ rep, pal, sel, onSelect }: Props) {
         </svg>
       )}
       {L && L.dangling.length > 0 && (
-        <p className="px-2 pb-1 pt-2 text-xs text-muted-foreground">
-          {t.dangling(L.dangling.length, L.dangling.map((l) => l.api_name).join(", "))}
-        </p>
+        <dl className="flex flex-wrap gap-x-2 px-2 pb-1 pt-2 text-xs" data-dangling>
+          <dt className="text-muted-foreground">
+            {t.dangling} · <span className="tabular-nums">{L.dangling.length}</span>
+          </dt>
+          <dd className="font-mono [overflow-wrap:anywhere]">{L.dangling.map((l) => l.api_name).join(", ")}</dd>
+        </dl>
       )}
     </div>
   );
