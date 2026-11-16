@@ -1,5 +1,5 @@
-import { Activity, ChartColumn, GitCommitHorizontal, History, Library, Network, ScanSearch, Shapes, type LucideIcon } from "lucide-react";
-import { hiddenPages, pageShown } from "@/lib/pages";
+import { Activity, ChartColumn, GitCommitHorizontal, Library, Network, ScanSearch, Shapes, type LucideIcon } from "lucide-react";
+import { hiddenPages, routeShown } from "@/lib/pages";
 import type { NavKey } from "@/lib/shellStrings";
 
 export interface NavItem {
@@ -12,8 +12,8 @@ export interface NavItem {
 /**
  * The app's pages, in the groups the top bar separates: the brain as it is and
  * as it changes, then the views of it that each read one thing — the recall
- * log, the brain as a reading room, the declared model and its versions, and
- * the brain in numbers.
+ * log, the brain as a reading room, the declared model (its versions a tab of
+ * it), and the brain in numbers.
  */
 export const NAV_GROUPS: NavItem[][] = [
   [
@@ -25,12 +25,11 @@ export const NAV_GROUPS: NavItem[][] = [
     { to: "/recalls", icon: ScanSearch },
     { to: "/library", icon: Library },
     { to: "/ontology", icon: Shapes },
-    { to: "/ontology-history", icon: History },
     { to: "/analysis", icon: ChartColumn },
   ],
 ];
 
 /** The groups with the pages this view leaves out taken away, and any group left empty by that. */
 export function visibleNav(groups: NavItem[][] = NAV_GROUPS, hidden: ReadonlySet<string> = hiddenPages()): NavItem[][] {
-  return groups.map((g) => g.filter((item) => pageShown(item.to, hidden))).filter((g) => g.length > 0);
+  return groups.map((g) => g.filter((item) => routeShown(item.to, hidden))).filter((g) => g.length > 0);
 }

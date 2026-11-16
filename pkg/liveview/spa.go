@@ -21,7 +21,9 @@ package liveview
 //     ontology and its versions were pages of their own,
 //     written into Go strings, until the app took them over; their paths and
 //     query options are unchanged, so a bookmark or a link from a tool's
-//     answer (serve_graph_3d's library_url, /recalls?trace=) still lands.
+//     answer (serve_graph_3d's library_url, /recalls?trace=) still lands. The
+//     versions page is the Versions tab of /ontology now; the app redirects
+//     /ontology-history there, query options and all.
 
 import (
 	"bytes"

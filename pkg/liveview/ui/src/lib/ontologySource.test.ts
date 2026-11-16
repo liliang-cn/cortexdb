@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 // The ontology page's own source, read as text. These guard decisions that are
 // written down at the top of lib/ontologyLayout.ts and would be quietly
 // reversed by an import, not by a change to any function a test calls.
-const sources = import.meta.glob(["../pages/OntologyPage.tsx", "../components/ontology/*.{ts,tsx}", "./ontology*.ts", "./useOntology.ts", "../api/ontology.ts", "!./*.test.ts"], {
+const sources = import.meta.glob(["../pages/OntologyPage.tsx", "../pages/OntologyPanel.tsx", "../components/ontology/*.{ts,tsx}", "./ontology*.ts", "./useOntology.ts", "../api/ontology.ts", "!./*.test.ts"], {
   query: "?raw",
   import: "default",
   eager: true,
@@ -13,6 +13,7 @@ describe("the ontology page's source", () => {
   it("is all here to be read", () => {
     const names = Object.keys(sources);
     expect(names).toContain("../pages/OntologyPage.tsx");
+    expect(names).toContain("../pages/OntologyPanel.tsx");
     expect(names).toContain("../components/ontology/Diagram.tsx");
     expect(names).toContain("./ontologyLayout.ts");
   });
@@ -38,7 +39,9 @@ describe("the ontology page's source", () => {
     for (const [name, src] of Object.entries(sources)) expect(src.includes("EventSource"), name).toBe(false);
   });
 
-  it("links to the versions page through the router", () => {
-    expect(sources["../pages/OntologyPage.tsx"]).toMatch(/<Link to=\{versionsPath\(rep\)\}/);
+  it("draws the versions as a tab, opened on the schema on screen", () => {
+    expect(sources["../pages/OntologyPage.tsx"]).toMatch(/from "@\/components\/ui\/tabs"/);
+    expect(sources["../pages/OntologyPanel.tsx"]).toMatch(/versionsSchema\(rep\)/);
+    expect(sources["../pages/OntologyPanel.tsx"]).not.toMatch(/ontology-history/);
   });
 });

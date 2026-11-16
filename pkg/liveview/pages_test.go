@@ -10,18 +10,39 @@ import (
 )
 
 func TestALeftOutPageIs404AndTheOthersStillServeTheIndex(t *testing.T) {
-	ts := serveApp(t, theApp, "", WithoutPages(PageRecalls, PageOntology))
+	ts := serveApp(t, theApp, "", WithoutPages(PageRecalls, PageLibrary))
 	for path, want := range map[string]int{
-		"/":                 http.StatusOK,
-		"/entity":           http.StatusOK,
-		"/library":          http.StatusOK,
-		"/ontology-history": http.StatusOK,
-		"/recalls":          http.StatusNotFound,
-		"/ontology":         http.StatusNotFound,
+		"/":         http.StatusOK,
+		"/entity":   http.StatusOK,
+		"/ontology": http.StatusOK,
+		"/recalls":  http.StatusNotFound,
+		"/library":  http.StatusNotFound,
 	} {
 		resp, _ := fetch(t, ts.URL+path, nil)
 		if resp.StatusCode != want {
 			t.Errorf("GET %s: status %d, want %d", path, resp.StatusCode, want)
+		}
+	}
+}
+
+// /ontology draws the Ontology page and the Versions page as two tabs, so it
+// answers while either is left in; /ontology-history, which the app redirects
+// to the Versions tab, answers only while the Versions page is.
+func TestTheOntologyRouteStaysWhileEitherOfItsTabsDoes(t *testing.T) {
+	for _, c := range []struct {
+		hidden             []Page
+		ontology, versions int
+	}{
+		{nil, http.StatusOK, http.StatusOK},
+		{[]Page{PageOntology}, http.StatusOK, http.StatusOK},
+		{[]Page{PageVersions}, http.StatusOK, http.StatusNotFound},
+		{[]Page{PageOntology, PageVersions}, http.StatusNotFound, http.StatusNotFound},
+	} {
+		ts := serveApp(t, theApp, "", WithoutPages(c.hidden...))
+		for path, want := range map[string]int{"/ontology": c.ontology, "/ontology-history": c.versions} {
+			if resp, _ := fetch(t, ts.URL+path, nil); resp.StatusCode != want {
+				t.Errorf("without %v, GET %s: status %d, want %d", c.hidden, path, resp.StatusCode, want)
+			}
 		}
 	}
 }

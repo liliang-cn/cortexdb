@@ -19,7 +19,9 @@
 // every URL the app uses is resolved against it, that is all a mount takes. An
 // unknown /api/ path is a 404 and never the index. Go writes no HTML of its
 // own: the last four routes were pages in Go strings until the app took them
-// over, at the same paths and with the same query options.
+// over, at the same paths and with the same query options. The versions page
+// is now the Versions tab of /ontology, and the app redirects
+// /ontology-history there with its query options.
 //
 // A host can leave pages out ([WithoutPages]): the server writes their names
 // into the index beside the base tag (<meta name="cortexdb-hidden-pages">),

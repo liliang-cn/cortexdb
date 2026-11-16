@@ -6,11 +6,13 @@ export function Page({ children, className }: { children: ReactNode; className?:
   return <div className={cn("mx-auto w-full max-w-5xl px-4 py-6 sm:px-6", className)}>{children}</div>;
 }
 
-export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
+/** A page with tabs draws them where its title would be; the title stays, for screen readers. */
+export function PageHeader({ title, description, actions, tabs }: { title: string; description?: ReactNode; actions?: ReactNode; tabs?: ReactNode }) {
   return (
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+        <h1 className={tabs ? "sr-only" : "text-xl font-semibold tracking-tight"}>{title}</h1>
+        {tabs}
         {description && <p className="mt-1 max-w-prose text-sm text-muted-foreground">{description}</p>}
       </div>
       {actions}

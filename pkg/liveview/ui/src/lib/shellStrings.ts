@@ -6,7 +6,7 @@
 import type { Lang, Strings } from "@/lib/i18n";
 
 /** The nav's pages, by route. */
-export type NavKey = "/" | "/changes" | "/activity" | "/recalls" | "/library" | "/ontology" | "/ontology-history" | "/analysis";
+export type NavKey = "/" | "/changes" | "/activity" | "/recalls" | "/library" | "/ontology" | "/analysis";
 
 export interface ShellText {
   nav: Record<NavKey, string>;
@@ -69,7 +69,6 @@ export const SHELL_TEXT: Strings<ShellText> = {
       "/recalls": "Recalls",
       "/library": "Library",
       "/ontology": "Ontology",
-      "/ontology-history": "Versions",
       "/analysis": "Analysis",
     },
 
@@ -126,7 +125,6 @@ export const SHELL_TEXT: Strings<ShellText> = {
       "/recalls": "召回",
       "/library": "图书馆",
       "/ontology": "本体",
-      "/ontology-history": "版本",
       "/analysis": "分析",
     },
 

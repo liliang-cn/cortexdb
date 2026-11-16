@@ -47,7 +47,8 @@ const (
 	// PageOntology is the declared model, drawn.
 	PageOntology Page = "ontology"
 	// PageVersions is every saved version of a schema and what changed
-	// between them; "Versions" in the navigation.
+	// between them: the Versions tab of the Ontology page. Its old path,
+	// /ontology-history, still answers and the app redirects it to the tab.
 	PageVersions Page = "ontology-history"
 	// PageAnalysis is the brain in numbers: the overview's charts and the
 	// builder over aggregate_metadata.
@@ -105,8 +106,23 @@ func (s *Server) HiddenPages() []Page {
 	return out
 }
 
+// routePages names the pages an app route draws when that is more than the
+// page its path names: /ontology draws the Ontology page and the Versions
+// page as two tabs, and stays while either of them does.
+var routePages = map[string][]Page{
+	"/ontology": {PageOntology, PageVersions},
+}
+
 // pageShown reports whether the app route at path is part of this view.
 func (s *Server) pageShown(path string) bool {
+	if pages, ok := routePages[path]; ok {
+		for _, p := range pages {
+			if !s.hidden[p] {
+				return true
+			}
+		}
+		return false
+	}
 	return !s.hidden[Page(strings.TrimPrefix(path, "/"))]
 }
 

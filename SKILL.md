@@ -1122,7 +1122,8 @@ No model is involved.
 - **Live view**: History on a selected node opens the timeline (one rail per
   relation and direction, `in_effect` in words, "several values in effect"
   marked); the As of field pins the page to an instant and find and expand follow
-  it; `/ontology-history` lists a schema's versions and diffs any two. Routes:
+  it; the Ontology page's Versions tab (`/ontology?tab=versions`, old
+  `/ontology-history` redirects) lists a schema's versions and diffs any two. Routes:
   `/api/history`, `/api/ontology/history`, `/api/ontology/diff`, `as_of` on
   `/api/find` and `/api/expand`; a malformed instant is a 400.
 - **Limits**: document-extracted relations are not superseded; triples and schemas

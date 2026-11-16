@@ -37,3 +37,18 @@ export function pageOf(path: string): string {
 export function pageShown(path: string, hidden: ReadonlySet<string> = hiddenPages()): boolean {
   return !hidden.has(pageOf(path));
 }
+
+/**
+ * Pages drawn as tabs of another page's route: the versions page is a tab of
+ * /ontology, and its own path only redirects there. A route is shown while
+ * any page drawn on it is.
+ */
+const ROUTE_PAGES: Readonly<Record<string, readonly string[]>> = {
+  ontology: ["ontology", "ontology-history"],
+};
+
+/** Whether the app route at this path is part of this view: the router and the navigation ask this, the pages' links ask pageShown. */
+export function routeShown(path: string, hidden: ReadonlySet<string> = hiddenPages()): boolean {
+  const pages = ROUTE_PAGES[pageOf(path)];
+  return pages ? pages.some((p) => !hidden.has(p)) : pageShown(path, hidden);
+}

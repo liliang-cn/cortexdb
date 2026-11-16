@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { NAV_GROUPS, visibleNav } from "@/components/shell/nav";
-import { pageOf, pageShown, parseHiddenPages } from "./pages";
+import { pageOf, pageShown, parseHiddenPages, routeShown } from "./pages";
 
 describe("pages a host left out", () => {
   it("reads the meta tag's names, however they are spaced", () => {
@@ -28,5 +28,24 @@ describe("pages a host left out", () => {
     const groups = visibleNav(NAV_GROUPS, parseHiddenPages("recalls library ontology ontology-history analysis"));
     expect(groups.map((g) => g.map((i) => i.to))).toEqual([["/", "/changes", "/activity"]]);
     expect(visibleNav(NAV_GROUPS, parseHiddenPages(""))).toEqual(NAV_GROUPS);
+  });
+
+  it("has one entry for the ontology and its versions", () => {
+    const tos = NAV_GROUPS.flat().map((i) => i.to as string);
+    expect(tos).toContain("/ontology");
+    expect(tos).not.toContain("/ontology-history");
+  });
+
+  it("keeps the ontology route while either of its two pages is shown", () => {
+    expect(routeShown("/ontology", parseHiddenPages("ontology"))).toBe(true);
+    expect(routeShown("/ontology?tab=versions", parseHiddenPages("ontology-history"))).toBe(true);
+    expect(routeShown("/ontology", parseHiddenPages("ontology ontology-history"))).toBe(false);
+    expect(routeShown("/ontology-history", parseHiddenPages("ontology"))).toBe(true);
+    expect(routeShown("/ontology-history", parseHiddenPages("ontology-history"))).toBe(false);
+    expect(routeShown("/recalls", parseHiddenPages("recalls"))).toBe(false);
+    const nav = (hidden: string) => visibleNav(NAV_GROUPS, parseHiddenPages(hidden)).flat().map((i) => i.to);
+    expect(nav("ontology")).toContain("/ontology");
+    expect(nav("ontology-history")).toContain("/ontology");
+    expect(nav("ontology ontology-history")).not.toContain("/ontology");
   });
 });

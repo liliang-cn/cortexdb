@@ -722,7 +722,7 @@ valid interval, status, what replaced it, its provenance and, on the versions in
 effect, the `in_effect` reason in words; "several values in effect" is marked.
 The As of field on the graph page pins the whole page to an instant (a banner
 says it is showing the past and Now returns), and find and expand follow it. The
-ontology page links to `/ontology-history`: the versions of a schema with saved_at,
+ontology page has a Versions tab (`/ontology?tab=versions`): the versions of a schema with saved_at,
 saved_by, change summary and activation intervals, and a diff between any two.
 The pages read through `/api/history` (`entity`, `relation`, `as_of`, `from`, `to`,
 `limit`, `max_versions`, `cursor`), `/api/find` and `/api/expand` (`as_of`),
@@ -813,8 +813,9 @@ Changing the token signs every browser out.
   left out, unless the schema declares one. `?draft=1` draws instead a
   schema derived from the store's own vocabulary, for review; nothing on the
   page saves it. The page reads itself again when a schema is saved.
-- **Versions** (`/ontology-history`): a schema's saved versions; pick two to
-  compare, and the pair stays in the link (`?schema=&from=&to=`).
+- **Versions** (the Ontology page's second tab, `/ontology?tab=versions`): a
+  schema's saved versions; pick two to compare, and the pair stays in the link
+  (`&v_schema=&v_from=&v_to=`). The old `/ontology-history` links redirect there.
 - **Analysis** (`/analysis`): the brain in numbers. The overview charts memories
   written (by scope), documents added, recalls and how many returned nothing,
   recall latency (median and p95), writes by kind from the change feed, and the
