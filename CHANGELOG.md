@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.154.4] - 2026-11-16
+
+### Changed
+
+- The live view's Ontology and Versions are two tabs of one page at `/ontology` (`?tab=versions`); `/ontology-history` redirects to the Versions tab, and the top bar has one entry for both. (#209)
+
 ## [2.154.3] - 2026-11-16
 
 ### Changed
