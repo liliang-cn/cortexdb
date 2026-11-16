@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.154.2] - 2026-11-16
+
+### Changed
+
+- The live view shows titles, labels, controls, data and errors, without explanatory prose: page descriptions, chart notes, empty-state advice and summary sentences are gone. (#205)
+
 ## [2.154.1] - 2026-11-16
 
 ### Fixed
