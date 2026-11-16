@@ -876,14 +876,20 @@ func (db *DB) applyKnowledgeMutation(ctx context.Context, knowledgeID string, re
 	if graphResult != nil && graphResult.FailedCount > 0 {
 		return fmt.Errorf("apply graph mutation batch: %w", firstBatchError(graphResult))
 	}
+	// The indexes, of the store and of the graph, take this transaction
+	// after the ones that committed before it.
+	syncInOrder := db.store.ReserveIndexSync()
+	defer syncInOrder(nil)
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit knowledge mutation transaction: %w", err)
 	}
 
-	db.store.SyncDeletedEmbeddingIDs(ctx, oldChunkIDs)
-	db.graph.SyncDeletedNodeIDs(ctx, deletedNodeIDs)
-	db.store.SyncUpsertedEmbeddings(ctx, plan.embeddings)
-	db.graph.SyncUpsertedNodes(ctx, plan.graphOps.NodeUpserts)
+	syncInOrder(func() {
+		db.store.SyncDeletedEmbeddingIDs(ctx, oldChunkIDs)
+		db.graph.SyncDeletedNodeIDs(ctx, deletedNodeIDs)
+		db.store.SyncUpsertedEmbeddings(ctx, plan.embeddings)
+		db.graph.SyncUpsertedNodes(ctx, plan.graphOps.NodeUpserts)
+	})
 	return nil
 }
 

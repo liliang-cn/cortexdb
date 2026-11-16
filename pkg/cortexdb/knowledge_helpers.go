@@ -71,12 +71,16 @@ func (db *DB) cleanupKnowledgeArtifactsIf(ctx context.Context, knowledgeID, cond
 	if deleted, _ := result.RowsAffected(); deleted == 0 && condition != "" {
 		return errKept
 	}
+	syncInOrder := db.store.ReserveIndexSync()
+	defer syncInOrder(nil)
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit knowledge cleanup transaction: %w", err)
 	}
 
-	db.store.SyncDeletedEmbeddingIDs(ctx, chunkIDs)
-	db.graph.SyncDeletedNodeIDs(ctx, deletedNodeIDs)
+	syncInOrder(func() {
+		db.store.SyncDeletedEmbeddingIDs(ctx, chunkIDs)
+		db.graph.SyncDeletedNodeIDs(ctx, deletedNodeIDs)
+	})
 	return nil
 }
 

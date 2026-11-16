@@ -85,12 +85,17 @@ func (t *GraphRAGToolbox) DeleteDocumentGraph(ctx context.Context, req ToolDelet
 	if req.DryRun {
 		return resp, nil
 	}
+	// The graph index takes this delete after the transactions that
+	// committed before it: a save of the same document that still waits for
+	// its place would otherwise add the nodes back.
+	syncInOrder := t.db.store.ReserveIndexSync()
+	defer syncInOrder(nil)
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("cortexdb: commit the delete of %s: %w", strings.TrimSpace(req.DocumentID), err)
 	}
-	if len(resp.deletedNodeIDs) > 0 {
+	syncInOrder(func() {
 		t.db.graph.SyncDeletedNodeIDs(ctx, resp.deletedNodeIDs)
-	}
+	})
 	return resp, nil
 }
 

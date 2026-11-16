@@ -24,10 +24,14 @@ type SQLiteStore struct {
 	db             *sql.DB
 	config         Config
 	mu             sync.RWMutex
-	closed         bool
-	similarityFn   SimilarityFunc
-	hnswIndex      *index.HNSW     // HNSW index for fast search
-	ivfIndex       *index.IVFIndex // IVF index for partitioned search
+	// syncTail is the last place reserved in the order of the index syncs
+	// (ReserveIndexSync), closed when its sync is done. syncQueueMu guards it.
+	syncQueueMu  sync.Mutex
+	syncTail     chan struct{}
+	closed       bool
+	similarityFn SimilarityFunc
+	hnswIndex    *index.HNSW     // HNSW index for fast search
+	ivfIndex     *index.IVFIndex // IVF index for partitioned search
 	// binaryIndex holds the sign codes for IndexTypeBinary (store_binary.go).
 	// binaryMu guards the pointer, which the first insert may set; the index
 	// locks its own content.
