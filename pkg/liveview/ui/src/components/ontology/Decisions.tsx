@@ -55,11 +55,6 @@ export function Decisions({ rep, pal }: { rep: OntologyDraftView; pal: OntologyP
       <h2 className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: pal.draftInk }}>
         {t.toDecide} · {num(rep.decisions_total, lang)}
       </h2>
-      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-        {t.toDecideLead[0]}
-        <b className="font-semibold text-foreground">ontology_save</b>
-        {t.toDecideLead[1]}
-      </p>
       <div className="mt-2.5 flex flex-wrap gap-1.5" aria-label={t.howMany}>
         {groups.map((g) => (
           <Button key={g.kind} variant="outline" size="xs" className="h-auto min-h-6 whitespace-normal py-0.5 text-left font-normal" onClick={() => jump(g.kind)}>

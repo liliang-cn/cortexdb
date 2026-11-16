@@ -28,9 +28,4 @@ describe("the analysis page's strings", () => {
       }
     }
   });
-
-  it("say that memories are outside the builder, in both", () => {
-    expect(ANALYSIS_TEXT.en.exploreScope).toContain("Memories");
-    expect(ANALYSIS_TEXT.zh.exploreScope).toContain("记忆");
-  });
 });

@@ -9,7 +9,6 @@ const one = (n: number) => n === 1;
 
 export interface VersionsText {
   title: string;
-  description: string;
   diagram: string;
   schema: string;
   active: string;
@@ -17,12 +16,7 @@ export interface VersionsText {
 
   // where the schema stands
   versionsN: (n: number) => string;
-  deleted: (count: string, n: number) => string;
-  /** Around the latest version number, which is set apart. */
-  latestIs: string;
-  andActive: string;
-  notValidating: string;
-  noChangeEvents: string;
+  deleted: string;
 
   // empty and failed states
   loadingVersions: string;
@@ -30,10 +24,7 @@ export interface VersionsText {
   listFailed: string;
   noOntologySource: string;
   noSchemaYet: string;
-  noSchemaYetBody: string;
   noVersionsFor: (schema: string) => string;
-  noVersionsBody: string;
-  pickAnother: string;
   readFailed: string;
 
   // the list
@@ -45,15 +36,12 @@ export interface VersionsText {
   loadingOlder: string;
   loadOlder: string;
   newestOf: (shown: number, total: number) => string;
-  onlyVersion: string;
-  everyVersion: (oldest: number) => string;
 
   // the phone's bar and sheet
-  pickedOneMore: string;
+  picked: string;
   showDiff: string;
   clearPicks: string;
   to: string;
-  sheetDescription: (schema: string) => string;
 
   // one version
   pickToCompare: (version: number) => string;
@@ -84,9 +72,6 @@ export interface VersionsText {
   // the comparison
   compare: string;
   pickTwo: string;
-  pickTwoBody: string;
-  /** After the picked version number, which is set apart. */
-  pickedPickMore: string;
   withBefore: (version: number) => string;
   withLatest: (version: number) => string;
   clear: string;
@@ -97,9 +82,6 @@ export interface VersionsText {
   noDifference: string;
   changes: (n: number) => string;
   toTypes: (n: number) => string;
-  breakingSentence: (from: number, to: number) => string;
-  safeSentence: (from: number, to: number) => string;
-  notCompared: string;
   objectType: string;
   linkType: string;
   noTypeDifference: string;
@@ -123,29 +105,20 @@ export interface VersionsText {
 export const VERSIONS_TEXT: Strings<VersionsText> = {
   en: {
     title: "Ontology versions",
-    description:
-      "Every saved version of a schema: when and by whom it was saved, what it changed, and when it was the active validator. Pick two to see what changed between them.",
     diagram: "Diagram",
     schema: "Schema",
     active: "active",
     notSavedNow: "not saved now",
 
     versionsN: (n) => `${n} ${one(n) ? "version" : "versions"}`,
-    deleted: (count, n) => `This schema was deleted. Its ${count} ${one(n) ? "is" : "are"} kept.`,
-    latestIs: " is the latest",
-    andActive: " and the active validator.",
-    notValidating: "; the schema does not validate writes now.",
-    noChangeEvents: " This source sends no change events, so versions saved from now on show after a reload.",
+    deleted: "deleted",
 
     loadingVersions: "Loading versions",
     tryAgain: "Try again",
     listFailed: "The schemas could not be listed",
     noOntologySource: "This source cannot be asked for its ontology",
     noSchemaYet: "No schema saved yet",
-    noSchemaYetBody: "Save one with ontology_save and every save is listed here as a version: who saved it, what it changed, and when it validated writes.",
     noVersionsFor: (schema) => `No versions stored for “${schema}”`,
-    noVersionsBody: "Each save of a schema with this id is listed here once it has one.",
-    pickAnother: " Pick another schema above.",
     readFailed: "The versions could not be read",
 
     versionsLabel: "Versions",
@@ -156,14 +129,11 @@ export const VERSIONS_TEXT: Strings<VersionsText> = {
     loadingOlder: "Loading older versions",
     loadOlder: "Load older versions",
     newestOf: (shown, total) => `The newest ${shown} of ${total}.`,
-    onlyVersion: "That is the only version.",
-    everyVersion: (oldest) => `That is every version, back to v${oldest}.`,
 
-    pickedOneMore: " picked. Pick one more.",
+    picked: " picked",
     showDiff: "Show diff",
     clearPicks: "Clear the picks",
     to: "to",
-    sheetDescription: (schema) => `What changed in ${schema} between the two versions.`,
 
     pickToCompare: (v) => `Pick v${v} to compare`,
     pick: "Pick",
@@ -178,7 +148,7 @@ export const VERSIONS_TEXT: Strings<VersionsText> = {
     firstVersion: "First version",
     unchanged: "Saved again, definition unchanged",
     uncounted: "Changed actions, interfaces or object sets only",
-    unrecorded: "No change summary: saved before the history kept them",
+    unrecorded: "No change summary",
     neverActive: "Never the active validator",
     validatingSince: "Validating since ",
     validated: "Validated ",
@@ -196,8 +166,6 @@ export const VERSIONS_TEXT: Strings<VersionsText> = {
 
     compare: "Compare",
     pickTwo: "Pick two versions",
-    pickTwoBody: "Use Pick on any two versions in the list, or Diff on one to compare it with the version before it.",
-    pickedPickMore: " picked. Pick one more to compare it with, or:",
     withBefore: (v) => `With v${v}, the one before`,
     withLatest: (v) => `With v${v}, the latest`,
     clear: "Clear",
@@ -208,9 +176,6 @@ export const VERSIONS_TEXT: Strings<VersionsText> = {
     noDifference: "No difference in object types or link types.",
     changes: (n) => `${n} ${one(n) ? "change" : "changes"}`,
     toTypes: (n) => ` to ${n} ${one(n) ? "type" : "types"}.`,
-    breakingSentence: (from, to) => `Data written under v${from} may no longer validate under v${to}.`,
-    safeSentence: (from, to) => `Nothing written under v${from} stops validating under v${to}.`,
-    notCompared: "Actions, interfaces and object sets are not compared: they describe how data is read and written, not the shape it has.",
     objectType: "object type",
     linkType: "link type",
     noTypeDifference: "No difference in types",
@@ -230,28 +195,20 @@ export const VERSIONS_TEXT: Strings<VersionsText> = {
   },
   zh: {
     title: "本体版本",
-    description: "一个模式保存过的每个版本：何时、由谁保存，改了什么，以及何时作为生效的校验器。选两个版本即可查看它们之间的变化。",
     diagram: "图示",
     schema: "模式",
     active: "生效中",
     notSavedNow: "当前未保存",
 
     versionsN: (n) => `${n} 个版本`,
-    deleted: (count) => `这个模式已被删除，它的 ${count}仍然保留。`,
-    latestIs: " 是最新版本",
-    andActive: "，也是生效的校验器。",
-    notValidating: "；这个模式目前不校验写入。",
-    noChangeEvents: "这个数据源不发送变更事件，所以之后保存的版本要重新加载才会显示。",
+    deleted: "已删除",
 
     loadingVersions: "正在加载版本",
     tryAgain: "重试",
     listFailed: "无法列出模式",
     noOntologySource: "无法向这个数据源询问本体",
     noSchemaYet: "还没有保存模式",
-    noSchemaYetBody: "用 ontology_save 保存一个，之后每次保存都会作为一个版本列在这里：谁保存的、改了什么、何时校验写入。",
     noVersionsFor: (schema) => `“${schema}”没有存储任何版本`,
-    noVersionsBody: "这个 id 的模式每保存一次，都会在这里列出。",
-    pickAnother: "可以在上方选择另一个模式。",
     readFailed: "无法读取版本",
 
     versionsLabel: "版本",
@@ -262,14 +219,11 @@ export const VERSIONS_TEXT: Strings<VersionsText> = {
     loadingOlder: "正在加载更早的版本",
     loadOlder: "加载更早的版本",
     newestOf: (shown, total) => `共 ${total} 个，显示最新的 ${shown} 个。`,
-    onlyVersion: "这是唯一的版本。",
-    everyVersion: (oldest) => `这是全部版本，最早到 v${oldest}。`,
 
-    pickedOneMore: " 已选。再选一个。",
+    picked: " 已选",
     showDiff: "查看差异",
     clearPicks: "清除所选",
     to: "到",
-    sheetDescription: (schema) => `${schema} 在这两个版本之间的变化。`,
 
     pickToCompare: (v) => `选择 v${v} 进行对比`,
     pick: "选择",
@@ -284,7 +238,7 @@ export const VERSIONS_TEXT: Strings<VersionsText> = {
     firstVersion: "第一个版本",
     unchanged: "再次保存，定义未变",
     uncounted: "只改了动作、接口或对象集",
-    unrecorded: "没有变更摘要：保存于历史开始记录之前",
+    unrecorded: "没有变更摘要",
     neverActive: "从未作为生效的校验器",
     validatingSince: "校验中，始于 ",
     validated: "校验于 ",
@@ -302,8 +256,6 @@ export const VERSIONS_TEXT: Strings<VersionsText> = {
 
     compare: "对比",
     pickTwo: "选择两个版本",
-    pickTwoBody: "在列表中对任意两个版本点“选择”，或对某个版本点“对比”，与它的上一个版本比较。",
-    pickedPickMore: " 已选。再选一个来对比，或者：",
     withBefore: (v) => `与上一个 v${v} 对比`,
     withLatest: (v) => `与最新的 v${v} 对比`,
     clear: "清除",
@@ -314,9 +266,6 @@ export const VERSIONS_TEXT: Strings<VersionsText> = {
     noDifference: "对象类型和链接类型没有差异。",
     changes: (n) => `${n} 处变更`,
     toTypes: (n) => `，涉及 ${n} 个类型。`,
-    breakingSentence: (from, to) => `在 v${from} 下写入的数据，在 v${to} 下可能无法通过校验。`,
-    safeSentence: (from, to) => `在 v${from} 下写入的数据，在 v${to} 下都仍能通过校验。`,
-    notCompared: "不对比动作、接口和对象集：它们描述的是数据如何读写，而不是数据的形状。",
     objectType: "对象类型",
     linkType: "链接类型",
     noTypeDifference: "类型没有差异",

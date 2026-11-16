@@ -56,7 +56,6 @@ export interface LibraryText {
   scope: string;
   relTable: string;
   empty: string;
-  emptyHint: string;
   failed: (why: string) => string;
   retry: string;
   home: string;
@@ -117,7 +116,6 @@ export const LIBRARY_TEXT: Strings<LibraryText> = {
     scope: "scope",
     relTable: "Relation table",
     empty: "The library is empty",
-    emptyHint: "Memories are shelved here as they are written.",
     failed: (why) => `Could not read the library: ${why}`,
     retry: "Try again",
     home: "Back to the whole room",
@@ -176,7 +174,6 @@ export const LIBRARY_TEXT: Strings<LibraryText> = {
     scope: "范围",
     relTable: "关系桌",
     empty: "图书馆还是空的",
-    emptyHint: "记忆写进来，就会上架。",
     failed: (why) => `读不到图书馆：${why}`,
     retry: "再试一次",
     home: "回到整个大厅",

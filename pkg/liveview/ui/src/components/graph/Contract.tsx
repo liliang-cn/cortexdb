@@ -72,10 +72,7 @@ function Report({ rep }: { rep: ContractReport }) {
       ) : !rep.graded ? (
         <Hint>{t.noneGraded[0]}<b className="text-foreground">{num(rep.nodes)}</b>{t.noneGraded[1]}<b className="text-foreground">{num(rep.edges)}</b>{t.noneGraded[2]}</Hint>
       ) : (
-        <>
-          <Bar rows={rep.rows ?? []} />
-          <p className="mt-2"><Hint>{t.countedWhole}</Hint></p>
-        </>
+        <Bar rows={rep.rows ?? []} />
       )}
       <SectionTitle>{t.needsPerson}</SectionTitle>
       {att.length === 0 ? (

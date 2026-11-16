@@ -60,7 +60,6 @@ function coveredNote(covered: string | undefined, truncated: boolean | undefined
 
 interface CountChartProps {
   title: string;
-  note: string;
   emptyText: string;
   data: AnalysisSeries;
   overview: AnalysisOverview;
@@ -75,7 +74,7 @@ interface CountChartProps {
 }
 
 /** A stacked bar chart of counts per bucket. An empty bucket is a real zero and is drawn as one. */
-function CountChart({ title, note, emptyText, data, overview, nameOf, slots, className, fromData, t, lang }: CountChartProps) {
+function CountChart({ title, emptyText, data, overview, nameOf, slots, className, fromData, t, lang }: CountChartProps) {
   // A chart bucketed apart from the overview has no place on the overview's axis: it runs over its own data.
   const unit = data.unit ?? overview.unit;
   const own = fromData || unit !== overview.unit;
@@ -121,7 +120,7 @@ function CountChart({ title, note, emptyText, data, overview, nameOf, slots, cla
     );
   }
   return (
-    <ChartCard title={title} note={unit === overview.unit ? note : `${note} ${t.barPer(t.per[unit])}`} className={className} footer={coveredNote(data.covered_since, data.truncated, t, lang)}>
+    <ChartCard title={title} className={className} footer={coveredNote(data.covered_since, data.truncated, t, lang)}>
       {body}
     </ChartCard>
   );
@@ -155,7 +154,7 @@ function RecallCharts({ overview, t, lang }: { overview: AnalysisOverview; t: An
 
   const blank = !r.available ? (
     r.off ? (
-      <ChartEmpty title={t.recallsOffTitle}>{t.recallsOffBody}</ChartEmpty>
+      <ChartEmpty title={t.recallsOffTitle} />
     ) : (
       <ChartEmpty title={t.unavailableChart}>{r.reason}</ChartEmpty>
     )
@@ -169,7 +168,7 @@ function RecallCharts({ overview, t, lang }: { overview: AnalysisOverview; t: An
 
   return (
     <>
-      <ChartCard title={t.recallsTitle} note={t.recallsNote} footer={footer}>
+      <ChartCard title={t.recallsTitle} footer={footer}>
         {blank ?? (
           <>
             <TimeChart
@@ -190,7 +189,7 @@ function RecallCharts({ overview, t, lang }: { overview: AnalysisOverview; t: An
           </>
         )}
       </ChartCard>
-      <ChartCard title={t.latencyTitle} note={t.latencyNote} footer={footer}>
+      <ChartCard title={t.latencyTitle} footer={footer}>
         {blank ?? (
           <>
             <TimeChart
@@ -251,7 +250,7 @@ function GraphCard({ g, t, lang }: { g: AnalysisGraph; t: AnalysisText; lang: La
     );
   }
   return (
-    <ChartCard title={t.graphTitle} note={t.graphNote} className="lg:col-span-2">
+    <ChartCard title={t.graphTitle} className="lg:col-span-2">
       {body}
     </ChartCard>
   );
@@ -316,7 +315,6 @@ export function Overview({ overview, t, lang }: { overview: AnalysisOverview; t:
       <div className="grid gap-4 lg:grid-cols-2">
         <CountChart
           title={t.memoriesTitle}
-          note={t.memoriesNote}
           emptyText={t.memoriesEmpty}
           data={overview.memories}
           overview={overview}
@@ -328,7 +326,6 @@ export function Overview({ overview, t, lang }: { overview: AnalysisOverview; t:
         />
         <CountChart
           title={t.documentsTitle}
-          note={t.documentsNote}
           emptyText={t.documentsEmpty}
           data={overview.documents}
           overview={overview}
@@ -340,7 +337,6 @@ export function Overview({ overview, t, lang }: { overview: AnalysisOverview; t:
         <RecallCharts overview={overview} t={t} lang={lang} />
         <CountChart
           title={t.writesTitle}
-          note={t.writesNote}
           emptyText={t.writesEmpty}
           data={overview.writes}
           overview={overview}

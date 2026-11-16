@@ -39,7 +39,7 @@ describe("the finding for a saved-schema answer", () => {
   it("states what a live schema is held against when the gap was measured", () => {
     const text = say(transit());
     expect(text).toBe(
-      "7 object types and 6 link types declared, against 22 nodes and 15 edges in the store. 3 declarations are at zero — declared, never used. 5 types are in the data that the schema does not describe.",
+      "7 object types and 6 link types declared, against 22 nodes and 15 edges in the store. 3 declarations are at zero. 5 types are in the data that the schema does not describe.",
     );
     expect(foot(transit())).toContain("counted over every row");
   });
@@ -88,7 +88,7 @@ describe("the finding for a saved-schema answer", () => {
   });
 
   it("tells a reader how big a store with no schema is", () => {
-    expect(say(absent())).toContain("Its 22 nodes carry 9 distinct types and its 15 edges carry 6 — a vocabulary that exists and was never written down.");
+    expect(say(absent())).toContain("Its 22 nodes carry 9 distinct types and its 15 edges carry 6.");
     expect(say(absent({ usage: noUsage() }))).not.toContain("Its ");
   });
 
@@ -122,10 +122,6 @@ describe("the finding for a draft", () => {
     expect(say(transit({ state: "drafted" }))).not.toContain(DRAFTED.drafted);
   });
 
-  it("names where saving happens, so it never looks like this page's job", () => {
-    expect(say(draft())).toContain("through ontology_save.");
-  });
-
   it("counts what it proposes against what it read, and the questions waiting", () => {
     expect(say(draft())).toContain("7 object types and 6 link types proposed over the 22 nodes and 15 edges that were read.");
     expect(say(draft())).toContain("2 questions are waiting for a decision below.");
@@ -136,7 +132,7 @@ describe("the finding for a draft", () => {
   it("states the threshold it ran with and what that kept out of the drawing", () => {
     const text = foot(draft());
     expect(text).toContain("Drawn at min_nodes=3, min_edges=3.");
-    expect(text).toContain("That kept 4 node types (6 nodes) and 3 edge types (4 edges) out of the drawing — not out of the counts.");
+    expect(text).toContain("That kept 4 node types (6 nodes) and 3 edge types (4 edges) out of the drawing.");
     expect(text).toContain("The store carries 9 node types and 6 edge types in all.");
   });
 
@@ -207,7 +203,7 @@ describe("the band outside the model", () => {
   it("lists what nothing declares, with the record that named no type said as such", () => {
     const band = outsideTheModel(transit(), true);
     expect(band && textOf(band.runs)).toBe(
-      "These are the types the store's own records carry, which this schema never declares. 9 of 22 nodes and 5 of 15 edges are under one of them.",
+      "9 of 22 nodes and 5 of 15 edges are under one of them.",
     );
     expect(band?.groups.map((g) => g.label)).toEqual(["node types · 3", "edge types · 2"]);
     expect(band?.groups[0]?.chips).toEqual([
@@ -215,14 +211,6 @@ describe("the band outside the model", () => {
       { name: "memory", count: "3" },
       { name: null, count: "1" },
     ]);
-  });
-
-  it("is the whole vocabulary on a store with no schema", () => {
-    expect(textOf(outsideTheModel(absent(), true)?.runs ?? [])).toContain("There is no schema, so every type the store uses is here.");
-  });
-
-  it("is the deriver's own exclusions on a draft", () => {
-    expect(textOf(outsideTheModel(draft(), true)?.runs ?? [])).toContain("The draft is silent about these.");
   });
 
   it("is hidden when switched off, or when the count was never taken", () => {
@@ -263,7 +251,7 @@ describe("the finding in Chinese", () => {
   it("says each state in Chinese, with the same numbers set off", () => {
     expect(textOf(finding(absent(), "zh").runs)).toContain("这个存储没有保存本体。");
     const live = finding(transit(), "zh");
-    expect(textOf(live.runs)).toBe("声明了 7 个对象类型和 6 个链接类型，对照存储中的 22 个节点和 15 条边。3 项声明为零——声明了，从未使用。数据中有 5 种类型是模式没有描述的。");
+    expect(textOf(live.runs)).toBe("声明了 7 个对象类型和 6 个链接类型，对照存储中的 22 个节点和 15 条边。3 项声明为零。数据中有 5 种类型是模式没有描述的。");
     expect(live.runs.filter((r) => typeof r !== "string" && "b" in r)).toEqual(finding(transit()).runs.filter((r) => typeof r !== "string" && "b" in r));
   });
 
@@ -271,6 +259,5 @@ describe("the finding in Chinese", () => {
     const h = headerOf(transit(), "zh");
     expect(h.pills[0]?.label).toBe("生效中");
     expect(h.detail).toMatch(/^v\d/);
-    expect(textOf(finding(draft(), "zh").runs)).toContain("ontology_save");
   });
 });

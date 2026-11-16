@@ -329,16 +329,12 @@ export function RecallDetail({ entry: r, lang, t, onMark, onFilter }: RecallDeta
         )}
       </Section>
 
-      <Section title={t.candidates}>
-        {ex ? (
-          <>
-            {ex.memory && <Side name={t.sideMemory} side={ex.memory} isFinal={isFinal} t={t} />}
-            {ex.knowledge && <Side name={t.sideKnowledge} side={ex.knowledge} isFinal={isFinal} t={t} />}
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground">{t.noExplain}</p>
-        )}
-      </Section>
+      {ex && (
+        <Section title={t.candidates}>
+          {ex.memory && <Side name={t.sideMemory} side={ex.memory} isFinal={isFinal} t={t} />}
+          {ex.knowledge && <Side name={t.sideKnowledge} side={ex.knowledge} isFinal={isFinal} t={t} />}
+        </Section>
+      )}
     </article>
   );
 }

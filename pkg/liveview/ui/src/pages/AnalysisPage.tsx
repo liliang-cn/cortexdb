@@ -73,7 +73,6 @@ export function AnalysisPage() {
           {!exploring && <RangeControl value={state.range} onChange={(range) => update({ range })} t={t} />}
         </div>
         <TabsContent value="overview" className="mt-3 space-y-3">
-          <p className="text-xs text-muted-foreground">{t.bucketedBy(t.per[o.unit], o.timezone)}</p>
           <div className={cn("transition-opacity", overview.loading && o.days !== state.range && "opacity-60")}>
             <Overview overview={o} t={t} lang={lang} />
           </div>
@@ -90,14 +89,11 @@ export function AnalysisPage() {
       <PageHeader
         title={t.title}
         description={
-          <>
-            {t.description}
-            {source && (
-              <span className="mt-1 block truncate font-mono text-xs" title={source}>
-                {t.source}: {source}
-              </span>
-            )}
-          </>
+          source && (
+            <span className="block truncate font-mono text-xs" title={source}>
+              {t.source}: {source}
+            </span>
+          )
         }
         actions={
           <Button variant="outline" size="sm" onClick={exploring ? answer.reload : overview.reload} disabled={exploring ? answer.loading : overview.loading}>

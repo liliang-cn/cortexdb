@@ -56,8 +56,6 @@ export interface OntologyText {
 
   // the review half of a draft
   toDecide: string;
-  /** Before and after the tool name, which is set apart. */
-  toDecideLead: [string, string];
   howMany: string;
   moreOfKind: (n: number) => string;
   against: string;
@@ -157,10 +155,6 @@ export const ONTOLOGY_TEXT: Strings<OntologyText> = {
     found: "What this page found",
 
     toDecide: "To decide",
-    toDecideLead: [
-      "The half of a draft that is not a picture. Nothing here is decided by this page or by the deriver that raised it — a schema is saved by a person, through ",
-      ".",
-    ],
     howMany: "How many of each kind",
     moreOfKind: (n) => `and ${nE(n)} more of this kind, not listed`,
     against: "Against the saved schema",
@@ -255,7 +249,6 @@ export const ONTOLOGY_TEXT: Strings<OntologyText> = {
     found: "本页的发现",
 
     toDecide: "待决定",
-    toDecideLead: ["这是草稿中不是图的那一半。这里的问题既不由本页决定，也不由提出它的推导器决定——模式要由人通过 ", " 保存。"],
     howMany: "每类各有多少",
     moreOfKind: (n) => `这一类还有 ${nZ(n)} 条未列出`,
     against: "对照已保存的模式",
@@ -381,9 +374,6 @@ export interface FindingText {
   objectSets: (n: number) => string;
 
   // the band outside the model
-  outsideDraft: string;
-  outsideSaved: string;
-  outsideNone: string;
   outsideCounts: (undeclaredNodes: number, nodes: number, undeclaredEdges: number, edges: number) => Run[];
   nodeTypes: string;
   edgeTypes: string;
@@ -408,21 +398,21 @@ export const FINDING_TEXT: Strings<FindingText> = {
     noReason: "no reason given",
     noState: "no state given",
 
-    unreadable: [bE("This view cannot be asked for an ontology."), " That is not the same as this store having none — nobody asked it."],
-    absent: [bE("No ontology is saved in this store."), " Nothing here declares what may be talked about, so nothing written to it was ever checked against a model."],
+    unreadable: [bE("This view cannot be asked for an ontology.")],
+    absent: [bE("No ontology is saved in this store.")],
     absentUsage: (nodes, nodeTypes, edges, edgeTypes) => [
       " Its ", bE(nodes), ` ${pl(nodes, "node", "nodes")} carry `, bE(nodeTypes), ` distinct ${pl(nodeTypes, "type", "types")} and its `,
-      bE(edges), ` ${pl(edges, "edge", "edges")} carry `, bE(edgeTypes), " — a vocabulary that exists and was never written down.",
+      bE(edges), ` ${pl(edges, "edge", "edges")} carry `, bE(edgeTypes), ".",
     ],
     unused: (objects, links) => [
       bE("An ontology is saved, and nothing in the store uses it."), " Every one of its ", bE(objects), ` object ${pl(objects, "type", "types")} and `,
-      bE(links), ` link ${pl(links, "type", "types")} is at zero. The model below describes intent; nothing here is evidence of it.`,
+      bE(links), ` link ${pl(links, "type", "types")} is at zero.`,
     ],
     live: (objects, links, nodes, edges) => [bE(objects), " object types and ", bE(links), " link types declared, against ", bE(nodes), " nodes and ", bE(edges), " edges in the store."],
-    liveUnused: (n) => [" ", bE(n), ` ${pl(n, "declaration is", "declarations are")} at zero — declared, never used.`],
+    liveUnused: (n) => [" ", bE(n), ` ${pl(n, "declaration is", "declarations are")} at zero.`],
     liveStrays: (n) => [" ", bE(n), ` ${pl(n, "type is", "types are")} in the data that the schema does not describe.`],
     liveClean: [" Everything declared is in use and nothing in the store is outside the model."],
-    liveUncounted: (objects, links) => [bE(objects), " object types and ", bE(links), " link types declared. ", bE("The gap was not measured"), ", so no count below means anything."],
+    liveUncounted: (objects, links) => [bE(objects), " object types and ", bE(links), " link types declared. ", bE("The gap was not measured"), "."],
     gapOff: "declared vs actual is switched off",
     scope: (counted, returned, total) =>
       counted === "store"
@@ -432,27 +422,22 @@ export const FINDING_TEXT: Strings<FindingText> = {
       `not counted as outside the model, the store's own records: ${kinds.map((k) => `${k.name} ${numIn("en", k.count)}`).join(" · ")}`,
     unknownState: [bE("This report arrived in a state this page does not know how to read.")],
 
-    undraftable: [bE("This source cannot draft an ontology."), " That is not the same as this store having nothing to draft — nobody could ask it."],
-    nothingToDraft: [
-      bE("There is nothing here to draft from."),
-      " The store was read and holds no nodes, so there is no vocabulary to write down. That is an answer about this store, not about the deriver.",
-    ],
+    undraftable: [bE("This source cannot draft an ontology.")],
+    nothingToDraft: [bE("There is nothing here to draft from.")],
     unknownDraftState: [bE("This draft arrived in a state this page does not know how to read.")],
     drafted: (objects, links, nodes, edges) => [
       bE("Nobody has saved this."), " It is a first schema derived from what this store already contains: ",
       bE(objects), ` object ${pl(objects, "type", "types")} and `, bE(links), ` link ${pl(links, "type", "types")} proposed over the `,
-      bE(nodes), ` ${pl(nodes, "node", "nodes")} and `, bE(edges), ` ${pl(edges, "edge", "edges")} that were read. `,
-      "Every type is experimental, every primary key is a guess, every cardinality is MANY, and enforcement is vocabulary. ",
-      "Saving it — or a corrected version of it — is a person's act and happens elsewhere, through ", bE("ontology_save"), ".",
+      bE(nodes), ` ${pl(nodes, "node", "nodes")} and `, bE(edges), ` ${pl(edges, "edge", "edges")} that were read.`,
     ],
     waiting: (n) => [" ", bE(n), ` ${pl(n, "question is", "questions are")} waiting for a decision below.`],
     threshold: (minNodes, minEdges) => ["Drawn at ", bE(`min_nodes=${nE(minNodes)}`), ", ", bE(`min_edges=${nE(minEdges)}`), ". "],
     pruned: (nodeTypes, nodes, edgeTypes, edges) => [
       "That kept ", bE(nodeTypes), ` node ${pl(nodeTypes, "type", "types")} (${nE(nodes)} nodes) and `,
       bE(edgeTypes), ` edge ${pl(edgeTypes, "type", "types")} (${nE(edges)} edges) out of the `, { em: "drawing" },
-      " — not out of the counts. They are in the band below, and a lower threshold draws them.",
+      ".",
     ],
-    notPruned: ["Nothing was kept out of the drawing by the threshold; everything absent below was excluded by the deriver's own rules."],
+    notPruned: ["Nothing was kept out of the drawing by the threshold."],
     storeCarries: (nodeTypes, edgeTypes) => [" The store carries ", bE(nodeTypes), " node types and ", bE(edgeTypes), " edge types in all."],
 
     noDraft: "no draft from this source",
@@ -477,17 +462,12 @@ export const FINDING_TEXT: Strings<FindingText> = {
     actions: (n) => `${nE(n)} ${pl(n, "action", "actions")}`,
     objectSets: (n) => `${nE(n)} object ${pl(n, "set", "sets")}`,
 
-    outsideDraft:
-      "The draft is silent about these. They are what the deriver bucketed out — record kinds and the writes that named no type — or withheld: a minority spelling it would not merge, a name that cannot be an API name, or a type under the threshold.",
-    outsideSaved: "These are the types the store's own records carry, which this schema never declares.",
-    outsideNone: "There is no schema, so every type the store uses is here. This is the vocabulary the brain already has and has never written down.",
-    outsideCounts: (un, nodes, ue, edges) => [" ", bE(un), " of ", bE(nodes), " nodes and ", bE(ue), " of ", bE(edges), " edges are under one of them."],
+    outsideCounts: (un, nodes, ue, edges) => [bE(un), " of ", bE(nodes), " nodes and ", bE(ue), " of ", bE(edges), " edges are under one of them."],
     nodeTypes: "node types",
     edgeTypes: "edge types",
     andMore: (n) => `and ${nE(n)} more`,
 
     against: (total, breaking, listed) => [
-      "This store already has a schema, and nothing here is applied to it. This is what would differ if the draft replaced it, taken through the same comparison a version bump goes through: ",
       bE(total), ` ${pl(total, "change", "changes")}`,
       ...(breaking
         ? [", of which ", bE(listed), " listed here would stop something already stored from validating."]
@@ -508,20 +488,20 @@ export const FINDING_TEXT: Strings<FindingText> = {
     noReason: "未给出原因",
     noState: "未给出状态",
 
-    unreadable: [bZ("无法向这个视图询问本体。"), "这并不等于这个存储没有本体——只是没有人问过它。"],
-    absent: [bZ("这个存储没有保存本体。"), "这里没有任何东西声明可以谈论什么，所以写入它的内容从未对照过模型。"],
+    unreadable: [bZ("无法向这个视图询问本体。")],
+    absent: [bZ("这个存储没有保存本体。")],
     absentUsage: (nodes, nodeTypes, edges, edgeTypes) => [
-      "它的 ", bZ(nodes), " 个节点带有 ", bZ(nodeTypes), " 种不同的类型，", bZ(edges), " 条边带有 ", bZ(edgeTypes), " 种——一套已经存在、却从未写下来的词汇。",
+      "它的 ", bZ(nodes), " 个节点带有 ", bZ(nodeTypes), " 种不同的类型，", bZ(edges), " 条边带有 ", bZ(edgeTypes), " 种。",
     ],
     unused: (objects, links) => [
       bZ("已保存了一个本体，但存储中没有任何东西在用它。"), "它的 ", bZ(objects), " 个对象类型和 ", bZ(links),
-      " 个链接类型全部为零。下面的模型描述的是意图，这里没有任何东西能证明它。",
+      " 个链接类型全部为零。",
     ],
     live: (objects, links, nodes, edges) => ["声明了 ", bZ(objects), " 个对象类型和 ", bZ(links), " 个链接类型，对照存储中的 ", bZ(nodes), " 个节点和 ", bZ(edges), " 条边。"],
-    liveUnused: (n) => [bZ(n), " 项声明为零——声明了，从未使用。"],
+    liveUnused: (n) => [bZ(n), " 项声明为零。"],
     liveStrays: (n) => ["数据中有 ", bZ(n), " 种类型是模式没有描述的。"],
     liveClean: ["声明的都在使用，存储中也没有任何东西在模型之外。"],
-    liveUncounted: (objects, links) => ["声明了 ", bZ(objects), " 个对象类型和 ", bZ(links), " 个链接类型。", bZ("没有测量差距"), "，所以下面的计数都没有意义。"],
+    liveUncounted: (objects, links) => ["声明了 ", bZ(objects), " 个对象类型和 ", bZ(links), " 个链接类型。", bZ("没有测量差距"), "。"],
     gapOff: "声明与实际的对照已关闭",
     scope: (counted, returned, total) =>
       counted === "store"
@@ -530,22 +510,20 @@ export const FINDING_TEXT: Strings<FindingText> = {
     storeOwn: (kinds) => `不算在模型之外的，是存储自身的记录：${kinds.map((k) => `${k.name} ${numIn("zh", k.count)}`).join(" · ")}`,
     unknownState: [bZ("这份报告的状态是本页不认识的，无法解读。")],
 
-    undraftable: [bZ("这个数据源无法起草本体。"), "这并不等于这个存储没有可起草的内容——只是没有办法问它。"],
-    nothingToDraft: [bZ("这里没有可以用来起草的内容。"), "已经读取了存储，里面没有节点，所以没有词汇可写。这是关于这个存储的回答，而不是关于推导器的。"],
+    undraftable: [bZ("这个数据源无法起草本体。")],
+    nothingToDraft: [bZ("这里没有可以用来起草的内容。")],
     unknownDraftState: [bZ("这份草稿的状态是本页不认识的，无法解读。")],
     drafted: (objects, links, nodes, edges) => [
       bZ("还没有人保存它。"), "这是根据存储已有内容推导出的第一版模式：基于读取到的 ",
       bZ(nodes), " 个节点和 ", bZ(edges), " 条边，提出了 ", bZ(objects), " 个对象类型和 ", bZ(links), " 个链接类型。",
-      "每个类型都是实验性的，每个主键都是猜测，每个基数都是 MANY，约束方式是 vocabulary。",
-      "保存它（或它的修正版）是人的行为，在别处通过 ", bZ("ontology_save"), " 完成。",
     ],
     waiting: (n) => ["下面有 ", bZ(n), " 个问题等待决定。"],
     threshold: (minNodes, minEdges) => ["绘制阈值为 ", bZ(`min_nodes=${nZ(minNodes)}`), "、", bZ(`min_edges=${nZ(minEdges)}`), "。"],
     pruned: (nodeTypes, nodes, edgeTypes, edges) => [
       "因此有 ", bZ(nodeTypes), ` 个节点类型（${nZ(nodes)} 个节点）和 `, bZ(edgeTypes), ` 个边类型（${nZ(edges)} 条边）没有画进`, { em: "图" },
-      "里——但仍计入计数。它们在下面的区域中，降低阈值就会画出来。",
+      "里。",
     ],
-    notPruned: ["阈值没有把任何东西挡在图外；下面缺少的都是被推导器自己的规则排除的。"],
+    notPruned: ["阈值没有把任何东西挡在图外。"],
     storeCarries: (nodeTypes, edgeTypes) => ["存储中共有 ", bZ(nodeTypes), " 种节点类型和 ", bZ(edgeTypes), " 种边类型。"],
 
     noDraft: "这个数据源没有草稿",
@@ -570,17 +548,12 @@ export const FINDING_TEXT: Strings<FindingText> = {
     actions: (n) => `${nZ(n)} 个动作`,
     objectSets: (n) => `${nZ(n)} 个对象集`,
 
-    outsideDraft:
-      "草稿对这些只字未提。它们是推导器归类排除的——记录类别，以及没有指明类型的写入——或者暂不采纳的：不会被合并的少数拼写、不能作为 API 名的名称，或低于阈值的类型。",
-    outsideSaved: "这些是存储自身记录带有、而这个模式从未声明的类型。",
-    outsideNone: "没有模式，所以存储使用的每种类型都在这里。这是大脑已经拥有、却从未写下来的词汇。",
     outsideCounts: (un, nodes, ue, edges) => [bZ(nodes), " 个节点中有 ", bZ(un), " 个、", bZ(edges), " 条边中有 ", bZ(ue), " 条属于其中某个类型。"],
     nodeTypes: "节点类型",
     edgeTypes: "边类型",
     andMore: (n) => `还有 ${nZ(n)} 个`,
 
     against: (total, breaking, listed) => [
-      "这个存储已经有一个模式，这里的任何内容都不会应用到它上面。下面是草稿替换它时会有的差异，经过与版本升级相同的比较：",
       bZ(total), " 处变更",
       ...(breaking ? ["，其中这里列出的 ", bZ(listed), " 处会让已存储的内容无法通过校验。"] : ["，都不会让已存储的内容失效。"]),
     ],

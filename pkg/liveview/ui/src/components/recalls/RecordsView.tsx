@@ -110,12 +110,7 @@ export function RecordsView({ stats: s, limit, now, lang, t, onRecord }: Records
             {never.length > 0 && <span className="ml-1.5 font-normal text-muted-foreground tabular-nums">{never.length}</span>}
           </h2>
           {never.length === 0 ? (
-            // The server leaves the list out both when nothing is missing and
-            // for a key with a scope, so the page says both.
-            <div className="rounded-xl border border-dashed px-4 py-6 text-center">
-              <p className="text-sm">{t.noneNever}</p>
-              <p className="mx-auto mt-1 max-w-sm text-xs text-muted-foreground">{t.confinedNote}</p>
-            </div>
+            <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">{t.noneNever}</p>
           ) : (
             <ol className="divide-y overflow-hidden rounded-xl border bg-card">
               {never.map((n) => (

@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { RECALLS_STRINGS, splitSlots, type RecallsText } from "./recalls-strings";
+import { RECALLS_STRINGS, type RecallsText } from "./recalls-strings";
 
-// The page speaks both languages in full: the same keys, nothing left blank,
-// and the same set-apart pieces in each sentence that has them.
+// The page speaks both languages in full: the same keys, nothing left blank.
 
 const sample = (v: unknown): string[] => {
   if (typeof v === "string") return [v];
@@ -33,13 +32,6 @@ describe("the recalls page's strings", () => {
     }
   });
 
-  it("say how to turn the log on, with the variables set apart, in both", () => {
-    for (const lang of [en, zh]) {
-      const slots = splitSlots(lang.offHow).filter((p) => typeof p !== "string");
-      expect(slots).toEqual([{ slot: "on" }, { slot: "days" }]);
-    }
-  });
-
   it("name the degraded reasons the server reports", () => {
     for (const reason of ["embedder_unreachable", "vector_search_failed", "keyword_search_failed"]) {
       expect(en.degradedWhy[reason]).toBeTruthy();
@@ -54,15 +46,5 @@ describe("the recalls page's strings", () => {
     expect(en.newRecalls(1)).toBe("1 new recall");
     expect(en.marks(1, 1)).toBe("1 useful, 1 noise");
     expect(en.marks(0, 0)).toBe("");
-  });
-});
-
-describe("splitSlots", () => {
-  it("cuts a sentence at its slots", () => {
-    expect(splitSlots("Start with {on}. Kept {days} days.")).toEqual(["Start with ", { slot: "on" }, ". Kept ", { slot: "days" }, " days."]);
-  });
-  it("leaves a sentence without slots whole", () => {
-    expect(splitSlots("plain")).toEqual(["plain"]);
-    expect(splitSlots("{on}")).toEqual([{ slot: "on" }]);
   });
 });

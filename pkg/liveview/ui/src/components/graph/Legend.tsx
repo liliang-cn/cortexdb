@@ -179,7 +179,6 @@ function RelationKey() {
           />
         );
       })}
-      {co && !filters.showCoOccurs && <p className="px-1.5 pt-1 text-[11px] leading-snug text-muted-foreground">{t.coOccursHidden}</p>}
       <Expander shown={COLLAPSED_ROWS} total={ordered.length} open={all} onToggle={() => setAll(!all)} />
     </div>
   );

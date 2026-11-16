@@ -17,14 +17,11 @@ function localValue(ms: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-function Toggle({ label, hint, checked, onChange, id }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void; id: string }) {
+function Toggle({ label, checked, onChange, id }: { label: string; checked: boolean; onChange: (v: boolean) => void; id: string }) {
   return (
-    <div className="flex items-start gap-3 py-1">
-      <div className="min-w-0 flex-1">
-        <label htmlFor={id} className="block text-[13px] leading-snug">{label}</label>
-        {hint && <span className="block text-xs leading-snug text-muted-foreground">{hint}</span>}
-      </div>
-      <Switch id={id} checked={checked} onCheckedChange={onChange} className="mt-0.5" />
+    <div className="flex items-center gap-3 py-1">
+      <label htmlFor={id} className="min-w-0 flex-1 text-[13px] leading-snug">{label}</label>
+      <Switch id={id} checked={checked} onCheckedChange={onChange} />
     </div>
   );
 }
@@ -93,9 +90,9 @@ export function ControlsContent() {
       {colorMode === "grade" && !caps.grades && <p className="mt-1.5"><Hint tone="bad">{t.noGradesShort}</Hint></p>}
 
       <SectionTitle>{t.show}</SectionTitle>
-      <Toggle id="gc-co" label={t.coOccursLabel} hint={t.coOccursHint} checked={filters.showCoOccurs} onChange={setCoOccurs} />
+      <Toggle id="gc-co" label={t.coOccursLabel} checked={filters.showCoOccurs} onChange={setCoOccurs} />
       <Toggle id="gc-names" label={t.namesOnCanvas} checked={labels} onChange={(v) => set({ labels: v })} />
-      <Toggle id="gc-flow" label={t.pulses} hint={t.pulsesHint} checked={flow} onChange={(v) => set({ flow: v })} />
+      <Toggle id="gc-flow" label={t.pulses} checked={flow} onChange={(v) => set({ flow: v })} />
 
       <SectionTitle>{t.asOf}</SectionTitle>
       <AsOf />
