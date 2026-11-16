@@ -254,11 +254,11 @@ export function latestSchemaChange(changes: ReadonlyArray<Pick<ChangeItem, "seq"
 }
 
 /**
- * The versions page for the schema on screen. A draft has no versions of its
- * own, so it links to the saved schema it was held against, when there is one.
+ * The schema the versions tab opens on from the one on screen. A draft has no
+ * versions of its own, so it is the saved schema the draft was held against,
+ * when there is one; "" when there is none.
  */
-export function versionsPath(rep: OntologyAnswer | null): string {
-  if (!rep) return "/ontology-history";
-  const id = rep.draft === true ? rep.against : rep.saved ? rep.schema_id : undefined;
-  return id ? `/ontology-history?schema=${encodeURIComponent(id)}` : "/ontology-history";
+export function versionsSchema(rep: OntologyAnswer | null): string {
+  if (!rep) return "";
+  return (rep.draft === true ? rep.against : rep.saved ? rep.schema_id : undefined) ?? "";
 }

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowRight, ArrowUp, Shapes, X } from "lucide-react";
-import { Link, useSearchParams } from "react-router";
+import { ArrowRight, ArrowUp, X } from "lucide-react";
 import { Empty, Page, PageHeader } from "@/components/Page";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -33,7 +32,8 @@ import {
 } from "@/lib/ontologyHistory";
 import { useSchemaIndex, useVersionDiff, useVersionHistory } from "@/lib/ontologyHistoryHooks";
 import { useNow } from "@/lib/useNow";
-import { pageShown } from "@/lib/pages";
+import { VERSIONS_PREFIX } from "@/lib/ontologyTabs";
+import { useScopedParams } from "@/lib/useScopedParams";
 import { useLang } from "@/lib/i18n";
 import { VERSIONS_TEXT, type VersionsText } from "@/lib/versionsStrings";
 
@@ -85,9 +85,13 @@ function Standing({ list, t }: { list: VersionList; t: VersionsText }) {
  * once. The page holds the picks itself and joins the re-read list in place
  * rather than redrawing it, so neither the choice nor the scroll position is
  * lost to the arrival.
+ *
+ * It shares the ontology page's URL, so its parameters are read and written
+ * under a prefix (v_schema, v_from, v_to; see lib/ontologyTabs) and are
+ * spelled without it everywhere below. `tabs` is drawn in place of the title.
  */
-export function OntologyHistoryPage() {
-  const [params, setParams] = useSearchParams();
+export function VersionsPanel({ tabs }: { tabs?: ReactNode }) {
+  const [params, setParams] = useScopedParams(VERSIONS_PREFIX);
   const urlSchema = (params.get("schema") ?? "").trim();
   const index = useSchemaIndex();
   const schema = urlSchema || (index.index ? defaultSchema(index.index.schemas) : "");
@@ -107,9 +111,6 @@ export function OntologyHistoryPage() {
       { replace: true },
     );
   }, [urlSchema, schema, setParams]);
-  // The diagram draws a saved schema; a deleted one keeps its versions here and has nothing to draw there.
-  const saved = index.index?.schemas.some((s) => s.schema_id === schema) ?? false;
-
   const now = useNow(5000);
   const lang = useLang();
   const t = VERSIONS_TEXT[lang];
@@ -337,21 +338,8 @@ export function OntologyHistoryPage() {
     <Page className="max-w-6xl [overflow-anchor:none]">
       <PageHeader
         title={t.title}
-        actions={
-          schema ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <SchemaPicker value={schema} options={options} onChange={changeSchema} />
-              {saved && pageShown("/ontology") && (
-                <Button asChild variant="outline" size="sm">
-                  <Link to={{ pathname: "/ontology", search: `?schema=${encodeURIComponent(schema)}` }}>
-                    <Shapes aria-hidden />
-                    {t.diagram}
-                  </Link>
-                </Button>
-              )}
-            </div>
-          ) : undefined
-        }
+        tabs={tabs}
+        actions={schema ? <SchemaPicker value={schema} options={options} onChange={changeSchema} /> : undefined}
       />
       {list && history.status === "ready" && (
         <p className="-mt-2 mb-4 text-sm text-muted-foreground">

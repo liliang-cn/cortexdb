@@ -479,7 +479,7 @@ diff, err := db.DiffOntologySchema(ctx, cortexdb.OntologyDiffRequest{SchemaID: "
 
 **事实记得自己是按哪个 schema 判断的。** 由 ontology 决定的关闭，会把 schema id 和版本记在历史行上，`in_effect` 引用的就是那个版本。之后 schema 再改，这条解释也不会被改写。
 
-**实时视图。** 在图页面选中一个节点，点 History：出现一条竖向时间线，每个关系和方向一条轨道，每个版本像一次提交，显示有效区间、状态、被谁取代、出处，生效的版本还用文字写出 `in_effect` 的原因；“several values in effect”（多个值同时有效）会明确标出。图页面的 As of 输入框可以把整个页面固定在某个时刻（顶部横幅写明正在看过去，Now 回到现在），查找和展开也按这个时刻读。ontology 页面有一个链接指向 `/ontology-history`：一个 schema 的各版本，带 saved_at、saved_by、变更摘要和生效区间，任选两个版本可以看差异。页面通过 `/api/history`（`entity`、`relation`、`as_of`、`from`、`to`、`limit`、`max_versions`、`cursor`）、`/api/find` 和 `/api/expand`（`as_of`）、`/api/ontology/history`（`schema`、`limit`、`offset`、`oldest_first`）以及 `/api/ontology/diff`（`schema`、`from`、`to`）读取。这些接口都只读，格式不对的时刻返回 400。
+**实时视图。** 在图页面选中一个节点，点 History：出现一条竖向时间线，每个关系和方向一条轨道，每个版本像一次提交，显示有效区间、状态、被谁取代、出处，生效的版本还用文字写出 `in_effect` 的原因；“several values in effect”（多个值同时有效）会明确标出。图页面的 As of 输入框可以把整个页面固定在某个时刻（顶部横幅写明正在看过去，Now 回到现在），查找和展开也按这个时刻读。ontology 页面有一个 Versions 标签页（`/ontology?tab=versions`）：一个 schema 的各版本，带 saved_at、saved_by、变更摘要和生效区间，任选两个版本可以看差异。页面通过 `/api/history`（`entity`、`relation`、`as_of`、`from`、`to`、`limit`、`max_versions`、`cursor`）、`/api/find` 和 `/api/expand`（`as_of`）、`/api/ontology/history`（`schema`、`limit`、`offset`、`oldest_first`）以及 `/api/ontology/diff`（`schema`、`from`、`to`）读取。这些接口都只读，格式不对的时刻返回 400。
 
 **gRPC 和 REST。** 历史工具是普通工具，和其他工具一样走 `ToolsService.CallTool`。只读 key 可以调用 `graph_history`、`knowledge_graph_history` 和 `ontology_history`；带 `as_of` 的写操作会被拒绝。限定在某个 collection 或 user 的 key 三个都不能用，因为历史表没有任何 scope 字段可以限定。
 
@@ -533,8 +533,8 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 - **Ontology**（`/ontology`）：把当前生效的 schema 按接口分成一条条泳道画出来，再对照记录
   实际带的类型；以某个类型的别名存下的节点算作那个类型，没有被声明的类型列在模型之外。存储自己写的种类（`memory`、`document`、`chunk`；`mentions`、`has_chunk`、`next`、`co_occurs`）单独列一行，不算作模式漏掉的，除非模式自己声明了其中某个。`?draft=1` 改画一份从库里已有词汇推出来的
   schema 草稿供审阅，页面上不会保存它。有 schema 保存时页面会自己重读。
-- **Versions**（`/ontology-history`）：一个 schema 保存过的各个版本；任选两个比较，这一对版本
-  会写进链接（`?schema=&from=&to=`）。
+- **Versions**（Ontology 页面的第二个标签页，`/ontology?tab=versions`）：一个 schema 保存过的各个版本；任选两个比较，这一对版本
+  会写进链接（`&v_schema=&v_from=&v_to=`）。旧的 `/ontology-history` 链接会跳转到这里。
 - **Analysis**（`/analysis`）：用数字看大脑。概览画出写入的记忆（按作用域）、新增的文档、召回次数
   和其中没有结果的次数、召回延迟（中位数和 p95）、变更日志里各类写入，以及图谱按类型的节点和边，
   范围可选 7、30、90 天或全部。每张图走的都是其他页面已经在用的读取途径；数据源没开（比如大脑

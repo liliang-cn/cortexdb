@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_OPTIONS, ONTOLOGY_MS, failedAnswer, latestSchemaChange, ontologyQuery, pageParts, queryKey, readOntologyOptions, versionsPath, writeOntologyOptions } from "./ontology";
+import { DEFAULT_OPTIONS, ONTOLOGY_MS, failedAnswer, latestSchemaChange, ontologyQuery, pageParts, queryKey, readOntologyOptions, versionsSchema, writeOntologyOptions } from "./ontology";
 import { absent, draft, transit } from "./ontologyFixtures";
 
 const read = (search: string) => readOntologyOptions(new URLSearchParams(search));
@@ -131,19 +131,19 @@ describe("the live stream", () => {
   });
 });
 
-describe("the link to the versions page", () => {
-  it("names the saved schema on screen, as a router path", () => {
-    expect(versionsPath(transit())).toBe("/ontology-history?schema=transit");
-    expect(versionsPath(transit({ schema_id: "a b" }))).toBe("/ontology-history?schema=a%20b");
+describe("the schema the versions tab opens on", () => {
+  it("is the saved schema on screen", () => {
+    expect(versionsSchema(transit())).toBe("transit");
+    expect(versionsSchema(transit({ schema_id: "a b" }))).toBe("a b");
   });
 
-  it("names the schema a draft was held against, since a draft has no versions", () => {
-    expect(versionsPath(draft({ against: "transit" }))).toBe("/ontology-history?schema=transit");
-    expect(versionsPath(draft())).toBe("/ontology-history");
+  it("is the schema a draft was held against, since a draft has no versions", () => {
+    expect(versionsSchema(draft({ against: "transit" }))).toBe("transit");
+    expect(versionsSchema(draft())).toBe("");
   });
 
-  it("names nothing when nothing is saved", () => {
-    expect(versionsPath(absent())).toBe("/ontology-history");
-    expect(versionsPath(null)).toBe("/ontology-history");
+  it("is none when nothing is saved", () => {
+    expect(versionsSchema(absent())).toBe("");
+    expect(versionsSchema(null)).toBe("");
   });
 });

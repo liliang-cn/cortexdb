@@ -9,7 +9,6 @@ const one = (n: number) => n === 1;
 
 export interface VersionsText {
   title: string;
-  diagram: string;
   schema: string;
   active: string;
   notSavedNow: string;
@@ -105,7 +104,6 @@ export interface VersionsText {
 export const VERSIONS_TEXT: Strings<VersionsText> = {
   en: {
     title: "Ontology versions",
-    diagram: "Diagram",
     schema: "Schema",
     active: "active",
     notSavedNow: "not saved now",
@@ -195,7 +193,6 @@ export const VERSIONS_TEXT: Strings<VersionsText> = {
   },
   zh: {
     title: "本体版本",
-    diagram: "图示",
     schema: "模式",
     active: "生效中",
     notSavedNow: "当前未保存",
