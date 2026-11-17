@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.156.1] - 2026-11-17
+
+### Fixed
+
+- The Rules tab's Not qualifying group (`memory_standing_rules` `near_misses`) lists only memories typed preference or rule with an importance under 0.8. It also listed every global memory of importance 0.8 or more with no type, which on the shared brain was 721 ordinary facts. (#219)
+
 ## [2.156.0] - 2026-11-17
 
 ### Added
