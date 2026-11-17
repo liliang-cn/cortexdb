@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.155.0] - 2026-11-17
+
+### Added
+
+- Standing rules reach the agent when they apply, not only when a prompt shares their words. Global preference and rule memories of importance 0.8 or more that are still current are injected at session start (at most 16 rules and 2,400 characters; a project rule only in its project), by the plugin's session context and the Claude Code mod, and a new read-only `memory_standing_rules` tool returns them. Recall puts the rules it finds in a `rules` section first in the context pack (`[RULES]`), ahead of graph facts. On a fixed set of 35 task prompts, the share of applicable rules that reach the agent rose from 14% to 100% on the fixture and from 4.7% to 60.5% on a copy of the real brain, at about 600 tokens per session; `TestStandingRulesReachEval` guards it. (#215)
+
 ## [2.154.6] - 2026-11-16
 
 ### Changed
