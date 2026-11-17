@@ -389,7 +389,7 @@ Its words rarely match the task it governs ("start a dev server" never says
   inject. With `all: true` it also lists every qualifying rule with where it
   stands (`ranked`: `injected`, `over_budget`, `other_project`), the current
   global memories one field short of a rule (`near_misses`: a rule type under
-  0.8, or 0.8+ with no type, each naming what it lacks) and the caps
+  0.8) and the caps
   (`chars`, `max_rules`, `max_chars`).
 - The plugin's SessionStart hook and the `cortexdb-live` mod put that block in
   the session before the project index, whatever the first prompt is, and the

@@ -51,10 +51,10 @@ func TestTheRulesRouteListsEveryRuleAndTheNearMisses(t *testing.T) {
 	for _, r := range v.NearMisses {
 		rows = append(rows, r.ID+":"+strings.Join(r.Missing, ","))
 	}
-	if got, want := strings.Join(rows, " "), "untyped:type low:importance"; got != want {
+	if got, want := strings.Join(rows, " "), "low:importance"; got != want {
 		t.Fatalf("near misses %q, want %q", got, want)
 	}
-	if v.Injected != 2 || v.MaxChars != 2400 || v.MaxRules != 16 || v.Chars == 0 || v.Partial || v.NearMissTotal != 2 {
+	if v.Injected != 2 || v.MaxChars != 2400 || v.MaxRules != 16 || v.Chars == 0 || v.Partial || v.NearMissTotal != 1 {
 		t.Fatalf("view %+v", v)
 	}
 	if strings.Join(v.Projects, ",") != "athanor" {

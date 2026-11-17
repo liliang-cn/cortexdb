@@ -146,10 +146,10 @@ func TestStandingRulesAllListsEveryRuleAndTheNearMisses(t *testing.T) {
 	for _, e := range all.NearMisses {
 		near = append(near, e.ID+":"+strings.Join(e.Missing, ","))
 	}
-	if got, want := strings.Join(near, " "), "untyped-high:type low:importance"; got != want {
+	if got, want := strings.Join(near, " "), "low:importance"; got != want {
 		t.Fatalf("near misses %q, want %q", got, want)
 	}
-	if all.NearMissTotal != 2 || all.MaxRules != 2 || all.MaxChars != 2400 || all.Chars != utf8.RuneCountInString(all.Text) || all.Chars == 0 {
+	if all.NearMissTotal != 1 || all.MaxRules != 2 || all.MaxChars != 2400 || all.Chars != utf8.RuneCountInString(all.Text) || all.Chars == 0 {
 		t.Fatalf("budget fields %+v", all)
 	}
 	if e := all.Ranked[0]; e.Content != "Never use port 8080." || e.Type != "preference" || e.CreatedAt == "" || e.Date == "" {

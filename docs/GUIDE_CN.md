@@ -340,7 +340,7 @@ asserted = untagged > held > refused；召回时也作用于文档的 `_grade`�
   和 `max_chars`（默认 2400）限制，每条截到 160 个字符（全文用 `memory_get`）。metadata 里写了
   `project` 的规则只在那个项目里给。`text` 是直接注入的文本块。加 `all: true` 时还列出每条达标规则
   及其位置（`ranked`：`injected`、`over_budget`、`other_project`）、差一个字段才算规则的全局记忆
-  （`near_misses`：规则类型但重要度低于 0.8，或重要度 0.8 以上却没有类型，各自注明缺什么），以及
+  （`near_misses`：规则类型但重要度低于 0.8），以及
   预算（`chars`、`max_rules`、`max_chars`）。
 - 插件的 SessionStart 钩子和 `cortexdb-live` mod 在会话开始时把这块放在项目索引前面，不看第一条
   prompt 是什么；之后 20 条 prompt 内的逐条召回不再重复这些规则。
