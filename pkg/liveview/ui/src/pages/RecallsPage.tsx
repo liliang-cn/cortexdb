@@ -9,6 +9,7 @@ import { RecallDetail, type DetailFilter } from "@/components/recalls/RecallDeta
 import { RecallFilters } from "@/components/recalls/RecallFilters";
 import { RecallRow } from "@/components/recalls/RecallRow";
 import { RecordsView } from "@/components/recalls/RecordsView";
+import { RulesView } from "@/components/recalls/RulesView";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,6 +27,7 @@ import {
   type RecallsOptions,
 } from "@/lib/recalls";
 import { RECALLS_STRINGS, type RecallsText } from "@/lib/recalls-strings";
+import { RULES_TEXT } from "@/lib/rulesStrings";
 import { useNow } from "@/lib/useNow";
 import { STATS_LIMIT, useMediaQuery, useRecallDetail, useRecallStats, useRecallTimeline, type RecallDetailState } from "@/lib/useRecalls";
 import { useLive } from "@/live";
@@ -91,7 +93,7 @@ function DetailPane({ detail, t, lang, markError, onMark, onFilter }: DetailPane
           {markError}
         </p>
       )}
-      <RecallDetail entry={detail.entry} lang={lang} t={t} onMark={onMark} onFilter={onFilter} />
+      <RecallDetail entry={detail.entry} lang={lang} t={t} rt={RULES_TEXT[lang]} onMark={onMark} onFilter={onFilter} />
     </>
   );
 }
@@ -105,6 +107,7 @@ function DetailPane({ detail, t, lang, markError, onMark, onFilter }: DetailPane
 export function RecallsPage() {
   const lang = useLang();
   const t = RECALLS_STRINGS[lang];
+  const rt = RULES_TEXT[lang];
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const opts = useMemo(() => optionsFromParams(params), [params]);
@@ -266,10 +269,11 @@ export function RecallsPage() {
           </div>
         }
       />
-      <Tabs value={opts.view} onValueChange={(v) => setOpts({ ...opts, view: v === "records" ? "records" : "timeline" })}>
+      <Tabs value={opts.view} onValueChange={(v) => setOpts({ ...opts, view: v === "records" || v === "rules" ? v : "timeline" })}>
         <TabsList>
           <TabsTrigger value="timeline">{t.timeline}</TabsTrigger>
           <TabsTrigger value="records">{t.records}</TabsTrigger>
+          <TabsTrigger value="rules">{rt.tab}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="timeline" className="mt-3">
@@ -330,6 +334,10 @@ export function RecallsPage() {
               onRecord={(id) => setOpts({ ...withoutFilters(opts), view: "timeline", record: id, recall: "" })}
             />
           )}
+        </TabsContent>
+
+        <TabsContent value="rules" className="mt-3">
+          {opts.view === "rules" && <RulesView lang={lang} t={rt} noSourceTitle={t.noSourceTitle} />}
         </TabsContent>
       </Tabs>
 

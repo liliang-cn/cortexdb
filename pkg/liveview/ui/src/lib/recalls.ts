@@ -10,13 +10,14 @@ import { formatDateTime, formatRelative } from "@/lib/time";
 
 // ---- URL options ---------------------------------------------------------
 
-export type RecallsView = "timeline" | "records";
+export type RecallsView = "timeline" | "records" | "rules";
 
 /**
  * What the page is showing, as the URL says it. The keys are the old page's
  * (?trace=, ?recall=, ?record_id=, ?view=), because docs and tool answers
  * link to them, plus the timeline's other filters so a filtered timeline can
- * be shared as a link.
+ * be shared as a link. The Rules tab is ?tab=rules, as the ontology page names
+ * its tabs; its own parameters sit under a prefix (lib/standingRules).
  */
 export interface RecallsOptions {
   view: RecallsView;
@@ -37,7 +38,7 @@ export interface RecallsOptions {
 }
 
 /** The URL keys this page owns. Everything else (?lang=, ?mode=, ...) is left alone. */
-export const OWN_KEYS = ["view", "recall", "record_id", "trace", "key", "project", "contains", "empty"] as const;
+export const OWN_KEYS = ["tab", "view", "recall", "record_id", "trace", "key", "project", "contains", "empty"] as const;
 
 export const noOptions: RecallsOptions = {
   view: "timeline",
@@ -71,7 +72,7 @@ export function optionsFromParams(p: URLSearchParams): RecallsOptions {
   const rawTrace = (p.get("trace") ?? "").trim();
   const trace = parseTrace(rawTrace);
   return {
-    view: p.get("view") === "records" ? "records" : "timeline",
+    view: p.get("tab") === "rules" ? "rules" : p.get("view") === "records" ? "records" : "timeline",
     recall: (p.get("recall") ?? "").trim(),
     record: (p.get("record_id") ?? "").trim(),
     trace: trace ?? "",
@@ -92,6 +93,7 @@ export function optionsToParams(o: RecallsOptions, current: URLSearchParams): UR
   const next = new URLSearchParams(current);
   for (const k of OWN_KEYS) next.delete(k);
   if (o.view === "records") next.set("view", "records");
+  else if (o.view === "rules") next.set("tab", "rules");
   if (o.recall) next.set("recall", o.recall);
   if (o.record) next.set("record_id", o.record);
   if (o.trace) next.set("trace", o.trace);

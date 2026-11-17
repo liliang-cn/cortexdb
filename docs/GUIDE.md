@@ -386,14 +386,23 @@ Its words rarely match the task it governs ("start a dev server" never says
   first, within `max_rules` (default 16) and `max_chars` (default 2400), each
   cut to 160 characters (`memory_get` has the rest). A rule whose metadata
   names a `project` is given only in that project. `text` is the block to
-  inject.
+  inject. With `all: true` it also lists every qualifying rule with where it
+  stands (`ranked`: `injected`, `over_budget`, `other_project`), the current
+  global memories one field short of a rule (`near_misses`: a rule type under
+  0.8, or 0.8+ with no type, each naming what it lacks) and the caps
+  (`chars`, `max_rules`, `max_chars`).
 - The plugin's SessionStart hook and the `cortexdb-live` mod put that block in
   the session before the project index, whatever the first prompt is, and the
   per-prompt recall does not repeat those rules for 20 prompts.
 - When a recall does find a rule, the context pack puts it in a `rules`
   section ahead of graph facts and the other memories (`[RULES]` in the text;
   the index detail lists it first and keeps the section's ids), and the
-  auto-recall block lists it first, marked `STANDING RULE`.
+  auto-recall block lists it first, marked `STANDING RULE`. The recall log
+  keeps which hits were rules (`rule` on each memory hit).
+- The live view's Recalls page has a **Rules** tab (`/recalls?tab=rules`,
+  `r_project=` picks the session project): every rule in injection order,
+  marked injected or over budget, the characters used against 2,400, and the
+  near misses. A recall's detail lists its rules first, in their own group.
 
 Rules without `type` metadata are not standing rules: give a hand-written rule
 `metadata: {"type": "preference"}` and an importance of 0.85 or more.
@@ -1142,9 +1151,10 @@ noise, and export the marks as recall-eval golden cases (the JSONL format of
 `--recall-eval`). A key with a scope sees and marks only its own recalls.
 
 The live view reads it at `/recalls`: a timeline of recalls with their explain
-records and a useful/noise mark per hit, a per-record view (most recalled,
-never recalled, the queries that reached a record), and a `golden.jsonl`
-download. On the graph page, **Colour by → Recalls** (`?color=recalls`) shades
+records and a useful/noise mark per hit (standing rules first, in their own
+group), a per-record view (most recalled, never recalled, the queries that
+reached a record), a Rules tab (see [Standing rules](#standing-rules)), and a
+`golden.jsonl` download. On the graph page, **Colour by → Recalls** (`?color=recalls`) shades
 nodes by how often recalls reached them, and `?replay=<recall id>` lights the
 nodes one recall returned.
 

@@ -338,11 +338,17 @@ asserted = untagged > held > refused；召回时也作用于文档的 `_grade`�
 
 - `memory_standing_rules`（库里是 `db.StandingRules`）按重要度列出它们，受 `max_rules`（默认 16）
   和 `max_chars`（默认 2400）限制，每条截到 160 个字符（全文用 `memory_get`）。metadata 里写了
-  `project` 的规则只在那个项目里给。`text` 是直接注入的文本块。
+  `project` 的规则只在那个项目里给。`text` 是直接注入的文本块。加 `all: true` 时还列出每条达标规则
+  及其位置（`ranked`：`injected`、`over_budget`、`other_project`）、差一个字段才算规则的全局记忆
+  （`near_misses`：规则类型但重要度低于 0.8，或重要度 0.8 以上却没有类型，各自注明缺什么），以及
+  预算（`chars`、`max_rules`、`max_chars`）。
 - 插件的 SessionStart 钩子和 `cortexdb-live` mod 在会话开始时把这块放在项目索引前面，不看第一条
   prompt 是什么；之后 20 条 prompt 内的逐条召回不再重复这些规则。
 - 召回命中规则时，context pack 把它放进 `rules` 段，排在图谱事实和其他记忆前面（文本里是
   `[RULES]`；index 级别也先列规则并保留该段的 id），自动召回注入的文本也先列它，标 `STANDING RULE`。
+  召回日志记下哪些命中是规则（每条记忆命中上的 `rule`）。
+- live view 召回页有 **规则** 标签页（`/recalls?tab=rules`，`r_project=` 选会话所在项目）：按注入顺序
+  列出每条规则，标注入或超出预算，显示已用字符 / 2400，以及未达标的记忆。召回详情把规则单独成组放在最前。
 
 没有 `type` 的记忆不算常驻规则：手写规则时带上 `metadata: {"type": "preference"}`，importance 给 0.85 以上。
 
@@ -863,8 +869,9 @@ project、agent）、延迟、命中及每条的检索方式、分数、写入�
 用来读取、把命中标为有用或噪音，并把标记导出为 recall eval 的 golden 用例（`--recall-eval` 的 JSONL 格式）。
 限定范围的 key 只能看到和标记自己的召回。
 
-live view 在 `/recalls` 读取它：召回时间线（带解释记录，每条命中可标有用/噪音）、按记录的视图
-（最常被召回、从未被召回、到达某条记录的查询），以及 `golden.jsonl` 下载。图谱页的
+live view 在 `/recalls` 读取它：召回时间线（带解释记录，每条命中可标有用/噪音，常驻规则单独成组排在最前）、
+按记录的视图（最常被召回、从未被召回、到达某条记录的查询）、规则标签页（见"常驻规则"），以及
+`golden.jsonl` 下载。图谱页的
 **Colour by → Recalls**（`?color=recalls`）按被召回次数给节点着色，`?replay=<recall id>` 点亮某一次召回
 返回的节点。
 

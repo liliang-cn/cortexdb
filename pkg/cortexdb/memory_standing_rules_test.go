@@ -2,9 +2,11 @@ package cortexdb
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // A recalled standing rule goes into a rules section of its own, before the
@@ -85,5 +87,124 @@ func TestIsStandingRule(t *testing.T) {
 		if IsStandingRule(m) {
 			t.Errorf("%s counted as a rule", name)
 		}
+	}
+}
+
+// An All request lists every rule with where it stands against the session
+// start's caps, and the global memories one field short of a rule; without
+// it the answer is what it was.
+func TestStandingRulesAllListsEveryRuleAndTheNearMisses(t *testing.T) {
+	db, err := Open(DefaultConfig(filepath.Join(t.TempDir(), "rules.db")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	typed := func(typ string) map[string]any { return map[string]any{"type": typ} }
+	for _, m := range []MemorySaveRequest{
+		{MemoryID: "r1", Scope: MemoryScopeGlobal, Content: "Never use port 8080.", Importance: 0.95, Metadata: typed("preference")},
+		{MemoryID: "r2", Scope: MemoryScopeGlobal, Content: "Reply in English or Chinese.", Importance: 0.9, Metadata: typed("rule")},
+		{MemoryID: "r3", Scope: MemoryScopeGlobal, Content: "Light theme by default.", Importance: 0.85, Metadata: typed("preference")},
+		{MemoryID: "r4", Scope: MemoryScopeGlobal, Content: "Athanor's UI is a separate frontend.", Importance: 0.88, Metadata: map[string]any{"type": "preference", "project": "athanor"}},
+		{MemoryID: "low", Scope: MemoryScopeGlobal, Content: "Tabs over spaces, maybe.", Importance: 0.3, Metadata: typed("preference")},
+		{MemoryID: "untyped-high", Scope: MemoryScopeGlobal, Content: "No co-author lines in commits.", Importance: 0.9},
+		{MemoryID: "untyped-low", Scope: MemoryScopeGlobal, Content: "The build took four minutes.", Importance: 0.5},
+		{MemoryID: "decision", Scope: MemoryScopeGlobal, Content: "We chose SQLite.", Importance: 0.9, Metadata: typed("decision")},
+		{MemoryID: "gone", Scope: MemoryScopeGlobal, Content: "Old rule.", Importance: 0.9, Metadata: map[string]any{"superseded_by": "r1"}},
+	} {
+		if _, err := db.SaveMemory(ctx, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	plain, err := db.StandingRules(ctx, StandingRulesRequest{MaxRules: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(plain)
+	for _, field := range []string{"ranked", "near_misses", "max_chars", "chars"} {
+		if strings.Contains(string(raw), `"`+field+`"`) {
+			t.Fatalf("a plain answer carries %s: %s", field, raw)
+		}
+	}
+
+	all, err := db.StandingRules(ctx, StandingRulesRequest{MaxRules: 2, All: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all.Rules) != len(plain.Rules) || all.Text != plain.Text || all.Total != plain.Total {
+		t.Fatalf("All changed the block: %+v vs %+v", all, plain)
+	}
+	var ranked []string
+	for _, e := range all.Ranked {
+		ranked = append(ranked, e.ID+":"+e.Status)
+	}
+	if got, want := strings.Join(ranked, " "), "r1:injected r2:injected r3:over_budget r4:other_project"; got != want {
+		t.Fatalf("ranked %q, want %q", got, want)
+	}
+	var near []string
+	for _, e := range all.NearMisses {
+		near = append(near, e.ID+":"+strings.Join(e.Missing, ","))
+	}
+	if got, want := strings.Join(near, " "), "untyped-high:type low:importance"; got != want {
+		t.Fatalf("near misses %q, want %q", got, want)
+	}
+	if all.NearMissTotal != 2 || all.MaxRules != 2 || all.MaxChars != 2400 || all.Chars != utf8.RuneCountInString(all.Text) || all.Chars == 0 {
+		t.Fatalf("budget fields %+v", all)
+	}
+	if e := all.Ranked[0]; e.Content != "Never use port 8080." || e.Type != "preference" || e.CreatedAt == "" || e.Date == "" {
+		t.Fatalf("entry %+v", e)
+	}
+
+	// In its project, the project's rule is the session's.
+	in, err := db.StandingRules(ctx, StandingRulesRequest{Project: "Athanor", All: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ranked = ranked[:0]
+	for _, e := range in.Ranked {
+		ranked = append(ranked, e.ID+":"+e.Status)
+	}
+	if got, want := strings.Join(ranked, " "), "r1:injected r2:injected r4:injected r3:injected"; got != want {
+		t.Fatalf("in the project: ranked %q, want %q", got, want)
+	}
+}
+
+// The recall log keeps which memory hits were standing rules.
+func TestRecallLogMarksStandingRules(t *testing.T) {
+	db, err := Open(DefaultConfig(filepath.Join(t.TempDir(), "rules.db")), WithRecallLog(RecallLogOptions{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	for _, m := range []MemorySaveRequest{
+		{MemoryID: "rule-port", Scope: MemoryScopeGlobal, Content: "Dev server port: never 8080.", Importance: 0.9, Metadata: map[string]any{"type": "preference"}},
+		{MemoryID: "fact-port", Scope: MemoryScopeGlobal, Content: "Athanor's dev server port is 3076.", Importance: 0.9, Metadata: map[string]any{"type": "fact"}},
+	} {
+		if _, err := db.SaveMemory(ctx, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.KnowledgeMemory().Recall(ctx, KnowledgeMemoryRecallRequest{Query: "dev server port", Keywords: []string{"dev", "server", "port"}, Detail: RecallDetailIndex}); err != nil {
+		t.Fatal(err)
+	}
+	list, err := db.ListRecalls(ctx, RecallLogListRequest{})
+	if err != nil || len(list.Recalls) != 1 {
+		t.Fatalf("list %+v %v", list, err)
+	}
+	entry, err := db.GetRecall(ctx, RecallLogGetRequest{RecallID: list.Recalls[0].ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, h := range entry.Hits {
+		if h.Rule == nil {
+			t.Fatalf("hit %s carries no rule mark", h.ID)
+		}
+		got[h.ID] = *h.Rule
+	}
+	if !got["rule-port"] || got["fact-port"] || len(got) != 2 {
+		t.Fatalf("rule marks %v", got)
 	}
 }

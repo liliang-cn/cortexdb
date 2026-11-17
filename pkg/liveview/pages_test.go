@@ -85,7 +85,7 @@ func TestTheAPIsOnlyALeftOutPageReadsAre404(t *testing.T) {
 	ts := serveApp(t, theApp, "", WithoutPages(PageRecalls, PageLibrary, PageVersions))
 	for _, path := range []string{
 		"/api/recalls", "/api/recalls/get?id=1", "/api/recalls/stats", "/api/recalls/heat",
-		"/api/recalls/feedback", "/api/recalls/golden",
+		"/api/recalls/feedback", "/api/recalls/golden", "/api/recalls/rules",
 		"/api/library", "/api/library/card?id=x", "/api/library/book?id=x",
 		"/api/ontology/history?schema=s", "/api/ontology/diff?schema=s&from=1&to=2",
 	} {

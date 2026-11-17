@@ -339,6 +339,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 					"min_importance": toolNumberSchema("Lowest importance that counts. Default 0.8."),
 					"max_rules":      toolIntegerSchema("At most this many rules (default 16)."),
 					"max_chars":      toolIntegerSchema("At most this many characters of text (default 2400)."),
+					"all":            toolBooleanSchema("Also list every rule that qualifies with where it stands (ranked: injected, over_budget, other_project), the current global memories one field short of a rule (near_misses: a rule type under the minimum importance, or the minimum importance with no type), and the caps (chars, max_rules, max_chars). Default false."),
 				},
 			),
 		},

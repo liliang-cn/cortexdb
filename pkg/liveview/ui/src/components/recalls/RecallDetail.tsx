@@ -8,6 +8,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { Lang } from "@/lib/i18n";
 import { clockTime, droppedBeyond, finalMatcher, focusPath, replayPath, retrieverNames, score, verdictFromToggle, verdictOf } from "@/lib/recalls";
 import type { RecallsText } from "@/lib/recalls-strings";
+import type { RulesText } from "@/lib/rulesStrings";
+import { splitRuleHits } from "@/lib/standingRules";
 import { cn } from "@/lib/utils";
 import { useLive } from "@/live";
 
@@ -18,6 +20,7 @@ export interface RecallDetailProps {
   entry: RecallEntry;
   lang: Lang;
   t: RecallsText;
+  rt: RulesText;
   /** Mark one hit; resolves when the server has it. */
   onMark: (hit: RecallHit, verdict: RecallVerdict | "clear") => Promise<void>;
   onFilter: (f: DetailFilter) => void;
@@ -73,7 +76,7 @@ function FilterLink({ label, title, onClick, mono }: { label: string; title: str
   );
 }
 
-function Plan({ entry: r, lang, t, onFilter }: Omit<RecallDetailProps, "onMark">) {
+function Plan({ entry: r, lang, t, onFilter }: Omit<RecallDetailProps, "onMark" | "rt">) {
   const plan = r.explain?.plan ?? { query: r.query };
   const who: Array<[string, string, DetailFilter | null]> = [];
   if (r.key) who.push([t.byKey, r.key, { key: r.key }]);
@@ -144,7 +147,7 @@ function GradeMark({ hit, t }: { hit: RecallHit; t: RecallsText }) {
   return null;
 }
 
-function Hit({ hit: h, t, onMark }: { hit: RecallHit; t: RecallsText; onMark: RecallDetailProps["onMark"] }) {
+function Hit({ hit: h, t, rule, onMark }: { hit: RecallHit; t: RecallsText; rule?: string; onMark: RecallDetailProps["onMark"] }) {
   const [busy, setBusy] = useState(false);
   const inGraph = useLive((s) => (h.node_id ? s.nodes.has(h.node_id) : false));
   const scores = [`${t.score.toLowerCase()} ${score(h.score)}`];
@@ -167,6 +170,11 @@ function Hit({ hit: h, t, onMark }: { hit: RecallHit; t: RecallsText; onMark: Re
           <Badge variant="outline" className="font-normal text-muted-foreground" title={t.rankIn(h.rank, t.kind(h.kind))}>
             {t.kind(h.kind)} <span className="tabular-nums">#{h.rank}</span>
           </Badge>
+          {rule && (
+            <Badge variant="outline" className="border-transparent bg-kind-write-soft font-normal text-kind-write-ink">
+              {rule}
+            </Badge>
+          )}
           <GradeMark hit={h} t={t} />
           <span className="[overflow-wrap:anywhere]">{h.title || h.id}</span>
         </div>
@@ -281,9 +289,12 @@ function Side({ name, side, isFinal, t }: { name: string; side: RecallExplainSid
 }
 
 /** Why one recall returned what it did: the plan, the hits with their marks, and what each retriever put forward. */
-export function RecallDetail({ entry: r, lang, t, onMark, onFilter }: RecallDetailProps) {
+export function RecallDetail({ entry: r, lang, t, rt, onMark, onFilter }: RecallDetailProps) {
   const ex = r.explain;
   const isFinal = finalMatcher(r.hits);
+  // The standing rules the recall found lead, in a group of their own, as
+  // they lead the context pack the agent was handed.
+  const { rules, others } = splitRuleHits(r.hits);
   const degraded = r.degraded ?? ex?.degraded ?? [];
   return (
     <article aria-label={r.query}>
@@ -313,21 +324,45 @@ export function RecallDetail({ entry: r, lang, t, onMark, onFilter }: RecallDeta
         </div>
       )}
 
+      {rules.length > 0 && (
+        <Section
+          title={rt.tab}
+          aside={
+            <>
+              <span className="font-normal tabular-nums normal-case">{rules.length}</span>
+              {r.rules_now && (
+                <Badge variant="outline" className="font-normal tracking-normal text-muted-foreground normal-case">
+                  {rt.now}
+                </Badge>
+              )}
+            </>
+          }
+        >
+          <ol className="divide-y divide-border/70">
+            {rules.map((h) => (
+              <Hit key={`${h.kind}:${h.id}`} hit={h} t={t} rule={rt.rule} onMark={onMark} />
+            ))}
+          </ol>
+        </Section>
+      )}
+
       <Section title={t.plan}>
         <Plan entry={r} lang={lang} t={t} onFilter={onFilter} />
       </Section>
 
-      <Section title={t.hitsHeading} aside={<span className="font-normal tabular-nums normal-case">{r.hits.length}</span>}>
-        {r.hits.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t.noHits}</p>
-        ) : (
-          <ol className="divide-y divide-border/70">
-            {r.hits.map((h) => (
-              <Hit key={`${h.kind}:${h.id}`} hit={h} t={t} onMark={onMark} />
-            ))}
-          </ol>
-        )}
-      </Section>
+      {(others.length > 0 || rules.length === 0) && (
+        <Section title={rules.length > 0 ? rt.otherHits : t.hitsHeading} aside={<span className="font-normal tabular-nums normal-case">{others.length}</span>}>
+          {others.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t.noHits}</p>
+          ) : (
+            <ol className="divide-y divide-border/70">
+              {others.map((h) => (
+                <Hit key={`${h.kind}:${h.id}`} hit={h} t={t} onMark={onMark} />
+              ))}
+            </ol>
+          )}
+        </Section>
+      )}
 
       {ex && (
         <Section title={t.candidates}>

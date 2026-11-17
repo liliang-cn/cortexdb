@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, isAbort } from "@/api";
-import { recallsApi, type RecallEntry, type RecallStats } from "@/api/recalls";
+import { recallsApi, type RecallEntry, type RecallStats, type StandingRulesView } from "@/api/recalls";
 import { applyHead, applyOlder, emptyTimeline, filtersKey, joinPending, listQuery, type RecallsOptions, type TimelineData } from "@/lib/recalls";
 import { useLive } from "@/live";
 
@@ -265,6 +265,43 @@ export function useRecallStats(enabled: boolean): RecallStatsState {
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
   return { status, stats, error, reload };
+}
+
+export interface StandingRulesState {
+  status: LoadStatus;
+  view: StandingRulesView | null;
+  error: Failure | null;
+  reload: () => void;
+}
+
+/** The Rules tab: every standing rule for a session in `project`, read each time it is opened or the project changes. */
+export function useStandingRules(project: string, enabled: boolean): StandingRulesState {
+  const [status, setStatus] = useState<LoadStatus>("loading");
+  const [view, setView] = useState<StandingRulesView | null>(null);
+  const [error, setError] = useState<Failure | null>(null);
+  const [nonce, setNonce] = useState(0);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const ctl = new AbortController();
+    setStatus("loading");
+    setError(null);
+    recallsApi
+      .rules(project, { signal: ctl.signal })
+      .then((v) => {
+        setView(v);
+        setStatus("ready");
+      })
+      .catch((err: unknown) => {
+        if (isAbort(err)) return;
+        setError(failure(err));
+        setStatus("error");
+      });
+    return () => ctl.abort();
+  }, [project, enabled, nonce]);
+
+  const reload = useCallback(() => setNonce((n) => n + 1), []);
+  return { status, view, error, reload };
 }
 
 /** Whether a media query matches, kept up to date. */
