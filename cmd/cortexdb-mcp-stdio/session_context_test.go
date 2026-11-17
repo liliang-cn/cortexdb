@@ -92,3 +92,56 @@ func TestFitContextKeepsTheBudget(t *testing.T) {
 		t.Fatalf("nothing fits, got %q", out)
 	}
 }
+
+// The standing rules go out at session start before the project index, and
+// the recall that follows does not repeat them.
+func TestSessionRulesComeFirstAndAreNotRecalledAgain(t *testing.T) {
+	seenDir := t.TempDir()
+	defer func(old func() string) { recallSeenDir = old }(recallSeenDir)
+	recallSeenDir = func() string { return seenDir }
+	db, err := cortexdb.Open(cortexdb.DefaultConfig(filepath.Join(t.TempDir(), "brain.db")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	for _, m := range []cortexdb.MemorySaveRequest{
+		{MemoryID: "rule-ports", Scope: "global", Importance: 0.9, Metadata: map[string]any{"type": "preference"}, Content: "Never use common ports such as 8080 for dev servers."},
+		{MemoryID: "rule-athanor", Scope: "global", Importance: 0.85, Metadata: map[string]any{"type": "preference", "project": "athanor"}, Content: "Athanor's UI uses shadcn only."},
+		{MemoryID: "fact", Scope: "global", Importance: 0.9, Metadata: map[string]any{"type": "fact"}, Content: "The brain listens on 47821."},
+	} {
+		if _, err := db.SaveMemory(ctx, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	call := localToolCaller(db)
+
+	text, ids := sessionRules(ctx, call, []string{"web", "CortexDB"}, 2400)
+	if !strings.HasPrefix(text, cortexdb.StandingRulesHeader) || !strings.Contains(text, "[rule-ports]") || strings.Contains(text, "rule-athanor") || strings.Contains(text, "47821") {
+		t.Fatalf("rules block:\n%s", text)
+	}
+	if strings.Join(ids, ",") != "rule-ports" {
+		t.Fatalf("ids %v", ids)
+	}
+	if text, _ := sessionRules(ctx, call, []string{"Athanor"}, 2400); !strings.Contains(text, "rule-athanor") {
+		t.Fatalf("project rule missing in its project:\n%s", text)
+	}
+
+	markSeen("sess-1", ids)
+	kept := unseenHits("sess-1", []recallHit{{KnowledgeID: "rule-ports", Snippet: "x"}, {KnowledgeID: "fact", Snippet: "y"}})
+	if len(kept) != 1 || kept[0].KnowledgeID != "fact" {
+		t.Fatalf("kept %+v", kept)
+	}
+}
+
+// The shell recall lists a standing rule first and says it is one.
+func TestShellRecallPutsRulesFirst(t *testing.T) {
+	resp := &cortexdb.KnowledgeMemoryRecallResponse{Memories: []cortexdb.MemorySearchHit{
+		{Memory: cortexdb.MemoryRecord{ID: "fact", Content: "The API lives in cmd/api."}},
+		{Memory: cortexdb.MemoryRecord{ID: "rule", Scope: "global", Importance: 0.9, Content: "Pick a random port above 3000.", Metadata: map[string]any{"type": "preference"}}},
+	}}
+	lines := strings.Split(formatRecallHits(hitsFromRecall(resp)), "\n")
+	if !strings.HasPrefix(lines[1], "- rule [STANDING RULE") || !strings.HasPrefix(lines[2], "- fact") {
+		t.Fatalf("%q", lines)
+	}
+}

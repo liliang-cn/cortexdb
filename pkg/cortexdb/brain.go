@@ -571,7 +571,36 @@ func buildKnowledgeMemoryContextPack(query string, memories []MemorySearchHit, k
 	knowledgeIDs := make([]string, 0)
 	chunkIDs := make([]string, 0)
 
-	// Graph facts go first: when present they are usually the precise, edge-
+	// Standing rules go first, in a block of their own: a rule found among
+	// facts reads as one more fact, and a rule is what the task must obey
+	// (IsStandingRule says which memories are rules, from their metadata).
+	// The three memory blocks share one budget, the rules first.
+	var rules, checked, unverified []MemorySearchHit
+	for _, hit := range memories {
+		memoryIDs = append(memoryIDs, hit.Memory.ID)
+		switch {
+		case IsStandingRule(hit.Memory):
+			rules = append(rules, hit)
+		case isUnverifiedGrade(hit.Memory.Grade):
+			// A memory that says it was not checked — graded asserted or
+			// held — is set apart under its own heading, so a reader does
+			// not act on a guess as if it were measured.
+			unverified = append(unverified, hit)
+		default:
+			checked = append(checked, hit)
+		}
+	}
+	ruleText, ruleItems, ruleChars := renderMemoryContext(rules, maxMemoryItems, maxMemoryChars)
+	if ruleText != "" {
+		sections = append(sections, KnowledgeMemoryContextSection{
+			Kind:      "rules",
+			Title:     "Standing rules",
+			Text:      ruleText,
+			SourceIDs: memoryHitIDs(rules),
+		})
+	}
+
+	// Graph facts come next: when present they are usually the precise, edge-
 	// accurate answer to a relational question.
 	if gf := renderGraphFacts(graphFacts); gf != "" {
 		sections = append(sections, KnowledgeMemoryContextSection{
@@ -581,19 +610,12 @@ func buildKnowledgeMemoryContextPack(query string, memories []MemorySearchHit, k
 		})
 	}
 
-	// A memory that says it was not checked — graded asserted or held — is
-	// set apart under its own heading, so a reader does not act on a guess
-	// as if it were measured. The two share one budget, the checked first.
-	var checked, unverified []MemorySearchHit
-	for _, hit := range memories {
-		memoryIDs = append(memoryIDs, hit.Memory.ID)
-		if isUnverifiedGrade(hit.Memory.Grade) {
-			unverified = append(unverified, hit)
-		} else {
-			checked = append(checked, hit)
-		}
+	memoryText, items, chars := "", ruleItems, ruleChars
+	if left, leftChars, ok := budgetLeft(maxMemoryItems, maxMemoryChars, items, chars); ok {
+		var n, c int
+		memoryText, n, c = renderMemoryContext(checked, left, leftChars)
+		items, chars = items+n, chars+c
 	}
-	memoryText, items, chars := renderMemoryContext(checked, maxMemoryItems, maxMemoryChars)
 	if memoryText != "" {
 		sections = append(sections, KnowledgeMemoryContextSection{
 			Kind:      "memories",
@@ -603,14 +625,7 @@ func buildKnowledgeMemoryContextPack(query string, memories []MemorySearchHit, k
 		})
 	}
 	if len(unverified) > 0 {
-		leftItems, leftChars := 0, 0
-		if maxMemoryItems > 0 {
-			leftItems = max(maxMemoryItems-items, 0)
-		}
-		if maxMemoryChars > 0 {
-			leftChars = max(maxMemoryChars-chars, 0)
-		}
-		if (maxMemoryItems <= 0 || leftItems > 0) && (maxMemoryChars <= 0 || leftChars > 0) {
+		if leftItems, leftChars, ok := budgetLeft(maxMemoryItems, maxMemoryChars, items, chars); ok {
 			if text, _, _ := renderMemoryContext(unverified, leftItems, leftChars); text != "" {
 				sections = append(sections, KnowledgeMemoryContextSection{
 					Kind:      "unverified_memories",
@@ -640,6 +655,19 @@ func buildKnowledgeMemoryContextPack(query string, memories []MemorySearchHit, k
 	}
 
 	return KnowledgeMemoryContextPackFromSections(query, sections, memoryIDs, knowledgeIDs, chunkIDs, entities)
+}
+
+// budgetLeft is what remains of a memory budget after items and chars were
+// spent, 0 meaning no cap, and whether anything remains.
+func budgetLeft(maxItems, maxChars, items, chars int) (int, int, bool) {
+	leftItems, leftChars := 0, 0
+	if maxItems > 0 {
+		leftItems = max(maxItems-items, 0)
+	}
+	if maxChars > 0 {
+		leftChars = max(maxChars-chars, 0)
+	}
+	return leftItems, leftChars, (maxItems <= 0 || leftItems > 0) && (maxChars <= 0 || leftChars > 0)
 }
 
 func KnowledgeMemoryContextPackFromSections(query string, sections []KnowledgeMemoryContextSection, memoryIDs, knowledgeIDs, chunkIDs, entities []string) KnowledgeMemoryContextPack {

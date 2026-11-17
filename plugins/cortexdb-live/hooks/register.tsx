@@ -14,6 +14,15 @@ const FALLBACK_SERVER = 'plugin:cortexdb:cortexdb'
 // The shell hook's block starts with this; when the recall here answered, that
 // one is the same question asked twice.
 const SHELL_HEADER = 'Relevant CortexDB memories for this prompt'
+// The standing rules block starts with this (cortexdb.StandingRulesHeader),
+// whichever hook wrote it.
+const RULES_HEADER = 'Standing rules from CortexDB'
+// What the rules block may take at session start, as the shell hook's
+// sessionRulesChars.
+const RULES_CHARS = 2400
+// Session start runs while the MCP servers are still connecting: past this
+// the rules go out with the first prompt instead.
+const RULES_TIMEOUT_MS = 3000
 const TOP_K = 3
 const SNIPPET = 220
 // The planner answered inside 2.5 s for 48 of 561 logged recalls; the rest ran
@@ -40,6 +49,7 @@ const STRINGS = {
     hide: '隐藏',
     memory: '记忆',
     knowledge: '知识',
+    rule: '规则',
     query: '查询',
     entities: '实体',
     project: '项目',
@@ -72,6 +82,7 @@ const STRINGS = {
     hide: 'Hide',
     memory: 'memory',
     knowledge: 'knowledge',
+    rule: 'rule',
     query: 'Query',
     entities: 'Entities',
     project: 'Project',
@@ -360,6 +371,7 @@ async function recall($: EngineInterface, prompt: string): Promise<Recall | 'ski
     throw err
   })) as RecallPayload
   const terms = [...plan.keywords, ...plan.entities]
+  const rules = ruleIdsOf(payload)
   const memoryMode = payload.memory_decision?.effective_mode
   const knowledgeMode = payload.knowledge_decision?.effective_mode
   const hits: RecallHit[] = [
@@ -367,6 +379,7 @@ async function recall($: EngineInterface, prompt: string): Promise<Recall | 'ski
       const content = m.memory?.content ?? ''
       return {
         kind: 'memory' as const,
+        rule: rules.has(m.memory?.id ?? '') || isStandingRule(m.memory),
         title: m.memory?.id ?? '',
         snippet: snippetOf(content),
         why: { ...memoryVia(m, memoryMode), matched: matchedIn(content, terms) },
@@ -385,7 +398,66 @@ async function recall($: EngineInterface, prompt: string): Promise<Recall | 'ski
       gradeWhy: text(k.metadata?._why),
     })),
   ].filter(hit => hit.snippet !== '')
+  // Standing rules first, as the brain's context pack puts them.
+  hits.sort((a, b) => Number(b.rule === true) - Number(a.rule === true))
   return { hits, ms: (await $.clock.now()) - started, plan, degraded: payload.degraded ?? [] }
+}
+
+// The memories the brain listed as standing rules: the context pack's rules
+// section, in a full recall and in an index alike.
+const ruleIdsOf = (payload: RecallPayload) =>
+  new Set((payload.context_pack?.sections ?? []).filter(s => s.kind === 'rules').flatMap(s => s.source_ids ?? []))
+
+// A brain from before the rules section is read by the memory's own metadata,
+// as cortexdb.IsStandingRule reads it: global scope, type preference or rule,
+// importance 0.8 or more, not superseded or expired.
+const RULE_TYPES = new Set(['preference', 'rule'])
+const isStandingRule = (m: RecallMemory | undefined) => {
+  const meta = m?.metadata ?? {}
+  const type = typeof meta.type === 'string' ? meta.type.trim().toLowerCase() : ''
+  const importance = typeof meta.importance === 'number' ? meta.importance : 0
+  const expires = typeof meta.expires_at === 'string' ? Date.parse(meta.expires_at) : NaN
+  return (
+    meta.scope === 'global' &&
+    RULE_TYPES.has(type) &&
+    importance >= 0.8 &&
+    !text(meta.superseded_by) &&
+    meta._review_status !== 'rejected' &&
+    !(expires < Date.now())
+  )
+}
+
+// --- standing rules -----------------------------------------------------------
+
+type StandingRules = { rules?: { id?: string }[]; text?: string }
+
+// Whether this session has its standing rules: set when a SessionStart block
+// carried them, by the shell hook or by this module.
+let rulesGiven = false
+
+// The standing rules for the project the session works in, or undefined when
+// the brain cannot say (still connecting, too old to know the tool).
+async function standingRules($: EngineInterface): Promise<StandingRules | undefined> {
+  let project: string | undefined
+  try {
+    const root = await $.session.root()
+    if (root && root !== (await $.env.get('HOME'))) project = root.split('/').filter(Boolean).at(-1)
+  } catch {
+    // A build without session.root: the untagged rules only.
+  }
+  const asked = callTool($, 'memory_standing_rules', { max_chars: RULES_CHARS, ...(project ? { project } : {}) }).catch(() => undefined)
+  const found = (await Promise.race([asked, $.clock.sleep(RULES_TIMEOUT_MS).then(() => undefined)])) as StandingRules | undefined
+  return found && typeof found.text === 'string' ? found : undefined
+}
+
+// The rules block, and the rules marked as given so the recall does not hand
+// them over again.
+const giveRules = (found: StandingRules | undefined) => {
+  const block = found?.text?.trim() ?? ''
+  if (block === '') return ''
+  rulesGiven = true
+  for (const r of found?.rules ?? []) if (r.id) given.set(`memory:${r.id}`, prompts)
+  return block
 }
 
 // The plan's terms a hit actually contains: the part of "why this came back"
@@ -920,6 +992,23 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // The standing rules go out at session start whatever the prompt. The shell
+  // hook's block carries them when its binary is new enough; else they are
+  // asked for here, and when the brain is not connected yet they go out with
+  // the first prompt.
+  on('classic.SessionStart', async ($, e, next) => {
+    const result = await next(e)
+    rulesGiven = false
+    const blocks = result.additionalContext ?? []
+    if (blocks.some(block => block.includes(RULES_HEADER))) {
+      rulesGiven = true
+      return result
+    }
+    if (!(await sentinel($, 'autorecall'))?.startsWith('on')) return result
+    const block = giveRules(await standingRules($))
+    return block ? { ...result, additionalContext: [...blocks, block] } : result
+  }).catch(($, e, next) => next(e))
+
   // Hide lasts until the next recall; this brings back the one hidden now.
   on('command.run', { command: SHOW_COMMAND }, async $ => {
     const found = await read($, last)
@@ -951,7 +1040,10 @@ export const register: Register = (on, options) => {
           ])
         : Promise.resolve(undefined)
 
-    const [result, found] = await Promise.all([next(e), asked])
+    const late = !rulesGiven && (await sentinel($, 'autorecall'))?.startsWith('on') ? standingRules($) : Promise.resolve(undefined)
+    const [shell, found, lateRules] = await Promise.all([next(e), asked, late])
+    const rulesBlock = giveRules(lateRules)
+    const result = rulesBlock ? { ...shell, additionalContext: [rulesBlock, ...(shell.additionalContext ?? [])] } : shell
     if (!found) {
       showStatus($)
       return result
@@ -1022,7 +1114,7 @@ export const register: Register = (on, options) => {
             return [
               <Text wrap="truncate-end" dimColor>
                 {'  '}
-                {hit.kind === 'memory' ? s.memory : s.knowledge} <Text bold>{hit.title}</Text> {hit.snippet}
+                {hit.rule ? s.rule : hit.kind === 'memory' ? s.memory : s.knowledge} <Text bold>{hit.title}</Text> {hit.snippet}
               </Text>,
               ...(explained
                 ? [
@@ -1059,6 +1151,7 @@ type MemoryHit = { memory?: RecallMemory; score?: number; similarity?: number; v
 type RecallPayload = {
   // What did not run: "embedder_unreachable" means keyword search only.
   degraded?: string[]
+  context_pack?: { sections?: { kind?: string; source_ids?: string[] }[] }
   memory_decision?: { effective_mode?: string }
   knowledge_decision?: { effective_mode?: string }
   memories?: MemoryHit[]
@@ -1127,6 +1220,7 @@ const trailOf = (hit: RecallHit) => {
   const o = hit.origin ?? {}
   const by = [o.agent, o.source, o.model ? `(${o.model})` : undefined].filter(Boolean).join(' ')
   const parts = [
+    hit.rule ? 'STANDING RULE' : undefined,
     gradeMark(hit.grade, hit.gradeWhy),
     o.date,
     by || undefined,
@@ -1304,7 +1398,7 @@ const isConnecting = (err: unknown) => /no connected MCP tool/i.test(String((err
 const isDenied = (err: unknown) => /refused|denied|permission/i.test(String((err as Error)?.message ?? err))
 
 // The tools this module calls, as permissions.allow spells them.
-const TOOLS_TO_ALLOW = ['knowledge_memory_recall', 'graph_statistics', 'memory_save']
+const TOOLS_TO_ALLOW = ['knowledge_memory_recall', 'graph_statistics', 'memory_save', 'memory_standing_rules']
   .map(tool => `mcp__plugin_cortexdb_cortexdb__${tool}`)
   .join(', ')
 

@@ -114,3 +114,30 @@ func pruneRecallSeen(dir string) {
 		}
 	}
 }
+
+// markSeen records ids as given to the session before its first prompt, as
+// the standing rules are at session start, so the recall does not repeat them
+// within recallRepeatAfter prompts.
+func markSeen(sessionID string, ids []string) {
+	path := recallSeenPath(sessionID)
+	if path == "" || len(ids) == 0 {
+		return
+	}
+	seen := recallSeen{At: map[string]int{}}
+	if raw, err := os.ReadFile(path); err == nil {
+		if json.Unmarshal(raw, &seen) != nil || seen.At == nil {
+			seen = recallSeen{At: map[string]int{}}
+		}
+	}
+	for _, id := range ids {
+		seen.At[id] = seen.Prompts
+	}
+	if raw, err := json.Marshal(seen); err == nil {
+		if os.MkdirAll(filepath.Dir(path), 0o700) == nil {
+			tmp := path + ".tmp"
+			if os.WriteFile(tmp, raw, 0o600) == nil {
+				_ = os.Rename(tmp, path)
+			}
+		}
+	}
+}

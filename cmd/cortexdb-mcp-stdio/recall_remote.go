@@ -153,9 +153,35 @@ func parseRecallResponse(body string) (*cortexdb.KnowledgeMemoryRecallResponse, 
 // hitsFromRecall turns a recall answer into injectable hits, each with its
 // trail. Memories first: they are the layer that changes, and the one a stale
 // answer hurts most.
+//
+// Standing rules come before every other hit, marked as rules: the brain lists
+// them in the context pack's rules section, and a brain from before that
+// section is read by the memory's own metadata (cortexdb.IsStandingRule).
 func hitsFromRecall(resp *cortexdb.KnowledgeMemoryRecallResponse) []recallHit {
 	hits := make([]recallHit, 0, len(resp.Memories)+len(resp.Knowledge))
+	ruleIDs := map[string]bool{}
+	for _, s := range resp.ContextPack.Sections {
+		if s.Kind == "rules" {
+			for _, id := range s.SourceIDs {
+				ruleIDs[id] = true
+			}
+		}
+	}
+	memories := make([]cortexdb.MemorySearchHit, 0, len(resp.Memories))
+	isRule := func(m cortexdb.MemorySearchHit) bool {
+		return ruleIDs[m.Memory.ID] || cortexdb.IsStandingRule(m.Memory)
+	}
 	for _, m := range resp.Memories {
+		if isRule(m) {
+			memories = append(memories, m)
+		}
+	}
+	for _, m := range resp.Memories {
+		if !isRule(m) {
+			memories = append(memories, m)
+		}
+	}
+	for _, m := range memories {
 		meta := m.Memory.Metadata
 		date := metaString(meta, "date")
 		if date == "" && !m.Memory.CreatedAt.IsZero() {
@@ -174,6 +200,7 @@ func hitsFromRecall(resp *cortexdb.KnowledgeMemoryRecallResponse) []recallHit {
 				Project: metaString(meta, "project"),
 				Session: metaString(meta, "session"),
 				Grade:   m.Memory.Grade, GradeWhy: m.Memory.GradeWhy,
+				Rule: isRule(m),
 			}, memoryVia(m, resp.MemoryDecision.EffectiveMode)),
 		})
 	}
@@ -205,6 +232,8 @@ type hitOrigin struct {
 	Date, Writer, Source, Model, Agent, Host, Project, Session, URL string
 	// Grade and GradeWhy are how the record says it is known.
 	Grade, GradeWhy string
+	// Rule is set for a standing rule, which the trail names first.
+	Rule bool
 }
 
 // gradeMark is what a trail says first about how a hit is known: a guess
@@ -243,7 +272,11 @@ func trailOf(o hitOrigin, why string) string {
 	if o.Model != "" {
 		by = append(by, "("+o.Model+")")
 	}
-	parts := []string{gradeMark(o.Grade, o.GradeWhy), o.Date, strings.Join(by, " ")}
+	rule := ""
+	if o.Rule {
+		rule = "STANDING RULE"
+	}
+	parts := []string{rule, gradeMark(o.Grade, o.GradeWhy), o.Date, strings.Join(by, " ")}
 	if o.Writer != "" && o.Writer != sharedKey {
 		parts = append(parts, "key "+o.Writer)
 	}

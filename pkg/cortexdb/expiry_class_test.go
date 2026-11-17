@@ -79,6 +79,8 @@ var readToolsAndTheExpiry = map[string]string{
 	"memory_list_all": "memories: their own expires_at, as on main",
 	"memory_search":   "memories: their own expires_at, as on main",
 
+	"memory_standing_rules": "memories: their own expires_at",
+
 	"contract_needs_attention": "no document: contracts",
 	"contract_tally":           "no document: contracts",
 	"decision_chain":           "no document: decisions",

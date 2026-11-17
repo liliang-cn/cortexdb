@@ -538,6 +538,13 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 		return *resp, nil
 	})
 
+	addGraphRAGMCPTool(server, definitions["memory_standing_rules"], func(ctx context.Context, req StandingRulesRequest) (StandingRulesResponse, error) {
+		resp, err := db.StandingRules(ctx, req)
+		if err != nil || resp == nil {
+			return StandingRulesResponse{}, err
+		}
+		return *resp, nil
+	})
 	addGraphRAGMCPTool(server, definitions["memory_list_all"], func(ctx context.Context, req MemoryListAllRequest) (MemoryListAllResponse, error) {
 		resp, err := db.ListAllMemoriesPaged(ctx, req)
 		if err != nil || resp == nil {

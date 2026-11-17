@@ -338,6 +338,7 @@ var refusedTools = map[string]string{
 	"knowledge_graph_history":               "lists every version of the triples of a subject, including the deleted ones, in a store no scope field confines",
 	"ontology_history":                      "lists every saved version of a schema, with who saved it, in a store no scope field confines",
 	"memory_list_all":                       "lists every bucket",
+	"memory_standing_rules":                 "lists the global bucket of every namespace",
 	"changes_since":                         "feeds changes of every store and every collection",
 	"graph_health":                          "reports on every store",
 	"vector_dimension_repair":               "rewrites every store",
