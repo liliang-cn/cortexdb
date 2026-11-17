@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.156.0] - 2026-11-17
+
+### Added
+
+- The live view's Recalls page shows standing rules. A recall's rules come first as their own group (the recall log now marks each memory hit that was a rule; older recalls are marked from the memory's current metadata, with a badge saying so). A Rules tab (`/recalls?tab=rules`) lists every standing rule in injection order, marked injected, over budget or other project, with the rule count, the injected count and the characters used out of the 2,400 budget, and a Not qualifying group of global memories that look meant as rules but miss a type or the 0.8 importance. `memory_standing_rules` takes `all: true` for the ranked list and the near misses; its output without it is unchanged. (#217)
+
 ## [2.155.0] - 2026-11-17
 
 ### Added
