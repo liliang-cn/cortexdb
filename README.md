@@ -2,126 +2,53 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/liliang-cn/cortexdb/v2.svg)](https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2) [![CI](https://github.com/liliang-cn/cortexdb/actions/workflows/ci.yml/badge.svg)](https://github.com/liliang-cn/cortexdb/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/liliang-cn/cortexdb/branch/main/graph/badge.svg)](https://codecov.io/gh/liliang-cn/cortexdb) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-AI memory and a knowledge graph in one SQLite file. Pure Go, no service to run, works without an embedding model.
+Memory your coding agents share. Tell Claude Code something once, and Codex, your other machines and next week's session already know it.
 
 ![The CortexDB live view: two recalls light up the graph, then the Recalls and Ontology pages and the Library view](docs/assets/img/live-view-en.gif)
 
 ## Install
 
-| | |
-| --- | --- |
-| Go library | `go get github.com/liliang-cn/cortexdb/v2` |
-| Claude Code | `/plugin marketplace add liliang-cn/cortexdb`, then `/plugin install cortexdb@cortexdb` |
-| Codex | `codex plugin marketplace add liliang-cn/cortexdb && codex plugin add cortexdb@cortexdb` |
-| Claude Code mod (optional) | `/plugin install cortexdb-live@cortexdb` |
-| DeepSeek Harness | `dsh plugin --profile web add "github:liliang-cn/cortexdb#semver:^2&path:/plugins/dsh-cortexdb-memory"` ([guide](plugins/dsh-cortexdb-memory/README.md)) |
-| Obsidian | unzip a release's `cortexdb-obsidian.zip` into `<vault>/.obsidian/plugins/` ([guide](plugins/obsidian-cortexdb/README.md)) |
-| Shared-brain server | `go install github.com/liliang-cn/cortexdb/v2/cmd/cortexdb-grpc@latest` |
-| Clients | `cargo add cortexdb-client` · `pip install cortexdb-client` · `npm install cortexdb-client` |
+Claude Code:
 
-## Use
+```
+/plugin marketplace add liliang-cn/cortexdb
+/plugin install cortexdb@cortexdb
+```
+
+Codex:
+
+```
+codex plugin marketplace add liliang-cn/cortexdb && codex plugin add cortexdb@cortexdb
+```
+
+Go:
+
+```
+go get github.com/liliang-cn/cortexdb/v2
+```
+
+Also for [DeepSeek Harness](plugins/dsh-cortexdb-memory/README.md), [Obsidian](plugins/obsidian-cortexdb/README.md), and Rust, Python and Node clients (`cortexdb-client`).
+
+## What you get
+
+- **Agents remember.** Preferences, decisions and project facts are captured as you work and recalled before the next prompt.
+- **One brain, many agents.** Point every agent and machine at one `cortexdb-grpc` server and they share it.
+- **See what it knows.** A live web view of the graph, every recall and every change, on desktop or phone.
+- **No model required.** Works without an embedding model; add one for semantic search.
+- **A real knowledge graph.** SPARQL, Cypher, ontology, inference and history, if you want to go deeper.
+
+## In Go
 
 ```go
 db, _ := cortexdb.Open(cortexdb.DefaultConfig("brain.db"))
-defer db.Close()
 brain := db.KnowledgeMemory()
-_, _ = brain.Remember(ctx, cortexdb.KnowledgeMemoryRememberRequest{MemoryID: "alice-tabs", UserID: "alice", Scope: "user", Content: "Alice prefers tabs."})
+brain.Remember(ctx, cortexdb.KnowledgeMemoryRememberRequest{MemoryID: "tabs", UserID: "alice", Content: "Alice prefers tabs."})
 rec, _ := brain.Recall(ctx, cortexdb.KnowledgeMemoryRecallRequest{Query: "what does Alice prefer?", UserID: "alice"})
 fmt.Println(rec.ContextPack.Text)
 ```
 
-The plugin gives Claude Code and Codex one global brain at `~/.cortexdb/cortexdb.db`, `/remember`, `/recall` and an auto-recall hook. A session starts with an index of what the brain knows about its project, an agent about to open a file is told what happened to it before, and a session's durable facts are captured with `<private>` text and credentials kept out. Point several agents or machines at one `cortexdb-grpc` and they share the same memory and graph.
-
-In Codex, review and trust the plugin hooks in `/hooks` to activate automatic
-recall. See the [plugin guide](plugins/cortexdb/README.md) for setup and
-`cortexdb-mcp --doctor --self-test` diagnostics (v2.119.0+).
-
-## Live view
-
-A web UI over the brain, local or shared: run `cortexdb-mcp-stdio --graph-3d`, or ask the agent to call `serve_graph_3d`.
-
-- **Graph**: the knowledge graph in 3D. A recall from any agent or machine lights the records it returned, and the Live feed says who asked what.
-- **Recalls**: every recall with its plan, its hits and why each ranked (`CORTEXDB_RECALL_LOG=1`).
-- **Changes** and **Activity**: every fact added, replaced or retracted, and the tool calls the brain handled.
-- **Ontology**: the declared types held against what the records are actually typed as.
-- **Library**: the same memories as a reading room, shelved by project.
-
-Read-only, light by default, works on a phone, in English or Chinese (the toggle in the top bar). See [the guide](docs/GUIDE.md#the-live-view).
-
-## Claude Code mod
-
-`cortexdb-live` is an optional [mod](https://code.claude.com/docs/en/plugins/mods/overview) that runs inside Claude Code on top of the `cortexdb` plugin. Install it after the plugin:
-
-```
-/plugin install cortexdb-live@cortexdb
-```
-
-The mod calls three of the plugin's tools itself, and a hook gets no permission prompt, so allow them once in `~/.claude/settings.json` (not needed in bypass mode):
-
-```json
-"permissions": {
-  "allow": [
-    "mcp__plugin_cortexdb_cortexdb__knowledge_memory_recall",
-    "mcp__plugin_cortexdb_cortexdb__graph_statistics",
-    "mcp__plugin_cortexdb_cortexdb__memory_save"
-  ]
-}
-```
-
-Without them the status line names the missing rules.
-
-- **Planned recall.** Before the brain is searched, haiku turns each prompt into keywords in Chinese and English, aliases, entity names and a retrieval mode. A bare "ok" or "go ahead" searches nothing. The band above the prompt shows what was recalled; expand it to see the plan and every hit. Hide lasts until the next recall; `/cortexdb-show` brings the hidden one back.
-- **Status line.** Which brain the session uses, its node count and how long the last recall took, or why the brain can't be reached.
-- **Capture.** 90 seconds after a session goes idle, haiku distils the new part of the conversation into durable memories (`auto:<session>:<slug>`). Each later pass replaces a memory under the same slug rather than adding a copy. Older memories a new one makes untrue (a host moved, a decision reversed) are marked superseded: kept, but no longer recalled as current. The project's Claude Code file memory (`~/.claude/projects/<project>/memory/`) is shown to haiku as already recorded, so a capture does not restate a note in other words. A prompt with an image attached is not recalled for.
-
-Haiku runs on Claude Code's own model access, so no API key is needed. Language: `/config` → `cortexdb-live` → `language` (`auto`, `zh`, `en`). The mod honours the plugin's own switches: `cortexdb-recall --disable` and `cortexdb-session-end --disable` turn recall and capture off for both. While the mod runs, the plugin's shell recall and capture hooks stand down, so nothing is done twice. Codex keeps those hooks. Mods are an early-access Claude Code feature.
-
-## What's inside
-
-- Vectors (HNSW, IVF, flat, binary codes), FTS5 full-text search, hybrid and graph retrieval
-- `EmbeddedConfig` for small devices: an SQ8 index, bounded SQLite caches, snapshots that survive a power cut — 100k 768-d vectors open in 0.28 s with a 193 MB heap
-- RAG knowledge, scoped agent memory, context packs with sources — memories say whether they were verified or are a guess, and recall keeps the two apart
-- RDF 1.2 knowledge graph: SPARQL 1.1/1.2, RDFS + OWL 2 RL inference, SHACL Core + SHACL-SPARQL, RDF/XML import — passing the W3C SPARQL 1.1/1.2, RDF 1.2 (Turtle, TriG, N-Triples, N-Quads, RDF/XML) and SHACL test suites; RDFS and OWL 2 RL are covered by the repo's own tests — and read-only Cypher
-- Palantir-style ontology with governed actions
-- 100+ tools, in-process or over MCP
-- `serve_graph_3d`: a live 3D view to find, ask, query and expand, on desktop or phone, with a Changes page that says in words what was added, replaced or retracted as it happens, and an Entity page with each relation, why its value is in effect and what it replaced; or the same brain as a library, each memory a book on its project's shelf
-- `import_agent_memory`: bring in what Claude Code, Codex and DeepSeek Harness already remember — memory notes, `CLAUDE.md` / `AGENTS.md`, Codex's memories, and optionally past sessions distilled into memories — into a local or shared brain
-- Change feed: every committed write, in order, exactly once
-- Observability: a request id and a W3C trace (`traceparent`) from MCP through gRPC to the trace and the recall log, recalls that explain themselves and say when they were degraded, embedder health in `/metrics` and `/healthz`, and an opt-in recall log with a `/recalls` page
-- Images, recordings and videos (`ingest_media`): found by a text question through their caption, visible text and transcript, a hit saying where in the file — with or without an embedder; with a CLIP-style media embedder also by what they show, and by an image (`search_media`)
-- History of the graph and the ontology: for an entity, relation, triple or schema, every version, when and why it changed, and which one is in effect and why (`graph_history`, `knowledge_graph_history`, `ontology_history`); `as_of` on SPARQL, find, expand and Cypher; an entity timeline, an As of pin and an ontology version list in the live view
-- SQLite by default, PostgreSQL + pgvector with a `postgres://` DSN
-
-## Environment
-
-| Variable | Meaning |
-| --- | --- |
-| `CORTEXDB_PATH` | Database file (default `~/.cortexdb/cortexdb.db`) |
-| `CORTEXDB_REMOTE` | Use a shared `cortexdb-grpc` at `host:port` (plaintext) or `https://host` (TLS, behind a proxy) instead of a local file |
-| `CORTEXDB_GRPC_TOKEN` | Bearer token for that server |
-| `CORTEXDB_GRPC_ADDR` | Server listen address (default `127.0.0.1:47821`) |
-| `CORTEXDB_EMBED_BASE_URL` / `CORTEXDB_EMBED_API_KEY` | `cortexdb-mcp-stdio`: OpenAI-compatible embeddings endpoint and its key (fall back to `OPENAI_BASE_URL` / `OPENAI_API_KEY`); unset = lexical mode |
-| `OPENAI_BASE_URL` / `OPENAI_API_KEY` | Server: the embeddings endpoint and key (`cortexdb-grpc` reads only these, not `CORTEXDB_EMBED_BASE_URL`); unset = lexical mode |
-| `CORTEXDB_EMBED_MODEL` / `CORTEXDB_EMBED_DIM` | Embedding model and dimension, for both (default `text-embedding-3-small` / `1536`) |
-| `CORTEXDB_VECTOR_INDEX` / `CORTEXDB_BINARY_OVERSAMPLE` | Server: `hnsw` (default) or, on a SQLite store, `binary` (1-bit codes in memory, 1/32 of the vectors, each search rescored from the stored vectors, no snapshot); the oversample is the binary shortlist multiplier, from 1 to 1000 (default `8`) |
-| `CORTEXDB_REVIEW_GATE` | Server and `cortexdb-mcp-stdio`: `1` leaves proposed and rejected documents and memories out of search and recall (default off; a curation filter, not access control) |
-| `CORTEXDB_SLOW_MS` | Server: log calls slower than this, with the time each stage took (default `1000`, `0` = none) |
-| `CORTEXDB_TRACE` / `CORTEXDB_TRACE_FILE` | Server: log every call; also append the records to a JSON-lines file |
-| `CORTEXDB_LOG_FORMAT` / `CORTEXDB_LOG_LEVEL` | Server: `text` (logfmt, default) or `json`; `debug`, `info` (default), `warn`, `error` |
-| `CORTEXDB_TRACE_MAX_MB` / `CORTEXDB_TRACE_KEEP` / `CORTEXDB_TRACE_MAX_AGE_DAYS` | Server: rotate the trace file at this size (`100`), keep this many old files (`5`) for at most this many days (`30`) |
-| `CORTEXDB_EMBED_PROBE_SECONDS` | Server: probe the embedder this often, for `/healthz` and `/metrics` (default `60`, `0` = off) |
-| `CORTEXDB_RECALL_LOG` | Server and `cortexdb-mcp-stdio`: `1` keeps a log of recalls — queries included — for the `/recalls` page and the `recall_log_*` tools (default off) |
-| `CORTEXDB_RECALL_LOG_DAYS` / `CORTEXDB_RECALL_LOG_MAX_ROWS` | How long (`30` days) and how many (`100000`) recalls the log keeps |
-| `CORTEXDB_MEDIA_VISION_URL` / `CORTEXDB_MEDIA_VISION_MODEL` | Server and `cortexdb-mcp-stdio`: an Ollama vision model that captions images and video frames for `ingest_media` (e.g. `http://localhost:11434` / `qwen3.5:4b`) |
-| `CORTEXDB_MEDIA_TRANSCRIBE_URL` / `CORTEXDB_MEDIA_TRANSCRIBE_MODEL` / `CORTEXDB_MEDIA_TRANSCRIBE_API_KEY` | An OpenAI-compatible `…/v1` transcription endpoint for audio and the sound of videos (OpenAI, or whisper.cpp's `whisper-server --inference-path /v1/audio/transcriptions --convert`) |
-| `CORTEXDB_MEDIA_EMBED_URL` / `CORTEXDB_MEDIA_EMBED_MODEL` / `CORTEXDB_MEDIA_EMBED_API_KEY` | A CLIP-style embedding endpoint (infinity's `/embeddings` with `modality`) that puts images, video frames and text in one space, so an image is found by what it shows and `search_media` takes an image as the query |
-| `CORTEXDB_MEDIA_EMBED_AUDIO` / `CORTEXDB_MEDIA_EMBED_MIN_SCORE` | `1` when that model embeds sound too (CLAP); the cosine a media vector must reach to be a hit (`0.2`) |
-| `CORTEXDB_MEDIA_FRAME_INTERVAL` / `CORTEXDB_MEDIA_MAX_BYTES` | Seconds between the video frames captioned (`10`, `0` = none; needs `ffmpeg`), and the size cap of one file (32 MiB) |
-
 ## Docs
 
-[Website](https://liliang-cn.github.io/cortexdb/) · [Guide](docs/GUIDE.md) (full feature reference) · [Integrating your agent](docs/INTEGRATION.md) (MCP, Go, gRPC clients, REST) · [Examples](examples/README.md) · [Changelog](CHANGELOG.md) · [中文](README_CN.md)
-
-## License
+[Guide](docs/GUIDE.md) · [Plugin](plugins/cortexdb/README.md) · [Live view](docs/GUIDE.md#the-live-view) · [Claude Code mod](docs/GUIDE.md#claude-code-mod) · [Environment variables](docs/GUIDE.md#environment) · [Integrating your agent](docs/INTEGRATION.md) · [Examples](examples/README.md) · [Changelog](CHANGELOG.md) · [中文](README_CN.md)
 
 MIT

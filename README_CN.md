@@ -2,124 +2,53 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/liliang-cn/cortexdb/v2.svg)](https://pkg.go.dev/github.com/liliang-cn/cortexdb/v2) [![CI](https://github.com/liliang-cn/cortexdb/actions/workflows/ci.yml/badge.svg)](https://github.com/liliang-cn/cortexdb/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/liliang-cn/cortexdb/branch/main/graph/badge.svg)](https://codecov.io/gh/liliang-cn/cortexdb) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-一个 SQLite 文件装下 AI 记忆与知识图谱。纯 Go，不用额外跑服务，没有 embedding 模型也能用。
+让你的编程 agent 共用一份记忆。跟 Claude Code 说一次，Codex、你的其他机器、下周的新会话就都知道了。
 
 ![CortexDB 实时视图：两次召回点亮图谱，然后是召回、本体页面和图书馆视图](docs/assets/img/live-view-zh.gif)
 
 ## 安装
 
-| | |
-| --- | --- |
-| Go 库 | `go get github.com/liliang-cn/cortexdb/v2` |
-| Claude Code | `/plugin marketplace add liliang-cn/cortexdb`，再 `/plugin install cortexdb@cortexdb` |
-| Codex | `codex plugin marketplace add liliang-cn/cortexdb && codex plugin add cortexdb@cortexdb` |
-| Claude Code mod（可选） | `/plugin install cortexdb-live@cortexdb` |
-| DeepSeek Harness | `dsh plugin --profile web add "github:liliang-cn/cortexdb#semver:^2&path:/plugins/dsh-cortexdb-memory"`（[说明](plugins/dsh-cortexdb-memory/README.md)） |
-| Obsidian | 把 release 里的 `cortexdb-obsidian.zip` 解压到 `<vault>/.obsidian/plugins/`（[说明](plugins/obsidian-cortexdb/README.md)） |
-| 共享大脑服务端 | `go install github.com/liliang-cn/cortexdb/v2/cmd/cortexdb-grpc@latest` |
-| 客户端 | `cargo add cortexdb-client` · `pip install cortexdb-client` · `npm install cortexdb-client` |
+Claude Code：
 
-## 使用
+```
+/plugin marketplace add liliang-cn/cortexdb
+/plugin install cortexdb@cortexdb
+```
+
+Codex：
+
+```
+codex plugin marketplace add liliang-cn/cortexdb && codex plugin add cortexdb@cortexdb
+```
+
+Go：
+
+```
+go get github.com/liliang-cn/cortexdb/v2
+```
+
+另有 [DeepSeek Harness](plugins/dsh-cortexdb-memory/README.md)、[Obsidian](plugins/obsidian-cortexdb/README.md) 插件，以及 Rust、Python、Node 客户端（`cortexdb-client`）。
+
+## 能做什么
+
+- **agent 记得住。** 偏好、决定、项目里的事实边做边记，下一次提问前自动召回。
+- **一个大脑，多个 agent。** 所有 agent 和机器连同一个 `cortexdb-grpc`，共用一份记忆。
+- **看得见它记了什么。** 网页实时视图：图谱、每一次召回、每一处改动，手机上也能看。
+- **不需要模型。** 没有 embedding 模型也能用；接上模型就有语义检索。
+- **真正的知识图谱。** SPARQL、Cypher、本体、推理、历史版本，想深入就有。
+
+## 在 Go 里用
 
 ```go
 db, _ := cortexdb.Open(cortexdb.DefaultConfig("brain.db"))
-defer db.Close()
 brain := db.KnowledgeMemory()
-_, _ = brain.Remember(ctx, cortexdb.KnowledgeMemoryRememberRequest{MemoryID: "alice-tabs", UserID: "alice", Scope: "user", Content: "Alice 偏好 tab 缩进。"})
-rec, _ := brain.Recall(ctx, cortexdb.KnowledgeMemoryRecallRequest{Query: "Alice 偏好什么?", UserID: "alice"})
+brain.Remember(ctx, cortexdb.KnowledgeMemoryRememberRequest{MemoryID: "tabs", UserID: "alice", Content: "Alice 喜欢用 tab。"})
+rec, _ := brain.Recall(ctx, cortexdb.KnowledgeMemoryRecallRequest{Query: "Alice 喜欢什么？", UserID: "alice"})
 fmt.Println(rec.ContextPack.Text)
 ```
 
-插件给 Claude Code 和 Codex 一个全局大脑 `~/.cortexdb/cortexdb.db`，带 `/remember`、`/recall` 和自动召回 hook。会话一开始就拿到大脑里关于当前项目的近况索引；agent 打开一个文件前，会先被告知这个文件以前发生过什么；会话里的长期事实会被自动记下，`<private>` 里的内容和密钥不会进去。多个 agent、多台机器指向同一个 `cortexdb-grpc`，就共享同一份记忆和图谱。
-
-Codex 中需要在 `/hooks` 审阅并信任插件 hooks，自动召回才会运行。
-配置和 `cortexdb-mcp --doctor --self-test` 诊断用法见[插件指南](plugins/cortexdb/README.md)；诊断命令需要 v2.119.0 或更新版本的二进制。
-
-## 实时视图
-
-大脑之上的网页界面，本地库和共享大脑都能用：运行 `cortexdb-mcp-stdio --graph-3d`，或让 agent 调用 `serve_graph_3d`。
-
-- **图谱**：3D 知识图谱。任何 agent、任何机器发起召回，命中的记录都会亮起来，实时栏写明谁问了什么。
-- **召回**：每一次召回的检索计划、命中和每条的排名原因（需 `CORTEXDB_RECALL_LOG=1`）。
-- **变更**和**活动**：每条事实的新增、替换、撤回，以及大脑处理过的工具调用。
-- **本体**：声明的类型，对照记录实际用的类型。
-- **图书馆**：同一批记忆换成阅览室，按项目上架。
-
-只读，默认浅色，手机也能用，中英文随时切换（顶栏的语言按钮）。详见[指南](docs/GUIDE_CN.md#实时视图)。
-
-## Claude Code mod
-
-`cortexdb-live` 是一个可选的 [mod](https://code.claude.com/docs/en/plugins/mods/overview)，运行在 Claude Code 里，叠在 `cortexdb` 插件之上。装好插件后再装：
-
-```
-/plugin install cortexdb-live@cortexdb
-```
-
-mod 会自己调用插件的三个工具，而钩子里的调用不会弹权限确认，所以要在 `~/.claude/settings.json` 里允许一次（bypass 模式下不需要）：
-
-```json
-"permissions": {
-  "allow": [
-    "mcp__plugin_cortexdb_cortexdb__knowledge_memory_recall",
-    "mcp__plugin_cortexdb_cortexdb__graph_statistics",
-    "mcp__plugin_cortexdb_cortexdb__memory_save"
-  ]
-}
-```
-
-没加的话，状态栏会提示缺哪几条。
-
-- **规划过的召回**：检索之前，haiku 先把每条 prompt 拆成中英文关键词、别名、实体名和检索方式。只是「好」「发」这类确认就不检索。输入框上方显示召回了什么，展开能看到查询规划和每一条结果。隐藏后，下一次召回会自动重新出现；想马上找回刚隐藏的那条，用 `/cortexdb-show`。
-- **状态栏**：当前连的是哪个大脑、节点数、上次召回用时；连不上时显示原因。
-- **自动记忆**：会话空闲 90 秒后，haiku 把新增的对话提炼成长期记忆（`auto:<会话>:<slug>`）。之后再提炼时，同一个 slug 是替换而不是重复写一条。新记忆推翻的旧记忆（换了主机、改了决定）会被标记为已替代：仍然保留，但不再作为当前事实被召回。项目在 Claude Code 里的文件记忆（`~/.claude/projects/<项目>/memory/`）会作为"已记录"交给 haiku，提炼时不会换个说法再记一遍。带图片的提问不做召回。
-
-haiku 用的是 Claude Code 自己的模型额度，不需要 API key。语言：`/config` → `cortexdb-live` → `language`（`auto`、`zh`、`en`）。mod 认插件原有的开关：`cortexdb-recall --disable`、`cortexdb-session-end --disable` 会同时关掉两边的召回和记忆。mod 运行时，插件的 shell 召回和记忆钩子会自动让开，不会重复做。Codex 仍然用那两个钩子。mod 是 Claude Code 的早期功能。
-
-## 里面有什么
-
-- 向量（HNSW、IVF、Flat、二值编码）、FTS5 全文检索、混合检索与图检索
-- `EmbeddedConfig`，给小设备用：SQ8 量化索引、有上限的 SQLite 缓存、断电也不丢的索引快照——10 万条 768 维向量 0.28 秒打开，堆内存 193 MB
-- RAG 知识、分作用域的 agent 记忆、带来源的上下文包——记忆标明是验证过的还是猜测，召回时两者分开
-- RDF 1.2 知识图谱：SPARQL 1.1/1.2、RDFS + OWL 2 RL 推理、SHACL Core + SHACL-SPARQL、RDF/XML 导入——通过 W3C 的 SPARQL 1.1/1.2、RDF 1.2（Turtle、TriG、N-Triples、N-Quads、RDF/XML）和 SHACL 官方测试集，RDFS 和 OWL 2 RL 用的是仓库自己的测试——以及只读 Cypher
-- Palantir 风格的 ontology，带受治理的动作
-- 100+ 工具，进程内调用或走 MCP
-- `serve_graph_3d`：实时 3D 视图，可查找、提问、查询、展开，桌面和手机都能用；Changes 页面即时用文字写出新增、取代、撤回了什么，Entity 页面列出每条关系、当前值为什么生效、取代了什么；也可以切成图书馆，每条记忆是它所属项目书架上的一本书
-- `import_agent_memory`：把 Claude Code、Codex 和 DeepSeek Harness 已有的记忆导进来——记忆笔记、`CLAUDE.md` / `AGENTS.md`、Codex 的记忆库，也可以把历史会话提炼成记忆——本地大脑和共享大脑都行
-- 变更事件流：每次已提交的写入，按顺序、恰好一次
-- 可观测性：request id 和 W3C 链路（`traceparent`）从 MCP 经 gRPC 贯穿到 trace 和召回日志，召回能解释自己、降级时直说，`/metrics` 和 `/healthz` 里有向量服务的健康状况，可选开启的召回日志带 `/recalls` 页面
-- 图片、录音和视频（`ingest_media`）：凭说明文字、图中文字和转写稿用文字问题找到，命中会说出在文件的哪个时间点；有没有嵌入模型都行；配上 CLIP 类媒体嵌入模型后还能按画面内容找，也能以图搜图（`search_media`）
-- 图谱和 ontology 的历史：任何实体、关系、三元组或 schema，都能看到它的每个版本、什么时候因为什么改的、现在哪个版本生效以及为什么（`graph_history`、`knowledge_graph_history`、`ontology_history`）；SPARQL、查找、展开和 Cypher 都支持 `as_of`；实时视图里有实体时间线、As of 固定时刻和 ontology 版本列表
-- 默认 SQLite，换成 `postgres://` DSN 就跑在 PostgreSQL + pgvector 上
-
-## 环境变量
-
-| 变量 | 含义 |
-| --- | --- |
-| `CORTEXDB_PATH` | 数据库文件（默认 `~/.cortexdb/cortexdb.db`） |
-| `CORTEXDB_REMOTE` | 连到共享的 `cortexdb-grpc`，不用本地文件：`host:port` 是明文，`https://host` 走 TLS（放在反向代理后面时用） |
-| `CORTEXDB_GRPC_TOKEN` | 该服务的 Bearer token |
-| `CORTEXDB_GRPC_ADDR` | 服务端监听地址（默认 `127.0.0.1:47821`） |
-| `CORTEXDB_EMBED_BASE_URL` / `CORTEXDB_EMBED_API_KEY` | `cortexdb-mcp-stdio`：OpenAI 兼容的 embeddings 端点和它的 key（没设时退回 `OPENAI_BASE_URL` / `OPENAI_API_KEY`）；不设就是词法模式 |
-| `OPENAI_BASE_URL` / `OPENAI_API_KEY` | 服务端：embeddings 端点和 key（`cortexdb-grpc` 只读这两个，不读 `CORTEXDB_EMBED_BASE_URL`）；不设就是词法模式 |
-| `CORTEXDB_EMBED_MODEL` / `CORTEXDB_EMBED_DIM` | embedding 模型和维度，两边都读（默认 `text-embedding-3-small` / `1536`） |
-| `CORTEXDB_REVIEW_GATE` | 服务端和 `cortexdb-mcp-stdio`：`1` 时待审和被拒的文档、记忆不进搜索和召回（默认关；这是整理用的过滤，不是权限控制） |
-| `CORTEXDB_SLOW_MS` | 服务端：超过这个毫秒数的请求记日志，带各阶段耗时（默认 `1000`，`0` 不记） |
-| `CORTEXDB_TRACE` / `CORTEXDB_TRACE_FILE` | 服务端：每个请求都记；同时把记录追加到 JSON lines 文件 |
-| `CORTEXDB_LOG_FORMAT` / `CORTEXDB_LOG_LEVEL` | 服务端：`text`（logfmt，默认）或 `json`；`debug`、`info`（默认）、`warn`、`error` |
-| `CORTEXDB_TRACE_MAX_MB` / `CORTEXDB_TRACE_KEEP` / `CORTEXDB_TRACE_MAX_AGE_DAYS` | 服务端：trace 文件到这个大小切分（`100`），保留这么多个旧文件（`5`），最长这么多天（`30`） |
-| `CORTEXDB_EMBED_PROBE_SECONDS` | 服务端：每隔多少秒探测向量服务，供 `/healthz` 和 `/metrics`（默认 `60`，`0` 关闭） |
-| `CORTEXDB_RECALL_LOG` | 服务端和 `cortexdb-mcp-stdio`：`1` 记录召回日志（含查询文本），供 `/recalls` 页面和 `recall_log_*` 工具（默认关闭） |
-| `CORTEXDB_RECALL_LOG_DAYS` / `CORTEXDB_RECALL_LOG_MAX_ROWS` | 召回日志保留多久（`30` 天）、最多多少条（`100000`） |
-| `CORTEXDB_MEDIA_VISION_URL` / `CORTEXDB_MEDIA_VISION_MODEL` | 服务端与 `cortexdb-mcp-stdio`：给 `ingest_media` 的图片和视频帧写说明的 Ollama 视觉模型（如 `http://localhost:11434` / `qwen3.5:4b`） |
-| `CORTEXDB_MEDIA_TRANSCRIBE_URL` / `CORTEXDB_MEDIA_TRANSCRIBE_MODEL` / `CORTEXDB_MEDIA_TRANSCRIBE_API_KEY` | 转写音频和视频声音的 OpenAI 兼容 `…/v1` 接口（OpenAI，或 whisper.cpp 的 `whisper-server --inference-path /v1/audio/transcriptions --convert`） |
-| `CORTEXDB_MEDIA_EMBED_URL` / `CORTEXDB_MEDIA_EMBED_MODEL` / `CORTEXDB_MEDIA_EMBED_API_KEY` | CLIP 类嵌入接口（infinity 带 `modality` 的 `/embeddings`），把图片、视频帧和文字放进同一个向量空间：图片能按画面内容被找到，`search_media` 能以图搜图 |
-| `CORTEXDB_MEDIA_EMBED_AUDIO` / `CORTEXDB_MEDIA_EMBED_MIN_SCORE` | 该模型也能嵌入声音（CLAP）时设 `1`；媒体向量算作命中所需的最低余弦（`0.2`） |
-| `CORTEXDB_MEDIA_FRAME_INTERVAL` / `CORTEXDB_MEDIA_MAX_BYTES` | 视频每隔几秒取一帧写说明（`10`，`0` 不取；需要 `ffmpeg`），单个文件的大小上限（32 MiB） |
-
 ## 文档
 
-[官网](https://liliang-cn.github.io/cortexdb/zh/) · [指南](docs/GUIDE_CN.md)（完整功能一览） · [接入你的 agent](docs/INTEGRATION_CN.md)（MCP、Go、gRPC 客户端、REST） · [示例](examples/README.md) · [更新日志](CHANGELOG.md) · [English](README.md)
-
-## License
+[指南](docs/GUIDE_CN.md) · [插件](plugins/cortexdb/README.md) · [实时视图](docs/GUIDE_CN.md#实时视图) · [Claude Code mod](docs/GUIDE_CN.md#claude-code-mod) · [环境变量](docs/GUIDE_CN.md#环境变量) · [接入你的 agent](docs/INTEGRATION_CN.md) · [示例](examples/README.md) · [更新日志](CHANGELOG.md) · [English](README.md)
 
 MIT
