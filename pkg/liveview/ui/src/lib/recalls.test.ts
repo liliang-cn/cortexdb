@@ -115,6 +115,17 @@ describe("the page's URL options", () => {
     expect(optionsFromParams(optionsToParams(o, params("lang=zh")))).toEqual(o);
   });
 
+  it("name the Rules tab ?tab=rules, keep its own r_ parameters, and fall back to the timeline", () => {
+    expect(optionsFromParams(params("tab=rules")).view).toBe("rules");
+    expect(optionsFromParams(params("tab=rules&view=records")).view).toBe("rules");
+    expect(optionsFromParams(params("tab=other")).view).toBe("timeline");
+    const next = optionsToParams({ ...noOptions, view: "rules" }, params("r_project=athanor&project=p&view=records"));
+    expect(next.toString()).toBe("r_project=athanor&tab=rules");
+    expect(optionsToParams(noOptions, next).toString()).toBe("r_project=athanor");
+    const o = { ...noOptions, view: "rules" as const, recall: "r", project: "p" };
+    expect(optionsFromParams(optionsToParams(o, params("")))).toEqual(o);
+  });
+
   it("keep a bad trace in the URL until it is cleared", () => {
     const o = optionsFromParams(params("trace=abc"));
     expect(optionsToParams(o, params("trace=abc")).get("trace")).toBe("abc");

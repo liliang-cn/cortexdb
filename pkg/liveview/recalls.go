@@ -40,6 +40,8 @@ var RecallTools = []string{
 	"recall_log_stats",
 	"recall_feedback",
 	"recall_feedback_export",
+	// The Rules tab and a recall's rules group (recall_rules.go).
+	"memory_standing_rules",
 }
 
 const (
@@ -67,13 +69,18 @@ func (s *Server) handleRecalls(w http.ResponseWriter, r *http.Request) {
 	writeExplore(w, out, err)
 }
 
-// handleRecall answers one recall with its explain record.
+// handleRecall answers one recall with its explain record, its standing
+// rules marked (see markRecallRules).
 func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := s.exploreContext(r)
 	defer cancel()
 	var out cortexdb.RecallLogEntry
 	err := callInto(ctx, s.src.Call, "recall_log_get", cortexdb.RecallLogGetRequest{RecallID: r.URL.Query().Get("id")}, &out)
-	writeExplore(w, out, err)
+	if err != nil {
+		writeExplore(w, nil, err)
+		return
+	}
+	writeExplore(w, s.markRecallRules(ctx, out), nil)
 }
 
 // handleRecallStats answers the per-record view.

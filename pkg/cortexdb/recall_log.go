@@ -213,6 +213,10 @@ type RecallLogHit struct {
 	GradeWhy string `json:"grade_why,omitempty"`
 	// Verdict is the feedback given on this hit in this recall, if any.
 	Verdict string `json:"verdict,omitempty"`
+	// Rule says whether a memory hit was a standing rule when it was
+	// recalled: set apart in the context pack's rules section. Nil for a
+	// knowledge hit, and for a memory hit logged before rules were kept.
+	Rule *bool `json:"rule,omitempty"`
 }
 
 // RecallLogEntry is one logged recall.
@@ -253,7 +257,16 @@ func metaString(m map[string]any, keys ...string) string {
 // index recall cuts them.
 func recallLogHits(resp *KnowledgeMemoryRecallResponse) []RecallLogHit {
 	out := make([]RecallLogHit, 0, len(resp.Memories)+len(resp.Knowledge))
+	rules := map[string]bool{}
+	for _, s := range resp.ContextPack.Sections {
+		if s.Kind == "rules" {
+			for _, id := range s.SourceIDs {
+				rules[id] = true
+			}
+		}
+	}
 	for i, h := range resp.Memories {
+		rule := rules[h.Memory.ID] || IsStandingRule(h.Memory)
 		m := h.Memory.Metadata
 		date := metaString(m, "date")
 		if date == "" && !h.Memory.CreatedAt.IsZero() {
@@ -263,7 +276,7 @@ func recallLogHits(resp *KnowledgeMemoryRecallResponse) []RecallLogHit {
 			Kind: "memory", ID: h.Memory.ID, NodeID: memoryGraphNodeID(h.Memory.ID), Rank: i + 1,
 			Title: firstLine(h.Memory.Content, recallLogTitleRunes), Score: h.Score, Similarity: h.Similarity, Coverage: h.Coverage, Via: h.Via,
 			Writer: metaString(m, metadataWrittenBy), Source: metaString(m, "source", "agent"), Project: metaString(m, "project"), Date: date,
-			Grade: h.Memory.Grade, GradeWhy: h.Memory.GradeWhy,
+			Grade: h.Memory.Grade, GradeWhy: h.Memory.GradeWhy, Rule: &rule,
 		})
 	}
 	for i, h := range resp.Knowledge {

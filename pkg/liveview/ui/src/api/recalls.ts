@@ -32,6 +32,13 @@ export interface RecallHit {
   grade_why?: string;
   /** The mark given on this hit in this recall, if any. */
   verdict?: RecallVerdict | (string & {});
+  /**
+   * Whether a memory hit was a standing rule when it was recalled (the
+   * context pack's rules section). Absent for knowledge, and for a recall
+   * logged before the log kept it unless the server marked it now (see
+   * RecallEntry.rules_now).
+   */
+  rule?: boolean;
 }
 
 /** What the recall searched with (RecallExplainPlan). */
@@ -114,6 +121,51 @@ export interface RecallEntry {
   hits: RecallHit[];
   /** Only recalls/get carries it. */
   explain?: RecallExplain;
+  /** recalls/get: the log predates rule marks, and the hits were marked by what their memories are now. */
+  rules_now?: boolean;
+}
+
+/** Where a standing rule stands against the session start's caps. */
+export type StandingRuleStatus = "injected" | "over_budget" | "other_project";
+
+/** What a near miss lacks. */
+export type StandingRuleMissing = "type" | "importance";
+
+/** One standing rule or near miss (StandingRuleRow in pkg/liveview/recall_rules.go). */
+export interface StandingRuleRow {
+  id: string;
+  /** The memory's text, cut at 2000 characters. */
+  content: string;
+  truncated?: boolean;
+  type?: string;
+  importance: number;
+  project?: string;
+  date?: string;
+  /** RFC 3339. */
+  created_at?: string;
+  recall_count: number;
+  /** Set for a rule, absent for a near miss. */
+  status?: StandingRuleStatus | (string & {});
+  /** Set for a near miss. */
+  missing?: Array<StandingRuleMissing | (string & {})>;
+  node_id: string;
+}
+
+/** The Rules tab (StandingRulesView). */
+export interface StandingRulesView {
+  /** The session project the injection was worked out for; "" for none. */
+  project: string;
+  projects: string[];
+  /** In the order the session start considers them; other projects' rules last. */
+  rules: StandingRuleRow[];
+  injected: number;
+  chars: number;
+  max_rules: number;
+  max_chars: number;
+  near_misses: StandingRuleRow[];
+  near_miss_total: number;
+  /** The brain answered without the full list: only the injected rules, no near misses. */
+  partial?: boolean;
 }
 
 export interface RecallListResponse {
@@ -200,6 +252,8 @@ export const recallsApi = {
   get: (id: string, o: Opts = {}) => getJSON<RecallEntry>("api/recalls/get", { id }, o.signal),
 
   stats: (limit: number, o: Opts = {}) => getJSON<RecallStats>("api/recalls/stats", { limit }, o.signal),
+
+  rules: (project: string, o: Opts = {}) => getJSON<StandingRulesView>("api/recalls/rules", { project }, o.signal),
 
   /** A JSON POST from this page: the server refuses a form post and another origin. */
   feedback: (req: RecallFeedbackRequest, o: Opts = {}) => postJSON<RecallFeedbackResponse>("api/recalls/feedback", req, o.signal),

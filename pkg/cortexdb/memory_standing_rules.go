@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -46,6 +47,11 @@ const (
 	// standingRuleLineRunes is how much of one rule a line keeps; the whole
 	// memory is a memory_get away.
 	standingRuleLineRunes = 160
+	// standingEntryRunes is how much of a memory a Ranked or NearMisses
+	// entry keeps.
+	standingEntryRunes = 2000
+	// standingNearMissMax caps NearMisses; NearMissTotal counts them all.
+	standingNearMissMax = 100
 )
 
 // StandingRuleTypes are the memory types a standing rule may carry.
@@ -65,6 +71,11 @@ type StandingRulesRequest struct {
 	MaxRules int `json:"max_rules,omitempty"`
 	// MaxChars caps the rendered text, in characters (0 = 2400).
 	MaxChars int `json:"max_chars,omitempty"`
+	// All also fills the response's Ranked, NearMisses and budget fields:
+	// every rule that qualifies, whether or not it fit the caps, and the
+	// global memories one field short of a rule. For a page that shows them;
+	// a session start leaves it off.
+	All bool `json:"all,omitempty"`
 }
 
 // StandingRule is one rule as given: its first lines, cut.
@@ -79,6 +90,47 @@ type StandingRule struct {
 	Truncated bool `json:"truncated,omitempty"`
 }
 
+// Where a rule stands against a session start (StandingRuleEntry.Status).
+const (
+	// StandingRuleInjected: the rule is in the block.
+	StandingRuleInjected = "injected"
+	// StandingRuleOverBudget: the rule qualifies and the caps left it out.
+	StandingRuleOverBudget = "over_budget"
+	// StandingRuleOtherProject: the rule names a project other than the
+	// request's, so this session is not given it.
+	StandingRuleOtherProject = "other_project"
+)
+
+// What a near miss lacks (StandingRuleEntry.Missing).
+const (
+	// StandingRuleMissingType: no type metadata.
+	StandingRuleMissingType = "type"
+	// StandingRuleMissingImportance: importance under the minimum.
+	StandingRuleMissingImportance = "importance"
+)
+
+// StandingRuleEntry is one memory as an All request lists it: a rule with
+// where it stands, or a near miss with what it lacks.
+type StandingRuleEntry struct {
+	ID string `json:"id"`
+	// Content is the memory's text, cut at 2000 characters.
+	Content    string  `json:"content"`
+	Truncated  bool    `json:"truncated,omitempty"`
+	Type       string  `json:"type,omitempty"`
+	Importance float64 `json:"importance"`
+	Project    string  `json:"project,omitempty"`
+	Date       string  `json:"date,omitempty"`
+	// CreatedAt is when the memory was saved, RFC 3339.
+	CreatedAt   string `json:"created_at,omitempty"`
+	RecallCount int    `json:"recall_count"`
+	// Status is StandingRuleInjected, StandingRuleOverBudget or
+	// StandingRuleOtherProject for a rule, empty for a near miss.
+	Status string `json:"status,omitempty"`
+	// Missing names what a near miss lacks: StandingRuleMissingType or
+	// StandingRuleMissingImportance.
+	Missing []string `json:"missing,omitempty"`
+}
+
 // StandingRulesResponse lists the rules most important first, and the text an
 // agent is handed.
 type StandingRulesResponse struct {
@@ -87,6 +139,22 @@ type StandingRulesResponse struct {
 	Total int `json:"total"`
 	// Text is the rules as one block, empty when there are none.
 	Text string `json:"text"`
+
+	// Filled when All is asked, and absent otherwise.
+
+	// Ranked is every rule that qualifies, in the order the caps consider
+	// them, each with its Status; the rules of other projects come last.
+	Ranked []StandingRuleEntry `json:"ranked,omitempty"`
+	// NearMisses are current global memories one field short of a rule: a
+	// rule's type under the minimum importance, or the minimum importance
+	// with no type. Most important first, at most 100.
+	NearMisses    []StandingRuleEntry `json:"near_misses,omitempty"`
+	NearMissTotal int                 `json:"near_miss_total,omitempty"`
+	// Chars is the length of Text in characters; MaxRules and MaxChars are
+	// the caps it was built under.
+	Chars    int `json:"chars,omitempty"`
+	MaxRules int `json:"max_rules,omitempty"`
+	MaxChars int `json:"max_chars,omitempty"`
 }
 
 // StandingRulesHeader starts StandingRulesResponse.Text, so a hook can tell
@@ -173,6 +241,10 @@ func (db *DB) StandingRules(ctx context.Context, req StandingRulesRequest) (*Sta
 		}
 	}
 	resp := &StandingRulesResponse{Rules: []StandingRule{}}
+	if req.All {
+		resp.MaxRules, resp.MaxChars = maxRules, maxChars
+		resp.Ranked, resp.NearMisses = []StandingRuleEntry{}, []StandingRuleEntry{}
+	}
 	if len(lowered) == 0 {
 		return resp, nil
 	}
@@ -181,69 +253,51 @@ func (db *DB) StandingRules(ctx context.Context, req StandingRulesRequest) (*Sta
 		args = append(args, t)
 	}
 	typeExpr := db.Dialect().JSONTextGuarded("m.metadata", "type")
-	rows, err := db.query(ctx, `
-		SELECT m.id, m.session_id, s.user_id, m.role, m.content, m.metadata, m.created_at
-		FROM messages m
-		JOIN sessions s ON s.id = m.session_id
-		WHERE m.session_id LIKE 'memory:global:%'
-		  AND LOWER(`+typeExpr+`) IN (`+strings.Join(placeholders, ", ")+`)`, args...)
+	candidates, err := db.globalMemories(ctx, `LOWER(`+typeExpr+`) IN (`+strings.Join(placeholders, ", ")+`)`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("standing rules: %w", err)
 	}
-	var candidates []MemoryRecord
-	for rows.Next() {
-		var record MemoryRecord
-		var metadataJSON []byte
-		var createdAt time.Time
-		if err := rows.Scan(&record.ID, &record.SessionID, &record.UserID, &record.Role, &record.Content, &metadataJSON, &createdAt); err != nil {
-			_ = rows.Close()
-			return nil, fmt.Errorf("scan standing rule: %w", err)
-		}
-		record.CreatedAt = createdAt
-		if len(metadataJSON) > 0 {
-			if err := json.Unmarshal(metadataJSON, &record.Metadata); err != nil {
-				continue
-			}
-		}
-		applyMemoryMetadata(&record)
-		candidates = append(candidates, record)
-	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return nil, err
-	}
-	_ = rows.Close()
 
-	project := standingProjectKey(req.Project)
 	permitted := map[string]bool{}
-	var kept []MemoryRecord
-	for _, m := range candidates {
-		if !standingRuleMatch(m, types, minImportance) || db.memoryFilteredBy(ctx, m) != "" {
-			continue
-		}
-		if p, _ := stringFromAny(m.Metadata["project"]); strings.TrimSpace(p) != "" && standingProjectKey(p) != project {
-			continue
-		}
+	readable := func(m MemoryRecord) (bool, error) {
 		ok, seen := permitted[m.SessionID]
 		if !seen {
+			var err error
 			if ok, err = db.memoryReadPermitted(ctx, m.SessionID); err != nil {
-				return nil, err
+				return false, err
 			}
 			permitted[m.SessionID] = ok
 		}
-		if ok {
+		return ok, nil
+	}
+	project := standingProjectKey(req.Project)
+	// kept is what this session is given, elsewhere the rules of other
+	// projects, low the current rules saved under the threshold.
+	var kept, elsewhere, low []MemoryRecord
+	for _, m := range candidates {
+		if !standingRuleMatch(m, types, math.Inf(-1)) || db.memoryFilteredBy(ctx, m) != "" {
+			continue
+		}
+		if m.Importance < minImportance && !req.All {
+			continue
+		}
+		ok, err := readable(m)
+		if err != nil {
+			return nil, err
+		}
+		switch {
+		case !ok:
+		case m.Importance < minImportance:
+			low = append(low, m)
+		case standingProjectElsewhere(m, project):
+			if req.All {
+				elsewhere = append(elsewhere, m)
+			}
+		default:
 			kept = append(kept, m)
 		}
 	}
-	sort.SliceStable(kept, func(i, j int) bool {
-		if kept[i].Importance != kept[j].Importance {
-			return kept[i].Importance > kept[j].Importance
-		}
-		if !kept[i].CreatedAt.Equal(kept[j].CreatedAt) {
-			return kept[i].CreatedAt.After(kept[j].CreatedAt)
-		}
-		return kept[i].ID < kept[j].ID
-	})
+	sortStanding(kept)
 	resp.Total = len(kept)
 
 	header := func(shown int) string {
@@ -256,32 +310,176 @@ func (db *DB) StandingRules(ctx context.Context, req StandingRulesRequest) (*Sta
 	// The header is counted in the budget at its longest.
 	used := utf8.RuneCountInString(header(0))
 	for _, m := range kept {
-		if len(resp.Rules) >= maxRules {
-			break
-		}
+		status := StandingRuleOverBudget
 		content, cut := standingRuleLine(m.Content)
 		line := fmt.Sprintf("- [%s] %s", m.ID, content)
 		size := utf8.RuneCountInString(line) + 1
-		if used+size > maxChars {
-			continue
+		if len(resp.Rules) < maxRules && used+size <= maxChars {
+			status = StandingRuleInjected
+			used += size
+			lines = append(lines, line)
+			typ, _ := stringFromAny(m.Metadata["type"])
+			proj, _ := stringFromAny(m.Metadata["project"])
+			resp.Rules = append(resp.Rules, StandingRule{
+				ID: m.ID, Content: content, Type: typ, Importance: m.Importance,
+				Project: proj, Date: standingDate(m), Truncated: cut,
+			})
 		}
-		used += size
-		lines = append(lines, line)
-		date, _ := stringFromAny(m.Metadata["date"])
-		if date == "" && !m.CreatedAt.IsZero() {
-			date = m.CreatedAt.UTC().Format("2006-01-02")
+		if req.All {
+			resp.Ranked = append(resp.Ranked, standingEntry(m, status))
 		}
-		typ, _ := stringFromAny(m.Metadata["type"])
-		proj, _ := stringFromAny(m.Metadata["project"])
-		resp.Rules = append(resp.Rules, StandingRule{
-			ID: m.ID, Content: content, Type: typ, Importance: m.Importance,
-			Project: proj, Date: date, Truncated: cut,
-		})
 	}
 	if len(lines) > 0 {
 		resp.Text = header(len(resp.Rules)) + "\n" + strings.Join(lines, "\n")
 	}
+	if !req.All {
+		return resp, nil
+	}
+	resp.Chars = utf8.RuneCountInString(resp.Text)
+	sortStanding(elsewhere)
+	for _, m := range elsewhere {
+		resp.Ranked = append(resp.Ranked, standingEntry(m, StandingRuleOtherProject))
+	}
+
+	// The near misses: a rule's type under the threshold, and the threshold
+	// with no type. Read off the metadata, as the rules are.
+	var near []StandingRuleEntry
+	for _, m := range low {
+		e := standingEntry(m, "")
+		e.Missing = []string{StandingRuleMissingImportance}
+		near = append(near, e)
+	}
+	untyped, err := db.globalMemories(ctx, `COALESCE(`+typeExpr+`, '') = ''`)
+	if err != nil {
+		return nil, fmt.Errorf("standing rules: %w", err)
+	}
+	var high []MemoryRecord
+	for _, m := range untyped {
+		if typ, _ := stringFromAny(m.Metadata["type"]); strings.TrimSpace(typ) != "" {
+			continue
+		}
+		if !standingCurrentGlobal(m) || m.Importance < minImportance || db.memoryFilteredBy(ctx, m) != "" {
+			continue
+		}
+		ok, err := readable(m)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			high = append(high, m)
+		}
+	}
+	for _, m := range high {
+		e := standingEntry(m, "")
+		e.Missing = []string{StandingRuleMissingType}
+		near = append(near, e)
+	}
+	sort.SliceStable(near, func(i, j int) bool {
+		if near[i].Importance != near[j].Importance {
+			return near[i].Importance > near[j].Importance
+		}
+		if near[i].CreatedAt != near[j].CreatedAt {
+			return near[i].CreatedAt > near[j].CreatedAt
+		}
+		return near[i].ID < near[j].ID
+	})
+	resp.NearMissTotal = len(near)
+	if len(near) > standingNearMissMax {
+		near = near[:standingNearMissMax]
+	}
+	resp.NearMisses = append(resp.NearMisses, near...)
 	return resp, nil
+}
+
+// globalMemories reads the memories of the global buckets that match where.
+func (db *DB) globalMemories(ctx context.Context, where string, args ...any) ([]MemoryRecord, error) {
+	rows, err := db.query(ctx, `
+		SELECT m.id, m.session_id, s.user_id, m.role, m.content, m.metadata, m.created_at
+		FROM messages m
+		JOIN sessions s ON s.id = m.session_id
+		WHERE m.session_id LIKE 'memory:global:%'
+		  AND `+where, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []MemoryRecord
+	for rows.Next() {
+		var record MemoryRecord
+		var metadataJSON []byte
+		var createdAt time.Time
+		if err := rows.Scan(&record.ID, &record.SessionID, &record.UserID, &record.Role, &record.Content, &metadataJSON, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan standing rule: %w", err)
+		}
+		record.CreatedAt = createdAt
+		if len(metadataJSON) > 0 {
+			if err := json.Unmarshal(metadataJSON, &record.Metadata); err != nil {
+				continue
+			}
+		}
+		applyMemoryMetadata(&record)
+		out = append(out, record)
+	}
+	return out, rows.Err()
+}
+
+// standingCurrentGlobal is standingRuleMatch without the type and the
+// importance: global, and current.
+func standingCurrentGlobal(m MemoryRecord) bool {
+	scope := m.Scope
+	if scope == "" {
+		scope = scopeFromBucketID(m.SessionID)
+	}
+	return scope == MemoryScopeGlobal && !memorySuperseded(m) && !memoryExpired(m) && m.ReviewStatus != ReviewRejected
+}
+
+// standingProjectElsewhere reports whether a rule names a project other than
+// the session's (project is a standingProjectKey).
+func standingProjectElsewhere(m MemoryRecord, project string) bool {
+	p, _ := stringFromAny(m.Metadata["project"])
+	return strings.TrimSpace(p) != "" && standingProjectKey(p) != project
+}
+
+// sortStanding puts rules in the order the session start considers them: most
+// important first, then newest, then by id.
+func sortStanding(rules []MemoryRecord) {
+	sort.SliceStable(rules, func(i, j int) bool {
+		if rules[i].Importance != rules[j].Importance {
+			return rules[i].Importance > rules[j].Importance
+		}
+		if !rules[i].CreatedAt.Equal(rules[j].CreatedAt) {
+			return rules[i].CreatedAt.After(rules[j].CreatedAt)
+		}
+		return rules[i].ID < rules[j].ID
+	})
+}
+
+// standingDate is the memory's own date, else the day it was saved.
+func standingDate(m MemoryRecord) string {
+	date, _ := stringFromAny(m.Metadata["date"])
+	if date == "" && !m.CreatedAt.IsZero() {
+		date = m.CreatedAt.UTC().Format("2006-01-02")
+	}
+	return date
+}
+
+// standingEntry is one memory as StandingRulesResponse.Ranked and NearMisses
+// list it.
+func standingEntry(m MemoryRecord, status string) StandingRuleEntry {
+	typ, _ := stringFromAny(m.Metadata["type"])
+	proj, _ := stringFromAny(m.Metadata["project"])
+	content, cut := m.Content, false
+	if runes := []rune(content); len(runes) > standingEntryRunes {
+		content, cut = string(runes[:standingEntryRunes])+"…", true
+	}
+	e := StandingRuleEntry{
+		ID: m.ID, Content: content, Truncated: cut, Type: typ, Importance: m.Importance,
+		Project: proj, Date: standingDate(m), RecallCount: memoryRecallCount(m.Metadata), Status: status,
+	}
+	if !m.CreatedAt.IsZero() {
+		e.CreatedAt = m.CreatedAt.UTC().Format(time.RFC3339)
+	}
+	return e
 }
 
 // standingRuleLine flattens a rule and cuts it to standingRuleLineRunes.

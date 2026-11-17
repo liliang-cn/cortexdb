@@ -320,6 +320,7 @@ func New(ctx context.Context, src *Source, interval time.Duration, activity bool
 	mux.HandleFunc("/api/recalls/heat", s.serves(s.handleRecallHeat, PageRecalls))
 	mux.HandleFunc("/api/recalls/feedback", s.serves(s.handleRecallFeedback, PageRecalls))
 	mux.HandleFunc("/api/recalls/golden", s.serves(s.handleRecallGolden, PageRecalls))
+	mux.HandleFunc("/api/recalls/rules", s.serves(s.handleRecallRules, PageRecalls))
 	// The analysis page: the overview's charts and the builder. See analysis.go.
 	mux.HandleFunc("/api/analysis/overview", s.serves(s.handleAnalysisOverview, PageAnalysis))
 	mux.HandleFunc("/api/analysis/fields", s.serves(s.handleAnalysisFields, PageAnalysis))
