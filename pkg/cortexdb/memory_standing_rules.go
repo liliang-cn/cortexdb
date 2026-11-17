@@ -146,8 +146,8 @@ type StandingRulesResponse struct {
 	// them, each with its Status; the rules of other projects come last.
 	Ranked []StandingRuleEntry `json:"ranked,omitempty"`
 	// NearMisses are current global memories one field short of a rule: a
-	// rule's type under the minimum importance, or the minimum importance
-	// with no type. Most important first, at most 100.
+	// rule's type under the minimum importance. Most important first, at
+	// most 100.
 	NearMisses    []StandingRuleEntry `json:"near_misses,omitempty"`
 	NearMissTotal int                 `json:"near_miss_total,omitempty"`
 	// Chars is the length of Text in characters; MaxRules and MaxChars are
@@ -341,37 +341,13 @@ func (db *DB) StandingRules(ctx context.Context, req StandingRulesRequest) (*Sta
 		resp.Ranked = append(resp.Ranked, standingEntry(m, StandingRuleOtherProject))
 	}
 
-	// The near misses: a rule's type under the threshold, and the threshold
-	// with no type. Read off the metadata, as the rules are.
+	// The near misses: a rule's type under the threshold, read off the
+	// metadata as the rules are. A memory with no type is not one: on a real
+	// brain nearly all of those are facts some writer left untyped.
 	var near []StandingRuleEntry
 	for _, m := range low {
 		e := standingEntry(m, "")
 		e.Missing = []string{StandingRuleMissingImportance}
-		near = append(near, e)
-	}
-	untyped, err := db.globalMemories(ctx, `COALESCE(`+typeExpr+`, '') = ''`)
-	if err != nil {
-		return nil, fmt.Errorf("standing rules: %w", err)
-	}
-	var high []MemoryRecord
-	for _, m := range untyped {
-		if typ, _ := stringFromAny(m.Metadata["type"]); strings.TrimSpace(typ) != "" {
-			continue
-		}
-		if !standingCurrentGlobal(m) || m.Importance < minImportance || db.memoryFilteredBy(ctx, m) != "" {
-			continue
-		}
-		ok, err := readable(m)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			high = append(high, m)
-		}
-	}
-	for _, m := range high {
-		e := standingEntry(m, "")
-		e.Missing = []string{StandingRuleMissingType}
 		near = append(near, e)
 	}
 	sort.SliceStable(near, func(i, j int) bool {
