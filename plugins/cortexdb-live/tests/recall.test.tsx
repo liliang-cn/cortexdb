@@ -79,6 +79,10 @@ type World = {
   files?: Record<string, string>
   // ontology answers ontology_list: the brain's active schemas.
   ontology?: object
+  // rules answers memory_standing_rules; shellStart is what the shell
+  // SessionStart hook gave.
+  rules?: object
+  shellStart?: string[]
 }
 
 type Seen = {
@@ -139,6 +143,8 @@ const world = (on: On, w: World): Seen => {
           ? { ok: true }
           : e.tool === 'ontology_list'
             ? (w.ontology ?? { schemas: [] })
+          : e.tool === 'memory_standing_rules'
+            ? (w.rules ?? { rules: [], text: '' })
           : isCaptureLookup && w.existing
             ? w.existing
             : (w.payload ?? recallPayload)
@@ -172,6 +178,7 @@ const world = (on: On, w: World): Seen => {
     return { value: undefined }
   })
   on('classic.UserPromptSubmit', () => ({ additionalContext: [SHELL, 'another plugin'] }))
+  on('classic.SessionStart', () => ({ additionalContext: w.shellStart ?? ['directive'] }))
   return seen
 }
 
@@ -688,4 +695,60 @@ test('capture switched off writes nothing', async ($, on) => {
   await clock.advance(91 * 1000)
 
   expect(seen.calls.some(c => c.tool === 'memory_save')).toBe(false)
+})
+
+const RULES = {
+  rules: [{ id: 'rule-dev-ports' }],
+  text: 'Standing rules from CortexDB: they hold for every task in this session, whatever the prompt:\n- [rule-dev-ports] Never use common ports such as 8080.',
+}
+
+const rulesPayload = {
+  memories: [
+    { memory: { id: 'note', content: 'The API lives in cmd/api.' } },
+    { memory: { id: 'ports', content: 'Pick a random port above 3000.', metadata: { scope: 'global', type: 'preference', importance: 0.9 } } },
+  ],
+  context_pack: { sections: [] },
+}
+
+test('session start hands over the standing rules whatever the prompt', async ($, on) => {
+  const seen = world(on, { autorecall: 'on', root: '/w/athanor', rules: RULES })
+
+  const out = await $.classic.SessionStart({ source: 'startup' } as never)
+
+  expect(out.additionalContext).toEqual(['directive', RULES.text])
+  expect(seen.calls.find(c => c.tool === 'memory_standing_rules')?.args).toEqual({ max_chars: 2400, project: 'athanor' })
+  // The first prompt does not ask again.
+  await $.classic.UserPromptSubmit({ prompt: 'spin up the API' })
+  expect(seen.calls.filter(c => c.tool === 'memory_standing_rules').length).toBe(1)
+})
+
+test('rules the shell hook already gave are not given twice', async ($, on) => {
+  const seen = world(on, { autorecall: 'on', rules: RULES, shellStart: ['directive\n\n' + RULES.text] })
+
+  const out = await $.classic.SessionStart({ source: 'startup' } as never)
+
+  expect(out.additionalContext).toEqual(['directive\n\n' + RULES.text])
+  expect(seen.calls.some(c => c.tool === 'memory_standing_rules')).toBe(false)
+})
+
+test('a brain still connecting at session start gives the rules with the first prompt', async ($, on) => {
+  const seen = world(on, { autorecall: 'on', rules: RULES, connectsAfter: 1 })
+
+  const start = await $.classic.SessionStart({ source: 'startup' } as never)
+  expect(start.additionalContext).toEqual(['directive'])
+
+  const out = await $.classic.UserPromptSubmit({ prompt: 'what does Alice prefer?' })
+  expect(out.additionalContext?.[0]).toBe(RULES.text)
+  await $.classic.UserPromptSubmit({ prompt: 'and in Go?' })
+  expect(seen.calls.filter(c => c.tool === 'memory_standing_rules').length).toBe(2)
+})
+
+test('a recalled standing rule comes first and says it is one', async ($, on) => {
+  world(on, { autorecall: 'on', payload: rulesPayload })
+
+  const out = await $.classic.UserPromptSubmit({ prompt: 'spin up the API' })
+
+  const lines = (out.additionalContext?.[1] ?? '').split('\n')
+  expect(lines[1]).toContain('- ports [STANDING RULE')
+  expect(lines[2]).toContain('- note [')
 })

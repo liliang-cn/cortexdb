@@ -60,6 +60,7 @@ ${CLAUDE_PLUGIN_ROOT}/bin/cortexdb-mcp.cmd
 | `CORTEXDB_GRPC_TOKEN` | _(unset)_ | Bearer token for `CORTEXDB_REMOTE`; must match the token the server was started with. |
 | `CORTEXDB_RECALL_TOPK` | `3` | How many matched memories the auto-recall hook injects per prompt (see below). |
 | `CORTEXDB_SESSION_CONTEXT_MAX` | `30` | How many of the project's memories the SessionStart index lists (see [Proactive memory](#proactive-memory-sessionstart)). |
+| `CORTEXDB_SESSION_RULES_CHARS` | `2400` | How many characters the standing rules take at SessionStart. |
 | `CORTEXDB_EMBED_BASE_URL` | _(unset)_ | OpenAI-compatible `/embeddings` base URL. **Setting it turns on semantic retrieval** (hybrid vector + lexical). Point it at any provider, including a local Ollama: `http://localhost:11434/v1`. `OPENAI_BASE_URL` is accepted as a fallback (parity with `cortexdb-grpc`). |
 | `CORTEXDB_EMBED_MODEL` | `text-embedding-3-small` | Embedding model name (e.g. `embeddinggemma` for a local Ollama). |
 | `CORTEXDB_EMBED_DIM` | `1536` | Embedding dimension — must match the model (e.g. `768` for `embeddinggemma`). |
@@ -160,6 +161,8 @@ Notes:
 When auto-recall is enabled, a `SessionStart` hook injects a short standing directive each session so the assistant uses the brain **proactively** — recall relevant context before answering, and save durable preferences/decisions/facts without being asked. It respects the same on/off switch as auto-recall, so it stays silent on machines where you declined.
 
 With it comes an index of what the brain knows about the project the session starts in (`cortexdb-mcp --session-context`): the project is the graph node of type `project` named like the working directory or its git repository (case and punctuation ignored, so `cortex-db` finds `CortexDB`), and the index lists the memories that mention it, newest first, one line each — id, date, first line — leaving out superseded ones. The first prompt of a session ("carry on", "what's left?") gives the per-prompt recall nothing to search on; this is what the agent knows before it. It is an index on purpose: the agent fetches the ones it needs whole with `memory_get` `memory_ids`. At most `CORTEXDB_SESSION_CONTEXT_MAX` (default 30) entries.
+
+Before that index come the standing rules (`memory_standing_rules`): global memories of type `preference` or `rule` saved with importance 0.8 or more, still current, most important first, within `CORTEXDB_SESSION_RULES_CHARS` (default 2400) — "never use port 8080" reaches the agent when the prompt is "start a dev server", which shares none of its words. Rules tagged with another project are left out. The per-prompt recall does not repeat them, and when it finds a rule anyway it lists it first, marked `STANDING RULE`. A brain older than the tool gives no rules block and the rest is unchanged.
 
 ## Auto-recall (Claude Code and Codex)
 

@@ -330,6 +330,22 @@ asserted = untagged > held > refused；召回时也作用于文档的 `_grade`�
 `unverified_memories` 段，标题 "Unverified — said, not checked"；已验证的记忆那一行写明核实依据。
 自动召回注入的文本里，猜测在括号最前面标 `UNVERIFIED (asserted)`，已验证的标 `verified: …`。
 
+### 常驻规则
+
+常驻规则是 scope 为 global、`type` 为 `preference` 或 `rule`、importance 不低于 0.8、并且仍然有效
+（没被取代、没过期、没被拒绝）的记忆——自动捕获把长期偏好存成 0.85 以上的 `preference`。
+这类规则的字面很少和它约束的任务重合（"起个 dev server" 不会提到"端口"），所以不交给召回：
+
+- `memory_standing_rules`（库里是 `db.StandingRules`）按重要度列出它们，受 `max_rules`（默认 16）
+  和 `max_chars`（默认 2400）限制，每条截到 160 个字符（全文用 `memory_get`）。metadata 里写了
+  `project` 的规则只在那个项目里给。`text` 是直接注入的文本块。
+- 插件的 SessionStart 钩子和 `cortexdb-live` mod 在会话开始时把这块放在项目索引前面，不看第一条
+  prompt 是什么；之后 20 条 prompt 内的逐条召回不再重复这些规则。
+- 召回命中规则时，context pack 把它放进 `rules` 段，排在图谱事实和其他记忆前面（文本里是
+  `[RULES]`；index 级别也先列规则并保留该段的 id），自动召回注入的文本也先列它，标 `STANDING RULE`。
+
+没有 `type` 的记忆不算常驻规则：手写规则时带上 `metadata: {"type": "preference"}`，importance 给 0.85 以上。
+
 自动捕获会给写入的记忆打等级：只有对话里看得到核实过程才标 `verified`，猜测标 `asserted`（内容里也写明），
 偏好和决定不打等级——它们记录的是某人说了什么、选了什么。后来证实的猜测另存一条 verified 记忆并
 `supersedes` 原来那条，历史里两条都在。`--export-memory` 把 `grade` 和 `grade_why` 写进每个文件，
@@ -882,7 +898,7 @@ mod 会自己调用插件的三个工具，而钩子里的调用不会弹权限�
 - **状态栏**：当前连的是哪个大脑、节点数、上次召回用时；连不上时显示原因。
 - **自动记忆**：会话空闲 90 秒后，haiku 把新增的对话提炼成长期记忆（`auto:<会话>:<slug>`）。之后再提炼时，同一个 slug 是替换而不是重复写一条。新记忆推翻的旧记忆（换了主机、改了决定）会被标记为已替代：仍然保留，但不再作为当前事实被召回。项目在 Claude Code 里的文件记忆（`~/.claude/projects/<项目>/memory/`）会作为"已记录"交给 haiku，提炼时不会换个说法再记一遍。带图片的提问不做召回。
 
-haiku 用的是 Claude Code 自己的模型额度，不需要 API key。语言：`/config` → `cortexdb-live` → `language`（`auto`、`zh`、`en`）。mod 认插件原有的开关：`cortexdb-recall --disable`、`cortexdb-session-end --disable` 会同时关掉两边的召回和记忆。mod 运行时，插件的 shell 召回和记忆钩子会自动让开，不会重复做。Codex 仍然用那两个钩子。mod 是 Claude Code 的早期功能。
+haiku 用的是 Claude Code 自己的模型额度，不需要 API key。语言：`/config` → `cortexdb-live` → `language`（`auto`、`zh`、`en`）。会话开始时，如果插件钩子没有给常驻规则，mod 会补上（大脑还没连上就随第一条 prompt 给）；召回面板里命中的规则排在最前。mod 认插件原有的开关：`cortexdb-recall --disable`、`cortexdb-session-end --disable` 会同时关掉两边的召回和记忆。mod 运行时，插件的 shell 召回和记忆钩子会自动让开，不会重复做。Codex 仍然用那两个钩子。mod 是 Claude Code 的早期功能。
 
 
 ## 环境变量

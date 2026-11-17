@@ -329,6 +329,20 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
+			Name:        "memory_standing_rules",
+			Description: "The standing rules: current global memories of type preference or rule saved with importance 0.8 or more (superseded, expired and rejected ones left out), most important first, capped by count and characters. They hold for every task whatever the prompt says, so a session start hands them to the agent before any recall; text is the block to inject.",
+			InputSchema: toolObjectSchema(
+				nil,
+				map[string]any{
+					"project":        toolStringSchema("The project the session works in. Rules whose metadata names a project are given only when it matches (case and punctuation ignored); untagged rules always are."),
+					"types":          toolStringArraySchema("Memory types that count as rules. Default [\"preference\", \"rule\"]."),
+					"min_importance": toolNumberSchema("Lowest importance that counts. Default 0.8."),
+					"max_rules":      toolIntegerSchema("At most this many rules (default 16)."),
+					"max_chars":      toolIntegerSchema("At most this many characters of text (default 2400)."),
+				},
+			),
+		},
+		{
 			Name:        "graph_list_all",
 			Description: "List the entity knowledge graph — every non-chunk node and the edges between them. By default returns the most-connected core, which is what makes a large graph renderable; pass order \"id\" with a cursor to walk all of it. Use expand_graph or find_nodes when you already know where to start.",
 			InputSchema: toolObjectSchema(

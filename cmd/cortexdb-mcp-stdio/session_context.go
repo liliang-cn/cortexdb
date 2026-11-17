@@ -63,7 +63,8 @@ func remoteToolCaller(client rpcv1.ToolsServiceClient) toolCaller {
 
 func runSessionContext() {
 	var in struct {
-		Cwd string `json:"cwd"`
+		Cwd       string `json:"cwd"`
+		SessionID string `json:"session_id"`
 	}
 	_ = json.NewDecoder(os.Stdin).Decode(&in)
 
@@ -71,18 +72,31 @@ func runSessionContext() {
 	// arrive as one context block. It is written as a JSON string body there.
 	directive := strings.ReplaceAll(os.Getenv("CORTEXDB_SESSION_DIRECTIVE"), `\n`, "\n")
 
-	index := ""
-	if in.Cwd != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-		defer cancel()
-		if call, closeFn, ok := sessionToolCaller(); ok {
-			defer closeFn()
-			budget := hookContextBudget - len([]rune(directive)) - 2
-			index = sessionIndex(ctx, call, projectNamesFor(in.Cwd), envInt("CORTEXDB_SESSION_CONTEXT_MAX", sessionContextMax), budget)
+	rules, index := "", ""
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	if call, closeFn, ok := sessionToolCaller(); ok {
+		defer closeFn()
+		var names []string
+		if in.Cwd != "" {
+			names = projectNamesFor(in.Cwd)
+		}
+		budget := hookContextBudget - len([]rune(directive)) - 2
+		// The standing rules come before the project's index and whatever the
+		// prompt: they hold for every task in the session.
+		var ruleIDs []string
+		rules, ruleIDs = sessionRules(ctx, call, names, min(envInt("CORTEXDB_SESSION_RULES_CHARS", sessionRulesChars), budget))
+		if rules != "" {
+			budget -= len([]rune(rules)) + 2
+			// The per-prompt recall does not hand them over again.
+			markSeen(in.SessionID, ruleIDs)
+		}
+		if len(names) > 0 {
+			index = sessionIndex(ctx, call, names, envInt("CORTEXDB_SESSION_CONTEXT_MAX", sessionContextMax), budget)
 		}
 	}
 
-	text := strings.TrimSpace(strings.Join([]string{directive, index}, "\n\n"))
+	text := strings.TrimSpace(strings.Join(nonEmpty(directive, rules, index), "\n\n"))
 	if text == "" {
 		return
 	}
@@ -90,6 +104,46 @@ func runSessionContext() {
 		HookEventName:     "SessionStart",
 		AdditionalContext: text,
 	}})
+}
+
+// sessionRulesChars bounds the standing rules block at session start.
+const sessionRulesChars = 2400
+
+// sessionRules is the standing rules block (memory_standing_rules) and the ids
+// it lists, or "" when the brain has none or is too old to answer.
+func sessionRules(ctx context.Context, call toolCaller, names []string, budget int) (string, []string) {
+	if budget <= 0 {
+		return "", nil
+	}
+	args := map[string]any{"max_chars": budget}
+	if len(names) > 0 {
+		// The repository's name when the session is in one: that is what
+		// memories name as their project.
+		args["project"] = names[len(names)-1]
+	}
+	raw, err := call(ctx, "memory_standing_rules", args)
+	if err != nil {
+		return "", nil
+	}
+	var got cortexdb.StandingRulesResponse
+	if json.Unmarshal(raw, &got) != nil {
+		return "", nil
+	}
+	ids := make([]string, 0, len(got.Rules))
+	for _, r := range got.Rules {
+		ids = append(ids, r.ID)
+	}
+	return strings.TrimSpace(got.Text), ids
+}
+
+func nonEmpty(parts ...string) []string {
+	out := parts[:0:0]
+	for _, p := range parts {
+		if strings.TrimSpace(p) != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // sessionToolCaller opens the brain this process uses: the shared one when

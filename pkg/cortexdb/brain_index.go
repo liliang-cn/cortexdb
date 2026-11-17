@@ -42,10 +42,17 @@ func firstLine(s string, max int) string {
 func indexRecall(resp *KnowledgeMemoryRecallResponse) {
 	resp.Detail = RecallDetailIndex
 	var b strings.Builder
-	if len(resp.Memories) > 0 {
-		b.WriteString("Memories (fetch with memory_get memory_ids):\n")
-	}
+	// Standing rules first, under their own heading, as in the full pack.
+	var rules, others []int
 	for i := range resp.Memories {
+		if IsStandingRule(resp.Memories[i].Memory) {
+			rules = append(rules, i)
+		} else {
+			others = append(others, i)
+		}
+	}
+	var ruleIDs []string
+	line := func(i int) {
 		m := &resp.Memories[i].Memory
 		m.Content = firstLine(m.Content, indexLineRunes)
 		m.Metadata = nil
@@ -54,6 +61,19 @@ func indexRecall(resp *KnowledgeMemoryRecallResponse) {
 			date = m.CreatedAt.Format("2006-01-02") + " "
 		}
 		fmt.Fprintf(&b, "- %s %s%s\n", m.ID, date, m.Content)
+	}
+	if len(rules) > 0 {
+		b.WriteString("Standing rules (fetch with memory_get memory_ids):\n")
+	}
+	for _, i := range rules {
+		ruleIDs = append(ruleIDs, resp.Memories[i].Memory.ID)
+		line(i)
+	}
+	if len(others) > 0 {
+		b.WriteString("Memories (fetch with memory_get memory_ids):\n")
+	}
+	for _, i := range others {
+		line(i)
 	}
 	if len(resp.Knowledge) > 0 {
 		b.WriteString("Knowledge (fetch with knowledge_get knowledge_ids):\n")
@@ -78,4 +98,11 @@ func indexRecall(resp *KnowledgeMemoryRecallResponse) {
 	}
 	resp.ContextPack.Text = strings.TrimRight(b.String(), "\n")
 	resp.ContextPack.Sections = nil
+	// The rules section is kept, ids only, so a client can still set the
+	// rules apart without the metadata the index dropped.
+	if len(ruleIDs) > 0 {
+		resp.ContextPack.Sections = []KnowledgeMemoryContextSection{{
+			Kind: "rules", Title: "Standing rules", Text: strings.Join(ruleIDs, "\n"), SourceIDs: ruleIDs,
+		}}
+	}
 }

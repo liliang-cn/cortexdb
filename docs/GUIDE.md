@@ -374,6 +374,30 @@ checked", and a verified memory's line names its check. The auto-recall
 block marks a guess first in its bracket (`UNVERIFIED (asserted)`) and a
 checked one by its evidence (`verified: …`).
 
+### Standing rules
+
+A standing rule is a global memory saved with `type` `preference` or `rule`
+and importance 0.8 or more that is still current (not superseded, expired or
+rejected) — what the auto-capture writes for a standing preference, at 0.85+.
+Its words rarely match the task it governs ("start a dev server" never says
+"port"), so it is not left to recall:
+
+- `memory_standing_rules` (and `db.StandingRules`) lists them, most important
+  first, within `max_rules` (default 16) and `max_chars` (default 2400), each
+  cut to 160 characters (`memory_get` has the rest). A rule whose metadata
+  names a `project` is given only in that project. `text` is the block to
+  inject.
+- The plugin's SessionStart hook and the `cortexdb-live` mod put that block in
+  the session before the project index, whatever the first prompt is, and the
+  per-prompt recall does not repeat those rules for 20 prompts.
+- When a recall does find a rule, the context pack puts it in a `rules`
+  section ahead of graph facts and the other memories (`[RULES]` in the text;
+  the index detail lists it first and keeps the section's ids), and the
+  auto-recall block lists it first, marked `STANDING RULE`.
+
+Rules without `type` metadata are not standing rules: give a hand-written rule
+`metadata: {"type": "preference"}` and an importance of 0.85 or more.
+
 Auto-capture grades what it writes: `verified` only when the transcript shows
 the check, `asserted` for a guess (and the content says so), nothing for a
 preference or a decision, which records what someone said or chose. A guess
@@ -1156,7 +1180,7 @@ Without them the status line names the missing rules.
 - **Status line.** Which brain the session uses, its node count and how long the last recall took, or why the brain can't be reached.
 - **Capture.** 90 seconds after a session goes idle, haiku distils the new part of the conversation into durable memories (`auto:<session>:<slug>`). Each later pass replaces a memory under the same slug rather than adding a copy. Older memories a new one makes untrue (a host moved, a decision reversed) are marked superseded: kept, but no longer recalled as current. The project's Claude Code file memory (`~/.claude/projects/<project>/memory/`) is shown to haiku as already recorded, so a capture does not restate a note in other words. A prompt with an image attached is not recalled for.
 
-Haiku runs on Claude Code's own model access, so no API key is needed. Language: `/config` → `cortexdb-live` → `language` (`auto`, `zh`, `en`). The mod honours the plugin's own switches: `cortexdb-recall --disable` and `cortexdb-session-end --disable` turn recall and capture off for both. While the mod runs, the plugin's shell recall and capture hooks stand down, so nothing is done twice. Codex keeps those hooks. Mods are an early-access Claude Code feature.
+Haiku runs on Claude Code's own model access, so no API key is needed. Language: `/config` → `cortexdb-live` → `language` (`auto`, `zh`, `en`). At session start the mod hands over the standing rules (see [Standing rules](#standing-rules)) when the plugin's hook did not, or with the first prompt when the brain was still connecting; the band lists a recalled rule first. The mod honours the plugin's own switches: `cortexdb-recall --disable` and `cortexdb-session-end --disable` turn recall and capture off for both. While the mod runs, the plugin's shell recall and capture hooks stand down, so nothing is done twice. Codex keeps those hooks. Mods are an early-access Claude Code feature.
 
 
 ## Environment
