@@ -50,7 +50,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 		{
 			Name:        "upsert_entities",
 			Mutates:     true,
-			Description: "Create entity nodes and connect chunks to those entities with mention edges.",
+			Description: "Create entity nodes and connect chunks to those entities with mention edges. A name that names no node and that an entity carries as an alias, recorded by entity resolution, lands on that entity: the id answered is then that entity's, and the entry adds its document and mentions without changing what the entity says.",
 			InputSchema: toolObjectSchema(
 				[]string{"entities"},
 				map[string]any{
@@ -103,7 +103,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 		{
 			Name:        "upsert_relations",
 			Mutates:     true,
-			Description: "Create relation edges between entity nodes.",
+			Description: "Create relation edges between entity nodes. An endpoint named by an alias entity resolution recorded is written from or to the entity that carries it; a relation between an alias and its own entity is skipped.",
 			InputSchema: toolObjectSchema(
 				[]string{"relations"},
 				map[string]any{
@@ -350,7 +350,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 		},
 		{
 			Name:        "find_nodes",
-			Description: "Resolve names to graph node IDs, so a caller holding a name can enter the graph. Matches exactly, then ignoring case and punctuation, then by containment; each match says which. Use before expand_graph when you have a name rather than an ID.",
+			Description: "Resolve names to graph node IDs, so a caller holding a name can enter the graph. Matches exactly, then ignoring case and punctuation, then by an alias entity resolution recorded on the entity it kept, then by containment; each match says which. Use before expand_graph when you have a name rather than an ID.",
 			InputSchema: toolObjectSchema(
 				[]string{"names"},
 				map[string]any{

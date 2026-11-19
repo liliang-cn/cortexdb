@@ -498,6 +498,26 @@ func (t *GraphRAGToolbox) UpsertEntities(ctx context.Context, req ToolUpsertEnti
 		return nil, err
 	}
 
+	// A name the writer gives without an id may be an alias entity
+	// resolution recorded (entity_alias_follow.go).
+	byName := map[string]string{}
+	for _, entity := range req.Entities {
+		if strings.TrimSpace(entity.ID) == "" {
+			byName[entity.Name] = graphEntityNodeID(entity.Name)
+		}
+	}
+	followed, err := t.db.followEntityAliases(ctx, byName)
+	if err != nil {
+		return nil, err
+	}
+	// Entries that land on one entity are one write of it: the batch writer
+	// runs them in order, and an entry under an alias, which carries the
+	// stored identity, would overwrite the entity's own update in the same
+	// request. at is each node's place in nodes; aliased, whether only
+	// entries under an alias wrote it.
+	at := map[string]int{}
+	aliased := map[string]bool{}
+
 	for i, entity := range req.Entities {
 		if strings.TrimSpace(entity.Name) == "" && strings.TrimSpace(entity.ID) == "" {
 			continue
@@ -505,6 +525,10 @@ func (t *GraphRAGToolbox) UpsertEntities(ctx context.Context, req ToolUpsertEnti
 		entityID, err := ontologyEntityNodeID(compiled, entity)
 		if err != nil {
 			return nil, err
+		}
+		viaAlias := false
+		if id := followAlias(followed, entity.Name, entityID); id != entityID && strings.TrimSpace(entity.ID) == "" {
+			entityID, viaAlias = id, true
 		}
 		entityIDs = append(entityIDs, entityID)
 
@@ -523,13 +547,23 @@ func (t *GraphRAGToolbox) UpsertEntities(ctx context.Context, req ToolUpsertEnti
 		if !ok {
 			vector = lexicalVectorForText(strings.TrimSpace(entity.Name+" "+entity.Description), vectorDim)
 		}
-		nodes = append(nodes, &graph.GraphNode{
+		node := &graph.GraphNode{
 			ID:         entityID,
 			Vector:     vector,
 			Content:    firstNonEmpty(entity.Name, entity.ID),
 			NodeType:   ontologyCanonicalNodeType(compiled, firstNonEmpty(entity.Type, "entity")),
 			Properties: properties,
-		})
+		}
+		if place, seen := at[entityID]; !seen {
+			at[entityID], aliased[entityID] = len(nodes), viaAlias
+			nodes = append(nodes, node)
+		} else if !viaAlias {
+			// An entry under the entity's own name is the one written, the
+			// later of two as two writes in order left it. An entry under
+			// an alias changes nothing the entity says (keepCanonicalIdentity),
+			// so it never replaces another.
+			nodes[place], aliased[entityID] = node, false
+		}
 
 		for _, chunkID := range entity.ChunkIDs {
 			if chunkID == "" {
@@ -558,6 +592,7 @@ func (t *GraphRAGToolbox) UpsertEntities(ctx context.Context, req ToolUpsertEnti
 	if err != nil {
 		return nil, err
 	}
+	keepCanonicalIdentity(nodes, prior, aliased)
 	if req.DocumentID != "" && len(nodes) > 0 {
 		mergeEntitySourceDocuments(nodes, prior, req.DocumentID)
 	}
@@ -694,6 +729,18 @@ func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRel
 	if rule != nil {
 		vctx = withSupersedingWrite(ctx)
 	}
+	// An endpoint named, not given by id, may be an alias entity resolution
+	// recorded (entity_alias_follow.go). An id derives itself, so it is
+	// never followed (followAlias).
+	byName := map[string]string{}
+	for _, rel := range req.Relations {
+		byName[rel.From], byName[rel.To] = graphEntityNodeID(rel.From), graphEntityNodeID(rel.To)
+	}
+	followed, err := t.db.followEntityAliases(ctx, byName)
+	if err != nil {
+		return nil, err
+	}
+	ctx, vctx = withFollowedAliases(ctx, followed), withFollowedAliases(vctx, followed)
 	if err := t.db.validateRelationInputs(vctx, req.Relations); err != nil {
 		return nil, err
 	}
@@ -713,7 +760,12 @@ func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRel
 		if err != nil {
 			return nil, err
 		}
-		if fromID == "" || toID == "" {
+		fromID, toID = followAlias(followed, rel.From, fromID), followAlias(followed, rel.To, toID)
+		// A relation between an alias and the entity that carries it is a
+		// loop once followed, the kind a merge drops. A loop the caller
+		// states, both ends the same name or id, is written as before.
+		stated := resolveEntityNodeID("", rel.From) == resolveEntityNodeID("", rel.To)
+		if fromID == "" || toID == "" || !stated && fromID == toID {
 			continue
 		}
 		edgeType := firstNonEmpty(rel.Type, "related_to")

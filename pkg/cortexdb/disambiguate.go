@@ -202,7 +202,7 @@ type MentionDisambiguation struct {
 	Mention string `json:"mention"`
 
 	// Match is how find_nodes matched the best-matching candidate: "exact",
-	// "fold" (case and punctuation ignored) or "contains". Carried through
+	// "fold" (case and punctuation ignored), "alias" or "contains". Carried through
 	// because a mention whose only candidates are containment matches is a
 	// weaker starting point no matter how well its paths score.
 	Match string `json:"match,omitempty"`

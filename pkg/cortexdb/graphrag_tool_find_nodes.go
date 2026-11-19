@@ -91,14 +91,26 @@ func (t *GraphRAGToolbox) FindNodes(ctx context.Context, req ToolFindNodesReques
 	}
 	_ = rows.Close()
 
+	// A name may be an alias entity resolution recorded on the entity it
+	// kept (entity_alias_follow.go). A recorded equivalence says more than
+	// a name that merely contains the one asked about, so it is looked up
+	// for every name and ranked before containment: an answer that waited
+	// for no other node to contain the name would be hidden by the chunks
+	// that still spell it.
+	aliases, err := t.db.entityAliasTable(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, name := range wanted {
 		folded := foldName(name)
 		type hit struct {
 			id   string
-			rank int // 0 exact, 1 folded, 2 contains
+			rank int // 0 exact, 1 folded, 2 alias, 3 contains
 			size int
 		}
 		hits := make([]hit, 0, min(limit, len(all)))
+		aliasOf, isAlias := aliases[entityAliasKey(name)]
 		for _, c := range all {
 			rank := -1
 			switch {
@@ -111,11 +123,23 @@ func (t *GraphRAGToolbox) FindNodes(ctx context.Context, req ToolFindNodesReques
 			case folded != "" && c.folded == folded:
 				rank = 1
 			case folded != "" && strings.Contains(c.folded, folded):
-				rank = 2
+				rank = 3
+			}
+			// The entity that carries the name as an alias is served once,
+			// under the stronger of its two matches.
+			if isAlias && c.id == aliasOf {
+				if isAlias = false; rank < 0 || rank > 2 {
+					rank = 2
+				}
 			}
 			if rank >= 0 {
 				hits = append(hits, hit{id: c.id, rank: rank, size: len([]rune(c.content))})
 			}
+		}
+		if isAlias {
+			// Not among the nodes compared: its type or its content kept
+			// it out of the scan. The filters below still apply to it.
+			hits = append(hits, hit{id: aliasOf, rank: 2})
 		}
 		// Best match first: stronger kind wins, then the shorter name — extra
 		// words narrow a concept, so "Limit" is what a bare "limit" was after
@@ -174,7 +198,7 @@ func (t *GraphRAGToolbox) FindNodes(ctx context.Context, req ToolFindNodesReques
 			}
 			for _, node := range kept[:min(len(kept), limit-len(match.Nodes))] {
 				if len(match.Nodes) == 0 {
-					match.Match = [...]string{"exact", "fold", "contains"}[rank[node.ID]]
+					match.Match = [...]string{"exact", "fold", "alias", "contains"}[rank[node.ID]]
 				}
 				match.Nodes = append(match.Nodes, node)
 			}

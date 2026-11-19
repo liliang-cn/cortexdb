@@ -322,6 +322,10 @@ func (g *GraphStore) createGraphSchema(ctx context.Context) error {
 	-- Indexes for performance
 	CREATE INDEX IF NOT EXISTS idx_edges_type ON graph_edges(edge_type);
 	CREATE INDEX IF NOT EXISTS idx_nodes_type ON graph_nodes(node_type);
+	-- The entities that carry aliases, the few entity resolution kept:
+	-- upsert_entities, upsert_relations and find_nodes read them on each call
+	-- (entity_alias_follow.go).
+	CREATE INDEX IF NOT EXISTS idx_graph_nodes_aliased ON graph_nodes(id) WHERE properties LIKE '%%"aliases"%%';
 	CREATE INDEX IF NOT EXISTS idx_edges_composite ON graph_edges(from_node_id, edge_type);
 	-- Topology-covering indexes for walks (PersonalizedPageRank). A walk reads
 	-- every edge around a few thousand nodes and needs only these five
