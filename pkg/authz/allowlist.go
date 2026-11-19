@@ -298,6 +298,14 @@ var confinedTools = map[string]toolRule{
 		args: []string{"node_id", "entity_name", "max_depth", "edge_types", "node_types", "direction", "limit"}},
 	"knowledge_memory_shortest_path": {stores: storeKnowledge | storeMemory, facade: true,
 		args: []string{"from_node_id", "to_node_id", "from_entity_name", "to_entity_name"}},
+	// The entity merges write the entity graph. Under a caller scope the
+	// facade merges only entities every collection of which the caller may
+	// read, and answers any other as an entity that is not there
+	// (cortexdb's mergeableEntities); a caller confined on memory alone
+	// merges nothing. Names and node ids are data, as for the walks.
+	"merge_entities": {stores: storeKnowledge, facade: true, args: []string{"canonical", "aliases", "dry_run"}},
+	"unmerge_entities": {stores: storeKnowledge, facade: true,
+		args: []string{"journal", "journal.canonical", "journal.aliases", "journal.edges", "journal.merged_at"}},
 
 	// Both stores, each behind its gate. Recall adds no graph facts for a
 	// caller with a scope (cortexdb.KnowledgeMemory.Recall).

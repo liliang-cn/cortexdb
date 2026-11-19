@@ -43,6 +43,8 @@ var loggedPaths = map[string][]string{
 	"expand_graph":                           {"node_ids"},
 	"get_nodes":                              {"node_ids"},
 	"find_nodes":                             nil,
+	"merge_entities":                         nil,
+	"unmerge_entities":                       nil,
 	"knowledge_memory_neighbors":             {"node_id"},
 	"knowledge_memory_shortest_path":         {"from_node_id", "to_node_id"},
 	"recall_log_list":                        {"record_id"},

@@ -27,6 +27,8 @@ var toolWrites = map[string]bool{
 	"upsert_relations":      true,
 	"delete_entities":       true,
 	"delete_document_graph": true,
+	"merge_entities":        true,
+	"unmerge_entities":      true,
 	// dry_run makes the two deletes above read-only for one argument value,
 	// which authorization never sees. A tool that can write is a write.
 	"extract_conversation":    true, // persist=true writes graph and knowledge
@@ -200,7 +202,7 @@ var toolWrites = map[string]bool{
 // table so that a tool added without a decision cannot slip through by sharing
 // a name with one already listed, and so that a tool quietly disappearing is
 // noticed too. Change it in the same commit that adds the tool and its row.
-const toolCount = 115
+const toolCount = 117
 
 // TestEveryToolDeclaresWhetherItWrites is the test the Mutates doc comment
 // promises: it makes forgetting impossible rather than merely unlikely.

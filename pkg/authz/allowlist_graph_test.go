@@ -103,3 +103,35 @@ func TestTheHistoryToolsAreRefusedToAConfinedKeyAndOpenToAReadOnlyOne(t *testing
 		}
 	}
 }
+
+// merge_entities and unmerge_entities write the shared graph, so they are
+// writes, and a confined key may call them with every argument they declare:
+// the facade takes only the entities every collection of which the caller
+// may read, and refuses the rest as entities that are not there.
+func TestTheMergeToolsAreOpenToAConfinedKeyAndConfinedByTheFacade(t *testing.T) {
+	calls := map[string]string{
+		"merge_entities":   `{"canonical":"Acme Corp","aliases":["ACME Ltd"],"dry_run":true}`,
+		"unmerge_entities": `{"journal":{"canonical":"entity:acme_corp","aliases":["entity:acme_ltd"],"edges":["e1"],"merged_at":"2026-11-02T10:00:00Z"}}`,
+	}
+	keys := []Key{
+		{ID: "alpha", Secret: "a", Clearance: ReadWrite, Scope: Scope{Collection: "alpha"}},
+		{ID: "hermes", Secret: "h", Clearance: ReadWrite, Scope: Scope{UserID: "hermes"}},
+	}
+	reader := Key{ID: "reader", Secret: "r", Clearance: ReadOnly, Scope: Scope{Collection: "alpha"}}
+	for tool, args := range calls {
+		if rule := confinedTools[tool]; !rule.facade || len(rule.scope) != 0 || rule.stores != storeKnowledge {
+			t.Errorf("%s: rule %+v, want the entity graph confined by the facade, with no scope field", tool, rule)
+		}
+		for _, key := range keys {
+			if err := key.AuthorizeToolArgs(tool, []byte(args)); err != nil {
+				t.Errorf("%s for %s: %v", tool, key.ID, err)
+			}
+		}
+		if err := reader.AuthorizeCall(CallToolMethod, func() (string, bool) { return tool, true }); !errors.Is(err, ErrDenied) {
+			t.Errorf("%s for a read-only key: %v, want a denial", tool, err)
+		}
+	}
+	if row := "| `merge_entities` | (by id only) | knowledge |  | by the facade (CallerScope) |  |"; !strings.Contains(ConfinedToolsTable(), row) {
+		t.Errorf("the table lacks the row %s", row)
+	}
+}

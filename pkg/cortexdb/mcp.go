@@ -60,6 +60,7 @@ func (db *DB) NewMCPServer(opts MCPServerOptions) *mcp.Server {
 	addExpiryMCPTools(server, definitions, db)
 	addMediaMCPTools(server, definitions, toolbox)
 	// --- end point-in-time reads ---
+	addMergeMCPTools(server, definitions, toolbox)
 	addChangeMCPTools(server, definitions, db)
 	addRecallLogMCPTools(server, definitions, db)
 	addImportedTablesMCPTools(server, definitions, toolbox)
