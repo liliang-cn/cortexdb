@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.157.0] - 2026-11-20
+
 ### Added
 
 - `merge_entities {canonical, aliases, dry_run}` applies an alias table the
