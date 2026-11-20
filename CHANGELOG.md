@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.157.1] - 2026-11-20
+
 ### Fixed
 
 - `knowledge_save`, `knowledge_update`, `InsertGraphDocument` and the media
