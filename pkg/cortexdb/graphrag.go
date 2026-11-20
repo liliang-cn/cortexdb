@@ -236,6 +236,9 @@ func (db *DB) InsertGraphDocument(ctx context.Context, doc GraphRAGDocument, opt
 	entityTexts := make(map[string]GraphEntity)
 	entityMentions := make(map[string]map[string]struct{})
 	relationshipKeys := make(map[string]graph.GraphEdge)
+	// The ids derived from names, which follow the aliases entity
+	// resolution recorded (knowledge_alias_follow.go).
+	var named entityNameWrites
 
 	extractor := opts.Extractor
 	if extractor == nil {
@@ -326,6 +329,8 @@ func (db *DB) InsertGraphDocument(ctx context.Context, doc GraphRAGDocument, opt
 			}
 			fromID := graphEntityNodeID(rel.From)
 			toID := graphEntityNodeID(rel.To)
+			named.named(rel.From, fromID)
+			named.named(rel.To, toID)
 			relType := firstNonEmpty(rel.Type, "related_to")
 			weight := rel.Weight
 			if weight == 0 {
@@ -363,6 +368,16 @@ func (db *DB) InsertGraphDocument(ctx context.Context, doc GraphRAGDocument, opt
 
 	if err := db.validateExtractedGraphData(ctx, entityTexts, relationshipKeys); err != nil {
 		return nil, fmt.Errorf("validate extracted graph data: %w", err)
+	}
+	named.namedEntities(entityTexts)
+	follow, err := db.readEntityAliasFollow(ctx, db.SQL(), db.graph.GetNodesBatch, named)
+	if err != nil {
+		return nil, err
+	}
+	if follow != nil {
+		if err := follow.standing(ctx, db.graph.GetNodesBatch); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := db.store.UpsertBatch(ctx, embeddings); err != nil {
@@ -414,6 +429,10 @@ func (db *DB) InsertGraphDocument(ctx context.Context, doc GraphRAGDocument, opt
 			return nil, err
 		}
 		mergeEntityCollections(entityNodes, prior, opts.Collection)
+		if follow != nil {
+			entityNodes, _, _, _ = follow.apply(entityNodes, nil)
+			entityNodeIDs = uniqueSortedStrings(follow.followedIDs(entityNodeIDs, nil, nil))
+		}
 		entityNodeResult, err := db.graph.UpsertNodesBatch(ctx, entityNodes)
 		if err != nil {
 			return nil, fmt.Errorf("upsert entity nodes: %w", err)
@@ -448,6 +467,9 @@ func (db *DB) InsertGraphDocument(ctx context.Context, doc GraphRAGDocument, opt
 		}
 	}
 
+	if follow != nil {
+		_, edges, _, _ = follow.apply(nil, edges)
+	}
 	if len(edges) > 0 {
 		edgeResult, err := db.graph.UpsertEdgesBatch(ctx, edges)
 		if err != nil {

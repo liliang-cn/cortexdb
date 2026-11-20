@@ -22,6 +22,11 @@ func mergeLtd(t *testing.T, db *DB) EntityMergeJournal {
 	return merged.Journal
 }
 
+// betaScope is a caller confined to collection beta.
+func betaScope() CallerScope {
+	return CallerScope{Key: "beta-key", Knowledge: func(c string) bool { return c == "beta" }}
+}
+
 // refusedAndWroteNothing applies journal and wants a refusal that left the
 // graph, history included, as it was.
 func refusedAndWroteNothing(t *testing.T, db *DB, ctx context.Context, journal EntityMergeJournal, what string) error {
@@ -49,7 +54,9 @@ func TestUnmergeEntitiesDoesNotWriteOverAnAliasWrittenAfterTheMerge(t *testing.T
 			ctx := context.Background()
 			journal := mergeLtd(t, db)
 			b2 := graphChunkNodeID("b2", 0)
-			if _, err := db.SaveKnowledge(ctx, KnowledgeSaveRequest{
+			// Beta writes as beta: a writer that may read alpha would follow
+			// the alias into Acme Corp (knowledge_alias_follow.go).
+			if _, err := db.SaveKnowledge(WithCallerScope(ctx, betaScope()), KnowledgeSaveRequest{
 				KnowledgeID: "b2", Collection: "beta", Content: "ACME Ltd is a pension fund.",
 				Entities: []ToolEntityInput{{Name: "ACME Ltd", Description: "beta's fund", ChunkIDs: []string{b2}}},
 			}); err != nil {
@@ -180,7 +187,9 @@ func TestAConfinedUndoDoesNotReachAnotherMerge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SaveKnowledge(ctx, KnowledgeSaveRequest{KnowledgeID: "b2", Collection: "beta", Content: "Heron Mill again.",
+	// Beta writes as beta: a writer that may read alpha would follow the
+	// alias into Acme Corp (knowledge_alias_follow.go).
+	if _, err := db.SaveKnowledge(WithCallerScope(ctx, betaScope()), KnowledgeSaveRequest{KnowledgeID: "b2", Collection: "beta", Content: "Heron Mill again.",
 		Entities: []ToolEntityInput{{Name: "Heron Mill", ChunkIDs: []string{graphChunkNodeID("b2", 0)}}}}); err != nil {
 		t.Fatal(err)
 	}

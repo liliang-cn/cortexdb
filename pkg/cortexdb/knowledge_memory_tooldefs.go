@@ -7,7 +7,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		{
 			Name:        "knowledge_save",
 			Mutates:     true,
-			Description: "Store or replace a durable knowledge item. This is the preferred high-level write API for documents, notes, facts, and structured knowledge.",
+			Description: "Store or replace a durable knowledge item. This is the preferred high-level write API for documents, notes, facts, and structured knowledge. An entity or relation endpoint named, or found in the content, by an alias entity resolution recorded lands on the entity that carries it, as in upsert_entities and upsert_relations.",
 			InputSchema: toolObjectSchema(
 				[]string{"knowledge_id", "content"},
 				map[string]any{

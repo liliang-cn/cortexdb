@@ -38,6 +38,10 @@ type knowledgeMutationPlan struct {
 	condition  *ingestCondition
 	// mediaVectors replace the document's media vectors (media_vectors.go).
 	mediaVectors []mediaVectorRow
+	// named is the entity ids the plan derived from names, which the write
+	// follows to the entity carrying the name as an alias
+	// (knowledge_alias_follow.go).
+	named entityNameWrites
 }
 
 // knowledgeRetire says what a write takes out of what is stored before it
@@ -143,6 +147,7 @@ func (db *DB) buildEmbedderKnowledgePlan(ctx context.Context, input knowledgeMut
 	if err := db.validateExtractedGraphData(ctx, entityTexts, relationshipMap); err != nil {
 		return nil, fmt.Errorf("validate extracted graph data: %w", err)
 	}
+	plan.named.namedEntities(entityTexts)
 
 	entityNodes, entityTypes, mentionEdges, relationEdges, entityIDs, err := db.buildExtractedEntityArtifacts(ctx, entityTexts, entityMentions, relationshipMap, db.embedder.EmbedBatch)
 	if err != nil {
@@ -156,7 +161,7 @@ func (db *DB) buildEmbedderKnowledgePlan(ctx context.Context, input knowledgeMut
 		edgeMap[edge.ID] = edge
 	}
 
-	if err := db.appendKnowledgeExplicitArtifacts(ctx, input, entityNodes, entityTypes, edgeMap, &plan.ingest); err != nil {
+	if err := db.appendKnowledgeExplicitArtifacts(ctx, input, entityNodes, entityTypes, edgeMap, &plan.ingest, &plan.named); err != nil {
 		return nil, err
 	}
 	if err := db.mergeEntityNodeProperties(ctx, entityNodes, ingestOpts.Collection); err != nil {
@@ -208,6 +213,7 @@ func (db *DB) buildLexicalKnowledgePlan(ctx context.Context, input knowledgeMuta
 	if err := db.validateExtractedGraphData(ctx, entityTexts, relationshipMap); err != nil {
 		return nil, fmt.Errorf("validate extracted graph data: %w", err)
 	}
+	plan.named.namedEntities(entityTexts)
 	lexicalVectors := func(_ context.Context, texts []string) ([][]float32, error) {
 		vectors := make([][]float32, len(texts))
 		for i, text := range texts {
@@ -227,7 +233,7 @@ func (db *DB) buildLexicalKnowledgePlan(ctx context.Context, input knowledgeMuta
 		edgeMap[edge.ID] = edge
 	}
 
-	if err := db.appendKnowledgeExplicitArtifacts(ctx, input, entityNodes, entityTypes, edgeMap, &plan.ingest); err != nil {
+	if err := db.appendKnowledgeExplicitArtifacts(ctx, input, entityNodes, entityTypes, edgeMap, &plan.ingest, &plan.named); err != nil {
 		return nil, err
 	}
 	if err := db.mergeEntityNodeProperties(ctx, entityNodes, ingestOpts.Collection); err != nil {
@@ -581,7 +587,7 @@ func recordEntitySourceDocument(entityNodes map[string]*graph.GraphNode, documen
 	}
 }
 
-func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowledgeMutationInput, entityNodes map[string]*graph.GraphNode, entityTypes map[string]string, edgeMap map[string]*graph.GraphEdge, ingest *knowledgeIngestResult) error {
+func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowledgeMutationInput, entityNodes map[string]*graph.GraphNode, entityTypes map[string]string, edgeMap map[string]*graph.GraphEdge, ingest *knowledgeIngestResult, named *entityNameWrites) error {
 	if len(input.Entities) == 0 && len(input.Relations) == 0 {
 		return nil
 	}
@@ -615,6 +621,11 @@ func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowle
 			entityID, err := ontologyEntityNodeID(compiled, entity)
 			if err != nil {
 				return err
+			}
+			if strings.TrimSpace(entity.ID) == "" && entityID == graphEntityNodeID(entity.Name) {
+				named.named(entity.Name, entityID)
+			} else {
+				named.statedID(entityID)
 			}
 			for _, alias := range []string{entity.Name, entity.ID} {
 				if strings.TrimSpace(alias) != "" {
@@ -667,6 +678,26 @@ func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowle
 	if len(input.Relations) == 0 {
 		return nil
 	}
+	// Under an ontology an endpoint is resolved by the name of a stored
+	// node, which an alias is not: it resolves through the aliases, as
+	// upsert_relations' does (withFollowedAliases), for validation and the
+	// write alike. Without one the write follows them in its transaction
+	// (knowledge_alias_follow.go).
+	if compiled != nil {
+		byName := map[string]string{}
+		for _, rel := range input.Relations {
+			for _, end := range []string{rel.From, rel.To} {
+				if _, inBatch := batchNodeIDsByName[end]; !inBatch {
+					byName[end] = graphEntityNodeID(end)
+				}
+			}
+		}
+		followed, err := db.followEntityAliases(ctx, byName)
+		if err != nil {
+			return err
+		}
+		ctx = withFollowedAliases(ctx, followed)
+	}
 	// Rewritten to node IDs up front so validation and the edge write below
 	// cannot disagree about which node an endpoint names.
 	relations := resolveKnowledgeRelationEndpoints(input.Relations, batchNodeIDsByName)
@@ -674,7 +705,7 @@ func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowle
 		return err
 	}
 
-	for _, rel := range relations {
+	for i, rel := range relations {
 		fromID, err := db.ontologyRelationEndpointNodeID(ctx, compiled, rel.From)
 		if err != nil {
 			return err
@@ -685,6 +716,19 @@ func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowle
 		}
 		if fromID == "" || toID == "" {
 			continue
+		}
+		// An end the request names, and that no entity of the request
+		// stands for, follows an alias as upsert_relations' does; an end
+		// given by id is written as given.
+		for _, end := range [][2]string{{input.Relations[i].From, fromID}, {input.Relations[i].To, toID}} {
+			if _, inBatch := batchNodeIDsByName[end[0]]; inBatch {
+				continue
+			}
+			if strings.HasPrefix(end[0], EntityNodeIDPrefix) {
+				named.statedID(end[1])
+			} else {
+				named.named(end[0], end[1])
+			}
 		}
 		edgeType := firstNonEmpty(rel.Type, "related_to")
 		// Named by what the edge connects and the document that states it
@@ -829,6 +873,13 @@ func (db *DB) applyKnowledgeMutation(ctx context.Context, knowledgeID string, re
 		}
 	}
 
+	// The aliases among the names the plan derived, read before the old
+	// graph is retired (knowledge_alias_follow.go).
+	follow, err := db.readEntityAliasFollow(ctx, tx, db.txNodeReader(tx), plan.named)
+	if err != nil {
+		return err
+	}
+
 	oldChunkRefs := make([]*core.Embedding, 0)
 	oldChunkIDs := make([]string, 0)
 	deletedNodeIDs := make([]string, 0)
@@ -856,6 +907,17 @@ func (db *DB) applyKnowledgeMutation(ctx context.Context, knowledgeID string, re
 		if err := deleteStringIDsTx(ctx, db.Dialect(), tx, "embeddings", "id", oldChunkIDs); err != nil {
 			return fmt.Errorf("delete prior knowledge chunks: %w", err)
 		}
+	}
+
+	if follow != nil {
+		if err := follow.standing(ctx, db.txNodeReader(tx)); err != nil {
+			return err
+		}
+		var renamed map[string]string
+		var dropped map[string]bool
+		plan.graphOps.NodeUpserts, plan.graphOps.EdgeUpserts, renamed, dropped = follow.apply(plan.graphOps.NodeUpserts, plan.graphOps.EdgeUpserts)
+		plan.ingest.entityNodeIDs = follow.followedIDs(plan.ingest.entityNodeIDs, nil, nil)
+		plan.ingest.relationEdgeIDs = follow.followedIDs(plan.ingest.relationEdgeIDs, renamed, dropped)
 	}
 
 	if err := db.upsertKnowledgeDocumentRecordTx(ctx, tx, plan.document); err != nil {
