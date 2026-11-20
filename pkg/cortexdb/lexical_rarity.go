@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
+	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
 	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 )
 
@@ -616,9 +617,17 @@ func (db *DB) chunkRarityScorer(ctx context.Context, collection string, q rarity
 		where = "c.name = ?"
 		args = append(args, collection)
 	}
-	stats, err := db.scanCorpusStats(ctx, "e.content", from, where, args, q.patterns())
+	stats, indexed, err := db.chunkStatsByTrigrams(ctx, collection, q.patterns())
 	if err != nil {
 		return nil, err
+	}
+	if !indexed {
+		done := observability.Time(ctx, "df-scan")
+		stats, err = db.scanCorpusStats(ctx, "e.content", from, where, args, q.patterns())
+		done()
+		if err != nil {
+			return nil, err
+		}
 	}
 	return newRarityScorer(q, stats.df, stats.n), nil
 }
