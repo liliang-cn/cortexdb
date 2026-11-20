@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- `knowledge_save`, `knowledge_update`, `InsertGraphDocument` and the media
+  form of `ingest_document` follow the aliases recorded on an entity, with
+  the rules `upsert_entities` follows: a name a node still stands under is
+  written to that node; otherwise a name an entity carries as an alias lands
+  on that entity, which keeps what it says and gains the document's
+  mentions and collections; a stated id is written as given; a relation
+  between an alias and its own entity is not written; a confined key
+  follows only into an entity one of its collections lists. Deleting the
+  document gives back what it added under the alias. The alias table is
+  read once per save, inside its transaction. Re-saving 500 documents after
+  2 000 entities were folded brought back 2 000 folded entities before and
+  none now; the save's p50 went from 5.0 to 7.9 ms at that alias count and
+  from 5.0 to 4.4 ms at 200.
+
 ## [2.157.0] - 2026-11-20
 
 ### Added

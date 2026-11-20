@@ -27,7 +27,13 @@ const entityAliasScan = `SELECT id, properties FROM graph_nodes WHERE id LIKE 'e
 // alias: the first id in order keeps it. A row that cannot be read is
 // skipped.
 func (db *DB) entityAliasTable(ctx context.Context) (map[string]string, error) {
-	rows, err := db.query(ctx, entityAliasScan)
+	return db.entityAliasTableIn(ctx, db.SQL())
+}
+
+// entityAliasTableIn is entityAliasTable read through q, the store's handle
+// or a write transaction (knowledge_alias_follow.go).
+func (db *DB) entityAliasTableIn(ctx context.Context, q queryContexter) (map[string]string, error) {
+	rows, err := db.querierQuery(ctx, q, entityAliasScan)
 	if err != nil {
 		return nil, fmt.Errorf("read the entity aliases: %w", err)
 	}

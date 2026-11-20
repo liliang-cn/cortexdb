@@ -767,6 +767,7 @@ func (t *GraphRAGToolbox) appendMediaEntities(ctx context.Context, req ToolInges
 	if err := db.validateExtractedGraphData(ctx, entityTexts, relationships); err != nil {
 		return fmt.Errorf("validate extracted graph data: %w", err)
 	}
+	plan.named.namedEntities(entityTexts)
 	vectors := func(ctx context.Context, texts []string) ([][]float32, error) {
 		if db.HasEmbedder() {
 			return db.embedder.EmbedBatch(ctx, texts)
