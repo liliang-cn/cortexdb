@@ -157,7 +157,10 @@ func (db *DB) lookupOntologyRelationEndpointNodeID(ctx context.Context, compiled
 		return "", err
 	}
 	if !ok {
-		return "", nil
+		// A name no entity stands under may be an alias entity resolution
+		// recorded, which upsert_relations follows (withFollowedAliases):
+		// validation and the write both resolve through here, so both do.
+		return followedAliasesFrom(ctx)[endpoint], nil
 	}
 	return nodeID, nil
 }

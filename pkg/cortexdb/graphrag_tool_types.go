@@ -256,9 +256,10 @@ type ToolNodeNameMatch struct {
 	Name  string             `json:"name"`
 	Nodes []*graph.GraphNode `json:"nodes"`
 	// How the best node was found: "exact", "fold" (case/space/punctuation
-	// collapsed) or "contains". Reported because the three carry very different
-	// confidence, and a caller acting on a "contains" hit should be able to
-	// choose not to.
+	// collapsed), "alias" (entity resolution recorded the name as an alias of
+	// this entity) or "contains", strongest first. Reported because they
+	// carry very different confidence, and a caller acting on a "contains" hit
+	// should be able to choose not to.
 	Match string `json:"match,omitempty"`
 }
 

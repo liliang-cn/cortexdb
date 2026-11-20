@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- `upsert_entities`, `upsert_relations` and `find_nodes` follow the aliases
+  entity resolution records on the entity it keeps (`aliases`, written by
+  `--resolve-entities`). A writer that still named a folded entity derived
+  its old id, so the entity came back beside the one it was folded into, or
+  the relation was refused for an endpoint that was not there; `find_nodes`
+  said the name was unknown. A name a node still stands under is written to
+  that node, as before; otherwise a name an entity carries as an alias
+  lands on that entity, which keeps its content, type, vector and every
+  property, its alias list included, and gains the writer's document,
+  mentions and collections: a description or a metadata key sent under an
+  alias describes the alias and is not written. A confined key is followed
+  only to an entity one of its collections lists. A request
+  that names the entity and one of its aliases writes the entity once, with
+  what the entry under its own name says. A relation between an alias and
+  the entity that carries it, a loop once followed, is not written, and an
+  active ontology resolves the endpoints of `upsert_relations` through the
+  same aliases before it validates them.
+  `find_nodes` answers such a name with the entity, `match: "alias"`, after
+  a folded match and before the nodes that only contain the name. An id the
+  writer states, or one an ontology keys by type, is written as given. The aliases
+  are read once per call through a partial index of the entities that
+  carry them (`idx_graph_nodes_aliased`): on a brain of 411 066 nodes the
+  read took 0.6 s without it and 6 ms with it, for 3 111 entities that
+  carry aliases.
+
 ## [2.156.1] - 2026-11-17
 
 ### Fixed
