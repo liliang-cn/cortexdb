@@ -568,6 +568,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 	definitions = append(definitions, expiryToolDefinitions()...)
 	definitions = append(definitions, mediaToolDefinitions()...)
 	// --- end point-in-time reads ---
+	definitions = append(definitions, mergeToolDefinitions()...)
 	definitions = append(definitions, changeToolDefinitions()...)
 	definitions = append(definitions, recallLogToolDefinitions()...)
 	definitions = append(definitions, importedTablesToolDefinitions()...)
@@ -606,6 +607,9 @@ func (t *GraphRAGToolbox) Call(ctx context.Context, name string, input json.RawM
 		return resp, err
 	}
 	// --- end point-in-time reads ---
+	if resp, handled, err := t.callMergeTool(ctx, name, input); handled {
+		return resp, err
+	}
 	if resp, handled, err := t.callChangeTool(ctx, name, input); handled {
 		return resp, err
 	}

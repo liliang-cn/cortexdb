@@ -240,11 +240,37 @@ func (g *GraphStore) exec(ctx context.Context, q string, args ...any) (sql.Resul
 }
 
 func (g *GraphStore) query(ctx context.Context, q string, args ...any) (*sql.Rows, error) {
+	if tx := readTxFrom(ctx); tx != nil {
+		return tx.QueryContext(ctx, g.dialect.Rebind(q), args...)
+	}
 	return g.db.QueryContext(ctx, g.dialect.Rebind(q), args...)
 }
 
 func (g *GraphStore) queryRow(ctx context.Context, q string, args ...any) *sql.Row {
+	if tx := readTxFrom(ctx); tx != nil {
+		return tx.QueryRowContext(ctx, g.dialect.Rebind(q), args...)
+	}
 	return g.db.QueryRowContext(ctx, g.dialect.Rebind(q), args...)
+}
+
+type readTxKey struct{}
+
+// WithReadTx returns a context whose reads of this store run inside tx.
+//
+// A caller that reads, decides and writes in one transaction needs its reads
+// in that transaction: read through the pool, they see what was committed
+// before the transaction's own writes, are not held by the locks it took,
+// and wait for a connection the transaction may be holding the last of.
+// The reads that go through the store's query helpers follow it, GetNode,
+// GetNodesBatch, GetEdges, GetEdgesBatch, NodeHistory and EdgeHistory among
+// them, an as-of read included.
+func WithReadTx(ctx context.Context, tx *sql.Tx) context.Context {
+	return context.WithValue(ctx, readTxKey{}, tx)
+}
+
+func readTxFrom(ctx context.Context) *sql.Tx {
+	tx, _ := ctx.Value(readTxKey{}).(*sql.Tx)
+	return tx
 }
 
 // txPrepare is the same for a statement prepared once and executed many times.
@@ -601,6 +627,8 @@ func (g *GraphStore) GetNode(ctx context.Context, nodeID string) (*GraphNode, er
 // superseded_by naming the canonical node, so an as-of read from before the
 // merge still sees the alias and a later reader can tell a merge from a
 // delete. A caller may state its own reason or producer with WithInvalidation.
+//
+// The merge is one transaction: every alias is folded, or none is.
 func (g *GraphStore) MergeEntities(ctx context.Context, canonicalID string, aliasIDs []string) error {
 	if canonicalID == "" {
 		return fmt.Errorf("canonicalID required")
@@ -611,31 +639,49 @@ func (g *GraphStore) MergeEntities(ctx context.Context, canonicalID string, alia
 	if err := g.InitGraphSchema(ctx); err != nil {
 		return err
 	}
-	ctx = WithInvalidation(ctx, InvalidationFrom(ctx).withDefaults(ReasonMerged, canonicalID, ProducerGraphMerge))
-	for _, alias := range aliasIDs {
-		if alias == "" || alias == canonicalID {
-			continue
-		}
-		if err := g.mergeOne(ctx, canonicalID, alias); err != nil {
-			return err
-		}
-		if err := g.DeleteNode(ctx, alias); err != nil && err.Error() != fmt.Sprintf("node not found: %s", alias) {
-			return err
-		}
-	}
-	return nil
-}
-
-// mergeOne repoints alias's edges onto canonicalID in one transaction, closing
-// each edge's previous version in history first.
-func (g *GraphStore) mergeOne(ctx context.Context, canonicalID, alias string) error {
 	tx, err := g.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if _, err := g.MergeEntitiesTx(ctx, tx, canonicalID, aliasIDs); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	g.SyncDeletedNodeIDs(ctx, aliasIDs)
+	return nil
+}
 
+// MergeEntitiesTx is MergeEntities inside the caller's transaction, which
+// the caller commits, and after which it syncs the index
+// (SyncDeletedNodeIDs). It returns the instant of the merge: every version
+// the merge closes, of an alias or of an edge, is closed at that one
+// instant with reason merged into canonicalID, and every edge it repoints
+// opens there. One instant and one canonical entity therefore name one
+// merge in history, and what it took.
+func (g *GraphStore) MergeEntitiesTx(ctx context.Context, tx *sql.Tx, canonicalID string, aliasIDs []string) (time.Time, error) {
+	ctx = WithInvalidation(ctx, InvalidationFrom(ctx).withDefaults(ReasonMerged, canonicalID, ProducerGraphMerge))
 	at := g.clock.now()
+	gone := make([]string, 0, len(aliasIDs))
+	for _, alias := range aliasIDs {
+		if alias == "" || alias == canonicalID {
+			continue
+		}
+		if err := g.mergeOne(ctx, tx, canonicalID, alias, at); err != nil {
+			return at, err
+		}
+		gone = append(gone, alias)
+	}
+	// An alias that is not there is not an error, as before.
+	_, err := g.deleteNodesBatchAtTx(ctx, tx, gone, at)
+	return at, err
+}
+
+// mergeOne repoints alias's edges onto canonicalID inside tx, closing each
+// edge's previous version in history first.
+func (g *GraphStore) mergeOne(ctx context.Context, tx *sql.Tx, canonicalID, alias string, at time.Time) error {
 	if err := g.archiveEdges(ctx, tx, []string{alias}, at, "endpoint"); err != nil {
 		return err
 	}
@@ -673,7 +719,7 @@ func (g *GraphStore) mergeOne(ctx context.Context, canonicalID, alias string) er
 	if _, err := g.txExec(ctx, tx, `DELETE FROM graph_edges WHERE from_node_id = ? AND to_node_id = ?`, canonicalID, canonicalID); err != nil {
 		return fmt.Errorf("drop self-loops: %w", err)
 	}
-	return tx.Commit()
+	return nil
 }
 
 // DeleteNode removes a node and all its edges from the current graph.

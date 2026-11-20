@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- `merge_entities {canonical, aliases, dry_run}` applies an alias table the
+  caller gives, one group per call, over `GraphStore.MergeEntities`: edges
+  repointed, self-loops dropped, each alias and edge kept in history as
+  merged into the canonical entity. It answers the edges repointed and the
+  loops removed, and a journal that `unmerge_entities {journal}` takes to
+  write back, from history, what the merge took. The names folded are
+  recorded on the canonical entity (`aliases`, where `--resolve-entities`
+  records them), so a call that names an alias reaches the canonical entity;
+  the undo takes back the names the merge recorded, and only those. The
+  merge and the undo are one transaction each, read and written inside it,
+  and no other writer changes the graph while one runs. The journal names
+  the merge by its canonical entity and its instant (`merged_at`); what the
+  merge took is read from history, and the undo is refused whole when the
+  journal names anything else or less, when an alias exists again, or when
+  an alias or an edge of the merge has been written or deleted since, by a
+  later merge or its undo included. It never writes over what came after
+  the merge, and a merge is undone once. A confined key merges only
+  entities every collection of which it may read; any other is answered as
+  an entity that is not there, and so is every refusal of its undo. Both
+  tools are closed under `strict_actions`.
+- `GraphStore.MergeEntities` folds every alias in one transaction, where it
+  committed one alias at a time, and closes everything the merge takes at
+  one instant, where each alias had its own. `GraphStore.MergeEntitiesTx`
+  does the same inside a caller's transaction and returns that instant, and
+  `graph.WithReadTx` makes the store's reads run inside one.
+
 ### Fixed
 
 - `upsert_entities`, `upsert_relations` and `find_nodes` follow the aliases

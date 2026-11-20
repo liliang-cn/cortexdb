@@ -305,3 +305,49 @@ func TestAConfinedKeyIsAnsweredAHugeTopKOverGRPC(t *testing.T) {
 		}
 	}
 }
+
+// Over CallTool, a key confined to alpha that may write merges and unmerges
+// alpha's entities, and is refused an entity only beta knows, one both
+// collections know and one that does not exist in the same words.
+func TestAConfinedKeyMergesOnlyItsCollectionsEntitiesOverGRPC(t *testing.T) {
+	ks, err := authz.NewKeySet([]authz.Key{
+		{ID: "operator", Secret: "op-secret", Clearance: authz.ReadWrite},
+		{ID: "alpha", Secret: "alpha-secret", Clearance: authz.ReadWrite, Scope: authz.Scope{Collection: "alpha"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn := newPolicyConn(t, Options{Keys: ks})
+	tools := rpcv1.NewToolsServiceClient(conn)
+	seed := append(slices.Clone(twoCollectionGraph), struct{ tool, args string }{"knowledge_save", `{"knowledge_id":"a2","collection":"alpha","content":"Alpha Mill Ltd grinds grain.",
+		"entities":[{"name":"Alpha Mill Ltd","chunk_ids":["chunk:a2:000"]}]}`})
+	for _, w := range seed {
+		if _, err := tools.CallTool(asKey("op-secret"), &rpcv1.CallToolRequest{Name: w.tool, ArgsJson: w.args}); err != nil {
+			t.Fatalf("operator %s: %v", w.tool, err)
+		}
+	}
+	refusals := map[string]string{}
+	for _, alias := range []string{"Project Nightjar", "Kestrel Vale", "No Such Mill"} {
+		_, err := tools.CallTool(asKey("alpha-secret"), &rpcv1.CallToolRequest{Name: "merge_entities", ArgsJson: fmt.Sprintf(`{"canonical":"Alpha Mill","aliases":[%q]}`, alias)})
+		if err == nil {
+			t.Fatalf("alpha merged %s", alias)
+		}
+		refusals[alias] = fmt.Sprint(status.Code(err), strings.ReplaceAll(status.Convert(err).Message(), cortexdb.EntityNodeID(alias), "X"))
+	}
+	if refusals["Project Nightjar"] != refusals["No Such Mill"] || refusals["Kestrel Vale"] != refusals["No Such Mill"] {
+		t.Fatalf("the refusals tell the entities apart: %v", refusals)
+	}
+	resp, err := tools.CallTool(asKey("alpha-secret"), &rpcv1.CallToolRequest{Name: "merge_entities", ArgsJson: `{"canonical":"Alpha Mill","aliases":["Alpha Mill Ltd"]}`})
+	if err != nil {
+		t.Fatalf("alpha merge of its own entities: %v", err)
+	}
+	var merged struct {
+		Journal json.RawMessage `json:"journal"`
+	}
+	if err := json.Unmarshal([]byte(resp.GetResultJson()), &merged); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tools.CallTool(asKey("alpha-secret"), &rpcv1.CallToolRequest{Name: "unmerge_entities", ArgsJson: `{"journal":` + string(merged.Journal) + `}`}); err != nil {
+		t.Fatalf("alpha unmerge of its own merge: %v", err)
+	}
+}

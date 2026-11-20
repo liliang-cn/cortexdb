@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/liliang-cn/cortexdb/v2/internal/encoding"
 	"strings"
+	"time"
 )
 
 // BatchNodeOperation represents a batch operation for nodes
@@ -688,6 +689,12 @@ func (g *GraphStore) upsertNodesBatchTx(ctx context.Context, tx *sql.Tx, nodes [
 }
 
 func (g *GraphStore) deleteNodesBatchTx(ctx context.Context, tx *sql.Tx, nodeIDs []string) (*BatchResult, error) {
+	return g.deleteNodesBatchAtTx(ctx, tx, nodeIDs, g.clock.now())
+}
+
+// deleteNodesBatchAtTx is deleteNodesBatchTx at an instant the caller
+// reserved, for a write that closes several things at once.
+func (g *GraphStore) deleteNodesBatchAtTx(ctx context.Context, tx *sql.Tx, nodeIDs []string, at time.Time) (*BatchResult, error) {
 	result := &BatchResult{}
 
 	if len(nodeIDs) == 0 {
@@ -704,7 +711,7 @@ func (g *GraphStore) deleteNodesBatchTx(ctx context.Context, tx *sql.Tx, nodeIDs
 	// Retraction, not a hard delete: the rows and every edge touching them are
 	// recorded first, in this transaction, so a crash between the two cannot
 	// leave a fact that vanished without a trace.
-	if err := g.archiveNodes(ctx, tx, nodeIDs, g.clock.now()); err != nil {
+	if err := g.archiveNodes(ctx, tx, nodeIDs, at); err != nil {
 		return nil, err
 	}
 
