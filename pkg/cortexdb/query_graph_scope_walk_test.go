@@ -2,6 +2,7 @@ package cortexdb
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"path/filepath"
 	"slices"
@@ -88,9 +89,42 @@ func TestTheScopedWalkKeepsNodeTypesAndLimit(t *testing.T) {
 // chunk in the collection.
 func TestDocumentsInCollectionQuery(t *testing.T) {
 	query, args := documentsInCollectionQuery("alpha", []string{"a1", "b1"})
-	want := `SELECT DISTINCT e.doc_id FROM embeddings e JOIN collections c ON c.id = e.collection_id WHERE c.name = ? AND e.doc_id IN (?,?)`
+	want := `SELECT DISTINCT e.doc_id FROM embeddings e JOIN collections c ON c.id = +e.collection_id WHERE c.name = ? AND e.doc_id IN (?,?)`
 	if query != want || len(args) != 3 || args[0] != "alpha" || args[1] != "a1" || args[2] != "b1" {
 		t.Errorf("query = %q %v", query, args)
+	}
+}
+
+// The documents a walk reached are looked up by their own index. On a
+// collection that holds most of the store, the collection index names
+// nearly every chunk, and the lookup read the whole table at each step of
+// the walk: 1.3 s of a 1.5 s knowledge_search on a 270,000-chunk brain.
+func TestDocumentsInCollectionReadsOnlyTheNamedDocuments(t *testing.T) {
+	db, ctx := openLaneScopeBrain(t)
+	// A walk reaches hundreds of documents; the planner weighs that many
+	// lookups against one pass over the collection.
+	ids := make([]string, 400)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("doc-%d", i)
+	}
+	query, args := documentsInCollectionQuery("alpha", ids)
+	rows, err := db.SQL().QueryContext(ctx, "EXPLAIN QUERY PLAN "+query, args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plan []string
+	for rows.Next() {
+		var id, parent, notUsed int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notUsed, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	_ = rows.Close()
+	text := strings.Join(plan, "\n")
+	if !strings.Contains(text, "idx_embeddings_doc_id") || strings.Contains(text, "idx_embeddings_collection_id") {
+		t.Errorf("the documents of a walk are not looked up by their index:\n%s", text)
 	}
 }
 

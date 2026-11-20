@@ -180,10 +180,12 @@ func (db *DB) laneScopeOf(ctx context.Context, collection string, steps []laneSt
 }
 
 // documentsInCollectionQuery is the SQL that selects, among docIDs, the
-// documents with a chunk in the collection.
+// documents with a chunk in the collection. The unary plus keeps the planner
+// off the collection index: given hundreds of documents, it preferred one
+// pass over every chunk of the collection to that many doc_id lookups.
 func documentsInCollectionQuery(collection string, docIDs []string) (string, []any) {
 	placeholders, args := sqlPlaceholders(docIDs)
-	return `SELECT DISTINCT e.doc_id FROM embeddings e JOIN collections c ON c.id = e.collection_id WHERE c.name = ? AND e.doc_id IN (` + placeholders + `)`,
+	return `SELECT DISTINCT e.doc_id FROM embeddings e JOIN collections c ON c.id = +e.collection_id WHERE c.name = ? AND e.doc_id IN (` + placeholders + `)`,
 		append([]any{collection}, args...)
 }
 
