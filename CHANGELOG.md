@@ -10,8 +10,8 @@ All notable changes to this project will be documented in this file.
 
 - `find_nodes`, `get_nodes` and `expand_graph` answer without each node's
   embedding; `include_vectors: true` keeps it. A `find_nodes` call for two
-  names on the shared brain carried 768 floats per node, about 9 of every 10
-  characters of the answer. `graph.GraphNode` now omits an empty `vector`
+  names on the shared brain (six nodes, 768 floats each) went from about
+  13 000 characters to about 4 000. `graph.GraphNode` now omits an empty `vector`
   from JSON. (#234)
 
 ## [2.159.1] - 2026-11-21
