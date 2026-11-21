@@ -166,9 +166,28 @@ func (t *GraphRAGToolbox) FindNodes(ctx context.Context, req ToolFindNodesReques
 				match.Nodes = append(match.Nodes, node)
 			}
 		}
+		match.Nodes = toolNodes(match.Nodes, req.IncludeVectors)
 		response.Matches = append(response.Matches, match)
 	}
 	return response, nil
+}
+
+// toolNodes is the nodes a graph tool answers with: without their
+// embeddings unless the caller asked for them. A node carrying a vector is
+// copied, so a node shared with a cache or the caller keeps its own.
+func toolNodes(nodes []*graph.GraphNode, includeVectors bool) []*graph.GraphNode {
+	if includeVectors {
+		return nodes
+	}
+	for i, n := range nodes {
+		if n == nil || len(n.Vector) == 0 {
+			continue
+		}
+		c := *n
+		c.Vector = nil
+		nodes[i] = &c
+	}
+	return nodes
 }
 
 // nodeCandidate is a node find_nodes compares a name against; folded is its

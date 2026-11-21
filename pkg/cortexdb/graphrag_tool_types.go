@@ -210,6 +210,9 @@ type ToolExpandGraphRequest struct {
 	RelationPolicies graph.RelationPolicies `json:"relation_policies,omitempty"`
 	// AsOf expands the graph as it stood at this RFC 3339 instant.
 	AsOf string `json:"as_of,omitempty"`
+	// IncludeVectors keeps each node's embedding in the answer; left out by
+	// default, as an agent has no use for hundreds of floats per node.
+	IncludeVectors bool `json:"include_vectors,omitempty"`
 }
 
 // ToolExpandGraphResponse returns a subgraph around the requested nodes.
@@ -224,6 +227,9 @@ type ToolExpandGraphResponse struct {
 // ToolGetNodesRequest fetches graph nodes by ID.
 type ToolGetNodesRequest struct {
 	NodeIDs []string `json:"node_ids"`
+	// IncludeVectors keeps each node's embedding in the answer; left out by
+	// default, as an agent has no use for hundreds of floats per node.
+	IncludeVectors bool `json:"include_vectors,omitempty"`
 }
 
 // ToolGetNodesResponse returns graph nodes.
@@ -244,6 +250,9 @@ type ToolFindNodesRequest struct {
 	// begins "chunk:", as ingest names them; document nodes, whose content is
 	// their title or, untitled, their text, are still matched.
 	SkipChunks bool `json:"skip_chunks,omitempty"`
+	// IncludeVectors keeps each node's embedding in the answer; left out by
+	// default, as an agent has no use for hundreds of floats per node.
+	IncludeVectors bool `json:"include_vectors,omitempty"`
 }
 
 // ToolFindNodesResponse returns what each requested name resolved to.

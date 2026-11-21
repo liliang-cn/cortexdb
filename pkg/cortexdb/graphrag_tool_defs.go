@@ -335,6 +335,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 					"limit":             toolIntegerSchema("Optional node result limit."),
 					"relation_policies": toolRelationPoliciesSchema(),
 					"as_of":             toolStringSchema("Expand the graph as it stood at this RFC 3339 instant: edges retracted since are still followed."),
+					"include_vectors":   toolBooleanSchema("Keep each node's embedding vector in the answer. Default false: vectors are left out."),
 				},
 			),
 		},
@@ -344,7 +345,8 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			InputSchema: toolObjectSchema(
 				[]string{"node_ids"},
 				map[string]any{
-					"node_ids": toolStringArraySchema("Node IDs to load."),
+					"node_ids":        toolStringArraySchema("Node IDs to load."),
+					"include_vectors": toolBooleanSchema("Keep each node's embedding vector in the answer. Default false: vectors are left out."),
 				},
 			),
 		},
@@ -354,10 +356,11 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			InputSchema: toolObjectSchema(
 				[]string{"names"},
 				map[string]any{
-					"names":       toolStringArraySchema("Names to look up. Batch them: one scan serves all."),
-					"node_types":  toolStringArraySchema("Optional node type filter, e.g. Concept."),
-					"limit":       toolIntegerSchema("Optional cap on nodes returned per name."),
-					"skip_chunks": toolBooleanSchema("Set true to leave chunks out of the match: a passage that mentions the name is not a node named by it. Chunk text is then not decoded; document nodes are still matched."),
+					"names":           toolStringArraySchema("Names to look up. Batch them: one scan serves all."),
+					"node_types":      toolStringArraySchema("Optional node type filter, e.g. Concept."),
+					"limit":           toolIntegerSchema("Optional cap on nodes returned per name."),
+					"skip_chunks":     toolBooleanSchema("Set true to leave chunks out of the match: a passage that mentions the name is not a node named by it. Chunk text is then not decoded; document nodes are still matched."),
+					"include_vectors": toolBooleanSchema("Keep each node's embedding vector in the answer. Default false: vectors are left out."),
 				},
 			),
 		},
