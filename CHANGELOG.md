@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.158.0] - 2026-11-21
+
+### Changed
+
+- `find_nodes` reads a trigram index of folded node names
+  (`graph_node_folds_fts`, built on first use and kept by triggers) instead
+  of folding every node of the store per call; a name folding to fewer than
+  three characters, and PostgreSQL, still scan. A rare name on a 33 000-node
+  store: 29 ms before, 0.6 ms after. Answers are the scan's, compared on
+  randomized graphs. (#228)
+- The keyword floor of `knowledge_search` counts each term's chunks through
+  `chunks_fts_cjk` instead of a `LIKE '%term%'` scan of the collection; the
+  counts are the scan's. (#227)
+- A collection-scoped graph walk looks up the documents it reached by
+  `idx_embeddings_doc_id`: `knowledge_search` with a confined key on a
+  270 000-chunk brain went from 1.3–1.7 s to 0.5–0.7 s. (#225)
+
 ## [2.157.1] - 2026-11-20
 
 ### Fixed
