@@ -259,7 +259,7 @@ var confinedTools = map[string]toolRule{
 	"knowledge_memory_remember": {scope: memoryScope, stores: storeMemory, rewritten: cortexdb.EngineMemoryKeys,
 		args: memoryArgs, ids: []idField{{"memory_id", idMemory}}},
 	"memory_search": {scope: memoryScope, stores: storeMemory,
-		args: paths(queryArgs[:4], planArgs, pprArgs, []string{"entity_names", "top_k", "session_id", "min_grade"})},
+		args: paths(queryArgs[:4], planArgs, pprArgs, []string{"entity_names", "top_k", "session_id", "min_grade", "as_of"})},
 	// Memory, addressed by id alone. The list form of memory_get is data: the
 	// facade lists a row outside the caller's scope under missing, in the
 	// order asked, exactly as a row that does not exist (cortexdb.DB.GetMemory).
@@ -310,9 +310,9 @@ var confinedTools = map[string]toolRule{
 	// Both stores, each behind its gate. Recall adds no graph facts for a
 	// caller with a scope (cortexdb.KnowledgeMemory.Recall).
 	"knowledge_memory_recall": {scope: bothScopes, stores: storeKnowledge | storeMemory,
-		args: paths(queryArgs, walkArgs, planArgs, pprArgs, recallArgs, []string{"detail", "explain", "planner", "min_grade"}), gates: recallGates},
+		args: paths(queryArgs, walkArgs, planArgs, pprArgs, recallArgs, []string{"detail", "explain", "planner", "min_grade", "as_of"}), gates: recallGates},
 	"knowledge_memory_build_context_pack": {scope: bothScopes, stores: storeKnowledge | storeMemory,
-		args: paths(queryArgs, walkArgs, planArgs, pprArgs, recallArgs, []string{"explain", "planner", "min_grade"}), gates: recallGates},
+		args: paths(queryArgs, walkArgs, planArgs, pprArgs, recallArgs, []string{"explain", "planner", "min_grade", "as_of"}), gates: recallGates},
 
 	// The recall log, which the facade holds to the calling key: a confined
 	// key reads and marks the recalls it made and no other, whatever key it

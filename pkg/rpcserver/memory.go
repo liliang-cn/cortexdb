@@ -14,22 +14,46 @@ type memoryService struct {
 
 func memoryRecordToProto(r cortexdb.MemoryRecord) *rpcv1.MemoryRecord {
 	rec := &rpcv1.MemoryRecord{
-		Id:         r.ID,
-		UserId:     r.UserID,
-		SessionId:  r.SessionID,
-		Scope:      r.Scope,
-		Namespace:  r.Namespace,
-		Role:       r.Role,
-		Content:    r.Content,
-		Metadata:   structFromAnyMap(r.Metadata),
-		Importance: r.Importance,
-		TtlSeconds: int32(r.TTLSeconds),
-		CreatedAt:  tsFromTime(r.CreatedAt),
+		Id:           r.ID,
+		UserId:       r.UserID,
+		SessionId:    r.SessionID,
+		Scope:        r.Scope,
+		Namespace:    r.Namespace,
+		Role:         r.Role,
+		Content:      r.Content,
+		Metadata:     structFromAnyMap(r.Metadata),
+		Importance:   r.Importance,
+		TtlSeconds:   int32(r.TTLSeconds),
+		CreatedAt:    tsFromTime(r.CreatedAt),
+		SupersededBy: r.SupersededBy,
+		CurrentId:    r.CurrentID,
 	}
 	if r.ExpiresAt != nil {
 		rec.ExpiresAt = tsFromTime(*r.ExpiresAt)
 	}
 	return rec
+}
+
+func memoryReplacedToProto(in []cortexdb.MemoryReplaced) []*rpcv1.MemoryReplaced {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]*rpcv1.MemoryReplaced, 0, len(in))
+	for _, r := range in {
+		m := &rpcv1.MemoryReplaced{
+			Id:           r.ID,
+			Excerpt:      r.Excerpt,
+			SavedAt:      tsFromTime(r.SavedAt),
+			SupersededBy: r.SupersededBy,
+			WrittenBy:    r.WrittenBy,
+			Source:       r.Source,
+		}
+		if !r.SupersededAt.IsZero() {
+			m.SupersededAt = tsFromTime(r.SupersededAt)
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 func (s *memoryService) SaveMemory(ctx context.Context, req *rpcv1.SaveMemoryRequest) (*rpcv1.SaveMemoryResponse, error) {
@@ -109,6 +133,7 @@ func (s *memoryService) SearchMemory(ctx context.Context, req *rpcv1.SearchMemor
 		AlternateQueries: req.GetAlternateQueries(),
 		RetrievalMode:    req.GetRetrievalMode(),
 		Plan:             planFromProto(req.GetPlan()),
+		AsOf:             req.GetAsOf(),
 	})
 	if err != nil {
 		return nil, toStatus(err)
@@ -116,8 +141,9 @@ func (s *memoryService) SearchMemory(ctx context.Context, req *rpcv1.SearchMemor
 	hits := make([]*rpcv1.MemorySearchHit, 0, len(resp.Results))
 	for _, h := range resp.Results {
 		hits = append(hits, &rpcv1.MemorySearchHit{
-			Memory: memoryRecordToProto(h.Memory),
-			Score:  h.Score,
+			Memory:   memoryRecordToProto(h.Memory),
+			Score:    h.Score,
+			Replaces: memoryReplacedToProto(h.Replaces),
 		})
 	}
 	return &rpcv1.SearchMemoryResponse{

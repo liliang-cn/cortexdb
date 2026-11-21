@@ -305,6 +305,9 @@ func (db *DB) GetMemory(ctx context.Context, req MemoryGetRequest) (*MemoryGetRe
 				resp.Missing = append(resp.Missing, id)
 				continue
 			}
+			if err := db.fillCurrentID(ctx, &row.record); err != nil {
+				return nil, err
+			}
 			resp.Memories = append(resp.Memories, row.record)
 		}
 		if len(resp.Memories) > 0 {
@@ -314,6 +317,9 @@ func (db *DB) GetMemory(ctx context.Context, req MemoryGetRequest) (*MemoryGetRe
 	}
 	row, err := db.loadMemoryRow(ctx, req.MemoryID)
 	if err != nil {
+		return nil, err
+	}
+	if err := db.fillCurrentID(ctx, &row.record); err != nil {
 		return nil, err
 	}
 	return &MemoryGetResponse{Memory: row.record}, nil
@@ -348,6 +354,9 @@ func (db *DB) SearchMemory(ctx context.Context, req MemorySearchRequest) (*Memor
 func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordRecalls bool) (*MemorySearchResponse, error) {
 	ctx, err := withMinMemoryGrade(ctx, req.MinGrade)
 	if err != nil {
+		return nil, err
+	}
+	if ctx, err = withMemoryAsOf(ctx, req.AsOf); err != nil {
 		return nil, err
 	}
 	resolution := resolveRetrievalPlan(retrievalPlanInput{
@@ -580,14 +589,21 @@ func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordR
 }
 
 // memoryFilteredBy names the filter that keeps record out of a recall —
-// expired, superseded, unreviewed, under the request's min_grade — or ""
-// when none does. Every retriever asks it, so a memory is left out the same
-// way whichever one found it.
+// saved after as_of, expired, superseded, unreviewed, under the request's
+// min_grade — or "" when none does. Every retriever asks it, so a memory is
+// left out the same way whichever one found it.
+//
+// Under as_of (withMemoryAsOf) a memory saved after the instant was not there
+// yet, and expiry and supersession are judged at the instant: a memory
+// replaced after it was still current then.
 func (db *DB) memoryFilteredBy(ctx context.Context, record MemoryRecord) string {
+	at := memoryAsOf(ctx)
 	switch {
-	case memoryExpired(record):
+	case memorySavedAfter(record, at):
+		return dropAfterAsOf
+	case memoryExpiredAsOf(record, at):
 		return dropExpired
-	case memorySuperseded(record):
+	case memorySupersededAsOf(record, at):
 		return dropSuperseded
 	case db.memoryUnreviewed(record):
 		return dropUnreviewed

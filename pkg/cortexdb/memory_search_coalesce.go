@@ -38,7 +38,7 @@ type memorySearchFlight struct {
 func (db *DB) searchMemoryShared(ctx context.Context, req MemorySearchRequest) (*MemorySearchResponse, error) {
 	keyBytes, err := json.Marshal(req)
 	if err != nil {
-		return db.searchMemory(ctx, req, true)
+		return db.searchMemoryWithChains(ctx, req, true)
 	}
 	// Callers with different scopes do not share an answer: the run is
 	// checked against the scope of whoever started it.
@@ -73,7 +73,7 @@ func (db *DB) searchMemoryShared(ctx context.Context, req MemorySearchRequest) (
 		go func() {
 			cancel := flight.cancel
 			defer cancel()
-			resp, err := db.searchMemory(runCtx, req, false)
+			resp, err := db.searchMemoryWithChains(runCtx, req, false)
 			// Closed to newcomers before the recalls are counted, so every
 			// caller counted is one this answer reaches.
 			f.mu.Lock()
@@ -110,6 +110,21 @@ func (db *DB) searchMemoryShared(ctx context.Context, req MemorySearchRequest) (
 	}
 }
 
+// searchMemoryWithChains is searchMemory with each hit's Replaces filled
+// from the stored supersession chain, read at the search's as_of.
+func (db *DB) searchMemoryWithChains(ctx context.Context, req MemorySearchRequest, recordRecalls bool) (*MemorySearchResponse, error) {
+	resp, err := db.searchMemory(ctx, req, recordRecalls)
+	if err != nil || resp == nil || len(resp.Results) == 0 {
+		return resp, err
+	}
+	// The as_of was checked by searchMemory; this cannot fail on it.
+	chainCtx, _ := withMemoryAsOf(ctx, req.AsOf)
+	if err := db.attachReplaces(chainCtx, resp.Results); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // clone gives each caller its own response: they are encoded and changed
 // independently.
 func (r *MemorySearchResponse) clone() *MemorySearchResponse {
@@ -120,6 +135,7 @@ func (r *MemorySearchResponse) clone() *MemorySearchResponse {
 	out.Results = make([]MemorySearchHit, len(r.Results))
 	for i, hit := range r.Results {
 		out.Results[i] = hit
+		out.Results[i].Replaces = append([]MemoryReplaced(nil), hit.Replaces...)
 		if hit.Memory.Metadata != nil {
 			md := make(map[string]any, len(hit.Memory.Metadata))
 			for k, v := range hit.Memory.Metadata {

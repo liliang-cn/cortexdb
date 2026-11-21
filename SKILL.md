@@ -1337,6 +1337,25 @@ lighter explicit-tool integration.
   decisions untagged; `--export-memory` writes the grade, `--sync-memory`
   reads it back, `--min-grade` exports only what was checked.
 
+## Memory changes
+
+- `memory_save` `supersedes` stamps the old memories `superseded_by` /
+  `superseded_at`; recall hides them (`memoryFilteredBy`). A hit that
+  superseded others carries `replaces` (id, excerpt, saved_at, superseded_at,
+  superseded_by, written_by, source; oldest first, at most 4 steps / 6
+  memories, the caller's scope only), read through the
+  `idx_messages_superseded_by` expression index
+  (`pkg/cortexdb/memory_supersession.go`). The context pack line of such a hit
+  ends `[changed <date>; before: "<previous value>"]` within the memory budget;
+  the auto-recall line ends `(changed <date>; before: …)`.
+- `memory_get` of a replaced memory sets `superseded_by` and `current_id` (the
+  end of the chain).
+- `as_of` (RFC 3339) on `memory_search`, `knowledge_memory_recall` and
+  `knowledge_memory_build_context_pack`: memories saved after it are dropped
+  (`after_as_of`), supersession and expiry are judged at it. Memory half only;
+  read-only. Typed gRPC `SearchMemory` takes `as_of` and returns `replaces`.
+- No word lists decide what changed: supersession stays explicit.
+
 ## Observability
 
 - Request ids: every call carries `x-request-id` (gRPC metadata / REST header;

@@ -19,6 +19,10 @@ message MemoryRecord {
   int32 ttl_seconds = 10;
   google.protobuf.Timestamp expires_at = 11;
   google.protobuf.Timestamp created_at = 12;
+  // Set by GetMemory on a memory a newer one superseded: the memory that
+  // replaced it, and the end of that chain, which holds the current value.
+  string superseded_by = 13;
+  string current_id = 14;
 }
 
 message SaveMemoryRequest {
@@ -64,11 +68,28 @@ message SearchMemoryRequest {
   repeated string alternate_queries = 8;
   string retrieval_mode = 9;
   optional RetrievalPlan plan = 10;
+  // Answer as the memories stood at this RFC 3339 instant: memories saved
+  // after it are not seen, and one superseded after it is still current.
+  string as_of = 11;
+}
+
+// One memory a hit superseded, directly or through the memories it
+// superseded in turn.
+message MemoryReplaced {
+  string id = 1;
+  string excerpt = 2;
+  google.protobuf.Timestamp saved_at = 3;
+  google.protobuf.Timestamp superseded_at = 4;
+  string superseded_by = 5;
+  string written_by = 6;
+  string source = 7;
 }
 
 message MemorySearchHit {
   MemoryRecord memory = 1;
   double score = 2;
+  // What this memory superseded, oldest first; empty when it changed nothing.
+  repeated MemoryReplaced replaces = 3;
 }
 
 message SearchMemoryResponse {

@@ -188,6 +188,10 @@ func (s *SQLiteStore) createTables(ctx context.Context) error {
 
 	CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
 	CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+	-- A recall hit lists the memories it superseded (pkg/cortexdb/
+	-- memory_supersession.go): the rows whose superseded_by names it. This is
+	-- that lookup's expression, indexed, so it is not a parse of every row.
+	CREATE INDEX IF NOT EXISTS idx_messages_superseded_by ON messages ((CASE WHEN json_valid(metadata) = 1 THEN json_extract(metadata, '$.superseded_by') ELSE NULL END));
 	CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 
 	-- FTS5 Virtual Table for message keyword search (BM25 via SQLite FTS5)

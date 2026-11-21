@@ -228,6 +228,12 @@ type MemoryRecord struct {
 	Grade     string    `json:"grade,omitempty"`
 	GradeWhy  string    `json:"grade_why,omitempty"`
 	CreatedAt time.Time `json:"created_at,omitempty"`
+	// SupersededBy and CurrentID are set by a read by id (memory_get) on a
+	// memory a newer one replaced: SupersededBy is the memory that replaced
+	// it (its superseded_by stamp), CurrentID the end of the chain, the
+	// memory that holds the current value.
+	SupersededBy string `json:"superseded_by,omitempty"`
+	CurrentID    string `json:"current_id,omitempty"`
 }
 
 // MemorySaveRequest stores a memory in a dedicated memory bucket.
@@ -358,6 +364,10 @@ type MemorySearchRequest struct {
 	// MinGrade leaves out memories known less well than this grade
 	// (verified > self_consistent > asserted = untagged > held > refused).
 	MinGrade string `json:"min_grade,omitempty"`
+	// AsOf answers as the store stood at this RFC 3339 instant: memories
+	// saved after it are not seen, and a memory superseded after it is still
+	// current. Read-only, as as_of is for triples.
+	AsOf string `json:"as_of,omitempty"`
 }
 
 // MemorySearchHit is one scored memory result.
@@ -378,6 +388,11 @@ type MemorySearchHit struct {
 	// "graph". A recall that fused several says which one each hit owes its
 	// place to, so a person can tell a close meaning from a shared word.
 	Via []string `json:"via,omitempty"`
+	// Replaces is what this memory superseded, directly or through the
+	// memories it superseded in turn: oldest first, at most a few steps
+	// back (see memory_supersession.go). Empty for a memory that changed
+	// nothing.
+	Replaces []MemoryReplaced `json:"replaces,omitempty"`
 }
 
 // MemorySearchResponse contains retrieved memories.

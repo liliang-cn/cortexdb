@@ -357,7 +357,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "memory_get",
-			Description: "Fetch a memory by ID, or several at once with memory_ids (at most 100, in the order given, each once; ids that do not exist are listed in missing).",
+			Description: "Fetch a memory by ID, or several at once with memory_ids (at most 100, in the order given, each once; ids that do not exist are listed in missing). A memory a newer one superseded names it in superseded_by, and the memory that holds the current value in current_id.",
 			InputSchema: toolObjectSchema(
 				nil,
 				map[string]any{
@@ -368,7 +368,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "memory_search",
-			Description: "Search memories in a resolved memory bucket. Prefer sending a structured retrieval plan. Expand the goal into keywords, aliases, and alternate phrasings before lexical retrieval. Pass entity_names when you know what the question is about: memories saved with entities are reachable through the graph even when their wording shares nothing with the query.",
+			Description: "Search memories in a resolved memory bucket. Prefer sending a structured retrieval plan. Expand the goal into keywords, aliases, and alternate phrasings before lexical retrieval. Pass entity_names when you know what the question is about: memories saved with entities are reachable through the graph even when their wording shares nothing with the query. " + memoryChangeToolNote,
 			InputSchema: toolObjectSchema(
 				[]string{"query"},
 				map[string]any{
@@ -385,6 +385,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 					"ppr":               toolPPROptionsSchema(),
 					"plan":              toolRetrievalPlanSchema("Preferred structured retrieval plan produced by the external LLM before search."),
 					"min_grade":         toolEnumSchema("Leave out what is known less well than this: verified > self_consistent > asserted (= untagged) > held > refused. Use verified when the answer will be acted on.", GradeVerified, GradeSelfConsistent, GradeAsserted, GradeHeld, GradeRefused),
+					"as_of":             toolStringSchema(memoryAsOfDescription),
 				},
 			),
 		},

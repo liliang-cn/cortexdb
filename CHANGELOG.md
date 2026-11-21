@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Recall says when a fact changed. A hit from `memory_search`,
+  `knowledge_memory_recall` or `knowledge_memory_build_context_pack` that
+  superseded other memories carries `replaces`: each replaced memory's id,
+  excerpt, `saved_at`, `superseded_at`, `superseded_by`, `written_by` and
+  `source`, oldest first, at most 4 steps and 6 memories back, the caller's
+  scope only. The context pack writes the fact on one line within the memory
+  budget, `<current> [changed <date>; before: "<previous value>"]`, and the
+  auto-recall block adds `(changed <date>; before: …)`. `memory_get` of a
+  replaced memory names `superseded_by` and `current_id`, the end of the
+  chain. `as_of` (RFC 3339) on `memory_search` and recall answers as the
+  memories stood then: saved after it is not seen, superseded after it is
+  still current. Read-only; on recall it applies to the memory half. The typed
+  gRPC `SearchMemory` takes `as_of` and returns `replaces`, `GetMemory`
+  returns `superseded_by` and `current_id`. The chain is read through a new
+  expression index, `idx_messages_superseded_by`. What counts as a change is
+  still only an explicit `supersedes`. On a fixture of 16 changed facts (11
+  superseded once, 5 twice) with 30 distractors, asked as the hooks ask
+  (top 3), without an embedder / with a hashed-word one: current-value
+  accuracy 100% / 100% before and after; change awareness (the pack carries
+  the previous value and its change date) 0% / 0% before, 100% / 100% after;
+  `as_of` accuracy on 21 instants between versions 0% / 0% before, 100% /
+  100% after. Recall p50 0.85 → 0.91 ms and 1.04 → 1.12 ms, p95 1.27 → 1.33 ms
+  and 1.43 → 1.55 ms; the pack of a question whose answer changed grows from
+  38 to 61 tokens and from 54 to 82 (one line per changed fact). On a copy of
+  the shared brain (3,439 memories, 42 superseded), keyword mode: 55
+  golden-set queries p50 64.3 → 65.6 ms, p95 100.5 → 101.6 ms, pack 564
+  tokens unchanged (no hit had replaced anything); 40 queries about the
+  memories that superseded others p50 134.0 → 134.4 ms, p95 211.1 → 211.5 ms,
+  pack 682 → 690 tokens, 39 hits now carrying their chain.
+
 ## [2.158.0] - 2026-11-21
 
 ### Changed

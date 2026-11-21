@@ -127,8 +127,10 @@ const (
 	dropKnowledgeKeywordFloor = "knowledge_keyword_floor"
 	dropExpired               = "expired"
 	dropSuperseded            = "superseded"
-	dropUnreviewed            = "unreviewed"
-	dropBelowMinGrade         = "below_min_grade"
+	// dropAfterAsOf: the memory was saved after the search's as_of.
+	dropAfterAsOf     = "after_as_of"
+	dropUnreviewed    = "unreviewed"
+	dropBelowMinGrade = "below_min_grade"
 )
 
 // recallExplainer collects the account while the recall runs. Every method

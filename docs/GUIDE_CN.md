@@ -330,6 +330,29 @@ asserted = untagged > held > refused；召回时也作用于文档的 `_grade`�
 `unverified_memories` 段，标题 "Unverified — said, not checked"；已验证的记忆那一行写明核实依据。
 自动召回注入的文本里，猜测在括号最前面标 `UNVERIFIED (asserted)`，已验证的标 `verified: …`。
 
+### 事实变了的时候
+
+用 `supersedes: [旧 id]` 保存的记忆会让它点名的旧记忆退役：旧记忆仍然保存、仍然导出，打上
+`superseded_by` 和 `superseded_at`，召回不再把它当作当前答案。现在召回还会说明变了什么：
+
+- `memory_search`、`knowledge_memory_recall` 和 context pack 里，取代过其他记忆的命中带
+  `replaces`：每条被取代的记忆给出 `id`、`excerpt`（摘录）、`saved_at`、`superseded_at`、
+  `superseded_by`、`written_by` 和 `source`，最旧的在前，最多往回追四步、六条。调用方 scope
+  读不到的被取代记忆不列出。
+- context pack 在一行里写出这种事实，仍在原来的记忆预算内：`[orion-budget-v2] The Orion budget is
+  45k EUR. [changed 2026-02-15; before: "The Orion budget is 30k EUR."]`（变过不止一次时加
+  `; N earlier`）。预算紧时先截记忆正文，保留这段说明。自动召回注入的那一行加上
+  `(changed <日期>; before: …)`。
+- `memory_get` 读一条被取代的记忆时，`superseded_by` 是取代它的那条，`current_id` 是链条末端、
+  保存当前值的那条。
+- `memory_search`、`knowledge_memory_recall` 和 `knowledge_memory_build_context_pack` 的
+  `as_of`（RFC 3339）按记忆在那个时刻的样子回答：之后才保存的记忆看不到（explain 里是
+  `after_as_of`），之后才被取代的记忆在那时仍是当前的（按它的 `superseded_at` 判断）。和三元组的
+  `as_of` 一样只读；召回时只作用于记忆这一半，知识和图谱事实按现在回答。
+
+什么算“变了”从不靠文字猜：取代始终是写入者（或捕获的矛盾检查）明确做出的动作。gRPC 的
+`SearchMemory` 接受 `as_of`、返回 `replaces`，`GetMemory` 返回 `superseded_by` 和 `current_id`。
+
 ### 常驻规则
 
 常驻规则是 scope 为 global、`type` 为 `preference` 或 `rule`、importance 不低于 0.8、并且仍然有效
@@ -843,7 +866,7 @@ trace（`CORTEXDB_TRACE=1`，或超过 `CORTEXDB_SLOW_MS` 的慢请求）是结�
 实体、模式，以及 `planner`：调用方怎么做出的计划，如 `fallback: no answer from the planner`）、每个检索器
 的前几名候选及原始分数（向量、关键词、图谱）、融合后的列表、每个阈值或过滤丢掉了什么及原因
 （`memory_semantic_floor`、`memory_keyword_floor`、`keyword_one_word`、`knowledge_vector_floor`、
-`knowledge_keyword_floor`、`expired`、`superseded`、`unreviewed`），以及最终命中。降级的回答会在响应里
+`knowledge_keyword_floor`、`expired`、`superseded`、`unreviewed`、`after_as_of`），以及最终命中。降级的回答会在响应里
 说明：查询向量化失败、只用了关键词时是 `degraded: ["embedder_unreachable"]`（另有
 `vector_search_failed`、`keyword_search_failed`）。
 
