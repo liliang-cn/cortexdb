@@ -1,5 +1,13 @@
 package cortexdb
 
+// memoryChangeToolNote and the as_of descriptions say what memory_search and
+// recall tell about a fact that changed (memory_supersession.go).
+const (
+	memoryChangeToolNote  = "A memory that superseded others carries replaces: each replaced memory's id, excerpt, saved_at, superseded_at, written_by and source, oldest first; the context pack writes a changed fact as its current value, then [changed <date>; before: \"<previous value>\"]."
+	memoryAsOfDescription = "Answer as the memories stood at this RFC 3339 instant: memories saved after it are not seen, and one superseded after it is still current. Reading the past is read-only."
+	recallAsOfDescription = memoryAsOfDescription + " Applies to memories; knowledge and graph facts answer as now."
+)
+
 func KnowledgeMemoryFacadeToolDefinitions() []ToolDefinition {
 	definitions := []ToolDefinition{
 		{
@@ -26,7 +34,7 @@ func KnowledgeMemoryFacadeToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        "knowledge_memory_recall",
-			Description: "Recall from the CortexDB KnowledgeMemory facade by fusing episodic memory, durable knowledge, graph expansion, and a packed context window.",
+			Description: "Recall from the CortexDB KnowledgeMemory facade by fusing episodic memory, durable knowledge, graph expansion, and a packed context window. " + memoryChangeToolNote,
 			InputSchema: toolObjectSchema(
 				[]string{"query"},
 				map[string]any{
@@ -63,12 +71,13 @@ func KnowledgeMemoryFacadeToolDefinitions() []ToolDefinition {
 					"explain":                toolBooleanSchema("Also return explain: the plan searched with, each retriever's top candidates with raw scores (vector, keyword, graph), the fused list, what each relevance floor or filter dropped, and the final hits. For finding out why a hit is there or a relevant one is missing."),
 					"min_grade":              toolEnumSchema("Leave out what is known less well than this: verified > self_consistent > asserted (= untagged) > held > refused. Use verified when the answer will be acted on.", GradeVerified, GradeSelfConsistent, GradeAsserted, GradeHeld, GradeRefused),
 					"planner":                toolStringSchema("How the plan was made, kept in the explain record and the recall log: e.g. model, or fallback: timeout when the planner gave up and the raw prompt was searched."),
+					"as_of":                  toolStringSchema(recallAsOfDescription),
 				},
 			),
 		},
 		{
 			Name:        "knowledge_memory_build_context_pack",
-			Description: "Assemble a KnowledgeMemory context pack from memory, knowledge, and graph retrieval results. This returns the same fused retrieval diagnostics as knowledge_memory_recall, centered on prompt-ready context.",
+			Description: "Assemble a KnowledgeMemory context pack from memory, knowledge, and graph retrieval results. This returns the same fused retrieval diagnostics as knowledge_memory_recall, centered on prompt-ready context. " + memoryChangeToolNote,
 			InputSchema: toolObjectSchema(
 				[]string{"query"},
 				map[string]any{
@@ -104,6 +113,7 @@ func KnowledgeMemoryFacadeToolDefinitions() []ToolDefinition {
 					"min_grade":              toolEnumSchema("Leave out what is known less well than this: verified > self_consistent > asserted (= untagged) > held > refused. Use verified when the answer will be acted on.", GradeVerified, GradeSelfConsistent, GradeAsserted, GradeHeld, GradeRefused),
 					"planner":                toolStringSchema("How the plan was made, kept in the explain record and the recall log: e.g. model, or fallback: timeout."),
 					"plan":                   toolRetrievalPlanSchema("Optional structured retrieval plan."),
+					"as_of":                  toolStringSchema(recallAsOfDescription),
 				},
 			),
 		},

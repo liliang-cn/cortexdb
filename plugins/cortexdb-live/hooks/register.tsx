@@ -381,7 +381,7 @@ async function recall($: EngineInterface, prompt: string): Promise<Recall | 'ski
         kind: 'memory' as const,
         rule: rules.has(m.memory?.id ?? '') || isStandingRule(m.memory),
         title: m.memory?.id ?? '',
-        snippet: snippetOf(content),
+        snippet: snippetOf(content) + changeOf(m),
         why: { ...memoryVia(m, memoryMode), matched: matchedIn(content, terms) },
         origin: memoryOrigin(m.memory),
         grade: text(m.memory?.grade),
@@ -1146,7 +1146,7 @@ type KnowledgeHit = {
   metadata?: Record<string, string>
 }
 
-type MemoryHit = { memory?: RecallMemory; score?: number; similarity?: number; via?: string[] }
+type MemoryHit = { memory?: RecallMemory; score?: number; similarity?: number; via?: string[]; replaces?: { excerpt?: string; superseded_at?: string }[] }
 
 type RecallPayload = {
   // What did not run: "embedder_unreachable" means keyword search only.
@@ -1373,6 +1373,16 @@ const strings = (list: unknown, max: number) =>
 const oneLine = (text: string) => text.split(/\s+/).filter(Boolean).join(' ')
 
 const snippetOf = (content: string) => clip(content.split(/\s+/).filter(Boolean).join(' '), SNIPPET)
+
+// What a memory that replaced others adds to its line: when it changed and
+// the value before it. The shell hook's changeOf (recall_remote.go) writes the
+// same words.
+const changeOf = (m: MemoryHit) => {
+  const prev = m.replaces?.[m.replaces.length - 1]
+  if (!prev) return ''
+  const date = text(prev.superseded_at)?.slice(0, 10)
+  return ` (changed${date ? ` ${date}` : ''}; before: ${Array.from(oneLine(prev.excerpt ?? '')).slice(0, 80).join('')})`
+}
 
 const clip = (text: string, max: number) => {
   const chars = Array.from(text)

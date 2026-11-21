@@ -59,6 +59,11 @@ type KnowledgeMemoryRecallRequest struct {
 	// Planner is how the caller made the plan — "model", "fallback: timeout"
 	// — kept in the account so a poor plan can be told from a poor search.
 	Planner string `json:"planner,omitempty"`
+	// AsOf recalls memories as the store stood at this RFC 3339 instant:
+	// memories saved after it are not seen, and one superseded after it is
+	// still current. It applies to the memory half; knowledge and graph
+	// facts answer as now. Read-only.
+	AsOf string `json:"as_of,omitempty"`
 }
 
 // KnowledgeMemoryContextSection is one debug-friendly part of a built context pack.

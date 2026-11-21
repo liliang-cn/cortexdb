@@ -24,19 +24,23 @@ const (
 )
 
 type MemoryRecord struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	SessionId     string                 `protobuf:"bytes,3,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	Scope         string                 `protobuf:"bytes,4,opt,name=scope,proto3" json:"scope,omitempty"`
-	Namespace     string                 `protobuf:"bytes,5,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	Role          string                 `protobuf:"bytes,6,opt,name=role,proto3" json:"role,omitempty"`
-	Content       string                 `protobuf:"bytes,7,opt,name=content,proto3" json:"content,omitempty"`
-	Metadata      *structpb.Struct       `protobuf:"bytes,8,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	Importance    float64                `protobuf:"fixed64,9,opt,name=importance,proto3" json:"importance,omitempty"`
-	TtlSeconds    int32                  `protobuf:"varint,10,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
-	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Id         string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	UserId     string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	SessionId  string                 `protobuf:"bytes,3,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Scope      string                 `protobuf:"bytes,4,opt,name=scope,proto3" json:"scope,omitempty"`
+	Namespace  string                 `protobuf:"bytes,5,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Role       string                 `protobuf:"bytes,6,opt,name=role,proto3" json:"role,omitempty"`
+	Content    string                 `protobuf:"bytes,7,opt,name=content,proto3" json:"content,omitempty"`
+	Metadata   *structpb.Struct       `protobuf:"bytes,8,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	Importance float64                `protobuf:"fixed64,9,opt,name=importance,proto3" json:"importance,omitempty"`
+	TtlSeconds int32                  `protobuf:"varint,10,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
+	ExpiresAt  *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	CreatedAt  *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// Set by GetMemory on a memory a newer one superseded: the memory that
+	// replaced it, and the end of that chain, which holds the current value.
+	SupersededBy  string `protobuf:"bytes,13,opt,name=superseded_by,json=supersededBy,proto3" json:"superseded_by,omitempty"`
+	CurrentId     string `protobuf:"bytes,14,opt,name=current_id,json=currentId,proto3" json:"current_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -153,6 +157,20 @@ func (x *MemoryRecord) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *MemoryRecord) GetSupersededBy() string {
+	if x != nil {
+		return x.SupersededBy
+	}
+	return ""
+}
+
+func (x *MemoryRecord) GetCurrentId() string {
+	if x != nil {
+		return x.CurrentId
+	}
+	return ""
 }
 
 type SaveMemoryRequest struct {
@@ -587,8 +605,11 @@ type SearchMemoryRequest struct {
 	AlternateQueries []string               `protobuf:"bytes,8,rep,name=alternate_queries,json=alternateQueries,proto3" json:"alternate_queries,omitempty"`
 	RetrievalMode    string                 `protobuf:"bytes,9,opt,name=retrieval_mode,json=retrievalMode,proto3" json:"retrieval_mode,omitempty"`
 	Plan             *RetrievalPlan         `protobuf:"bytes,10,opt,name=plan,proto3,oneof" json:"plan,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Answer as the memories stood at this RFC 3339 instant: memories saved
+	// after it are not seen, and one superseded after it is still current.
+	AsOf          string `protobuf:"bytes,11,opt,name=as_of,json=asOf,proto3" json:"as_of,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SearchMemoryRequest) Reset() {
@@ -691,17 +712,120 @@ func (x *SearchMemoryRequest) GetPlan() *RetrievalPlan {
 	return nil
 }
 
-type MemorySearchHit struct {
+func (x *SearchMemoryRequest) GetAsOf() string {
+	if x != nil {
+		return x.AsOf
+	}
+	return ""
+}
+
+// One memory a hit superseded, directly or through the memories it
+// superseded in turn.
+type MemoryReplaced struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Memory        *MemoryRecord          `protobuf:"bytes,1,opt,name=memory,proto3" json:"memory,omitempty"`
-	Score         float64                `protobuf:"fixed64,2,opt,name=score,proto3" json:"score,omitempty"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Excerpt       string                 `protobuf:"bytes,2,opt,name=excerpt,proto3" json:"excerpt,omitempty"`
+	SavedAt       *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=saved_at,json=savedAt,proto3" json:"saved_at,omitempty"`
+	SupersededAt  *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=superseded_at,json=supersededAt,proto3" json:"superseded_at,omitempty"`
+	SupersededBy  string                 `protobuf:"bytes,5,opt,name=superseded_by,json=supersededBy,proto3" json:"superseded_by,omitempty"`
+	WrittenBy     string                 `protobuf:"bytes,6,opt,name=written_by,json=writtenBy,proto3" json:"written_by,omitempty"`
+	Source        string                 `protobuf:"bytes,7,opt,name=source,proto3" json:"source,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MemoryReplaced) Reset() {
+	*x = MemoryReplaced{}
+	mi := &file_cortexdb_v1_memory_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MemoryReplaced) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MemoryReplaced) ProtoMessage() {}
+
+func (x *MemoryReplaced) ProtoReflect() protoreflect.Message {
+	mi := &file_cortexdb_v1_memory_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MemoryReplaced.ProtoReflect.Descriptor instead.
+func (*MemoryReplaced) Descriptor() ([]byte, []int) {
+	return file_cortexdb_v1_memory_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *MemoryReplaced) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *MemoryReplaced) GetExcerpt() string {
+	if x != nil {
+		return x.Excerpt
+	}
+	return ""
+}
+
+func (x *MemoryReplaced) GetSavedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SavedAt
+	}
+	return nil
+}
+
+func (x *MemoryReplaced) GetSupersededAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SupersededAt
+	}
+	return nil
+}
+
+func (x *MemoryReplaced) GetSupersededBy() string {
+	if x != nil {
+		return x.SupersededBy
+	}
+	return ""
+}
+
+func (x *MemoryReplaced) GetWrittenBy() string {
+	if x != nil {
+		return x.WrittenBy
+	}
+	return ""
+}
+
+func (x *MemoryReplaced) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+type MemorySearchHit struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Memory *MemoryRecord          `protobuf:"bytes,1,opt,name=memory,proto3" json:"memory,omitempty"`
+	Score  float64                `protobuf:"fixed64,2,opt,name=score,proto3" json:"score,omitempty"`
+	// What this memory superseded, oldest first; empty when it changed nothing.
+	Replaces      []*MemoryReplaced `protobuf:"bytes,3,rep,name=replaces,proto3" json:"replaces,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *MemorySearchHit) Reset() {
 	*x = MemorySearchHit{}
-	mi := &file_cortexdb_v1_memory_proto_msgTypes[9]
+	mi := &file_cortexdb_v1_memory_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -713,7 +837,7 @@ func (x *MemorySearchHit) String() string {
 func (*MemorySearchHit) ProtoMessage() {}
 
 func (x *MemorySearchHit) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_memory_proto_msgTypes[9]
+	mi := &file_cortexdb_v1_memory_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -726,7 +850,7 @@ func (x *MemorySearchHit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemorySearchHit.ProtoReflect.Descriptor instead.
 func (*MemorySearchHit) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_memory_proto_rawDescGZIP(), []int{9}
+	return file_cortexdb_v1_memory_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *MemorySearchHit) GetMemory() *MemoryRecord {
@@ -741,6 +865,13 @@ func (x *MemorySearchHit) GetScore() float64 {
 		return x.Score
 	}
 	return 0
+}
+
+func (x *MemorySearchHit) GetReplaces() []*MemoryReplaced {
+	if x != nil {
+		return x.Replaces
+	}
+	return nil
 }
 
 type SearchMemoryResponse struct {
@@ -758,7 +889,7 @@ type SearchMemoryResponse struct {
 
 func (x *SearchMemoryResponse) Reset() {
 	*x = SearchMemoryResponse{}
-	mi := &file_cortexdb_v1_memory_proto_msgTypes[10]
+	mi := &file_cortexdb_v1_memory_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -770,7 +901,7 @@ func (x *SearchMemoryResponse) String() string {
 func (*SearchMemoryResponse) ProtoMessage() {}
 
 func (x *SearchMemoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cortexdb_v1_memory_proto_msgTypes[10]
+	mi := &file_cortexdb_v1_memory_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -783,7 +914,7 @@ func (x *SearchMemoryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchMemoryResponse.ProtoReflect.Descriptor instead.
 func (*SearchMemoryResponse) Descriptor() ([]byte, []int) {
-	return file_cortexdb_v1_memory_proto_rawDescGZIP(), []int{10}
+	return file_cortexdb_v1_memory_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *SearchMemoryResponse) GetQuery() string {
@@ -825,7 +956,7 @@ var File_cortexdb_v1_memory_proto protoreflect.FileDescriptor
 
 const file_cortexdb_v1_memory_proto_rawDesc = "" +
 	"\n" +
-	"\x18cortexdb/v1/memory.proto\x12\vcortexdb.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x18cortexdb/v1/common.proto\"\xa4\x03\n" +
+	"\x18cortexdb/v1/memory.proto\x12\vcortexdb.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x18cortexdb/v1/common.proto\"\xe8\x03\n" +
 	"\fMemoryRecord\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x1d\n" +
@@ -845,7 +976,10 @@ const file_cortexdb_v1_memory_proto_rawDesc = "" +
 	"\n" +
 	"expires_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x129\n" +
 	"\n" +
-	"created_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xc0\x02\n" +
+	"created_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12#\n" +
+	"\rsuperseded_by\x18\r \x01(\tR\fsupersededBy\x12\x1d\n" +
+	"\n" +
+	"current_id\x18\x0e \x01(\tR\tcurrentId\"\xc0\x02\n" +
 	"\x11SaveMemoryRequest\x12\x1b\n" +
 	"\tmemory_id\x18\x01 \x01(\tR\bmemoryId\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x1d\n" +
@@ -885,7 +1019,7 @@ const file_cortexdb_v1_memory_proto_rawDesc = "" +
 	"\tmemory_id\x18\x01 \x01(\tR\bmemoryId\"M\n" +
 	"\x14DeleteMemoryResponse\x12\x1b\n" +
 	"\tmemory_id\x18\x01 \x01(\tR\bmemoryId\x12\x18\n" +
-	"\adeleted\x18\x02 \x01(\bR\adeleted\"\xda\x02\n" +
+	"\adeleted\x18\x02 \x01(\bR\adeleted\"\xef\x02\n" +
 	"\x13SearchMemoryRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x1d\n" +
@@ -898,11 +1032,22 @@ const file_cortexdb_v1_memory_proto_rawDesc = "" +
 	"\x11alternate_queries\x18\b \x03(\tR\x10alternateQueries\x12%\n" +
 	"\x0eretrieval_mode\x18\t \x01(\tR\rretrievalMode\x123\n" +
 	"\x04plan\x18\n" +
-	" \x01(\v2\x1a.cortexdb.v1.RetrievalPlanH\x00R\x04plan\x88\x01\x01B\a\n" +
-	"\x05_plan\"Z\n" +
+	" \x01(\v2\x1a.cortexdb.v1.RetrievalPlanH\x00R\x04plan\x88\x01\x01\x12\x13\n" +
+	"\x05as_of\x18\v \x01(\tR\x04asOfB\a\n" +
+	"\x05_plan\"\x8e\x02\n" +
+	"\x0eMemoryReplaced\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
+	"\aexcerpt\x18\x02 \x01(\tR\aexcerpt\x125\n" +
+	"\bsaved_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\asavedAt\x12?\n" +
+	"\rsuperseded_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\fsupersededAt\x12#\n" +
+	"\rsuperseded_by\x18\x05 \x01(\tR\fsupersededBy\x12\x1d\n" +
+	"\n" +
+	"written_by\x18\x06 \x01(\tR\twrittenBy\x12\x16\n" +
+	"\x06source\x18\a \x01(\tR\x06source\"\x93\x01\n" +
 	"\x0fMemorySearchHit\x121\n" +
 	"\x06memory\x18\x01 \x01(\v2\x19.cortexdb.v1.MemoryRecordR\x06memory\x12\x14\n" +
-	"\x05score\x18\x02 \x01(\x01R\x05score\"\xec\x01\n" +
+	"\x05score\x18\x02 \x01(\x01R\x05score\x127\n" +
+	"\breplaces\x18\x03 \x03(\v2\x1b.cortexdb.v1.MemoryReplacedR\breplaces\"\xec\x01\n" +
 	"\x14SearchMemoryResponse\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12.\n" +
 	"\x04plan\x18\x02 \x01(\v2\x1a.cortexdb.v1.RetrievalPlanR\x04plan\x12:\n" +
@@ -929,7 +1074,7 @@ func file_cortexdb_v1_memory_proto_rawDescGZIP() []byte {
 	return file_cortexdb_v1_memory_proto_rawDescData
 }
 
-var file_cortexdb_v1_memory_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_cortexdb_v1_memory_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_cortexdb_v1_memory_proto_goTypes = []any{
 	(*MemoryRecord)(nil),          // 0: cortexdb.v1.MemoryRecord
 	(*SaveMemoryRequest)(nil),     // 1: cortexdb.v1.SaveMemoryRequest
@@ -940,41 +1085,45 @@ var file_cortexdb_v1_memory_proto_goTypes = []any{
 	(*DeleteMemoryRequest)(nil),   // 6: cortexdb.v1.DeleteMemoryRequest
 	(*DeleteMemoryResponse)(nil),  // 7: cortexdb.v1.DeleteMemoryResponse
 	(*SearchMemoryRequest)(nil),   // 8: cortexdb.v1.SearchMemoryRequest
-	(*MemorySearchHit)(nil),       // 9: cortexdb.v1.MemorySearchHit
-	(*SearchMemoryResponse)(nil),  // 10: cortexdb.v1.SearchMemoryResponse
-	(*structpb.Struct)(nil),       // 11: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
-	(*RetrievalPlan)(nil),         // 13: cortexdb.v1.RetrievalPlan
-	(*RetrievalDecision)(nil),     // 14: cortexdb.v1.RetrievalDecision
+	(*MemoryReplaced)(nil),        // 9: cortexdb.v1.MemoryReplaced
+	(*MemorySearchHit)(nil),       // 10: cortexdb.v1.MemorySearchHit
+	(*SearchMemoryResponse)(nil),  // 11: cortexdb.v1.SearchMemoryResponse
+	(*structpb.Struct)(nil),       // 12: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil), // 13: google.protobuf.Timestamp
+	(*RetrievalPlan)(nil),         // 14: cortexdb.v1.RetrievalPlan
+	(*RetrievalDecision)(nil),     // 15: cortexdb.v1.RetrievalDecision
 }
 var file_cortexdb_v1_memory_proto_depIdxs = []int32{
-	11, // 0: cortexdb.v1.MemoryRecord.metadata:type_name -> google.protobuf.Struct
-	12, // 1: cortexdb.v1.MemoryRecord.expires_at:type_name -> google.protobuf.Timestamp
-	12, // 2: cortexdb.v1.MemoryRecord.created_at:type_name -> google.protobuf.Timestamp
-	11, // 3: cortexdb.v1.SaveMemoryRequest.metadata:type_name -> google.protobuf.Struct
+	12, // 0: cortexdb.v1.MemoryRecord.metadata:type_name -> google.protobuf.Struct
+	13, // 1: cortexdb.v1.MemoryRecord.expires_at:type_name -> google.protobuf.Timestamp
+	13, // 2: cortexdb.v1.MemoryRecord.created_at:type_name -> google.protobuf.Timestamp
+	12, // 3: cortexdb.v1.SaveMemoryRequest.metadata:type_name -> google.protobuf.Struct
 	0,  // 4: cortexdb.v1.SaveMemoryResponse.memory:type_name -> cortexdb.v1.MemoryRecord
-	11, // 5: cortexdb.v1.UpdateMemoryRequest.metadata:type_name -> google.protobuf.Struct
+	12, // 5: cortexdb.v1.UpdateMemoryRequest.metadata:type_name -> google.protobuf.Struct
 	0,  // 6: cortexdb.v1.GetMemoryResponse.memory:type_name -> cortexdb.v1.MemoryRecord
-	13, // 7: cortexdb.v1.SearchMemoryRequest.plan:type_name -> cortexdb.v1.RetrievalPlan
-	0,  // 8: cortexdb.v1.MemorySearchHit.memory:type_name -> cortexdb.v1.MemoryRecord
-	13, // 9: cortexdb.v1.SearchMemoryResponse.plan:type_name -> cortexdb.v1.RetrievalPlan
-	14, // 10: cortexdb.v1.SearchMemoryResponse.decision:type_name -> cortexdb.v1.RetrievalDecision
-	9,  // 11: cortexdb.v1.SearchMemoryResponse.results:type_name -> cortexdb.v1.MemorySearchHit
-	1,  // 12: cortexdb.v1.MemoryService.SaveMemory:input_type -> cortexdb.v1.SaveMemoryRequest
-	3,  // 13: cortexdb.v1.MemoryService.UpdateMemory:input_type -> cortexdb.v1.UpdateMemoryRequest
-	4,  // 14: cortexdb.v1.MemoryService.GetMemory:input_type -> cortexdb.v1.GetMemoryRequest
-	8,  // 15: cortexdb.v1.MemoryService.SearchMemory:input_type -> cortexdb.v1.SearchMemoryRequest
-	6,  // 16: cortexdb.v1.MemoryService.DeleteMemory:input_type -> cortexdb.v1.DeleteMemoryRequest
-	2,  // 17: cortexdb.v1.MemoryService.SaveMemory:output_type -> cortexdb.v1.SaveMemoryResponse
-	2,  // 18: cortexdb.v1.MemoryService.UpdateMemory:output_type -> cortexdb.v1.SaveMemoryResponse
-	5,  // 19: cortexdb.v1.MemoryService.GetMemory:output_type -> cortexdb.v1.GetMemoryResponse
-	10, // 20: cortexdb.v1.MemoryService.SearchMemory:output_type -> cortexdb.v1.SearchMemoryResponse
-	7,  // 21: cortexdb.v1.MemoryService.DeleteMemory:output_type -> cortexdb.v1.DeleteMemoryResponse
-	17, // [17:22] is the sub-list for method output_type
-	12, // [12:17] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	14, // 7: cortexdb.v1.SearchMemoryRequest.plan:type_name -> cortexdb.v1.RetrievalPlan
+	13, // 8: cortexdb.v1.MemoryReplaced.saved_at:type_name -> google.protobuf.Timestamp
+	13, // 9: cortexdb.v1.MemoryReplaced.superseded_at:type_name -> google.protobuf.Timestamp
+	0,  // 10: cortexdb.v1.MemorySearchHit.memory:type_name -> cortexdb.v1.MemoryRecord
+	9,  // 11: cortexdb.v1.MemorySearchHit.replaces:type_name -> cortexdb.v1.MemoryReplaced
+	14, // 12: cortexdb.v1.SearchMemoryResponse.plan:type_name -> cortexdb.v1.RetrievalPlan
+	15, // 13: cortexdb.v1.SearchMemoryResponse.decision:type_name -> cortexdb.v1.RetrievalDecision
+	10, // 14: cortexdb.v1.SearchMemoryResponse.results:type_name -> cortexdb.v1.MemorySearchHit
+	1,  // 15: cortexdb.v1.MemoryService.SaveMemory:input_type -> cortexdb.v1.SaveMemoryRequest
+	3,  // 16: cortexdb.v1.MemoryService.UpdateMemory:input_type -> cortexdb.v1.UpdateMemoryRequest
+	4,  // 17: cortexdb.v1.MemoryService.GetMemory:input_type -> cortexdb.v1.GetMemoryRequest
+	8,  // 18: cortexdb.v1.MemoryService.SearchMemory:input_type -> cortexdb.v1.SearchMemoryRequest
+	6,  // 19: cortexdb.v1.MemoryService.DeleteMemory:input_type -> cortexdb.v1.DeleteMemoryRequest
+	2,  // 20: cortexdb.v1.MemoryService.SaveMemory:output_type -> cortexdb.v1.SaveMemoryResponse
+	2,  // 21: cortexdb.v1.MemoryService.UpdateMemory:output_type -> cortexdb.v1.SaveMemoryResponse
+	5,  // 22: cortexdb.v1.MemoryService.GetMemory:output_type -> cortexdb.v1.GetMemoryResponse
+	11, // 23: cortexdb.v1.MemoryService.SearchMemory:output_type -> cortexdb.v1.SearchMemoryResponse
+	7,  // 24: cortexdb.v1.MemoryService.DeleteMemory:output_type -> cortexdb.v1.DeleteMemoryResponse
+	20, // [20:25] is the sub-list for method output_type
+	15, // [15:20] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_cortexdb_v1_memory_proto_init() }
@@ -991,7 +1140,7 @@ func file_cortexdb_v1_memory_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cortexdb_v1_memory_proto_rawDesc), len(file_cortexdb_v1_memory_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

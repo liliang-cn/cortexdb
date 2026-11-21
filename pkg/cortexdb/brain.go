@@ -48,6 +48,9 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 	if _, err := withMinMemoryGrade(ctx, req.MinGrade); err != nil {
 		return nil, err
 	}
+	if _, err := withMemoryAsOf(ctx, req.AsOf); err != nil {
+		return nil, err
+	}
 	resp := &KnowledgeMemoryRecallResponse{Query: query}
 	// The account is kept whenever somebody will read it: the caller asked,
 	// or the call is being recorded (a trace, the recall log).
@@ -74,6 +77,7 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 			Plan:             req.Plan,
 			PPR:              req.PPR,
 			MinGrade:         req.MinGrade,
+			AsOf:             req.AsOf,
 		})
 		done()
 		if err != nil {
@@ -726,13 +730,22 @@ func renderMemoryContext(memories []MemorySearchHit, maxItems, maxChars int) (st
 	lines := make([]string, 0, maxItems)
 	charsUsed := 0
 	for _, hit := range memories[:maxItems] {
-		line := fmt.Sprintf("[%s] %s%s", hit.Memory.ID, strings.TrimSpace(hit.Memory.Content), memoryGradeNote(hit.Memory))
+		head := fmt.Sprintf("[%s] %s%s", hit.Memory.ID, strings.TrimSpace(hit.Memory.Content), memoryGradeNote(hit.Memory))
+		// A changed fact says so on its own line: the date and the value
+		// before it. Under a tight budget the memory's text is cut first, so
+		// the line still says it changed.
+		note := memoryChangeNote(hit)
+		line := head + note
 		if maxChars > 0 && charsUsed+len(line) > maxChars {
 			remaining := maxChars - charsUsed
 			if remaining <= 0 {
 				break
 			}
-			line = clipString(line, remaining)
+			if note != "" && remaining-len(note) >= 24 {
+				line = clipString(head, remaining-len(note)) + note
+			} else {
+				line = clipString(line, remaining)
+			}
 		}
 		lines = append(lines, line)
 		charsUsed += len(line)

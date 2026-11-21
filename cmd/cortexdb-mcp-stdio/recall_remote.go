@@ -189,7 +189,7 @@ func hitsFromRecall(resp *cortexdb.KnowledgeMemoryRecallResponse) []recallHit {
 		}
 		hits = append(hits, recallHit{
 			KnowledgeID: m.Memory.ID,
-			Snippet:     snippetOf(m.Memory.Content),
+			Snippet:     snippetOf(m.Memory.Content) + changeOf(m),
 			Trail: trailOf(hitOrigin{
 				Date:    date,
 				Writer:  metaString(meta, "written_by"),
@@ -366,6 +366,22 @@ func snippetOf(content string) string {
 		return flat
 	}
 	return strings.TrimSpace(string(runes[:recallSnippetRunes])) + "…"
+}
+
+// changeOf is what an injected memory line adds when the memory replaced
+// others: the date of the change and the value before it, so an agent asking
+// "is it still X" learns that X was the old answer. Empty when it replaced
+// nothing, or when the brain is older than replaces.
+func changeOf(m cortexdb.MemorySearchHit) string {
+	if len(m.Replaces) == 0 {
+		return ""
+	}
+	prev := m.Replaces[len(m.Replaces)-1]
+	date := ""
+	if !prev.SupersededAt.IsZero() {
+		date = " " + prev.SupersededAt.UTC().Format("2006-01-02")
+	}
+	return fmt.Sprintf(" (changed%s; before: %s)", date, firstRunes(strings.Join(strings.Fields(prev.Excerpt), " "), 80))
 }
 
 // formatRecallHits renders hits as the additionalContext block. Shared by both

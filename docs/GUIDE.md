@@ -374,6 +374,37 @@ checked", and a verified memory's line names its check. The auto-recall
 block marks a guess first in its bracket (`UNVERIFIED (asserted)`) and a
 checked one by its evidence (`verified: …`).
 
+### When a fact changes
+
+A memory saved with `supersedes: [old-id]` retires the memories it names: they
+stay stored and exported, stamped `superseded_by` and `superseded_at`, and
+recall stops returning them as current. Recall now also says what changed:
+
+- A hit from `memory_search`, `knowledge_memory_recall` or the context pack
+  that superseded other memories carries `replaces`: for each replaced memory
+  its `id`, an `excerpt`, `saved_at`, `superseded_at`, `superseded_by`,
+  `written_by` and `source`, oldest first, followed back at most four steps
+  and six memories. A replaced memory outside the caller's scope is left out.
+- The context pack writes such a fact on one line, inside the usual memory
+  budget: `[orion-budget-v2] The Orion budget is 45k EUR. [changed 2026-02-15;
+  before: "The Orion budget is 30k EUR."]` (`; N earlier` when it changed more
+  than once). Under a tight budget the memory's text is cut before the note.
+  The auto-recall block adds `(changed <date>; before: …)` to the line.
+- `memory_get` of a replaced memory names the memory that replaced it in
+  `superseded_by` and the end of the chain, which holds the current value, in
+  `current_id`.
+- `as_of` (RFC 3339) on `memory_search`, `knowledge_memory_recall` and
+  `knowledge_memory_build_context_pack` answers as the memories stood at that
+  instant: memories saved after it are not seen (explain: `after_as_of`), and a
+  memory superseded after it is still current, judged by its `superseded_at`.
+  It is read-only, as `as_of` is for triples; on recall it applies to the
+  memory half, and knowledge and graph facts answer as now.
+
+What counts as a change is never guessed from the words: supersession stays an
+explicit act of the writer (or of the capture's contradiction check). The typed
+gRPC `SearchMemory` takes `as_of` and returns `replaces`; `GetMemory` returns
+`superseded_by` and `current_id`.
+
 ### Standing rules
 
 A standing rule is a global memory saved with `type` `preference` or `rule`
@@ -1119,7 +1150,7 @@ planner`), each retriever's top candidates with their raw scores (vector,
 keyword, graph), the fused list, what each floor or filter dropped and why
 (`memory_semantic_floor`, `memory_keyword_floor`, `keyword_one_word`,
 `knowledge_vector_floor`, `knowledge_keyword_floor`, `expired`, `superseded`,
-`unreviewed`), and the final hits. A degraded answer says so in the response:
+`unreviewed`, `after_as_of`), and the final hits. A degraded answer says so in the response:
 `degraded: ["embedder_unreachable"]` when the query could not be embedded and
 the answer is keyword-only (also `vector_search_failed`, `keyword_search_failed`).
 
