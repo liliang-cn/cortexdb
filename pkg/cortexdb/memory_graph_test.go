@@ -17,6 +17,18 @@ func TestSearchMemoryFindsByEntityWithNoLexicalOverlap(t *testing.T) {
 		t.Fatalf("open: %v", err)
 	}
 	defer db.Close()
+	searchMemoryFindsByEntity(t, db)
+}
+
+// On PostgreSQL the memory id range is compared by the database collation
+// unless the query says otherwise: under en_US it held no memory id, and
+// recall through an entity found nothing.
+func TestSearchMemoryFindsByEntityWithNoLexicalOverlapPostgres(t *testing.T) {
+	searchMemoryFindsByEntity(t, openPostgresBrain(t, 0))
+}
+
+func searchMemoryFindsByEntity(t *testing.T, db *DB) {
+	t.Helper()
 	ctx := context.Background()
 
 	if _, err := db.SaveMemory(ctx, MemorySaveRequest{
@@ -144,7 +156,7 @@ func TestMemoryGraphRecallReadsOnlyTheMemoryEdgesOfTheNamedEntities(t *testing.T
 	}
 	// From three entities on, SQLite weighed one pass over the edge-type
 	// index against a lookup per entity, and took the pass.
-	query, args := memoryGraphQuery([]string{"entity:a", "entity:b", "entity:c", "entity:d"})
+	query, args := memoryGraphQuery(db.Dialect(), []string{"entity:a", "entity:b", "entity:c", "entity:d"})
 	rows, err := db.SQL().QueryContext(ctx, "EXPLAIN QUERY PLAN "+query, args...)
 	if err != nil {
 		t.Fatal(err)
