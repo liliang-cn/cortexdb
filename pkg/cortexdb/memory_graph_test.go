@@ -3,6 +3,7 @@ package cortexdb
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -123,5 +124,43 @@ func TestSaveMemoryLinksEntitiesToTheMemoryNode(t *testing.T) {
 	}
 	if edges == 0 {
 		t.Error("entity was written with no edge back to the memory that asserted it")
+	}
+}
+
+// Recall through entities reads the mention edges of the named entities,
+// and among them only those a memory wrote. With a bare edge_type =
+// 'mentions' SQLite chose the edge-type index and read every mention edge
+// of the store, chunk mentions included: on a brain of 411,000 nodes, a
+// recall naming three entities took 1 s instead of 0.4 ms.
+func TestMemoryGraphRecallReadsOnlyTheMemoryEdgesOfTheNamedEntities(t *testing.T) {
+	db, err := Open(DefaultConfig(filepath.Join(t.TempDir(), "memgraph.db")))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	if err := db.graph.InitGraphSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// From three entities on, SQLite weighed one pass over the edge-type
+	// index against a lookup per entity, and took the pass.
+	query, args := memoryGraphQuery([]string{"entity:a", "entity:b", "entity:c", "entity:d"})
+	rows, err := db.SQL().QueryContext(ctx, "EXPLAIN QUERY PLAN "+query, args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plan []string
+	for rows.Next() {
+		var id, parent, notUsed int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notUsed, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	_ = rows.Close()
+	text := strings.Join(plan, "\n")
+	if strings.Contains(text, "idx_edges_type") || !strings.Contains(text, "idx_edges_walk_to (to_node_id=? AND from_node_id>? AND from_node_id<?)") {
+		t.Errorf("graph recall does not read the memory edges of the named entities by their index:\n%s", text)
 	}
 }

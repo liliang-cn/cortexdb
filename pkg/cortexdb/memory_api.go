@@ -1215,23 +1215,8 @@ func (db *DB) searchMemoryGraph(ctx context.Context, bucketID string, entityName
 		topK = 5
 	}
 
-	placeholders := make([]string, len(nodeIDs))
-	args := make([]interface{}, 0, len(nodeIDs)+1)
-	for i, id := range nodeIDs {
-		placeholders[i] = "?"
-		args = append(args, id)
-	}
-	args = append(args, memoryGraphNodePrefix+"%")
-
-	rows, err := db.query(ctx, `
-		SELECT from_node_id, COUNT(DISTINCT to_node_id)
-		FROM graph_edges
-		WHERE edge_type = 'mentions'
-		  AND to_node_id IN (`+strings.Join(placeholders, ",")+`)
-		  AND from_node_id LIKE ?
-		GROUP BY from_node_id
-		ORDER BY COUNT(DISTINCT to_node_id) DESC, from_node_id
-	`, args...)
+	query, args := memoryGraphQuery(nodeIDs)
+	rows, err := db.query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("search memory graph: %w", err)
 	}
@@ -1751,3 +1736,30 @@ func memoryRecallCount(metadata map[string]any) int {
 		return 0
 	}
 }
+
+// memoryGraphQuery counts, for each memory node, how many of the given
+// entities it mentions.
+//
+// It reads, for each entity, the edges that end on it and start from a memory
+// node: a range on from_node_id inside idx_edges_walk_to, so the mentions of
+// chunks are never read. A LIKE on the prefix cannot drive that range, and a
+// bare edge_type = 'mentions' lets SQLite pick idx_edges_type and read every
+// mention edge of the store, chunk mentions included; COALESCE keeps it off
+// that index, as in chunkEntityNamesBatch.
+func memoryGraphQuery(nodeIDs []string) (string, []any) {
+	placeholders, args := sqlPlaceholders(nodeIDs)
+	args = append(args, memoryGraphNodePrefix, memoryGraphNodeEnd)
+	return `
+		SELECT from_node_id, COUNT(DISTINCT to_node_id)
+		FROM graph_edges
+		WHERE to_node_id IN (` + placeholders + `)
+		  AND from_node_id >= ? AND from_node_id < ?
+		  AND COALESCE(edge_type, '') = 'mentions'
+		GROUP BY from_node_id
+		ORDER BY COUNT(DISTINCT to_node_id) DESC, from_node_id
+	`, args
+}
+
+// memoryGraphNodeEnd is the first id after every id that begins with
+// memoryGraphNodePrefix: its last byte, ':', raised by one.
+const memoryGraphNodeEnd = "memory;"
