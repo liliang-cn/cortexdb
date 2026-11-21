@@ -466,6 +466,36 @@ func TestTheDedupeLookupUsesTheContentHashIndex(t *testing.T) {
 	}
 }
 
+// The holder found by its hash is checked against the collection through its
+// own chunks. Joined on the collection, SQLite read the collection index
+// instead, and walked the chunks of the collection until it met one of the
+// holder's: on a collection of 250,000 chunks, 0.2 s for a holder ingested
+// last and 0.4 s when the same text lived in another collection, at every
+// ingest under the write lock.
+func TestTheDedupeLookupChecksTheCollectionThroughTheHoldersChunks(t *testing.T) {
+	db, _, ctx := openIngestBrain(t, "holder-chunks")
+	rows, err := db.SQL().QueryContext(ctx, `EXPLAIN QUERY PLAN `+db.contentHolderQuery(), "hash", "id", "collection", "2031-01-01T00:00:00Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var plan []string
+	for rows.Next() {
+		var id, parent, notUsed int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notUsed, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(plan, "; "); !strings.Contains(got, "idx_embeddings_doc_id") || strings.Contains(got, "idx_embeddings_collection_id") {
+		t.Fatalf("the dedupe lookup does not read the holder's chunks by their index: %s", got)
+	}
+}
+
 // InsertGraphDocument writes the record without metadata, so it carries no
 // marks: a later ingest of the same text over its id is not unchanged (the
 // stored chunks were not made from the marks it would compare), and its
