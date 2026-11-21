@@ -956,13 +956,16 @@ func (db *DB) applyKnowledgeMutation(ctx context.Context, knowledgeID string, re
 }
 
 // contentHolderQuery is the dedupe lookup: its hash expression is the one
-// idx_documents_content_sha256 indexes on both stores.
+// idx_documents_content_sha256 indexes on both stores. The holder's chunks
+// are read by idx_embeddings_doc_id; the unary plus in the join keeps the
+// planner off idx_embeddings_collection_id, which walked the chunks of the
+// whole collection to find one of the holder's (see documentsInCollectionQuery).
 func (db *DB) contentHolderQuery() string {
 	return `
 		SELECT MIN(d.id) FROM documents d
 		WHERE ` + db.Dialect().JSONTextGuarded("d.metadata", contentHashKey) + ` = ?
 		  AND d.id <> ?
-		  AND EXISTS (SELECT 1 FROM embeddings e JOIN collections c ON c.id = e.collection_id WHERE e.doc_id = d.id AND c.name = ?)
+		  AND EXISTS (SELECT 1 FROM embeddings e JOIN collections c ON c.id = +e.collection_id WHERE e.doc_id = d.id AND c.name = ?)
 		  AND ` + db.visiblePredicate() + `
 	`
 }
