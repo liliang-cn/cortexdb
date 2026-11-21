@@ -55,7 +55,8 @@ var nodeFoldsSchema = []string{
 	`CREATE TRIGGER IF NOT EXISTS graph_node_folds_ai AFTER INSERT ON graph_nodes BEGIN
 		INSERT INTO ` + nodeFoldsTable + `(node_id) VALUES (new.id) ON CONFLICT(node_id) DO UPDATE SET pending = 1;
 	END`,
-	`CREATE TRIGGER IF NOT EXISTS graph_node_folds_au AFTER UPDATE OF id, content ON graph_nodes BEGIN
+	`CREATE TRIGGER IF NOT EXISTS graph_node_folds_au AFTER UPDATE OF id, content ON graph_nodes
+		WHEN old.id IS NOT new.id OR old.content IS NOT new.content BEGIN
 		UPDATE ` + nodeFoldsTable + ` SET node_id = new.id, pending = 1 WHERE node_id = old.id;
 	END`,
 	// A node deleted takes its trigrams with it: nothing would fold them out.
@@ -96,9 +97,9 @@ func (db *DB) nodeFoldIndexReady(ctx context.Context) error {
 }
 
 // foldPendingNodes folds up to nodeFoldsBatch pending nodes into the index
-// and reports how many it took. An insert under a rowid the index holds
-// replaces its trigrams (contentless_delete), so a node written again, or
-// folded first by another process, is folded right.
+// and reports how many it took. The trigrams a rowid held are deleted before
+// its fold is inserted: an insert alone adds to them, so a node renamed would
+// still match its old name and the index would grow with every write.
 func (db *DB) foldPendingNodes(ctx context.Context) (int, error) {
 	n := 0
 	err := db.inTx(ctx, func(tx *sql.Tx) error {
@@ -111,6 +112,9 @@ func (db *DB) foldPendingNodes(ctx context.Context) (int, error) {
 			return err
 		}
 		for _, p := range batch {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM `+nodeFoldsFTS+` WHERE rowid = CAST(? AS INTEGER)`, p.id); err != nil {
+				return err
+			}
 			if _, err := tx.ExecContext(ctx, `INSERT INTO `+nodeFoldsFTS+`(rowid, folded) VALUES (CAST(? AS INTEGER), ?)`, p.id, p.folded); err != nil {
 				return err
 			}
@@ -201,6 +205,10 @@ func (db *DB) indexedNodeHits(ctx context.Context, name, folded string, skipChun
 	return s, nil
 }
 
+// nodeCandidatesPerRead bounds the ids one read of candidates binds: a limit
+// past SQLite's variable limit would otherwise fail where the scan answers.
+var nodeCandidatesPerRead = 999
+
 func (s *indexedHits) next(ctx context.Context, n int) ([]nodeHit, error) {
 	for len(s.ready) < n && len(s.rest) > 0 {
 		batch := s.rest[:min(len(s.rest), n)]
@@ -223,17 +231,19 @@ func (s *indexedHits) ranked(ctx context.Context, candidates []nodeHit) ([]nodeH
 	if len(candidates) == 0 {
 		return nil, nil
 	}
-	ids := make([]any, len(candidates))
-	for i, c := range candidates {
-		ids[i] = c.id
-	}
-	read, err := readNodeCandidates(ctx, s.db.query, s.types, `SELECT id, COALESCE(content,''), COALESCE(node_type,'') FROM graph_nodes WHERE id IN (?`+strings.Repeat(",?", len(ids)-1)+`)`, ids...)
-	if err != nil {
-		return nil, err
-	}
-	byID := make(map[string]nodeCandidate, len(read))
-	for _, c := range read {
-		byID[c.id] = c
+	byID := make(map[string]nodeCandidate, len(candidates))
+	for part := range slices.Chunk(candidates, nodeCandidatesPerRead) {
+		ids := make([]any, len(part))
+		for i, c := range part {
+			ids[i] = c.id
+		}
+		read, err := readNodeCandidates(ctx, s.db.query, s.types, `SELECT id, COALESCE(content,''), COALESCE(node_type,'') FROM graph_nodes WHERE id IN (?`+strings.Repeat(",?", len(ids)-1)+`)`, ids...)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range read {
+			byID[c.id] = c
+		}
 	}
 	hits := make([]nodeHit, 0, len(candidates))
 	for _, h := range candidates {

@@ -383,3 +383,66 @@ func TestTheNameIndexAnswersManyMatchesAsTheScan(t *testing.T) {
 		}
 	}
 }
+
+// A node folded again leaves no trigram of its old text, and a write that
+// changes neither its id nor its text does not fold it again: the index
+// keeps one fold per node however often nodes are written.
+func TestTheNameIndexReplacesAFoldAndSkipsAnUnchangedWrite(t *testing.T) {
+	db, tools, ctx := findNodesTestDB(t)
+	if _, err := tools.UpsertEntities(ctx, ToolUpsertEntitiesRequest{Entities: []ToolEntityInput{{Name: "Quokka Alpha", Type: "Animal"}}}); err != nil {
+		t.Fatal(err)
+	}
+	findCountingStages(t, tools, ToolFindNodesRequest{Names: []string{"Quokka Alpha"}})
+	if _, err := db.SQL().Exec(`UPDATE graph_nodes SET content = 'Other One' WHERE id = ?`, EntityNodeID("Quokka Alpha")); err != nil {
+		t.Fatal(err)
+	}
+	findCountingStages(t, tools, ToolFindNodesRequest{Names: []string{"Other One"}})
+	var stale int
+	if err := db.SQL().QueryRow(`SELECT count(*) FROM graph_node_folds_fts WHERE graph_node_folds_fts MATCH '"quokka"'`).Scan(&stale); err != nil || stale != 0 {
+		t.Fatalf("%d folds still match the old name (err %v)", stale, err)
+	}
+
+	size := func() int {
+		var n int
+		if err := db.SQL().QueryRow(`SELECT count(*) FROM graph_node_folds_fts_data`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	before := size()
+	for range 5 {
+		if _, err := db.SQL().Exec(`UPDATE graph_nodes SET content = content`); err != nil {
+			t.Fatal(err)
+		}
+		var pending int
+		if err := db.SQL().QueryRow(`SELECT count(*) FROM graph_node_folds WHERE pending = 1`).Scan(&pending); err != nil || pending != 0 {
+			t.Fatalf("an unchanged write left %d nodes to fold (err %v)", pending, err)
+		}
+		findCountingStages(t, tools, ToolFindNodesRequest{Names: []string{"Other One"}})
+	}
+	if after := size(); after != before {
+		t.Fatalf("unchanged writes grew the index from %d to %d rows", before, after)
+	}
+}
+
+// Candidates are read in bounded batches, so a limit past the bind limit
+// answers as the scan does.
+func TestTheNameIndexReadsCandidatesInBatches(t *testing.T) {
+	saved := nodeCandidatesPerRead
+	nodeCandidatesPerRead = 2
+	t.Cleanup(func() { nodeCandidatesPerRead = saved })
+	_, tools, ctx := findNodesTestDB(t)
+	entities := make([]ToolEntityInput, 0, 11)
+	for i := range 11 {
+		entities = append(entities, ToolEntityInput{Name: fmt.Sprintf("Wombat part %02d", i), Type: "Concept"})
+	}
+	if _, err := tools.UpsertEntities(ctx, ToolUpsertEntitiesRequest{Entities: entities}); err != nil {
+		t.Fatal(err)
+	}
+	req := ToolFindNodesRequest{Names: []string{"Wombat"}, Limit: 50}
+	indexed := findCountingStages(t, tools, req)
+	scanned := findCountingStages(t, tools, ToolFindNodesRequest{Names: []string{"极限", "Wombat"}, Limit: 50})
+	if indexed.index != 1 || scanned.scan != 1 || indexed.answers["Wombat"] != scanned.answers["Wombat"] || strings.Count(indexed.answers["Wombat"], "entity:") != 11 {
+		t.Fatalf("index %q\nscan  %q", indexed.answers["Wombat"], scanned.answers["Wombat"])
+	}
+}
