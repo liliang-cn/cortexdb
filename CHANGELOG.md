@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- A replaced memory with no recorded change time leaves `superseded_at` out
+  of `replaces` instead of printing `0001-01-01T00:00:00Z`, which the
+  cortexdb-live hook showed as "changed 0001-01-01". (#232)
+
 ## [2.159.0] - 2026-11-21
 
 ### Added

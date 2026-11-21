@@ -36,7 +36,7 @@ type MemoryReplaced struct {
 	SavedAt time.Time `json:"saved_at"`
 	// SupersededAt is when it was replaced, from its superseded_at stamp;
 	// zero when a store from before the stamp did not record it.
-	SupersededAt time.Time `json:"superseded_at,omitempty"`
+	SupersededAt time.Time `json:"superseded_at,omitzero"`
 	// SupersededBy is the memory that replaced it: the hit itself for the
 	// last step of the chain, an intermediate version for earlier ones.
 	SupersededBy string `json:"superseded_by"`

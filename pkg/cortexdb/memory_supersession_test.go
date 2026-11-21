@@ -355,3 +355,18 @@ func TestReplacesWithAnUnreadableSupersededAt(t *testing.T) {
 		t.Errorf("change note %q, want the current memory's saved date %s", note, days[2].Format("2006-01-02"))
 	}
 }
+
+// An unknown change time is left out of the JSON, not printed as year 1.
+func TestReplacedWithoutAChangeTimeLeavesItOut(t *testing.T) {
+	raw, err := json.Marshal(MemoryReplaced{ID: "a", SavedAt: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "superseded_at") {
+		t.Errorf("unknown change time serialized: %s", raw)
+	}
+	raw, _ = json.Marshal(MemoryReplaced{ID: "a", SupersededAt: time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC)})
+	if !strings.Contains(string(raw), `"superseded_at":"2026-01-03T00:00:00Z"`) {
+		t.Errorf("known change time missing: %s", raw)
+	}
+}
