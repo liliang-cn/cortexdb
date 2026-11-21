@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.159.1] - 2026-11-21
+
 ### Fixed
 
 - A replaced memory with no recorded change time leaves `superseded_at` out
