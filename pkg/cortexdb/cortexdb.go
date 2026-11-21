@@ -58,6 +58,9 @@ type DB struct {
 	// nodes written since the last call into the index.
 	nodeFoldMu    sync.Mutex
 	nodeFoldReady bool
+	// chunkStats is the keyword floor's document frequencies, kept until
+	// the chunks change; see lexical_rarity_cache.go.
+	chunkStats chunkStatsCache
 	// changes is the change feed and inference maintainer; see changes.go.
 	changes changeRuntime
 	// execution is the execution-graph recorder's state; see execution.go.

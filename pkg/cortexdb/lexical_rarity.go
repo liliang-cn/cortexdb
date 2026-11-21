@@ -617,17 +617,16 @@ func (db *DB) chunkRarityScorer(ctx context.Context, collection string, q rarity
 		where = "c.name = ?"
 		args = append(args, collection)
 	}
-	stats, indexed, err := db.chunkStatsByTrigrams(ctx, collection, q.patterns())
+	stats, err := db.cachedChunkStatsFor(ctx, collection, q.patterns(), func(patterns []string) (corpusStats, error) {
+		stats, indexed, err := db.chunkStatsByTrigrams(ctx, collection, patterns)
+		if err != nil || indexed {
+			return stats, err
+		}
+		defer observability.Time(ctx, "df-scan")()
+		return db.scanCorpusStats(ctx, "e.content", from, where, args, patterns)
+	})
 	if err != nil {
 		return nil, err
-	}
-	if !indexed {
-		done := observability.Time(ctx, "df-scan")
-		stats, err = db.scanCorpusStats(ctx, "e.content", from, where, args, q.patterns())
-		done()
-		if err != nil {
-			return nil, err
-		}
 	}
 	return newRarityScorer(q, stats.df, stats.n), nil
 }
