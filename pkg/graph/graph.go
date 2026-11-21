@@ -18,7 +18,7 @@ import (
 // GraphNode represents a node in the graph with vector embedding
 type GraphNode struct {
 	ID         string                 `json:"id"`
-	Vector     []float32              `json:"vector"`
+	Vector     []float32              `json:"vector,omitempty"`
 	Content    string                 `json:"content,omitempty"`
 	NodeType   string                 `json:"node_type,omitempty"`
 	Properties map[string]interface{} `json:"properties,omitempty"`

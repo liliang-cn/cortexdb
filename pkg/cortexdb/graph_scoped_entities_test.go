@@ -93,7 +93,7 @@ func TestUnderACallerScopeAnEntityKeepsOnlyItsIdAndName(t *testing.T) {
 		"no scope":           context.Background(),
 		"a memory rule only": WithCallerScope(context.Background(), CallerScope{Key: "hermes", Memory: func(MemoryBucket) bool { return true }}),
 	} {
-		whole, err := db.GraphRAGTools().GetNodes(ctx, req)
+		whole, err := db.GraphRAGTools().GetNodes(ctx, ToolGetNodesRequest{NodeIDs: req.NodeIDs, IncludeVectors: true})
 		if err != nil {
 			t.Fatal(err)
 		}

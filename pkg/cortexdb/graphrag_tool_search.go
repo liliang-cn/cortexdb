@@ -364,7 +364,7 @@ func (t *GraphRAGToolbox) ExpandGraph(ctx context.Context, req ToolExpandGraphRe
 	}
 	nodes, edges := t.db.withoutExpiredDocuments(ctx, subgraph.Nodes, subgraph.Edges, scores)
 	nodes, edges = ofTypes(nodes, edges, scores, nodeTypes, seeds)
-	return &ToolExpandGraphResponse{Nodes: nodes, Edges: edges, Scores: scores}, nil
+	return &ToolExpandGraphResponse{Nodes: toolNodes(nodes, req.IncludeVectors), Edges: edges, Scores: scores}, nil
 }
 
 // withoutExpiredDocuments drops from a subgraph the document and chunk nodes
@@ -579,7 +579,7 @@ func (t *GraphRAGToolbox) GetNodes(ctx context.Context, req ToolGetNodesRequest)
 		return nil, err
 	}
 	nodes, _ = t.db.withoutExpiredDocuments(ctx, nodes, nil, nil)
-	return &ToolGetNodesResponse{Nodes: nodes}, nil
+	return &ToolGetNodesResponse{Nodes: toolNodes(nodes, req.IncludeVectors)}, nil
 }
 
 // GetChunks fetches chunk records by ID.
