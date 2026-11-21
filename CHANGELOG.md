@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.160.0] - 2026-11-21
+
 ### Changed
 
 - `find_nodes`, `get_nodes` and `expand_graph` answer without each node's
