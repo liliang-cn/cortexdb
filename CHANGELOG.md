@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.159.0] - 2026-11-21
+
 ### Added
 
 - Recall says when a fact changed. A hit from `memory_search`,
