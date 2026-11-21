@@ -71,6 +71,9 @@ func TestTheKeywordFloorCountsTermsThroughTheTrigramIndex(t *testing.T) {
 	if _, err := db.SQL().Exec(`INSERT INTO chunks_fts_cjk(chunks_fts_cjk) VALUES('delete-all')`); err != nil {
 		t.Fatal(err)
 	}
+	// The chunks have not changed, so the counts would be served from the
+	// cache (lexical_rarity_cache.go); forgotten, the scan counts them.
+	forgetChunkStats(db)
 	scanned := searchCountingStages(t, db, query)
 	if scanned.trigram != 0 || scanned.scan != 1 {
 		t.Fatalf("emptied index: df-trigram ran %d times, df-scan %d, want 0 and 1", scanned.trigram, scanned.scan)
