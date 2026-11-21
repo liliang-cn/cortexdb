@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.161.0] - 2026-11-21
+
+### Changed
+
+- The keyword floor of `knowledge_search` keeps the term counts it made, per
+  collection, until the chunks change; a question counts only the terms it
+  has not seen. Staleness is read from the file (the highest chunk rowid and
+  a counter bumped by triggers on delete and on a content or collection
+  update), so writes by another process are seen. The file gains the
+  `embeddings_content_version` table and two triggers; PostgreSQL counts
+  every question as before. On a 251,080-chunk collection, a second series
+  of questions sharing common terms: 16.4 s → 5.8–8.1 s. (#238)
+
+### Fixed
+
+- Memory recall through `entity_names` reads only the memory edges of the
+  named entities instead of every `mentions` edge of the store: 1,065 ms →
+  0.36 ms with three entities on a 1M-edge brain. On PostgreSQL the memory
+  id range is compared under `COLLATE "C"`, as the database collation (en_US)
+  otherwise matched no memory id. (#236)
+- The dedupe lookup at ingest checks the collection through the holder's own
+  chunks: 227–389 ms → 0.01 ms on a 250,000-chunk collection, under the
+  write lock. (#237)
+
 ## [2.160.0] - 2026-11-21
 
 ### Changed
