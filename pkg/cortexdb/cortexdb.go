@@ -53,6 +53,11 @@ type DB struct {
 	pageRankMu          sync.Mutex
 	pageRankSchemaReady bool
 	pageRankRefreshMu   sync.Mutex
+	// find_nodes name index (graph_node_names.go): schema creation latches
+	// on success like the above; the mutex also serialises folding the
+	// nodes written since the last call into the index.
+	nodeFoldMu    sync.Mutex
+	nodeFoldReady bool
 	// changes is the change feed and inference maintainer; see changes.go.
 	changes changeRuntime
 	// execution is the execution-graph recorder's state; see execution.go.

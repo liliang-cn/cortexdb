@@ -1,13 +1,17 @@
 package cortexdb
 
 import (
+	"cmp"
 	"context"
+	"database/sql"
 	"slices"
-	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
+	"github.com/liliang-cn/cortexdb/v2/pkg/observability"
+	"github.com/liliang-cn/cortexdb/v2/pkg/sqldialect"
 )
 
 // defaultFindNodesLimit caps how many nodes one name may resolve to.
@@ -60,36 +64,29 @@ func (t *GraphRAGToolbox) FindNodes(ctx context.Context, req ToolFindNodesReques
 		}
 	}
 
-	// One scan for every name asked about. The graph has no index on content —
-	// which is why this tool is needed — so the cost is paid once here rather
-	// than once per name, and callers are expected to batch.
-	rows, err := t.db.query(ctx, findNodesScan(req.SkipChunks))
-	if err != nil {
-		return nil, err
+	// Through the name index (graph_node_names.go) each name reads only the
+	// nodes whose folded content holds its trigrams. A name folding to fewer
+	// than three characters has none, and PostgreSQL has no such index: then
+	// one scan of every node serves all the names, so callers are expected
+	// to batch.
+	indexed := t.db.Dialect().Kind() == sqldialect.SQLite
+	for _, name := range wanted {
+		if utf8.RuneCountInString(foldName(name)) < 3 {
+			indexed = false
+		}
 	}
-	// folded is the content folded once, here, and not once per name asked
-	// about: folding every node is most of the cost of a call.
-	type candidate struct{ id, content, nodeType, folded string }
-	all := make([]candidate, 0, 1024)
-	for rows.Next() {
-		var c candidate
-		if err := rows.Scan(&c.id, &c.content, &c.nodeType); err != nil {
-			_ = rows.Close()
+	var all []nodeCandidate
+	if indexed {
+		if err := t.db.nodeFoldIndexReady(ctx); err != nil {
 			return nil, err
 		}
-		if len(types) > 0 {
-			if _, ok := types[strings.ToLower(c.nodeType)]; !ok {
-				continue
-			}
+		defer observability.Time(ctx, "find-nodes-index")()
+	} else {
+		defer observability.Time(ctx, "find-nodes-scan")()
+		if all, err = readNodeCandidates(ctx, t.db.query, types, findNodesScan(req.SkipChunks)); err != nil {
+			return nil, err
 		}
-		c.folded = foldName(c.content)
-		all = append(all, c)
 	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return nil, err
-	}
-	_ = rows.Close()
 
 	// A name may be an alias entity resolution recorded on the entity it
 	// kept (entity_alias_follow.go). A recorded equivalence says more than
@@ -104,64 +101,30 @@ func (t *GraphRAGToolbox) FindNodes(ctx context.Context, req ToolFindNodesReques
 
 	for _, name := range wanted {
 		folded := foldName(name)
-		type hit struct {
-			id   string
-			rank int // 0 exact, 1 folded, 2 alias, 3 contains
-			size int
-		}
-		hits := make([]hit, 0, min(limit, len(all)))
 		aliasOf, isAlias := aliases[entityAliasKey(name)]
-		for _, c := range all {
-			rank := -1
-			switch {
-			case c.content == name:
-				rank = 0
-			// Both folds must survive folding. A name of nothing but punctuation
-			// folds to "", and so does every other such name — they would all
-			// match each other, and the caller would be handed a confident
-			// answer assembled out of two things having nothing in common.
-			case folded != "" && c.folded == folded:
-				rank = 1
-			case folded != "" && strings.Contains(c.folded, folded):
-				rank = 3
+		var hits nodeHits
+		if indexed {
+			if hits, err = t.db.indexedNodeHits(ctx, name, folded, req.SkipChunks, types, aliasOf, isAlias); err != nil {
+				return nil, err
 			}
-			// The entity that carries the name as an alias is served once,
-			// under the stronger of its two matches.
-			if isAlias && c.id == aliasOf {
-				if isAlias = false; rank < 0 || rank > 2 {
-					rank = 2
-				}
-			}
-			if rank >= 0 {
-				hits = append(hits, hit{id: c.id, rank: rank, size: len([]rune(c.content))})
-			}
+		} else {
+			hits = scannedNodeHits(all, name, folded, aliasOf, isAlias)
 		}
-		if isAlias {
-			// Not among the nodes compared: its type or its content kept
-			// it out of the scan. The filters below still apply to it.
-			hits = append(hits, hit{id: aliasOf, rank: 2})
-		}
-		// Best match first: stronger kind wins, then the shorter name — extra
-		// words narrow a concept, so "Limit" is what a bare "limit" was after
-		// and "Infinite Limit" is a different thing that merely contains it.
-		sort.SliceStable(hits, func(i, j int) bool {
-			if hits[i].rank != hits[j].rank {
-				return hits[i].rank < hits[j].rank
-			}
-			if hits[i].size != hits[j].size {
-				return hits[i].size < hits[j].size
-			}
-			return hits[i].id < hits[j].id
-		})
 		// A hidden node is not a match: the chunk and document nodes of an
 		// expired document, or of one the review gate hides, and a memory
 		// the gate hides, are left out as get_nodes leaves them out. They
 		// are taken out a window at a time, before the limit, so they do
 		// not use it up, and the strength of the answer is that of the
 		// first node served.
-		match := ToolNodeNameMatch{Name: name, Nodes: make([]*graph.GraphNode, 0, min(limit, len(hits)))}
-		for start := 0; start < len(hits) && len(match.Nodes) < limit; start += limit {
-			window := hits[start:min(start+limit, len(hits))]
+		match := ToolNodeNameMatch{Name: name, Nodes: []*graph.GraphNode{}}
+		for len(match.Nodes) < limit {
+			window, err := hits.next(ctx, limit)
+			if err != nil {
+				return nil, err
+			}
+			if len(window) == 0 {
+				break
+			}
 			ids := make([]string, 0, len(window))
 			rank := make(map[string]int, len(window))
 			for _, h := range window {
@@ -206,6 +169,112 @@ func (t *GraphRAGToolbox) FindNodes(ctx context.Context, req ToolFindNodesReques
 		response.Matches = append(response.Matches, match)
 	}
 	return response, nil
+}
+
+// nodeCandidate is a node find_nodes compares a name against; folded is its
+// content folded once, and not once per name asked about: folding is most of
+// the cost of a scan.
+type nodeCandidate struct{ id, content, nodeType, folded string }
+
+// nodeHit is a node that matches a name, with the strength of the match
+// (0 exact, 1 folded, 2 alias, 3 contains) and the length of its content.
+type nodeHit struct {
+	id   string
+	rank int
+	size int
+}
+
+// compareHits is the order matches are served in. Best match first: stronger
+// kind wins, then the shorter name — extra words narrow a concept, so "Limit"
+// is what a bare "limit" was after and "Infinite Limit" is a different thing
+// that merely contains it.
+func compareHits(a, b nodeHit) int {
+	return cmp.Or(cmp.Compare(a.rank, b.rank), cmp.Compare(a.size, b.size), strings.Compare(a.id, b.id))
+}
+
+// nodeHits serves the matches of a name in order, n at a time; an empty
+// window means there are no more.
+type nodeHits interface {
+	next(ctx context.Context, n int) ([]nodeHit, error)
+}
+
+// hitList is every match of a name, ranked.
+type hitList []nodeHit
+
+func (l *hitList) next(_ context.Context, n int) ([]nodeHit, error) {
+	window := (*l)[:min(n, len(*l))]
+	*l = (*l)[len(window):]
+	return window, nil
+}
+
+// rankNode is how a node's content matches a name, or -1.
+func rankNode(content, contentFolded, name, folded string) int {
+	switch {
+	case content == name:
+		return 0
+	// Both folds must survive folding. A name of nothing but punctuation
+	// folds to "", and so does every other such name — they would all
+	// match each other, and the caller would be handed a confident
+	// answer assembled out of two things having nothing in common.
+	case folded != "" && contentFolded == folded:
+		return 1
+	case folded != "" && strings.Contains(contentFolded, folded):
+		return 3
+	}
+	return -1
+}
+
+// scannedNodeHits ranks every node read by the scan against a name.
+func scannedNodeHits(all []nodeCandidate, name, folded, aliasOf string, isAlias bool) nodeHits {
+	hits := hitList{}
+	for _, c := range all {
+		rank := rankNode(c.content, c.folded, name, folded)
+		// The entity that carries the name as an alias is served once,
+		// under the stronger of its two matches.
+		if isAlias && c.id == aliasOf {
+			if isAlias = false; rank < 0 || rank > 2 {
+				rank = 2
+			}
+		}
+		if rank >= 0 {
+			hits = append(hits, nodeHit{id: c.id, rank: rank, size: utf8.RuneCountInString(c.content)})
+		}
+	}
+	if isAlias {
+		// Not among the nodes compared: its type or its content kept
+		// it out of the scan. The filters below still apply to it.
+		hits = append(hits, nodeHit{id: aliasOf, rank: 2})
+	}
+	slices.SortFunc(hits, compareHits)
+	return &hits
+}
+
+// rowQuery runs a read: the store's (DB.query), or a transaction's.
+type rowQuery func(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+
+// readNodeCandidates runs a read of (id, content, node_type) rows and keeps
+// those of the wanted types, folded.
+func readNodeCandidates(ctx context.Context, read rowQuery, types map[string]struct{}, query string, args ...any) ([]nodeCandidate, error) {
+	rows, err := read(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var all []nodeCandidate
+	for rows.Next() {
+		var c nodeCandidate
+		if err := rows.Scan(&c.id, &c.content, &c.nodeType); err != nil {
+			return nil, err
+		}
+		if len(types) > 0 {
+			if _, ok := types[strings.ToLower(c.nodeType)]; !ok {
+				continue
+			}
+		}
+		c.folded = foldName(c.content)
+		all = append(all, c)
+	}
+	return all, rows.Err()
 }
 
 // findNodesScan is the read of every node FindNodes compares names against.
