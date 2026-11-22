@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- A document ingested with no `chunk_size` is split into chunks of 300 words
+  with a 50-word overlap, instead of 120 words with none. In a conversation,
+  a question and its answer had often fallen in two chunks, and neither one
+  matched the question well alone. On the BenchmarkQED Podcast transcripts
+  the share of assertions the hybrid search context holds rose from 86.8% to
+  97.1% for local questions and from 52.8% to 69.7% for linked ones; median
+  search latency fell from 94 to 64 ms. With no `max_context_chars`, a
+  search's context budget is 2,000 characters per result (8,000 at the
+  default `top_k` of 4), instead of 2,400 in all. Stored documents keep their
+  chunks until they are ingested again; a re-ingest then gives them fewer
+  chunks, so a chunk id (`chunk:<doc>:NNN`) kept from before names other
+  text. A caller that needs the old split passes `chunk_size: 120`. (#248)
+
 ## [2.165.0] - 2026-11-22
 
 ### Changed

@@ -194,7 +194,7 @@ func TestAnAcceptanceKeepsTheOtherSystemKeysAndItsDate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if doc.Metadata[expiresAtKey] != future || doc.Metadata[contentHashKey] != contentSHA256(req.Content) || doc.Metadata[chunkSizeKey] != "120" {
+	if doc.Metadata[expiresAtKey] != future || doc.Metadata[contentHashKey] != contentSHA256(req.Content) || doc.Metadata[chunkSizeKey] != "300" {
 		t.Fatalf("the acceptance lost a system key: %v", doc.Metadata)
 	}
 	if _, old := doc.Metadata["department"]; old || doc.Metadata["shelf"] != "4" {
