@@ -149,7 +149,18 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 		resp.GraphFacts = b.collectGraphFacts(ctx, query, req.EntityNames, graphSeeds)
 		doneFacts()
 	}
-	resp.ContextPack = buildKnowledgeMemoryContextPack(query, resp.Memories, knowledgeResp, resp.Entities, resp.GraphFacts, req.MaxMemoryItems, req.MaxMemoryChars)
+	// Like graph facts, profiles come from the shared graph, which carries
+	// no scope, so a confined caller gets none.
+	if profilesServed(ctx) && memoryAsOf(ctx).IsZero() {
+		doneProfiles := observability.Time(ctx, "entity-profiles")
+		profiles, err := b.recallProfiles(ctx, query, req.EntityNames)
+		doneProfiles()
+		if err != nil {
+			return nil, err
+		}
+		resp.Profiles = profiles
+	}
+	resp.ContextPack = buildKnowledgeMemoryContextPack(query, resp.Memories, knowledgeResp, resp.Entities, resp.GraphFacts, resp.Profiles, req.MaxMemoryItems, req.MaxMemoryChars)
 	if len(resp.Entities) == 0 {
 		resp.Entities = resp.ContextPack.Entities
 	}
@@ -293,6 +304,19 @@ func (b *KnowledgeMemory) ExpandEntityContext(ctx context.Context, req Knowledge
 		return nil, err
 	}
 
+	var profiles []EntityProfile
+	if profilesServed(ctx) {
+		for _, id := range entityNodeIDs {
+			p, err := b.EntityProfile(ctx, id, true, true)
+			if err != nil {
+				return nil, err
+			}
+			if p != nil {
+				profiles = append(profiles, *p)
+			}
+		}
+	}
+
 	chunkIDs := make([]string, 0, len(searchResp.Chunks))
 	chunks := make([]GraphRAGChunkResult, 0, len(searchResp.Chunks))
 	for _, chunk := range searchResp.Chunks {
@@ -328,7 +352,14 @@ func (b *KnowledgeMemory) ExpandEntityContext(ctx context.Context, req Knowledge
 		contextSection = contextResp.Context
 	}
 
+	profileText, profileChunks := renderProfiles(profiles)
 	contextPack := KnowledgeMemoryContextPackFromSections(strings.Join(entityNames, " "), []KnowledgeMemoryContextSection{
+		{
+			Kind:      "profiles",
+			Title:     "Entity profiles",
+			Text:      profileText,
+			SourceIDs: profileChunks,
+		},
 		{
 			Kind:      "graph",
 			Title:     "Graph",
@@ -342,6 +373,7 @@ func (b *KnowledgeMemory) ExpandEntityContext(ctx context.Context, req Knowledge
 		Nodes:         expandResp.Nodes,
 		Edges:         expandResp.Edges,
 		Chunks:        chunks,
+		Profiles:      profiles,
 		ContextPack:   contextPack,
 	}, nil
 }
@@ -576,7 +608,7 @@ func resolveKnowledgeMemoryQuery(query string, plan *RetrievalPlan, entityNames 
 	return ""
 }
 
-func buildKnowledgeMemoryContextPack(query string, memories []MemorySearchHit, knowledgeResp *KnowledgeSearchResponse, entities []string, graphFacts []KnowledgeMemoryGraphFact, maxMemoryItems, maxMemoryChars int) KnowledgeMemoryContextPack {
+func buildKnowledgeMemoryContextPack(query string, memories []MemorySearchHit, knowledgeResp *KnowledgeSearchResponse, entities []string, graphFacts []KnowledgeMemoryGraphFact, profiles []EntityProfile, maxMemoryItems, maxMemoryChars int) KnowledgeMemoryContextPack {
 	sections := make([]KnowledgeMemoryContextSection, 0, 4)
 	memoryIDs := make([]string, 0, len(memories))
 	knowledgeIDs := make([]string, 0)
@@ -618,6 +650,17 @@ func buildKnowledgeMemoryContextPack(query string, memories []MemorySearchHit, k
 			Kind:  "graph_facts",
 			Title: "Graph facts",
 			Text:  gf,
+		})
+	}
+
+	// Profiles next: what is known about each entity the query names, kept
+	// and cited, ahead of the chunks this query's wording found.
+	if text, ids := renderProfiles(profiles); text != "" {
+		sections = append(sections, KnowledgeMemoryContextSection{
+			Kind:      "profiles",
+			Title:     "Entity profiles",
+			Text:      text,
+			SourceIDs: ids,
 		})
 	}
 

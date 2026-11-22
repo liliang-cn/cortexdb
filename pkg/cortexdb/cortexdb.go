@@ -91,6 +91,8 @@ type DB struct {
 	memorySearches memorySearchFlights
 	// recallLog, when set, records every recall; see recall_log.go.
 	recallLog *recallLogRuntime
+	// entityProfilesKept is set when the entity profile tables exist (#253).
+	entityProfilesKept bool
 	// observeTxQuery, when set, sees every statement txQuery and querierQuery
 	// run. Tests set it to read the plans of the statements a real delete
 	// makes.
@@ -309,6 +311,13 @@ func Open(config Config, opts ...Option) (*DB, error) {
 		}
 	}
 
+	// Entity profiles' tables, made here for the same reason. A brain that
+	// cannot write them serves profiles built on read and not kept.
+	if err := db.ensureEntityProfileTables(ctx); err != nil {
+		slog.Warn("cortexdb: entity profile tables not created at open", "err", err)
+	} else {
+		db.entityProfilesKept = true
+	}
 	if err := db.startChangeRuntime(ctx); err != nil {
 		_ = store.Close()
 		return nil, fmt.Errorf("failed to start change feed: %w", err)
