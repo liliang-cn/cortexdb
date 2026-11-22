@@ -21,7 +21,7 @@ const (
 // edges rather than lexical chunk text, which is unreliable without an embedder.
 // Only entity↔entity edges (both endpoints carry the "entity:" id prefix) are
 // kept, so structural edges like chunk -mentions-> entity never leak in.
-func (b *KnowledgeMemory) collectGraphFacts(ctx context.Context, query string, seedNames []string) []KnowledgeMemoryGraphFact {
+func (b *KnowledgeMemory) collectGraphFacts(ctx context.Context, query string, namedHints, seedNames []string) []KnowledgeMemoryGraphFact {
 	seen := make(map[string]struct{})
 	candidates := make([]string, 0, maxGraphFactSeeds)
 	add := func(name string) {
@@ -37,6 +37,36 @@ func (b *KnowledgeMemory) collectGraphFacts(ctx context.Context, query string, s
 		if len(candidates) < maxGraphFactSeeds {
 			candidates = append(candidates, name)
 		}
+	}
+	// The entities the question names come first, and what two or more of
+	// them share is what relates them (#251): their facts lead the pack.
+	connecting := map[string]bool{}
+	var named []string
+	if ids, err := b.db.queryEntityNodeIDs(ctx, query, namedHints); err == nil && len(ids) >= 2 {
+		if counts, err := b.db.mentionCounts(ctx, ids); err == nil {
+			if kept, err := b.db.dropHubEntities(ctx, ids, counts, "chunk"); err == nil {
+				ids = kept
+			}
+		}
+		if len(ids) >= 2 {
+			for _, id := range ids {
+				connecting[id] = true
+				if n, err := b.db.Graph().GetNode(ctx, id); err == nil && n != nil {
+					named = append(named, n.Content)
+				}
+			}
+			if shared, err := b.db.sharedNeighbours(ctx, ids, maxSharedNeighbours); err == nil {
+				for _, nb := range shared {
+					connecting[nb.id] = true
+				}
+			}
+		}
+	}
+	links := func(f KnowledgeMemoryGraphFact) bool {
+		return len(named) >= 2 && connecting[f.SubjectID] && connecting[f.ObjectID]
+	}
+	for _, n := range named {
+		add(n)
 	}
 	for _, n := range seedNames {
 		add(n)
@@ -124,6 +154,9 @@ func (b *KnowledgeMemory) collectGraphFacts(ctx context.Context, query string, s
 	// generated for every adjacent pair, so it outnumbers everything and used to
 	// fill the pack while "oss-agent depends_on cortexdb" sat below the cut.
 	sort.SliceStable(facts, func(i, j int) bool {
+		if li, lj := links(facts[i]), links(facts[j]); li != lj && !isWeakPredicate(facts[i].Predicate) && !isWeakPredicate(facts[j].Predicate) {
+			return li
+		}
 		iWeak, jWeak := isWeakPredicate(facts[i].Predicate), isWeakPredicate(facts[j].Predicate)
 		if iWeak != jWeak {
 			return jWeak

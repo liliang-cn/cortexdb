@@ -693,10 +693,17 @@ resp, err := db.SearchPaths(ctx, cortexdb.ToolSearchPathsRequest{
 // resp.Paths[i].Edges[j].ChunkIDs — the evidence, link by link; resp.ChunkIDs — all of it, in path order
 ```
 
-`GraphRAGQueryOptions.ReturnPaths` (`return_paths` on `search_graphrag_lexical`)
-adds the same chains to a GraphRAG result, seeded by the plan's entity names or,
-without any, by the entities the top three chunks mention; chunks and context
-are unchanged. Tool: `search_paths`.
+`GraphRAGQueryOptions.ReturnPaths` (`return_paths` on `search_graphrag_lexical`
+and `knowledge_search`) adds the same chains to a GraphRAG result, seeded by the
+plan's entity names, else by the entities the question names, else by the
+entities the top three chunks mention; chunks and context are unchanged. Tool:
+`search_paths`.
+
+`knowledge_search` relates the entities a question names. When it names two or
+more that are not hubs, the result gets the chunk where each is said to be
+related to what they share ("both worked at Oracle"), and any named entity no
+result chunk mentions gets its best chunk, within the same chunk limits.
+Recall's graph facts lead with the facts relating them.
 
 **Per-relation-type weight and depth.** `graph.RelationPolicies` maps a relation
 type to `{Weight, MaxDepth}` — weight multiplies a path's score (0 = 1.0,

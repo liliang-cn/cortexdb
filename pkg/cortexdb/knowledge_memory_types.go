@@ -157,6 +157,13 @@ type KnowledgeSearchRequest struct {
 	// IncludeProposed serves the proposed documents too under the review
 	// gate; rejected ones stay out. A hit's Metadata carries _review_status.
 	IncludeProposed bool `json:"include_proposed,omitempty"`
+	// ReturnPaths also returns the shortest relation paths between the
+	// entities the question names (or, naming none, those of its top
+	// chunks), bounded by PathMaxDepth hops (default 3) and MaxPaths
+	// (default 10). The chunks are the same either way.
+	ReturnPaths  bool `json:"return_paths,omitempty"`
+	PathMaxDepth int  `json:"path_max_depth,omitempty"`
+	MaxPaths     int  `json:"max_paths,omitempty"`
 }
 
 // KnowledgeSearchHit is a document-shaped search result aggregated from chunk retrieval.
@@ -200,6 +207,8 @@ type KnowledgeSearchResponse struct {
 	// Degraded names what did not run as it should have (see
 	// DegradedEmbedderUnreachable); empty when the search ran whole.
 	Degraded []string `json:"degraded,omitempty"`
+	// Paths are the relation paths ReturnPaths asked for.
+	Paths []RetrievedPath `json:"paths,omitempty"`
 }
 
 // MemoryRecord is a high-level memory object stored in a dedicated memory bucket.

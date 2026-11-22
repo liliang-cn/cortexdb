@@ -18,6 +18,25 @@ All notable changes to this project will be documented in this file.
   `ToolDefinition` gains `Idempotent` and `Destructive`; the memoryflow,
   graphflow and connector writing tools are now marked `Mutates`. (#255)
 
+- `knowledge_search` and `SearchKnowledge` relate the entities a question
+  names. For a question naming two or more entities (a name a hub, mentioned in
+  over a tenth of passages, does not count), the result gets the chunk where
+  each named entity is said to be related to what they share: for "What company
+  did both Sal Khan and Neha Narkhede work for?", each one's Oracle chunk, which
+  the question's wording ranked below their own companies' chunks. A named
+  entity no result chunk mentions gets its best chunk. Admitted chunks replace
+  the lowest ranked, within the same chunk and per-document limits. On the
+  BenchmarkQED podcast questions, context recall on linked questions went from
+  67.8% to 69.4% and on local ones from 94.9% to 94.1%, both within the judge's
+  noise of about 1.5 points; the intersection case above is fixed, and a local
+  question takes about 70 ms longer at the median. (#251)
+- `knowledge_search` takes `return_paths` (with `path_max_depth` and
+  `max_paths`) and returns the relation paths between the entities the
+  question names, as `search_paths` does. A confined key may not ask for them.
+  (#251)
+- Recall's graph facts lead with the facts relating the entities the question
+  names. (#251)
+
 ### Changed
 
 - A document ingested with no `chunk_size` is split into chunks of 300 words
