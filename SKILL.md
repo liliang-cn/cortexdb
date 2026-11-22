@@ -1090,6 +1090,14 @@ keys become the same deterministic tokens so KG edges survive.
 
 ## History: every version, and which one is in effect
 
+**Entity profiles** (`entity_profiles`, history in `entity_profile_history`)
+are the kept account of an entity: its relations with their times and one cited
+sentence per source document, or the reflector's text when one is set. Recall
+puts the profiles of the entities the query names ahead of the chunks
+(`profiles`, `[PROFILES]`; two mentioning documents needed unless the caller
+names the entity), `expand_entity_context` returns them, and a profile is
+rebuilt on read once a write changed its entity's edges.
+
 **Event time** (when a relation was true in the world, as its source says) is
 not the graph's validity columns, which record when the store held a row. It
 lives in the relation edge's `valid_from`/`valid_to` properties (RFC 3339,

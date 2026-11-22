@@ -87,7 +87,10 @@ type KnowledgeMemoryContextPack struct {
 
 // KnowledgeMemoryRecallResponse returns fused memory, knowledge, graph chunks, and packed context.
 type KnowledgeMemoryRecallResponse struct {
-	Query             string                     `json:"query"`
+	Query string `json:"query"`
+	// Profiles are the kept accounts of the entities the query names, put in
+	// the context pack ahead of the chunks (#253).
+	Profiles          []EntityProfile            `json:"profiles,omitempty"`
 	MemoryPlan        RetrievalPlan              `json:"memory_plan"`
 	MemoryDecision    RetrievalDecision          `json:"memory_decision"`
 	KnowledgePlan     RetrievalPlan              `json:"knowledge_plan"`
@@ -178,11 +181,13 @@ type KnowledgeMemoryExpandEntityContextRequest struct {
 
 // KnowledgeMemoryExpandEntityContextResponse returns the expanded subgraph and packed chunk context.
 type KnowledgeMemoryExpandEntityContextResponse struct {
-	EntityNodeIDs []string                   `json:"entity_node_ids,omitempty"`
-	Nodes         []*graph.GraphNode         `json:"nodes,omitempty"`
-	Edges         []*graph.GraphEdge         `json:"edges,omitempty"`
-	Chunks        []GraphRAGChunkResult      `json:"chunks,omitempty"`
-	ContextPack   KnowledgeMemoryContextPack `json:"context_pack"`
+	EntityNodeIDs []string              `json:"entity_node_ids,omitempty"`
+	Nodes         []*graph.GraphNode    `json:"nodes,omitempty"`
+	Edges         []*graph.GraphEdge    `json:"edges,omitempty"`
+	Chunks        []GraphRAGChunkResult `json:"chunks,omitempty"`
+	// Profiles are the kept accounts of the entities asked about (#253).
+	Profiles    []EntityProfile            `json:"profiles,omitempty"`
+	ContextPack KnowledgeMemoryContextPack `json:"context_pack"`
 }
 
 // KnowledgeMemoryNeighborsRequest expands neighbors around one node or entity.

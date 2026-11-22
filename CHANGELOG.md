@@ -6,6 +6,24 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Entity profiles (#253): a kept account of an entity, saying what it is,
+  its relations with their times, and what each source says of it, one cited
+  sentence per document (`[chunk:…]`). With a `KnowledgeMemoryReflector` the
+  reflector writes it from the entity's chunks and facts. `knowledge_memory_recall`
+  puts the profiles of up to three entities the query names in the context
+  pack ahead of the chunks (`profiles` in the response, a `[PROFILES]`
+  section); an entity found in the query's words needs two documents
+  mentioning it, one the caller names in `entity_names` gets one regardless.
+  `knowledge_memory_expand_entity_context` returns the profiles of the entities
+  it is asked about. A profile is rebuilt when it is read after any write
+  added or retired an edge of its entity, whichever tool wrote, and the
+  rebuilt one supersedes the old, kept in `entity_profile_history`
+  (`KnowledgeMemory.EntityProfileHistory`). With a reflector a recall rebuilds
+  one stale profile and serves the others marked `stale`. A recall with
+  `as_of`, or by a confined key, gets no profiles. agentmem's mental models
+  are unchanged. A profile is built from documents only: chunk mentions and
+  relations a document states, never a memory.
+
 - Relations carry when they were true (#252). `upsert_relations`,
   `knowledge_save` and `knowledge_update` take `valid_from`, `valid_to` and
   `at` on a relation (RFC 3339, `YYYY-MM-DD`, `YYYY-MM` or `YYYY`; `at` names
