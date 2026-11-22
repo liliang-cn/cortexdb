@@ -5,7 +5,7 @@ package cortexdb
 const (
 	memoryChangeToolNote  = "A memory that superseded others carries replaces: each replaced memory's id, excerpt, saved_at, superseded_at, written_by and source, oldest first; the context pack writes a changed fact as its current value, then [changed <date>; before: \"<previous value>\"]."
 	memoryAsOfDescription = "Answer as the memories stood at this RFC 3339 instant: memories saved after it are not seen, and one superseded after it is still current. Reading the past is read-only."
-	recallAsOfDescription = memoryAsOfDescription + " Applies to memories; knowledge and graph facts answer as now."
+	recallAsOfDescription = memoryAsOfDescription + " Knowledge saved after it and graph facts recorded after it are not seen either."
 )
 
 func KnowledgeMemoryFacadeToolDefinitions() []ToolDefinition {

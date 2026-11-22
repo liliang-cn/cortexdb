@@ -46,6 +46,13 @@ type GraphRelationship struct {
 	To     string
 	Type   string
 	Weight float64
+	// ValidFrom, ValidTo and At say when the relation was true, as the text
+	// states it: RFC 3339, YYYY-MM-DD, YYYY-MM or YYYY. At names the period
+	// it happened in. Left empty, the time is read from the sentence naming
+	// both ends, when it states one (#252).
+	ValidFrom string
+	ValidTo   string
+	At        string
 }
 
 // GraphExtraction holds entities and relationships extracted from text.
@@ -337,16 +344,22 @@ func (db *DB) InsertGraphDocument(ctx context.Context, doc GraphRAGDocument, opt
 				weight = 1.0
 			}
 			key := fmt.Sprintf("%s|%s|%s|%s", chunkID, fromID, toID, relType)
+			props := map[string]interface{}{
+				"source_chunk_id": chunkID,
+				"document_id":     doc.ID,
+			}
+			// A time the extractor got wrong is not the document's fault:
+			// the relation is kept without one.
+			if from, to, err := relationEventTime(rel.ValidFrom, rel.ValidTo, rel.At, rel.From, rel.To, relType, chunk, nil); err == nil {
+				setEventTime(props, from, to)
+			}
 			relationshipKeys[key] = graph.GraphEdge{
 				ID:         fmt.Sprintf("edge:rel:%s:%s:%s:%s", chunkID, fromID, toID, relType),
 				FromNodeID: fromID,
 				ToNodeID:   toID,
 				EdgeType:   relType,
 				Weight:     weight,
-				Properties: map[string]interface{}{
-					"source_chunk_id": chunkID,
-					"document_id":     doc.ID,
-				},
+				Properties: props,
 			}
 		}
 	}

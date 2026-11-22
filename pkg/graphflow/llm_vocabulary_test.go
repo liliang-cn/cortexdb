@@ -114,9 +114,10 @@ func TestGraphflowExtractorIsToldTheActiveOntologysTypes(t *testing.T) {
 func TestGraphflowPromptIsUnchangedWithoutAnOntology(t *testing.T) {
 	gen, types := runVocabularyPipeline(t, openVocabularyTestDB(t, false))
 	doc := vocabularyTestDoc()
-	// The prompt as it was before #153, verbatim.
+	// The prompt as it was before #153, verbatim, plus the relation times
+	// #252 asks for: an ontology adds nothing here.
 	want := fmt.Sprintf(
-		"source_id: %s\nsource_type: %s\ntitle: %s\npath: %s\n\nDocument:\n%s\n\nReturn JSON with:\n{\n  \"nodes\": [{\"id\":\"...\",\"label\":\"...\",\"type\":\"...\",\"summary\":\"...\",\"source_file\":\"...\",\"source_location\":\"...\"}],\n  \"edges\": [{\"source\":\"...\",\"target\":\"...\",\"relation\":\"...\",\"confidence\":\"EXTRACTED|INFERRED|AMBIGUOUS\",\"directed\":true,\"source_file\":\"...\",\"source_location\":\"...\"}]\n}",
+		"source_id: %s\nsource_type: %s\ntitle: %s\npath: %s\n\nDocument:\n%s\n\nReturn JSON with:\n{\n  \"nodes\": [{\"id\":\"...\",\"label\":\"...\",\"type\":\"...\",\"summary\":\"...\",\"source_file\":\"...\",\"source_location\":\"...\"}],\n  \"edges\": [{\"source\":\"...\",\"target\":\"...\",\"relation\":\"...\",\"confidence\":\"EXTRACTED|INFERRED|AMBIGUOUS\",\"directed\":true,\"source_file\":\"...\",\"source_location\":\"...\",\"valid_from\":\"\",\"valid_to\":\"\",\"at\":\"\"}]\n}\nWhen the text states when a relation held, give it: at for the period it happened in, or valid_from and valid_to for when it began and ended, as YYYY, YYYY-MM or YYYY-MM-DD. Leave them empty when the text states no time.",
 		doc.ID, doc.Type, doc.Title, doc.Path, doc.Content,
 	)
 	if len(gen.prompts) != 1 || gen.prompts[0] != want {

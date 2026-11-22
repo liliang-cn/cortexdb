@@ -97,6 +97,11 @@ func Build(ctx context.Context, db *cortexdb.DB, extractions []ExtractionResult,
 			for key, value := range edge.Metadata {
 				record.Properties["meta_"+key] = value
 			}
+			if when, err := cortexdb.EventTimeProperties(edge.ValidFrom, edge.ValidTo, edge.At); err == nil {
+				for key, value := range when {
+					record.Properties[key] = value
+				}
+			}
 			if err := graphStore.UpsertEdge(ctx, record); err != nil {
 				return nil, err
 			}

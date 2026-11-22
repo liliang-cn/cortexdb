@@ -152,6 +152,15 @@ type ToolRelationInput struct {
 	Provenance     string            `json:"provenance,omitempty"`
 	RuleID         string            `json:"rule_id,omitempty"`
 	SupportEdgeIDs []string          `json:"support_edge_ids,omitempty"`
+	// ValidFrom, ValidTo and At say when the relation was true in the world:
+	// RFC 3339, YYYY-MM-DD, YYYY-MM or YYYY. At names the period it happened
+	// in, and is not given with the other two. Written to the edge's
+	// valid_from/valid_to properties, the interval recall and
+	// graphflow.QueryFactsAsOf read (#252). knowledge_save reads the time from
+	// the sentence naming both ends when none is given.
+	ValidFrom string `json:"valid_from,omitempty"`
+	ValidTo   string `json:"valid_to,omitempty"`
+	At        string `json:"at,omitempty"`
 }
 
 // ToolUpsertRelationsRequest writes graph edges between entities.

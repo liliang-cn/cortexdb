@@ -403,16 +403,22 @@ func (db *DB) extractKnowledgeEntities(ctx context.Context, input knowledgeMutat
 				weight = 1.0
 			}
 			key := fmt.Sprintf("%s|%s|%s|%s", chunkID, fromID, toID, relType)
+			props := map[string]any{
+				"source_chunk_id": chunkID,
+				"document_id":     input.KnowledgeID,
+			}
+			// A time the extractor got wrong is not the document's fault:
+			// the relation is kept without one.
+			if from, to, err := relationEventTime(rel.ValidFrom, rel.ValidTo, rel.At, rel.From, rel.To, relType, chunk, nil); err == nil {
+				setEventTime(props, from, to)
+			}
 			relationshipMap[key] = graph.GraphEdge{
 				ID:         fmt.Sprintf("edge:rel:%s:%s:%s:%s", chunkID, fromID, toID, relType),
 				FromNodeID: fromID,
 				ToNodeID:   toID,
 				EdgeType:   relType,
 				Weight:     weight,
-				Properties: map[string]any{
-					"source_chunk_id": chunkID,
-					"document_id":     input.KnowledgeID,
-				},
+				Properties: props,
 			}
 		}
 	}
@@ -766,6 +772,12 @@ func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowle
 		for key, value := range rel.Metadata {
 			properties[key] = value
 		}
+		stated := input.Relations[i]
+		from, to, err := relationEventTime(rel.ValidFrom, rel.ValidTo, rel.At, stated.From, stated.To, edgeType, input.Content, rel.Metadata)
+		if err != nil {
+			return fmt.Errorf("relation %s -%s-> %s: %w", stated.From, edgeType, stated.To, err)
+		}
+		setEventTime(properties, from, to)
 
 		weight := rel.Weight
 		if weight == 0 {

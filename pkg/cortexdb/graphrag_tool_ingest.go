@@ -794,6 +794,11 @@ func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRel
 		for k, v := range rel.Metadata {
 			properties[k] = v
 		}
+		from, to, err := eventInterval(rel.ValidFrom, rel.ValidTo, rel.At)
+		if err != nil {
+			return nil, fmt.Errorf("relation %s -%s-> %s: %w", rel.From, edgeType, rel.To, err)
+		}
+		setEventTime(properties, from, to)
 
 		weight := rel.Weight
 		if weight == 0 {
