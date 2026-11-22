@@ -3,6 +3,7 @@ package rpcserver
 import (
 	"context"
 	"encoding/json"
+	"google.golang.org/protobuf/proto"
 	"strings"
 
 	"google.golang.org/grpc/codes"
@@ -31,6 +32,9 @@ func (s *toolsService) ListTools(context.Context, *rpcv1.ListToolsRequest) (*rpc
 			Name:            d.Name,
 			Description:     d.Description,
 			InputSchemaJson: string(schema),
+			Mutates:         proto.Bool(d.Mutates),
+			Idempotent:      d.Idempotent,
+			Destructive:     d.Destructive,
 		})
 	}
 	return &rpcv1.ListToolsResponse{Tools: tools}, nil

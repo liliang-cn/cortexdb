@@ -7,6 +7,8 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		{
 			Name:        "knowledge_save",
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Store or replace a durable knowledge item. This is the preferred high-level write API for documents, notes, facts, and structured knowledge. An entity or relation endpoint named, or found in the content, by an alias entity resolution recorded lands on the entity that carries it, as in upsert_entities and upsert_relations.",
 			InputSchema: toolObjectSchema(
 				[]string{"knowledge_id", "content"},
@@ -32,6 +34,8 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		{
 			Name:        "knowledge_update",
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Update a durable knowledge item. If content, title, collection, or metadata changes, the underlying chunks and graph artifacts are refreshed.",
 			InputSchema: toolObjectSchema(
 				[]string{"knowledge_id"},
@@ -99,6 +103,8 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		{
 			Name:        "knowledge_delete",
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Delete a durable knowledge item and its chunk/document graph artifacts.",
 			InputSchema: toolObjectSchema(
 				[]string{"knowledge_id"},
@@ -110,6 +116,8 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		{
 			Name:        "knowledge_graph_namespace_upsert",
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Register or update a namespace prefix used by the RDF knowledge graph.",
 			InputSchema: toolObjectSchema(
 				[]string{"prefix", "uri"},
@@ -127,6 +135,8 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		{
 			Name:        "knowledge_graph_upsert",
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Insert or update RDF triples/quads in the embedded knowledge graph.",
 			InputSchema: toolObjectSchema(
 				[]string{"triples"},
@@ -149,6 +159,8 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		{
 			Name:        "knowledge_graph_delete",
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Delete RDF triples/quads by IDs, explicit triples, or a pattern.",
 			InputSchema: toolObjectSchema(
 				nil,
@@ -162,6 +174,8 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		{
 			Name:        "knowledge_graph_import",
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Import RDF content into the embedded knowledge graph. N-Triples, N-Quads, Turtle and TriG are read at RDF 1.2: triple terms <<( s p o )>> (object position only), reified triples << s p o ~ r >>, annotations s p o {| q z |}, and literals with a base direction such as \"text\"@ar--rtl. The whole document is parsed before anything is stored, so a syntax error imports nothing.",
 			InputSchema: toolObjectSchema(
 				[]string{"content"},
@@ -190,6 +204,7 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 			// and classifying it as a read would hand every read-only key a
 			// way to rewrite the graph.
 			Mutates:     true,
+			Destructive: true,
 			Description: "Execute SPARQL 1.1/1.2 queries (SELECT/ASK/CONSTRUCT/DESCRIBE) and updates over the embedded knowledge graph. The property graph that extraction and upsert_entities/upsert_relations write is readable here too, as read-only triples in graph <urn:cortexdb:graph:property>: nodes are cxn:<id>, node types cxt:<type> (via rdf:type / a), relations cxr:<edge_type>, node properties cxp:<key>, and a node's name (or title) is rdfs:label. Ids and type names are percent-encoded exactly (entity:abc → cxn:entity%3Aabc); non-ASCII ids need the full <urn:cortexdb:node:…> form. Example — who depends on CortexDB: SELECT ?who WHERE { ?x cxr:depends_on ?y . ?y rdfs:label \"CortexDB\" . ?x rdfs:label ?who }. Call graph_schema first to learn which types and relations exist. Deleting or inserting projected triples is refused; change the property graph through its own tools. SPARQL 1.2 triple terms state facts about facts — provenance, confidence, time: PREFIX ex: <http://example.org/> INSERT DATA { ex:alice ex:worksFor ex:acme {| ex:source ex:doc1 ; ex:confidence 0.9 |} } stores the fact plus a reifier, and PREFIX ex: <http://example.org/> SELECT ?org ?doc WHERE { ?r rdf:reifies <<( ex:alice ex:worksFor ?org )>> ; ex:source ?doc } reads it back.",
 			InputSchema: toolObjectSchema(
 				[]string{"query"},
@@ -214,6 +229,8 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 			// Writes inferred triples and retracts the ones an earlier run
 			// inferred that no longer hold, unless dry_run is set.
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Run SHACL-AF triple rules (sh:rule with a sh:TripleRule) over the embedded knowledge graph, including the property graph as cxn:/cxt:/cxr:/cxp: triples, until nothing new is inferred, and store the results as inferred triples explainable with knowledge_graph_infer_explain (rule name shacl_triple_rule:<rule IRI or shape>). Focus nodes come from the shape's targets (sh:targetClass, sh:targetNode, sh:targetSubjectsOf, sh:targetObjectsOf, or a shape that is also an rdfs:Class). sh:subject / sh:predicate / sh:object are node expressions: sh:this, a constant IRI or literal, [ sh:path p ] or [ sh:path [ sh:inversePath p ] ] with optional sh:nodes, [ sh:filterShape S ; sh:nodes E ], [ sh:intersection (E1 E2 …) ], [ sh:union (E1 E2 …) ]. sh:condition shapes (SHACL Core subset of knowledge_graph_shacl_validate) must hold for the focus node; sh:order orders rules and shapes; sh:deactivated true skips them. sh:SPARQLRule and function expressions are refused. The shapes passed are the whole rule set: triples a previous run inferred that this run does not are retracted. Use dry_run to preview. Example — every service that runs on a node-type host is in the openclaw cluster: ex:S sh:targetSubjectsOf cxr:runs_on ; sh:rule [ a sh:TripleRule ; sh:subject sh:this ; sh:predicate cxr:in_cluster ; sh:object cxn:openclaw ; sh:condition [ sh:property [ sh:path cxr:runs_on ; sh:class cxt:host ] ] ]. A full knowledge_graph_infer_refresh clears these triples; run the rules again after one.",
 			InputSchema: toolObjectSchema(
 				[]string{"shapes"},
@@ -230,6 +247,8 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 			// Recomputes and persists the RDFS-lite inferred triples. The
 			// _summary and _explain tools beside it only read what this wrote.
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Recompute persisted inferred triples: RDFS (rdfs:subClassOf, rdfs:subPropertyOf, rdfs:domain, rdfs:range) and OWL 2 RL (owl:inverseOf, owl:SymmetricProperty, owl:TransitiveProperty, owl:equivalentClass, owl:equivalentProperty, owl:sameAs, owl:FunctionalProperty, owl:InverseFunctionalProperty and owl:hasKey as keys that derive owl:sameAs, owl:propertyChainAxiom over an RDF list of two or more properties, and the class expressions owl:someValuesFrom, owl:allValuesFrom, owl:hasValue over owl:onProperty, owl:intersectionOf, owl:unionOf, owl:oneOf, owl:maxCardinality / owl:maxQualifiedCardinality). Declare axioms with knowledge_graph_query INSERT DATA first — they apply to the property graph too, e.g. cxt:host owl:equivalentClass cxt:Host, cxr:depends_on owl:inverseOf cxr:depended_on_by, cxn:entity%3Anode_e owl:sameAs cxn:entity%3Asds_e to merge an entity stored twice, cxr:deployed_on a owl:FunctionalProperty to merge the duplicate names of one host, or cxr:ultimately_hosted_on owl:propertyChainAxiom (cxr:runs_on cxr:hostedOn). Contradictions are reported in inconsistencies (with inconsistency_count), never resolved: owl:disjointWith (cax-dw), owl:propertyDisjointWith (prp-pdw), two different literal values of a functional property (prp-fp), owl:differentFrom or owl:AllDifferent between terms that sameAs reasoning would merge (eq-diff1, eq-diff2; that class's sameAs reasoning is suspended), owl:AllDisjointClasses (cax-adc), owl:AllDisjointProperties (prp-adp), irreflexive (prp-irp) and asymmetric (prp-asyp) properties, negative property assertions (prp-npa), owl:complementOf (cls-com), owl:Nothing (cls-nothing2) and a max cardinality of 0 (cls-maxc). Each lists the conflicting triples with their ids. Every inferred triple is explainable with knowledge_graph_infer_explain. An owl:sameAs class larger than max_same_as_class_size is reported in oversized_same_as_classes, not materialized. Defaults to a full rebuild; can also run incrementally for affected triples, IDs, or a pattern.",
 			InputSchema: toolObjectSchema(
 				nil,
@@ -272,6 +291,8 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		{
 			Name:        "memory_save",
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Store a memory item in a dedicated memory bucket. Use scope=user/session/global to control where the memory lives. Pass entities and relations to record what the memory is about in the same call, so it lands in the knowledge graph too.",
 			InputSchema: toolObjectSchema(
 				[]string{"memory_id", "content"},
@@ -300,6 +321,8 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		{
 			Name:        "memory_update",
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Update a stored memory item.",
 			InputSchema: toolObjectSchema(
 				[]string{"memory_id"},
@@ -392,6 +415,8 @@ func KnowledgeMemoryToolDefinitions() []ToolDefinition {
 		{
 			Name:        "memory_delete",
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Delete one memory item by ID.",
 			InputSchema: toolObjectSchema(
 				[]string{"memory_id"},

@@ -2287,6 +2287,18 @@ pub struct ToolDefinition {
     /// JSON-serialized input schema (map\[string\]any in Go).
     #[prost(string, tag = "3")]
     pub input_schema_json: ::prost::alloc::string::String,
+    /// Whether calling the tool changes the brain. Unset from a server older
+    /// than this field: a client then knows nothing of the tool's effects and
+    /// must not claim it is a read.
+    #[prost(bool, optional, tag = "4")]
+    pub mutates: ::core::option::Option<bool>,
+    /// For a tool that mutates: calling it again with the same arguments
+    /// leaves the brain as the first call left it.
+    #[prost(bool, tag = "5")]
+    pub idempotent: bool,
+    /// For a tool that mutates: it may delete or overwrite stored data.
+    #[prost(bool, tag = "6")]
+    pub destructive: bool,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ListToolsRequest {}

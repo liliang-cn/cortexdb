@@ -87,8 +87,9 @@ func mergeToolDefinitions() []ToolDefinition {
 	}}
 	return []ToolDefinition{
 		{
-			Name:    "merge_entities",
-			Mutates: true,
+			Name:        "merge_entities",
+			Mutates:     true,
+			Destructive: true,
 			Description: "Fold alias entities into one canonical entity, by a table the caller gives: every edge of an alias is repointed " +
 				"onto the canonical entity, the self-loops this makes are dropped, and each alias and edge is kept in history as it " +
 				"stood, marked merged into the canonical entity. The names folded, with the aliases a folded entity carried itself, " +
@@ -105,8 +106,9 @@ func mergeToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
-			Name:    "unmerge_entities",
-			Mutates: true,
+			Name:        "unmerge_entities",
+			Mutates:     true,
+			Destructive: true,
 			Description: "Undo a merge_entities from its journal, in one transaction: each alias and each edge the merge took is " +
 				"written back as it stood before the merge, read from history, and the names the merge recorded are taken off the " +
 				"canonical entity. The whole call is refused when history does not show a merge into the journal's canonical entity " +

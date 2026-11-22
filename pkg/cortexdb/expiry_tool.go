@@ -21,8 +21,10 @@ type SweepExpiredToolRequest struct {
 func expiryToolDefinitions() []ToolDefinition {
 	return []ToolDefinition{
 		{
-			Name:    "sweep_expired",
-			Mutates: true,
+			Name:        "sweep_expired",
+			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Remove every document and memory whose expires_at has passed: the document with its chunks and graph " +
 				"nodes, the memory with its node. Searches already leave expired rows out, so the sweep can run at any hour. " +
 				"Run with dry_run first.",

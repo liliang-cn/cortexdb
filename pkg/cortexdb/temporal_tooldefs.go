@@ -90,8 +90,10 @@ func temporalToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
-			Name:    "vacuum_graph",
-			Mutates: true,
+			Name:        "vacuum_graph",
+			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Permanently remove graph history that closed before a cutoff — retracted rows and superseded versions, and the history of RDF triples (the count is in triples). " +
 				"This is the only hard delete: after it, those instants can no longer be read. Nothing a current read can see is " +
 				"touched. Run with dry_run first. A cutoff is required.",

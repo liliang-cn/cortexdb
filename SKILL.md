@@ -1155,6 +1155,12 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})
 _ = server
 ```
 
+Every tool carries MCP annotations from its definition (`ToolDefinition.MCPAnnotations`):
+a read has `readOnlyHint` and `idempotentHint`; a write has `idempotentHint` when a repeat
+with the same arguments changes nothing more (an upsert on a stated id, a delete) and
+`destructiveHint` when it may delete or overwrite. Remote mode passes them through from
+`ListTools`.
+
 Important tools:
 
 - GraphRAG: `ingest_document`, `ingest_media`, `search_media`, `search_text`, `expand_graph`, `build_context`

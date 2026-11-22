@@ -686,6 +686,7 @@ func addGraphRAGMCPTool[In, Out any](server *mcp.Server, definition ToolDefiniti
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        definition.Name,
 		Description: definition.Description,
+		Annotations: definition.MCPAnnotations(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		output, err := handler(ctx, input)
 		if err != nil {

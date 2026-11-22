@@ -16,6 +16,8 @@ func ruleToolDefinitions() []ToolDefinition {
 			// rules_apply — but a saved rule is what rules_apply runs by
 			// default, so saving one is a change to what the brain will infer.
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Declare inference rules. A rule is written as \"IF p(?x, ?y) AND q(?y, ?z) THEN r(?x, ?z)\": any number of premises, variables bound across them, one conclusion. Terms starting with ? are variables; anything else is a literal matched against a node id, or against Type:Name. Saving a rule stores it; run it with rules_apply.",
 			InputSchema: toolObjectSchema(
 				[]string{"rules"},
@@ -38,8 +40,10 @@ func ruleToolDefinitions() []ToolDefinition {
 			),
 		},
 		{
-			Name:    "rules_delete",
-			Mutates: true,
+			Name:        "rules_delete",
+			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			// Deleting a rule leaves the edges it derived in place, which is
 			// why this is not a retraction tool. Say so where an agent reads it.
 			Description: "Delete declared inference rules by id. Edges those rules already derived stay in the graph — they carry the rule text with them and remain explicable. To remove them, run rules_apply with delete_existing.",
@@ -55,6 +59,7 @@ func ruleToolDefinitions() []ToolDefinition {
 			// dry_run makes one argument value read-only, which authorization
 			// never sees. A tool that can write is a write.
 			Mutates:     true,
+			Destructive: true,
 			Description: "Forward-chain inference rules over the graph to a fixpoint and materialize what they derive. Every derived edge carries inferred=true, the rule id and text, the exact premise edge ids, and a confidence that is the minimum premise confidence times the rule's. Re-running derives nothing new. With neither rule_ids nor rules, every enabled declared rule runs. Use dry_run first.",
 			InputSchema: toolObjectSchema(
 				nil,

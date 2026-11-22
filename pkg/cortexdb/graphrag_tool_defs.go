@@ -24,6 +24,8 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 		{
 			Name:        "ingest_document",
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Store a document, split it into chunks, index them for search (embedded with the configured embedder, lexical vectors without one), and create document/chunk graph nodes.",
 			InputSchema: toolObjectSchema(
 				[]string{"document_id", "content"},
@@ -50,6 +52,8 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 		{
 			Name:        "upsert_entities",
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Create entity nodes and connect chunks to those entities with mention edges. A name that names no node and that an entity carries as an alias, recorded by entity resolution, lands on that entity: the id answered is then that entity's, and the entry adds its document and mentions without changing what the entity says.",
 			InputSchema: toolObjectSchema(
 				[]string{"entities"},
@@ -79,6 +83,8 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			// tool name, before the JSON is parsed. A tool that can write is a
 			// write.
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Delete entity nodes and every edge touching them. The counterpart to upsert_entities, for removing wrong or junk entities; use dry_run to see what would go first. Not reversible.",
 			InputSchema: toolObjectSchema(
 				[]string{"names"},
@@ -91,6 +97,8 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 		{
 			Name:        "delete_document_graph",
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Delete everything one document put in the graph: its chunk and document nodes, its relation edges, and the entities it alone asserted (entities other documents also assert are detached, not deleted). The counterpart to a document-scoped ingest; use dry_run to see what would go first. Not reversible.",
 			InputSchema: toolObjectSchema(
 				[]string{"document_id"},
@@ -103,6 +111,8 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 		{
 			Name:        "upsert_relations",
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Create relation edges between entity nodes. An endpoint named by an alias entity resolution recorded is written from or to the entity that carries it; a relation between an alias and its own entity is skipped.",
 			InputSchema: toolObjectSchema(
 				[]string{"relations"},
@@ -490,6 +500,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			// rule as delete_entities: the argument that decides is invisible
 			// to the caller doing the authorizing.
 			Mutates:     true,
+			Destructive: true,
 			Description: "Extract key information from conversation text (or a stored session's messages): a summary, themes, entities, and co-occurrence relations. Deterministic (no LLM). Set persist=true to also write entities/relations into the graph and the summary into knowledge, making the conversation recallable and graph-queryable.",
 			InputSchema: toolObjectSchema(
 				nil,
@@ -541,6 +552,8 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 			// Reads like a report, and with dry_run (its default) that is all
 			// it is. Without it, it re-embeds rows and rewrites their vectors.
 			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Report vector-dimension drift and optionally re-embed rows whose vectors came from an older embedding model. Such rows cannot enter the vector index, so they silently stop being retrievable by similarity while lexical search still finds them. Run with dry_run first.",
 			InputSchema: toolObjectSchema(
 				nil,

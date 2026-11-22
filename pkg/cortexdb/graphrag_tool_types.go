@@ -27,6 +27,18 @@ type ToolDefinition struct {
 	// claimed to be a read — which is why TestEveryToolDeclaresWhetherItWrites
 	// exists to make forgetting impossible rather than merely unlikely.
 	Mutates bool `json:"mutates,omitempty"`
+	// Idempotent, for a tool that writes, says that calling it again with the
+	// same arguments leaves what the brain holds as the first call left it:
+	// an upsert on a caller-given id, a delete. A version counter or audit
+	// row may still advance. False for a write that appends, mints an id or
+	// asks a model, whose repeat writes again.
+	Idempotent bool `json:"idempotent,omitempty"`
+	// Destructive, for a tool that writes, says it may delete or overwrite
+	// stored data, so its previous state is not in the brain afterwards.
+	// False for a write that only adds. Both are served as MCP tool
+	// annotations (MCPAnnotations) and decided for every writing tool in
+	// tool_mutates_test.go, as Mutates is.
+	Destructive bool `json:"destructive,omitempty"`
 }
 
 // GraphRAGToolbox exposes no-embedder-safe functions for external LLM orchestration.

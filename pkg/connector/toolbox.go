@@ -59,12 +59,12 @@ func (t *Toolbox) Definitions() []cortexdb.ToolDefinition {
 	return []cortexdb.ToolDefinition{
 		{Name: "connector_introspect", Description: "Introspect a live DB's schema (tables, columns, sample rows). Data is NOT imported.", InputSchema: obj(src, "driver", "dsn")},
 		{Name: "connector_plan", Description: "Introspect + classify PII and return an UNSIGNED MaskingPlan for review.", InputSchema: obj(src, "driver", "dsn")},
-		{Name: "connector_run", Description: "Run a desensitized import into RAG+KG using a signed MaskingPlan and a MappingPlan.", InputSchema: obj(map[string]any{
+		{Name: "connector_run", Mutates: true, Destructive: true, Description: "Run a desensitized import into RAG+KG using a signed MaskingPlan and a MappingPlan.", InputSchema: obj(map[string]any{
 			"driver": src["driver"], "dsn": src["dsn"], "schema": src["schema"],
 			"masking_plan": map[string]any{"type": "object", "description": "signed MaskingPlan JSON"},
 			"mapping_plan": map[string]any{"type": "object", "description": "importflow MappingPlan JSON"},
 		}, "driver", "dsn", "masking_plan", "mapping_plan")},
-		{Name: "connector_unmask", Description: "Reverse pseudonymized tokens to originals via the tenant vault (audited).", InputSchema: obj(map[string]any{
+		{Name: "connector_unmask", Mutates: true, Description: "Reverse pseudonymized tokens to originals via the tenant vault (audited).", InputSchema: obj(map[string]any{
 			"tokens": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		}, "tokens")},
 	}
