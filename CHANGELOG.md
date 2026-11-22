@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.165.0] - 2026-11-22
+
 ### Changed
 
 - Community reports are written from the text as well as the graph: a level-0
