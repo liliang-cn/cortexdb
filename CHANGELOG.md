@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.162.0] - 2026-11-22
+
 ### Fixed
 
 - Hybrid `knowledge_search` applies the per-document limit and character
