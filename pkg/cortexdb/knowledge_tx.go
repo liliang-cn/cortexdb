@@ -161,7 +161,7 @@ func (db *DB) buildEmbedderKnowledgePlan(ctx context.Context, input knowledgeMut
 		edgeMap[edge.ID] = edge
 	}
 
-	if err := db.appendKnowledgeExplicitArtifacts(ctx, input, entityNodes, entityTypes, edgeMap, &plan.ingest, &plan.named); err != nil {
+	if err := db.appendKnowledgeExplicitArtifacts(ctx, input, chunks, chunkIDs, entityNodes, entityTypes, edgeMap, &plan.ingest, &plan.named); err != nil {
 		return nil, err
 	}
 	if err := db.mergeEntityNodeProperties(ctx, entityNodes, ingestOpts.Collection); err != nil {
@@ -233,7 +233,7 @@ func (db *DB) buildLexicalKnowledgePlan(ctx context.Context, input knowledgeMuta
 		edgeMap[edge.ID] = edge
 	}
 
-	if err := db.appendKnowledgeExplicitArtifacts(ctx, input, entityNodes, entityTypes, edgeMap, &plan.ingest, &plan.named); err != nil {
+	if err := db.appendKnowledgeExplicitArtifacts(ctx, input, chunks, chunkIDs, entityNodes, entityTypes, edgeMap, &plan.ingest, &plan.named); err != nil {
 		return nil, err
 	}
 	if err := db.mergeEntityNodeProperties(ctx, entityNodes, ingestOpts.Collection); err != nil {
@@ -587,7 +587,7 @@ func recordEntitySourceDocument(entityNodes map[string]*graph.GraphNode, documen
 	}
 }
 
-func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowledgeMutationInput, entityNodes map[string]*graph.GraphNode, entityTypes map[string]string, edgeMap map[string]*graph.GraphEdge, ingest *knowledgeIngestResult, named *entityNameWrites) error {
+func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowledgeMutationInput, chunks, chunkIDs []string, entityNodes map[string]*graph.GraphNode, entityTypes map[string]string, edgeMap map[string]*graph.GraphEdge, ingest *knowledgeIngestResult, named *entityNameWrites) error {
 	if len(input.Entities) == 0 && len(input.Relations) == 0 {
 		return nil
 	}
@@ -659,7 +659,11 @@ func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowle
 				Properties: properties,
 			}
 
-			for _, chunkID := range entity.ChunkIDs {
+			linked := entity.ChunkIDs
+			if len(linked) == 0 {
+				linked = chunksMentioning(entity, chunks, chunkIDs)
+			}
+			for _, chunkID := range linked {
 				if chunkID == "" {
 					continue
 				}
@@ -1068,4 +1072,26 @@ func staleChunkIDs(previous []string, next []*core.Embedding) []string {
 		}
 	}
 	return stale
+}
+
+// chunksMentioning returns the chunks of the document an entity given with it
+// is linked to, when the caller names none (#247): the chunks whose text
+// holds its name (containsWord: case ignored, at word boundaries outside CJK
+// text); and every chunk when none holds it, since the caller said the
+// entity is this document's and the text is where it is reached from.
+func chunksMentioning(entity ToolEntityInput, chunks, chunkIDs []string) []string {
+	name := strings.TrimSpace(entity.Name)
+	if name == "" || len(chunks) != len(chunkIDs) {
+		return chunkIDs
+	}
+	var out []string
+	for i, chunk := range chunks {
+		if containsWord(strings.ToLower(chunk), strings.ToLower(name)) {
+			out = append(out, chunkIDs[i])
+		}
+	}
+	if len(out) == 0 {
+		return chunkIDs
+	}
+	return out
 }
