@@ -4,7 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Community reports are written from the text as well as the graph: a level-0
+  report reads the passages its members were found in (the chunks that
+  mention the most of them, up to 8 and 6,000 characters). Before, it read
+  only entity names and relations as triples. A report written with no model
+  carries excerpts of those passages, and no-model `global_search` returns
+  each report's findings with it, so it answers with text rather than names.
+  The reports of one level are written concurrently
+  (`HierarchyOptions.Concurrency`, default 4). Flat `BuildCommunitySummaries`
+  reports read the passages too. (#245)
+
+
 ## [2.164.0] - 2026-11-22
+
+No changes: tagged before #245 was merged. It is the same code as 2.163.0.
 
 ## [2.163.0] - 2026-11-22
 

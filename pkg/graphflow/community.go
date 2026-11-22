@@ -95,7 +95,7 @@ func BuildCommunitySummaries(ctx context.Context, db *cortexdb.DB, opts Communit
 		}
 		rels := relationsWithin(relations, memberSet)
 
-		summary, err := summarizeCommunity(ctx, opts.LLM, promptMembers, rels)
+		summary, err := summarizeCommunityFromText(ctx, opts.LLM, promptMembers, rels, communityPassages(ctx, db, promptMembers))
 		if err != nil {
 			continue
 		}
@@ -300,7 +300,7 @@ func globalSearchWithoutModel(query string, summaries []CommunitySummary, maxPoi
 	ranked := make([]scored, len(summaries))
 	matched := 0
 	for i, s := range summaries {
-		text := strings.ToLower(s.Title + "\n" + s.Summary)
+		text := strings.ToLower(s.Title + "\n" + s.Summary + "\n" + strings.Join(s.Findings, "\n"))
 		score := 0
 		for _, t := range terms {
 			if strings.Contains(text, t) {
@@ -318,7 +318,11 @@ func globalSearchWithoutModel(query string, summaries []CommunitySummary, maxPoi
 	}
 	for _, r := range ranked {
 		s := summaries[r.idx]
-		result.SupportingPoints = append(result.SupportingPoints, strings.TrimSpace(s.Title+": "+s.Summary))
+		point := strings.TrimSpace(s.Title + ": " + s.Summary)
+		for _, f := range s.Findings {
+			point += "\n- " + f
+		}
+		result.SupportingPoints = append(result.SupportingPoints, point)
 	}
 	if matched == 0 {
 		result.Answer = fmt.Sprintf("No model is configured, so no answer was synthesised, and no community report shares a term with the question. The %d reports listed are the first at this level; read them directly.", len(result.SupportingPoints))
@@ -368,10 +372,14 @@ func lexicalTerms(q string) []string {
 // --- LLM steps ---
 
 const communitySystemPrompt = "You write a concise report describing a community of related entities from a knowledge graph. " +
-	"Given the member entities and the relationships among them, infer what this community is about. " +
+	"Given the member entities, the relationships among them and the source passages they were found in, say what this community is about " +
+	"and what the passages say: who holds which view, what happened, the specific claims, numbers and examples. " +
+	"Ground every finding in the passages when they are given; do not invent what they do not say. " +
 	"Return JSON only: {\"title\":\"short title\",\"summary\":\"2-4 sentence description\",\"findings\":[\"key point\", …]}."
 
-func summarizeCommunity(ctx context.Context, llm JSONGenerator, members, relations []string) (*CommunitySummary, error) {
+// summarizeCommunityFromText writes a report from a community's members, the
+// relations among them and the passages they were found in.
+func summarizeCommunityFromText(ctx context.Context, llm JSONGenerator, members, relations, passages []string) (*CommunitySummary, error) {
 	var b strings.Builder
 	b.WriteString("Entities:\n")
 	b.WriteString(strings.Join(members, ", "))
@@ -379,12 +387,51 @@ func summarizeCommunity(ctx context.Context, llm JSONGenerator, members, relatio
 		b.WriteString("\n\nRelationships:\n")
 		b.WriteString(strings.Join(relations, "\n"))
 	}
+	if len(passages) > 0 {
+		b.WriteString("\n\nSource passages:\n")
+		for i, p := range passages {
+			fmt.Fprintf(&b, "[%d] %s\n", i+1, p)
+		}
+	}
 	b.WriteString("\n\nWrite the community report as specified. JSON only.")
 	raw, err := llm.GenerateJSON(ctx, communitySystemPrompt, b.String())
 	if err != nil {
 		return nil, err
 	}
 	return parseCommunityReport(raw)
+}
+
+// communityPassages returns the text a community's members were found in: the
+// chunks that mention the most of them (through their mentions edges), at most
+// maxCommunityPassages and maxPassageChars in all. A lookup that fails gives
+// no passages, and the report is written from the graph alone, as before.
+func communityPassages(ctx context.Context, db *cortexdb.DB, members []string) []string {
+	if len(members) == 0 {
+		return nil
+	}
+	resp, err := db.GraphRAGTools().SearchChunksByEntities(ctx, cortexdb.ToolSearchChunksByEntitiesRequest{
+		EntityNames: members, TopK: maxCommunityPassages, MaxHops: 1,
+	})
+	if err != nil || resp == nil {
+		return nil
+	}
+	out := make([]string, 0, len(resp.Chunks))
+	used := 0
+	for _, c := range resp.Chunks {
+		text := strings.Join(strings.Fields(c.Content), " ")
+		if text == "" {
+			continue
+		}
+		if room := maxPassageChars - used; len(text) > room {
+			if room < 200 {
+				break
+			}
+			text = truncateRunes(text, room)
+		}
+		out = append(out, text)
+		used += len(text)
+	}
+	return out
 }
 
 // parseCommunityReport decodes a {title, summary, findings} model answer.
