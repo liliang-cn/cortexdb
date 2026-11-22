@@ -19,6 +19,15 @@ All notable changes to this project will be documented in this file.
   chunks, so a chunk id (`chunk:<doc>:NNN`) kept from before names other
   text. A caller that needs the old split passes `chunk_size: 120`. (#248)
 
+### Fixed
+
+- Entities given with a document to `knowledge_save` and `knowledge_update`
+  (`Entities`, with no `chunk_ids`) are linked by `mentions` edges to the
+  chunks whose text names them, and to all of the document's chunks when none
+  does. Before, they were written with no edge to the text, so
+  `search_chunks_by_entities` and graph expansion from them found nothing,
+  and a community report over them had no passage to read. (#247)
+
 ## [2.165.0] - 2026-11-22
 
 ### Changed

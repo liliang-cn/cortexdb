@@ -190,7 +190,8 @@ func TestKnowledgeSaveWritesAStatedIDAsGiven(t *testing.T) {
 	if !slices.Equal(resp.EntityNodeIDs, []string{ltd}) {
 		t.Fatalf("wrote %v, want the stated id %s", resp.EntityNodeIDs, ltd)
 	}
-	if got := edgesOf(t, db, ltd); !slices.Equal(got, []string{ltd + " makes " + widget}) {
+	// The given entity is the document's, so its chunk mentions it (#247).
+	if got := edgesOf(t, db, ltd); !slices.Equal(got, []string{"chunk:k1:000 mentions " + ltd, ltd + " makes " + widget}) {
 		t.Fatalf("edges of the stated id %v", got)
 	}
 	// Once a node stands under the name, the bare name is written to it.
