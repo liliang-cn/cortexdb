@@ -748,6 +748,7 @@ func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRel
 	edges := make([]*graph.GraphEdge, 0, len(req.Relations))
 	edgeIDs := make([]string, 0, len(req.Relations))
 	byID := make(map[string]*graph.GraphEdge, len(req.Relations))
+	statedEnds := map[string][2]string{}
 	for _, rel := range req.Relations {
 		if strings.TrimSpace(rel.From) == "" || strings.TrimSpace(rel.To) == "" {
 			continue
@@ -822,9 +823,44 @@ func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRel
 		}
 		byID[edgeID] = edge
 		edges = append(edges, edge)
+		statedEnds[edgeID] = [2]string{rel.From, rel.To}
 	}
 
 	response := &ToolUpsertRelationsResponse{EdgeIDs: edgeIDs}
+	// An edge whose endpoint is no node is refused by name here, where the
+	// store's foreign key refused it with nothing but the edge id (#261).
+	var refused []string
+	if len(edges) > 0 {
+		var ends []string
+		for _, e := range edges {
+			ends = append(ends, e.FromNodeID, e.ToNodeID)
+		}
+		nodes, err := t.db.graph.GetNodesBatch(ctx, orderedUniqueNonEmptyStrings(ends))
+		if err != nil {
+			return nil, fmt.Errorf("read relation endpoints: %w", err)
+		}
+		present := make(map[string]bool, len(nodes))
+		for _, n := range nodes {
+			present[n.ID] = true
+		}
+		kept := edges[:0:0]
+		for _, e := range edges {
+			names := statedEnds[e.ID]
+			switch {
+			case !present[e.FromNodeID]:
+				refused = append(refused, fmt.Sprintf("relation %s -%s-> %s: endpoint %q is not in the store; create it with upsert_entities first", names[0], e.EdgeType, names[1], names[0]))
+			case !present[e.ToNodeID]:
+				refused = append(refused, fmt.Sprintf("relation %s -%s-> %s: endpoint %q is not in the store; create it with upsert_entities first", names[0], e.EdgeType, names[1], names[1]))
+			default:
+				kept = append(kept, e)
+			}
+		}
+		edges = kept
+		if len(refused) > 0 && len(edges) == 0 {
+			return nil, fmt.Errorf("no relation could be written (%d rejected): %v", len(refused), refused)
+		}
+		response.Rejected = refused
+	}
 	if len(edges) > 0 {
 		wctx := ctx
 		if rule != nil {
@@ -840,10 +876,10 @@ func (t *GraphRAGToolbox) UpsertRelations(ctx context.Context, req ToolUpsertRel
 		// successful ingest.
 		response.Written = result.SuccessCount
 		if result.FailedCount > 0 {
-			response.Rejected = rejectedEdgeMessages(result.Errors)
+			response.Rejected = append(refused, rejectedEdgeMessages(result.Errors)...)
 			if result.SuccessCount == 0 {
 				return nil, fmt.Errorf("no relation could be written (%d rejected): %v",
-					result.FailedCount, response.Rejected)
+					len(response.Rejected), response.Rejected)
 			}
 		}
 	}

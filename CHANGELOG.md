@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- `knowledge_save` and `knowledge_update` no longer fail with a bare
+  "FOREIGN KEY constraint failed" when a relation names an entity the
+  request does not declare and the store does not hold (#261). Such an end is
+  now an entity of the document, as if it were listed in `entities`: written
+  with the document, linked to the chunks that name it, and removed with the
+  document when nothing else holds it. An end given by node id that names no
+  node is refused with an error naming it; under an ontology, endpoints are
+  resolved and refused as before. `upsert_relations`, which does not create
+  entities, now says which endpoint is missing instead of the store's
+  foreign-key error, and still writes the relations whose endpoints exist.
+
 ## [2.169.0] - 2026-11-22
 
 ### Fixed
