@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -295,6 +296,17 @@ func Open(config Config, opts ...Option) (*DB, error) {
 	}
 	if db.embedder != nil {
 		db.embedder = timedEmbedder{watchedEmbedder{Embedder: newCachedEmbedder(db.embedder), heal: &db.heal}}
+	}
+
+	// The recall log's tables are made here, before any search runs, rather
+	// than by the first recall: made then, the schema change met searches
+	// already prepared on the FTS tables over other connections, which failed
+	// with SQLITE_SCHEMA (#244). A brain that cannot write them now (opened
+	// read-only) keeps making them on first use, as before.
+	if db.recallLogOn() {
+		if err := db.ensureRecallLog(ctx); err != nil {
+			slog.Warn("cortexdb: recall log tables not created at open", "err", err)
+		}
 	}
 
 	if err := db.startChangeRuntime(ctx); err != nil {
