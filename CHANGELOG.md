@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Hybrid `knowledge_search` applies the per-document limit and character
+  budget once, to the fused list. Each retriever used to cap its own list
+  first, so a chunk ranked 4th by vectors and 5th by keywords never reached
+  fusion, though fused it ranked first. (#239)
+
+### Changed
+
+- `PerDocumentLimit` unset no longer caps a document at two chunks: the
+  default is `MaxContextChunks`, so a long document asked about by name can
+  answer with all of its relevant chunks; the diversity rerank still keeps
+  near-duplicates apart. On the BenchmarkQED Podcast corpus (70 transcripts),
+  of 9 local questions answered wrongly for lack of the answer passage, top 20
+  now holds the passage for 5; before, with a limit of 3, for 1. (#240)
+
 ## [2.161.0] - 2026-11-21
 
 ### Changed

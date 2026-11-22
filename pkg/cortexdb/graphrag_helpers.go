@@ -237,8 +237,11 @@ func applyGraphRAGQueryDefaults(opts *GraphRAGQueryOptions) {
 	if opts.MaxContextChars <= 0 {
 		opts.MaxContextChars = 2400
 	}
+	// No per-document cap unless asked for: a long document asked about by
+	// name holds every relevant chunk, and the diversity rerank already keeps
+	// near-duplicates apart.
 	if opts.PerDocumentLimit <= 0 {
-		opts.PerDocumentLimit = 2
+		opts.PerDocumentLimit = opts.MaxContextChunks
 	}
 	if opts.DisableRerank {
 		opts.Rerank = false
