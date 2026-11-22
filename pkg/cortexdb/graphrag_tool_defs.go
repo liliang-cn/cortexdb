@@ -34,7 +34,7 @@ func (t *GraphRAGToolbox) Definitions() []ToolDefinition {
 					"source_url":    toolStringSchema("Optional source of the document (URL or path). Kept on the document record and returned with every search hit."),
 					"author":        toolStringSchema("Optional author. Kept on the document record and returned with every search hit."),
 					"collection":    toolStringSchema("Optional chunk collection name."),
-					"chunk_size":    toolIntegerSchema("Optional chunk size in words."),
+					"chunk_size":    toolIntegerSchema("Optional chunk size in words (default 300, with a 50-word overlap)."),
 					"chunk_overlap": toolIntegerSchema("Optional chunk overlap in words."),
 					"metadata":      toolMapSchema("Optional document metadata. Kept on the document record, on the document graph node and on every chunk, and returned with every search hit."),
 					"dedupe":        toolBooleanSchema("When true, content already stored under another document_id of the same collection is not ingested again; the response names that document in duplicate_of. A re-ingest identical to what is stored writes nothing either way and reports unchanged."),

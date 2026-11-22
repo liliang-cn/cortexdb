@@ -198,12 +198,27 @@ func resolvedIngestOptions(collection string, chunkSize, chunkOverlap int) Graph
 	return opts
 }
 
+const (
+	defaultChunkSize    = 300 // words
+	defaultChunkOverlap = 50  // words
+	// defaultContextCharsPerResult is what a default-sized chunk takes in
+	// the context, with its id line.
+	defaultContextCharsPerResult = 2000
+)
+
 func applyGraphRAGIngestDefaults(opts *GraphRAGIngestOptions) {
 	if opts.Collection == "" {
 		opts.Collection = defaultGraphRAGCollection
 	}
+	// 300 words with a 50-word overlap: at 120 and none, a question and its
+	// answer in a conversation fell in two chunks that matched it poorly
+	// alone (#248). An overlap of 0 asked for explicitly is kept only when
+	// the size is given too.
 	if opts.ChunkSize <= 0 {
-		opts.ChunkSize = 120
+		opts.ChunkSize = defaultChunkSize
+		if opts.ChunkOverlap == 0 {
+			opts.ChunkOverlap = defaultChunkOverlap
+		}
 	}
 	if opts.ChunkOverlap < 0 {
 		opts.ChunkOverlap = 0
@@ -234,8 +249,9 @@ func applyGraphRAGQueryDefaults(opts *GraphRAGQueryOptions) {
 	if opts.MaxContextChunks <= 0 {
 		opts.MaxContextChunks = opts.TopK + opts.MaxRelatedChunks
 	}
+	// A budget per result, so the default holds TopK default-sized chunks.
 	if opts.MaxContextChars <= 0 {
-		opts.MaxContextChars = 2400
+		opts.MaxContextChars = opts.TopK * defaultContextCharsPerResult
 	}
 	// No per-document cap unless asked for: a long document asked about by
 	// name holds every relevant chunk, and the diversity rerank already keeps
