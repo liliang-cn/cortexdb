@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
@@ -34,6 +36,17 @@ const (
 	maxDeterministicMembers = 8
 	maxDeterministicRels    = 5
 	maxChildReportsInPrompt = 20
+	// maxDeterministicExcerpts is how many passage excerpts a report written
+	// with no model carries, each at most maxExcerptRunes.
+	maxDeterministicExcerpts = 4
+	maxExcerptRunes          = 320
+	// maxCommunityPassages and maxPassageChars bound the source text a
+	// leaf community's report is written from.
+	maxCommunityPassages = 8
+	maxPassageChars      = 6000
+	// defaultReportConcurrency is how many reports of one level are written
+	// at once when HierarchyOptions.Concurrency is unset.
+	defaultReportConcurrency = 4
 )
 
 // hierarchyExcludedEdges are structural edges: they say where text sits, not
@@ -55,6 +68,9 @@ type HierarchyOptions struct {
 	// because every community it returns is connected;
 	// graph.CommunityAlgorithmLouvain reproduces builds made before it.
 	Algorithm graph.CommunityAlgorithm
+	// Concurrency is how many reports of one level are written at once
+	// (default 4). The reports of a level read only the level below.
+	Concurrency int
 }
 
 // HierarchicalCommunitySummary is one report at one level.
@@ -124,9 +140,23 @@ func BuildCommunityHierarchy(ctx context.Context, db *cortexdb.DB, opts Hierarch
 	report := &CommunityHierarchyReport{EntityCount: h.NodeCount, EdgeCount: h.EdgeCount}
 	// summaries[level][id] — nil where the community was below MinSize.
 	summaries := make([][]*HierarchicalCommunitySummary, len(h.Levels))
+	concurrency := opts.Concurrency
+	if concurrency <= 0 {
+		concurrency = defaultReportConcurrency
+	}
+	var calls atomic.Int64
 	for li, level := range h.Levels {
 		info := HierarchyLevelInfo{Level: level.Level, Communities: len(level.Communities), Modularity: level.Modularity}
 		summaries[li] = make([]*HierarchicalCommunitySummary, len(level.Communities))
+		// A level's reports read only the level below, so they are written
+		// side by side; the levels still go one after another.
+		type job struct {
+			s        *HierarchicalCommunitySummary
+			members  []string
+			rels     []string
+			children []*HierarchicalCommunitySummary
+		}
+		var jobs []job
 		for ci, c := range level.Communities {
 			if len(c.Nodes) > info.LargestCommunity {
 				info.LargestCommunity = len(c.Nodes)
@@ -161,38 +191,57 @@ func BuildCommunityHierarchy(ctx context.Context, db *cortexdb.DB, opts Hierarch
 					}
 				}
 			}
-			switch {
-			case li > 0 && len(c.Children) == 1 && len(children) == 1:
+			summaries[li][ci] = s
+			info.Summarized++
+			if li > 0 && len(c.Children) == 1 && len(children) == 1 {
 				// Same members as its only child: the report is the same.
 				s.Title, s.Summary, s.Findings = children[0].Title, children[0].Summary, children[0].Findings
 				s.Generated = "inherited"
-			default:
-				rels := relationsWithin(relations, memberSet)
+				continue
+			}
+			jobs = append(jobs, job{s: s, members: members, rels: relationsWithin(relations, memberSet), children: children})
+		}
+
+		var wg sync.WaitGroup
+		sem := make(chan struct{}, concurrency)
+		for _, j := range jobs {
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(j job) {
+				defer func() { <-sem; wg.Done() }()
+				// A community with sub-communities reads their reports; one
+				// without reads the text its members were found in.
+				var passages []string
+				if len(j.children) == 0 {
+					passages = communityPassages(ctx, db, j.s.Entities)
+				}
 				if opts.LLM != nil {
 					var sum *CommunitySummary
 					var err error
-					if len(children) > 0 {
-						sum, err = summarizeParentCommunity(ctx, opts.LLM, s.Entities, children)
+					if len(j.children) > 0 {
+						sum, err = summarizeParentCommunity(ctx, opts.LLM, j.s.Entities, j.children)
 					} else {
-						promptMembers := s.Entities
-						sum, err = summarizeCommunity(ctx, opts.LLM, promptMembers, rels)
+						sum, err = summarizeCommunityFromText(ctx, opts.LLM, j.s.Entities, j.rels, passages)
 					}
-					report.ModelCalls++
+					calls.Add(1)
 					if err == nil {
-						s.Title, s.Summary, s.Findings = sum.Title, sum.Summary, sum.Findings
-						s.Generated = "model"
+						j.s.Title, j.s.Summary, j.s.Findings = sum.Title, sum.Summary, sum.Findings
+						j.s.Generated = "model"
 					}
 				}
-				if s.Generated == "" {
-					s.Title, s.Summary, s.Findings = deterministicCommunityReport(members, rels, children)
-					s.Generated = "deterministic"
+				if j.s.Generated == "" {
+					j.s.Title, j.s.Summary, j.s.Findings = deterministicCommunityReport(j.members, j.rels, j.children, passages)
+					j.s.Generated = "deterministic"
 				}
-			}
-			summaries[li][ci] = s
-			info.Summarized++
+			}(j)
+		}
+		wg.Wait()
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
 		report.Levels = append(report.Levels, info)
 	}
+	report.ModelCalls = int(calls.Load())
 
 	// Replace the previous build wholesale: a level the new hierarchy does
 	// not have must not linger and answer questions about a graph that no
@@ -277,7 +326,7 @@ func sortByDegree(members []string, degree map[string]int) {
 // deterministicCommunityReport assembles a report with no model: the most
 // connected members name it, the relations inside it say how they connect,
 // and the child reports (above level 0) say what it is made of.
-func deterministicCommunityReport(members, rels []string, children []*HierarchicalCommunitySummary) (string, string, []string) {
+func deterministicCommunityReport(members, rels []string, children []*HierarchicalCommunitySummary, passages []string) (string, string, []string) {
 	head := members
 	if len(head) > 3 {
 		head = head[:3]
@@ -299,9 +348,29 @@ func deterministicCommunityReport(members, rels []string, children []*Hierarchic
 		}
 		fmt.Fprintf(&b, " Made of %d sub-communities: %s.", len(children), strings.Join(titles, "; "))
 	}
-	findings := make([]string, 0, maxDeterministicRels)
+	// What was said comes first: excerpts of the passages a leaf community's
+	// members were found in, or of its sub-communities' excerpts, so a report
+	// written with no model still carries text and not only names.
+	findings := make([]string, 0, maxDeterministicExcerpts+maxDeterministicRels)
+	for _, p := range passages {
+		if len(findings) >= maxDeterministicExcerpts {
+			break
+		}
+		findings = append(findings, truncateRunes(p, maxExcerptRunes))
+	}
+	for _, c := range children {
+		for _, f := range c.Findings {
+			if len(findings) >= maxDeterministicExcerpts {
+				break
+			}
+			if strings.Contains(f, " -") && strings.Contains(f, "-> ") {
+				continue // a relation, not an excerpt
+			}
+			findings = append(findings, f)
+		}
+	}
 	for _, r := range rels {
-		if len(findings) >= maxDeterministicRels {
+		if len(findings) >= maxDeterministicExcerpts+maxDeterministicRels {
 			break
 		}
 		findings = append(findings, r)

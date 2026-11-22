@@ -617,12 +617,14 @@ cover" — by map-reducing over community reports. The caller chooses it; no
 query is routed to it by its wording. `build_community_hierarchy` detects the
 entity graph's communities with Leiden — every community connected at every level, which Louvain does not guarantee; `HierarchyOptions.Algorithm` selects Louvain — and keeps every level (0 = finest,
 each level up merges the one below), then writes a report per community
-bottom-up: level 0 from its entities and relations, higher levels from their
+bottom-up: level 0 from its entities, relations and the source passages its
+members were found in (up to 8 chunks), higher levels from their
 children's reports. `global_search` takes a `level` (default: the coarsest,
 fewest reports, cheapest map) and builds the hierarchy on first use. With a
 model (`graphflow.JSONGenerator`; in the MCP binary `CORTEXDB_LLM_*`) reports
-and answer are the model's; without one reports are assembled
-deterministically and `global_search` returns the lexically most relevant
+and answer are the model's, and the reports of one level are written
+concurrently (`HierarchyOptions.Concurrency`, default 4); without one reports
+are assembled deterministically, carrying excerpts of those passages, and `global_search` returns the lexically most relevant
 reports unsynthesised (`mode: "no_model"`). Go: `graphflow.BuildCommunityHierarchy`,
 `graphflow.GlobalSearch(…, GlobalSearchOptions{Level: &l})`,
 `graph.GraphStore.HierarchicalCommunities`. Registered by
