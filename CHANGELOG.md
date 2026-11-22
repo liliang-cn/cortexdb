@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.166.0] - 2026-11-22
+
 ### Added
 
 - MCP tools declare their effects as tool annotations: a read has
