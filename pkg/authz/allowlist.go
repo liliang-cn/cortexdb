@@ -178,6 +178,13 @@ var (
 		"path_max_depth":    "bounds path retrieval, which a confined key may not run",
 		"relation_policies": "weights path retrieval, which a confined key may not run",
 	}
+	// knowledgeSearchPathDenied is pathDenied less relation_policies, which
+	// knowledge_search does not take.
+	knowledgeSearchPathDenied = map[string]string{
+		"return_paths":   pathDenied["return_paths"],
+		"max_paths":      pathDenied["max_paths"],
+		"path_max_depth": pathDenied["path_max_depth"],
+	}
 	recallGates = map[string]string{FieldCollection: "disable_memory", FieldUserID: "disable_knowledge", FieldScope: "disable_knowledge", FieldNamespace: "disable_knowledge"}
 
 	collectionScope = []string{FieldCollection}
@@ -215,7 +222,7 @@ var confinedTools = map[string]toolRule{
 	"knowledge_update": {scope: collectionScope, stores: storeKnowledge, rewritten: documentKeys,
 		args: docArgs, ids: []idField{{"knowledge_id", idKnowledge}}, denied: graphDenied},
 	"knowledge_search": {scope: collectionScope, stores: storeKnowledge,
-		args: paths(queryArgs, walkArgs, planArgs, pprArgs, []string{"top_k", "diversity_lambda", "include_proposed"})},
+		args: paths(queryArgs, walkArgs, planArgs, pprArgs, []string{"top_k", "diversity_lambda", "include_proposed"}), denied: knowledgeSearchPathDenied},
 	"search_media": {scope: collectionScope, stores: storeKnowledge,
 		args: []string{"query", "data", "media_type", "top_k"}},
 	"search_text": {scope: collectionScope, stores: storeKnowledge,

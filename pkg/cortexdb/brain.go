@@ -139,7 +139,7 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 	// tenant's document put there would answer another tenant's recall.
 	if _, confined := callerScopeOf(ctx); !confined {
 		doneFacts := observability.Time(ctx, "graph-facts")
-		resp.GraphFacts = b.collectGraphFacts(ctx, query, graphSeeds)
+		resp.GraphFacts = b.collectGraphFacts(ctx, query, req.EntityNames, graphSeeds)
 		doneFacts()
 	}
 	resp.ContextPack = buildKnowledgeMemoryContextPack(query, resp.Memories, knowledgeResp, resp.Entities, resp.GraphFacts, req.MaxMemoryItems, req.MaxMemoryChars)

@@ -419,12 +419,34 @@ func (db *DB) SearchKnowledge(ctx context.Context, req KnowledgeSearchRequest) (
 		}
 	}
 
+	// A question naming several entities gets evidence for each, and what
+	// connects them first (#251). After the floors, which judge a chunk by
+	// its score against the whole question; a chunk brought in here mentions
+	// an entity the question names.
+	packOpts := opts
+	applyGraphRAGQueryDefaults(&packOpts)
+	if changed, err := db.coverQueryEntities(ctx, resolution.Plan.Query, resolution.Plan, lexReq, result, packOpts); err != nil {
+		return nil, err
+	} else if changed {
+		result.Windows = nil
+		result.Context = buildGraphRAGContext(result.Chunks)
+		if err := db.widenGraphRAGContext(ctx, result, packOpts); err != nil {
+			return nil, err
+		}
+	}
+	if req.ReturnPaths {
+		if err := db.attachGraphRAGPaths(ctx, result, GraphRAGQueryOptions{ReturnPaths: true, PathMaxDepth: req.PathMaxDepth, MaxPaths: req.MaxPaths}); err != nil {
+			return nil, err
+		}
+	}
+
 	hits, err := db.aggregateKnowledgeHits(ctx, result.Chunks)
 	if err != nil {
 		return nil, err
 	}
 
 	return &KnowledgeSearchResponse{
+		Paths:    result.Paths,
 		Query:    result.Query,
 		Plan:     result.Plan,
 		Decision: result.Decision,

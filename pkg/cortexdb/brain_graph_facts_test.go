@@ -55,7 +55,7 @@ func TestCollectGraphFactsDeduplicatesByTriple(t *testing.T) {
 	putEdge(t, db, "edge:rel:chunk1:"+a+":"+b+":uses", a, b, "uses")
 	putEdge(t, db, "edge:rel:chunk2:"+a+":"+b+":uses", a, b, "uses")
 
-	facts := db.KnowledgeMemory().collectGraphFacts(ctx, "", []string{"CortexDB"})
+	facts := db.KnowledgeMemory().collectGraphFacts(ctx, "", nil, []string{"CortexDB"})
 	n := 0
 	for _, f := range facts {
 		if f.Predicate == "uses" && f.SubjectID == a && f.ObjectID == b {
@@ -80,7 +80,7 @@ func TestCollectGraphFactsRanksTypedRelationsAboveCoOccurrence(t *testing.T) {
 	dep := putEntity(t, db, "oss-agent")
 	putEdge(t, db, "edge:rel:dep", dep, hub, "depends_on")
 
-	facts := db.KnowledgeMemory().collectGraphFacts(ctx, "", []string{"CortexDB"})
+	facts := db.KnowledgeMemory().collectGraphFacts(ctx, "", nil, []string{"CortexDB"})
 	if len(facts) == 0 {
 		t.Fatal("no facts collected")
 	}
@@ -98,7 +98,7 @@ func TestCollectGraphFactsKeepsCoOccurrenceWhenNothingElseExists(t *testing.T) {
 	a, b := putEntity(t, db, "CortexDB"), putEntity(t, db, "Lima")
 	putEdge(t, db, "edge:co:only", a, b, "co_occurs")
 
-	facts := db.KnowledgeMemory().collectGraphFacts(ctx, "", []string{"CortexDB"})
+	facts := db.KnowledgeMemory().collectGraphFacts(ctx, "", nil, []string{"CortexDB"})
 	if len(facts) != 1 || facts[0].Predicate != "co_occurs" {
 		t.Errorf("expected the one weak fact to survive, got %+v", facts)
 	}

@@ -376,6 +376,21 @@ func (db *DB) attachGraphRAGPaths(ctx context.Context, result *GraphRAGQueryResu
 	if result.Plan.EntityNames != nil {
 		names = append(names, result.Plan.EntityNames...)
 	}
+	// The entities the question itself names come next: a path is asked for
+	// between them, not between whatever its top chunks happen to mention.
+	if len(names) == 0 && strings.TrimSpace(result.Query) != "" {
+		ids, err := db.queryEntityNodeIDs(ctx, result.Query, nil)
+		if err != nil {
+			return err
+		}
+		if len(ids) >= 2 {
+			for _, id := range ids {
+				if node, err := db.graph.GetNode(ctx, id); err == nil && node != nil && node.Content != "" {
+					names = append(names, node.Content)
+				}
+			}
+		}
+	}
 	if len(names) == 0 {
 		const linkedSeedChunks = 3
 		seen := map[string]bool{}
