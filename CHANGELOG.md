@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.163.0] - 2026-11-22
+
 ### Added
 
 - A shared brain serves `global_search` and `build_community_hierarchy`, so a
