@@ -593,6 +593,64 @@ func recordEntitySourceDocument(entityNodes map[string]*graph.GraphNode, documen
 	}
 }
 
+// impliedRelationEndpoints are the entities a request's relations name that
+// nothing else provides. An end given by node id that names no node is
+// refused by name; under an ontology, where an entity's type cannot be
+// guessed, the endpoints are left to its own resolution.
+func (db *DB) impliedRelationEndpoints(ctx context.Context, compiled *compiledOntology, input knowledgeMutationInput, entityNodes map[string]*graph.GraphNode) ([]ToolEntityInput, error) {
+	declared := map[string]bool{}
+	for _, e := range input.Entities {
+		for _, n := range []string{e.Name, e.ID} {
+			if strings.TrimSpace(n) != "" {
+				declared[n] = true
+			}
+		}
+	}
+	missing := map[string]string{}
+	var order []string
+	for _, rel := range input.Relations {
+		for _, end := range []string{rel.From, rel.To} {
+			end = strings.TrimSpace(end)
+			if end == "" || declared[end] {
+				continue
+			}
+			id := resolveEntityNodeID("", end)
+			if _, ok := entityNodes[id]; ok {
+				continue
+			}
+			if _, seen := missing[end]; seen {
+				continue
+			}
+			node, err := db.graph.GetNode(ctx, id)
+			if err == nil && node != nil {
+				continue
+			}
+			missing[end] = id
+			order = append(order, end)
+		}
+	}
+	if len(order) == 0 || compiled != nil {
+		// An ontology resolves and refuses its endpoints itself
+		// (ontologyRelationEndpointNodeID).
+		return nil, nil
+	}
+	followed, err := db.followEntityAliases(ctx, missing)
+	if err != nil {
+		return nil, err
+	}
+	var implied []ToolEntityInput
+	for _, end := range order {
+		if _, alias := followed[end]; alias {
+			continue
+		}
+		if missing[end] != graphEntityNodeID(end) {
+			return nil, fmt.Errorf("relation endpoint %q is not in the store or in this request: declare it in entities", end)
+		}
+		implied = append(implied, ToolEntityInput{Name: end})
+	}
+	return implied, nil
+}
+
 func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowledgeMutationInput, chunks, chunkIDs []string, entityNodes map[string]*graph.GraphNode, entityTypes map[string]string, edgeMap map[string]*graph.GraphEdge, ingest *knowledgeIngestResult, named *entityNameWrites) error {
 	if len(input.Entities) == 0 && len(input.Relations) == 0 {
 		return nil
@@ -601,6 +659,17 @@ func (db *DB) appendKnowledgeExplicitArtifacts(ctx context.Context, input knowle
 	if err != nil {
 		return err
 	}
+
+	// A relation's end the document names and nothing stands for, neither
+	// the store, nor this request's entities and extraction, nor an alias,
+	// is an entity the document states, declared as if it were listed in
+	// entities: before, the edge reached the store without its node and the
+	// whole save failed on the foreign key (#261).
+	implied, err := db.impliedRelationEndpoints(ctx, compiled, input, entityNodes)
+	if err != nil {
+		return err
+	}
+	input.Entities = append(append([]ToolEntityInput(nil), input.Entities...), implied...)
 
 	// Endpoints of the relations below may name entities this same request is
 	// creating, which are not in the graph yet.
