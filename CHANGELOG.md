@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.169.0] - 2026-11-22
+
 ### Fixed
 
 - Entity profiles have a budget of their own (#260). `max_profile_chars` on
