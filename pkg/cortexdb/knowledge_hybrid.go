@@ -20,6 +20,19 @@ const hybridRRFK = 60.0
 // losing the matches the other would have found. If one path errors, the other
 // is used alone; only if both fail does it return an error.
 func (db *DB) searchKnowledgeHybrid(ctx context.Context, query string, opts GraphRAGQueryOptions, lexReq ToolSearchGraphRAGLexicalRequest) (*GraphRAGQueryResult, error) {
+	// Each path hands fusion its ranked candidates whole: a per-document
+	// limit or character budget applied per path drops a chunk that is 4th
+	// in one list and 5th in the other before fusion could rank it first.
+	// The caller's limits apply once, to the fused list, and the window is
+	// widened once, after it.
+	vecOpts := opts
+	vecOpts.PerDocumentLimit = 1 << 30
+	vecOpts.MaxContextChars = 1 << 30
+	vecOpts.ChunkWindow = 0
+	lexReq.PerDocumentLimit = 1 << 30
+	lexReq.MaxContextChars = 1 << 30
+	lexReq.ChunkWindow = 0
+
 	// Side by side, not one after the other: the vector path waits on the
 	// embedder, which may be a model on another machine, and the lexical path
 	// needs nothing from it.
@@ -30,7 +43,7 @@ func (db *DB) searchKnowledgeHybrid(ctx context.Context, query string, opts Grap
 		defer close(lexicalDone)
 		lres, lerr = db.GraphRAGTools().SearchGraphRAGLexical(ctx, lexReq)
 	}()
-	vres, verr := db.SearchGraphRAG(withKeywordFallback(ctx), query, opts)
+	vres, verr := db.SearchGraphRAG(withKeywordFallback(ctx), query, vecOpts)
 	<-lexicalDone
 	if verr != nil && lerr != nil {
 		return nil, verr
@@ -50,7 +63,7 @@ func (db *DB) searchKnowledgeHybrid(ctx context.Context, query string, opts Grap
 		lres.Degraded = addDegraded(lres.Degraded, reason)
 		lres.Decision.EffectiveMode = RetrievalModeLexical
 		lres.Decision.Reason = fmt.Sprintf("vector search failed (%v); answered by keyword search only", verr)
-		return lres, nil
+		return db.packHybridPath(ctx, lres, opts)
 	}
 	ex.candidates(explainKnowledge, explainVector, chunkCandidates(vres.Chunks, func(c GraphRAGChunkResult) float64 { return c.Score }))
 	if lerr != nil {
@@ -60,7 +73,7 @@ func (db *DB) searchKnowledgeHybrid(ctx context.Context, query string, opts Grap
 			vres.Chunks[i].VectorScore, vres.Chunks[i].VectorRank = vres.Chunks[i].Score, i+1
 		}
 		vres.Degraded = addDegraded(vres.Degraded, DegradedKeywordSearchFailed)
-		return vres, nil
+		return db.packHybridPath(ctx, vres, opts)
 	}
 	ex.candidates(explainKnowledge, explainKeyword, chunkCandidates(lres.Chunks, func(c GraphRAGChunkResult) float64 { return c.Score }))
 	base := vres
@@ -91,6 +104,17 @@ func (db *DB) searchKnowledgeHybrid(ctx context.Context, query string, opts Grap
 		return nil, err
 	}
 	return out, nil
+}
+
+// packHybridPath applies the caller's limits and window to the one path that
+// answered, which reached here unpacked like both do before fusion.
+func (db *DB) packHybridPath(ctx context.Context, res *GraphRAGQueryResult, opts GraphRAGQueryOptions) (*GraphRAGQueryResult, error) {
+	res.Chunks = packGraphRAGContext(res.Chunks, opts)
+	res.Context = buildGraphRAGContext(res.Chunks)
+	if err := db.widenGraphRAGContext(ctx, res, opts); err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
 // fuseHybridChunks merges the two ranked lists by reciprocal rank fusion: a
