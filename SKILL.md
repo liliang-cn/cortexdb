@@ -627,7 +627,10 @@ reports unsynthesised (`mode: "no_model"`). Go: `graphflow.BuildCommunityHierarc
 `graphflow.GlobalSearch(…, GlobalSearchOptions{Level: &l})`,
 `graph.GraphStore.HierarchicalCommunities`. Registered by
 `graphflow.AddGlobalSearchMCPTools` in `cortexdb-mcp-stdio` (local mode) and in
-`graphflow.NewMCPServer`.
+`graphflow.NewMCPServer`. A shared brain (`cortexdb-grpc`) serves both with no
+model: `global_search` there never builds (it is a read), so a read-write key
+runs `build_community_hierarchy` first; a confined key is refused both, as the
+reports span every collection.
 
 **Disambiguating a name against the graph.** `DisambiguateMentions` resolves an
 ambiguous name using the other names given with it: it finds the shortest paths

@@ -74,7 +74,8 @@ func GlobalSearchToolDefinitions() []cortexdb.ToolDefinition {
 			),
 		},
 		{
-			Name: buildHierarchyToolName,
+			Name:    buildHierarchyToolName,
+			Mutates: true,
 			Description: "Detect the knowledge graph's community hierarchy (Leiden, every level kept, finest first, every community connected) over entity nodes and write a report for every community bottom-up: level-0 reports from each community's entities and relations, higher levels from the reports of the communities they merged. Replaces any previous build. " +
 				"Reports are written by the configured model, or assembled deterministically (most connected members, relations, child titles) when there is none. One model call per community above min_size, so on a large graph this is slow; call it after the graph changes substantially, not per question. Returns the level shapes (community counts, modularity, largest community), not the report bodies.",
 			InputSchema: gfObjectSchema(
@@ -126,9 +127,10 @@ func callBuildHierarchy(ctx context.Context, db *cortexdb.DB, llm JSONGenerator,
 	}, nil
 }
 
-// callGlobalSearchTool dispatches one of the two tools from raw JSON; ok is
-// false when name is neither.
-func callGlobalSearchTool(ctx context.Context, db *cortexdb.DB, llm JSONGenerator, name string, input json.RawMessage) (any, bool, error) {
+// CallGlobalSearchTool dispatches one of the two tools from raw JSON; ok is
+// false when name is neither. It is how a server that is not an MCP server
+// (cortexdb-grpc) serves them.
+func CallGlobalSearchTool(ctx context.Context, db *cortexdb.DB, llm JSONGenerator, name string, input json.RawMessage) (any, bool, error) {
 	switch name {
 	case globalSearchToolName:
 		var req GlobalSearchToolRequest

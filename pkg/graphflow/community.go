@@ -3,6 +3,7 @@ package graphflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -118,6 +119,10 @@ func BuildCommunitySummaries(ctx context.Context, db *cortexdb.DB, opts Communit
 	}
 	return report, nil
 }
+
+// ErrNoCommunityReports is returned by GlobalSearch when no reports of the
+// kind asked for exist: none built yet, or none at the level named.
+var ErrNoCommunityReports = errors.New("graphflow: no community reports")
 
 // GlobalSearchResult is the answer to a whole-corpus question.
 type GlobalSearchResult struct {
@@ -256,9 +261,9 @@ func selectCommunityReports(ctx context.Context, db *cortexdb.DB, opts GlobalSea
 		reports := levels[*opts.Level]
 		if len(reports) == 0 {
 			if len(levels) == 0 {
-				return nil, fmt.Errorf("graphflow: no community hierarchy — run BuildCommunityHierarchy (build_community_hierarchy) first")
+				return nil, fmt.Errorf("%w: no community hierarchy — run BuildCommunityHierarchy (build_community_hierarchy) first", ErrNoCommunityReports)
 			}
-			return nil, fmt.Errorf("graphflow: no community reports at level %d; levels with reports: %v", *opts.Level, result.LevelsAvailable)
+			return nil, fmt.Errorf("%w at level %d; levels with reports: %v", ErrNoCommunityReports, *opts.Level, result.LevelsAvailable)
 		}
 		result.Level = *opts.Level
 		return reports, nil
@@ -271,7 +276,7 @@ func selectCommunityReports(ctx context.Context, db *cortexdb.DB, opts GlobalSea
 	if len(flat) > 0 {
 		return flat, nil
 	}
-	return nil, fmt.Errorf("graphflow: no community summaries — run BuildCommunityHierarchy (build_community_hierarchy) first")
+	return nil, fmt.Errorf("%w: no community summaries — run BuildCommunityHierarchy (build_community_hierarchy) first", ErrNoCommunityReports)
 }
 
 func sortedLevels(levels map[int][]CommunitySummary) []int {

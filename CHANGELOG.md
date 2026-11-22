@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- A shared brain serves `global_search` and `build_community_hierarchy`, so a
+  whole-corpus question can be asked of it, as of a local one. The server
+  configures no model, so both run in their no-model mode. `global_search`
+  there is a read and never builds the hierarchy; `build_community_hierarchy`
+  is a write and needs a read-write key. A key confined to a collection or a
+  memory bucket is refused both, as the reports span the whole graph.
+  `build_community_hierarchy` is now marked as a write in its definition, and
+  `graphflow.ErrNoCommunityReports` is returned when `GlobalSearch` finds no
+  reports, which the shared brain answers with FailedPrecondition. (#242)
 ## [2.162.0] - 2026-11-22
 
 ### Fixed

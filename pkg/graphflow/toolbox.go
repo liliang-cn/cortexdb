@@ -95,7 +95,7 @@ func (t *Toolbox) Definitions() []cortexdb.ToolDefinition {
 
 // Call dispatches a graphflow tool call.
 func (t *Toolbox) Call(ctx context.Context, name string, input json.RawMessage) (any, error) {
-	if out, ok, err := callGlobalSearchTool(ctx, t.db, t.llm, name, input); ok {
+	if out, ok, err := CallGlobalSearchTool(ctx, t.db, t.llm, name, input); ok {
 		return out, err
 	}
 	switch name {
