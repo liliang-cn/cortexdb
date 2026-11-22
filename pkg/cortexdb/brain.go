@@ -48,7 +48,9 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 	if _, err := withMinMemoryGrade(ctx, req.MinGrade); err != nil {
 		return nil, err
 	}
-	if _, err := withMemoryAsOf(ctx, req.AsOf); err != nil {
+	// Kept on the context: graph facts and knowledge answer at it too.
+	ctx, err := withMemoryAsOf(ctx, req.AsOf)
+	if err != nil {
 		return nil, err
 	}
 	resp := &KnowledgeMemoryRecallResponse{Query: query}
@@ -122,6 +124,11 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 		if req.MinGrade != "" {
 			ctx, _ := withMinMemoryGrade(ctx, req.MinGrade)
 			keepKnowledgeAtGrade(ctx, knowledgeResp)
+		}
+		if at := memoryAsOf(ctx); !at.IsZero() {
+			if err := b.db.keepKnowledgeAsOf(ctx, knowledgeResp, at); err != nil {
+				return nil, err
+			}
 		}
 		resp.KnowledgePlan = knowledgeResp.Plan
 		resp.KnowledgeDecision = knowledgeResp.Decision
@@ -931,6 +938,86 @@ func runeBoundary(text string, n int) int {
 // keepKnowledgeAtGrade leaves out the documents of resp, and their chunks,
 // whose contract grade (_grade) ranks under the minimum in ctx. A document
 // with no grade ranks as asserted, as an untagged memory does.
+// keepKnowledgeAsOf leaves out the documents saved after at, so knowledge
+// answers as the store stood then, as memories and graph facts do (#252).
+// The store keeps no earlier version of a document, so one saved again
+// after at is left out, not read as it was.
+func (db *DB) keepKnowledgeAsOf(ctx context.Context, resp *KnowledgeSearchResponse, at time.Time) error {
+	ids := map[string]bool{}
+	for _, hit := range resp.Results {
+		ids[hit.KnowledgeID] = true
+	}
+	for _, c := range resp.Chunks {
+		ids[c.DocumentID] = true
+	}
+	list := make([]string, 0, len(ids))
+	for id := range ids {
+		if id != "" {
+			list = append(list, id)
+		}
+	}
+	later := map[string]bool{}
+	for _, batch := range stringChunks(list, 200) {
+		placeholders, args := sqlPlaceholders(batch)
+		rows, err := db.query(ctx, `SELECT id, created_at FROM documents WHERE id IN (`+placeholders+`)`, args...)
+		if err == nil {
+			err = eachRow(rows, func() error {
+				var id string
+				var created any
+				if err := rows.Scan(&id, &created); err != nil {
+					return err
+				}
+				if t, ok := storedTime(created); ok && t.After(at) {
+					later[id] = true
+				}
+				return nil
+			})
+		}
+		if err != nil {
+			return fmt.Errorf("read document save times: %w", err)
+		}
+	}
+	if len(later) == 0 {
+		return nil
+	}
+	kept := resp.Results[:0:0]
+	for _, hit := range resp.Results {
+		if later[hit.KnowledgeID] {
+			continue
+		}
+		hit.Rank = len(kept) + 1
+		kept = append(kept, hit)
+	}
+	resp.Results = kept
+	chunks := resp.Chunks[:0:0]
+	for _, c := range resp.Chunks {
+		if !later[c.DocumentID] {
+			chunks = append(chunks, c)
+		}
+	}
+	resp.Chunks = chunks
+	resp.Context = buildGraphRAGContext(chunks)
+	return nil
+}
+
+// storedTime reads a timestamp column as either backend returns it: a
+// time.Time, or SQLite's text ("2006-01-02 15:04:05", UTC).
+func storedTime(v any) (time.Time, bool) {
+	switch t := v.(type) {
+	case time.Time:
+		return t.UTC(), true
+	case []byte:
+		return storedTime(string(t))
+	case string:
+		for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339Nano, "2006-01-02 15:04:05.999999999-07:00", "2006-01-02T15:04:05Z"} {
+			if p, err := time.Parse(layout, strings.TrimSpace(t)); err == nil {
+				return p.UTC(), true
+			}
+		}
+	}
+	return time.Time{}, false
+}
+
 func keepKnowledgeAtGrade(ctx context.Context, resp *KnowledgeSearchResponse) {
 	dropped := map[string]bool{}
 	kept := resp.Results[:0:0]

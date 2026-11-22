@@ -95,7 +95,7 @@ const graphflowSystemPrompt = "Extract a graph from the provided document. Retur
 // what it always was (#153).
 const (
 	graphflowDocumentPrompt = "source_id: %s\nsource_type: %s\ntitle: %s\npath: %s\n\nDocument:\n%s"
-	graphflowReplyPrompt    = "\n\nReturn JSON with:\n{\n  \"nodes\": [{\"id\":\"...\",\"label\":\"...\",\"type\":\"...\",\"summary\":\"...\",\"source_file\":\"...\",\"source_location\":\"...\"}],\n  \"edges\": [{\"source\":\"...\",\"target\":\"...\",\"relation\":\"...\",\"confidence\":\"EXTRACTED|INFERRED|AMBIGUOUS\",\"directed\":true,\"source_file\":\"...\",\"source_location\":\"...\"}]\n}"
+	graphflowReplyPrompt    = "\n\nReturn JSON with:\n{\n  \"nodes\": [{\"id\":\"...\",\"label\":\"...\",\"type\":\"...\",\"summary\":\"...\",\"source_file\":\"...\",\"source_location\":\"...\"}],\n  \"edges\": [{\"source\":\"...\",\"target\":\"...\",\"relation\":\"...\",\"confidence\":\"EXTRACTED|INFERRED|AMBIGUOUS\",\"directed\":true,\"source_file\":\"...\",\"source_location\":\"...\",\"valid_from\":\"\",\"valid_to\":\"\",\"at\":\"\"}]\n}\nWhen the text states when a relation held, give it: at for the period it happened in, or valid_from and valid_to for when it began and ended, as YYYY, YYYY-MM or YYYY-MM-DD. Leave them empty when the text states no time."
 )
 
 func buildExtractionPrompt(doc SourceDocument, content string, vocab cortexdb.ExtractorTypeVocabulary) string {

@@ -1090,6 +1090,17 @@ keys become the same deterministic tokens so KG edges survive.
 
 ## History: every version, and which one is in effect
 
+**Event time** (when a relation was true in the world, as its source says) is
+not the graph's validity columns, which record when the store held a row. It
+lives in the relation edge's `valid_from`/`valid_to` properties (RFC 3339,
+`[valid_from, valid_to)`): set by `valid_from`/`valid_to`/`at` on a relation
+(`upsert_relations`, `knowledge_save`, `GraphRelationship`, graphflow's
+`ExtractionEdge`), else read from the sentence naming both ends when it states
+one time. graphflow's `SaveTemporalFact`/`QueryFactsAsOf` use the same keys.
+Recall's graph facts carry the interval, list a subject's facts of one relation
+in time order, and `as_of` on recall leaves out knowledge saved and facts
+recorded after it.
+
 Nothing that changes is overwritten silently, and the read tools can ask for
 the versions, for an instant, and for the reason a version is the one in effect.
 No model is involved.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/graph"
 )
@@ -110,6 +111,7 @@ func (b *KnowledgeMemory) collectGraphFacts(ctx context.Context, query string, n
 	// its strength this store has.
 	type factKey struct{ from, predicate, to string }
 	collected := make(map[factKey]*graphFactEvidence)
+	asOf := memoryAsOf(ctx)
 	order := make([]factKey, 0, maxGraphFacts*2)
 	for _, name := range candidates {
 		nodeID := resolveEntityNodeID("", name)
@@ -128,24 +130,36 @@ func (b *KnowledgeMemory) collectGraphFacts(ctx context.Context, query string, n
 			if !isEntityNodeID(e.FromNodeID) || !isEntityNodeID(e.ToNodeID) {
 				continue
 			}
-			key := factKey{from: e.FromNodeID, predicate: e.EdgeType, to: e.ToNodeID}
-			if existing, ok := collected[key]; ok {
-				existing.assertions++
+			// as_of answers as the store stood: an edge recorded after it
+			// was not yet known.
+			if !asOf.IsZero() && recordedAfter(e, asOf) {
 				continue
 			}
-			collected[key] = &graphFactEvidence{assertions: 1}
+			key := factKey{from: e.FromNodeID, predicate: e.EdgeType, to: e.ToNodeID}
+			from, to := eventTimeOf(e.Properties)
+			if existing, ok := collected[key]; ok {
+				existing.assertions++
+				existing.widen(from, to)
+				continue
+			}
+			ev := &graphFactEvidence{assertions: 1}
+			ev.widen(from, to)
+			collected[key] = ev
 			order = append(order, key)
 		}
 	}
 
 	facts := make([]KnowledgeMemoryGraphFact, 0, len(order))
 	for _, key := range order {
+		ev := collected[key]
 		facts = append(facts, KnowledgeMemoryGraphFact{
 			Subject:   label(key.from),
 			Predicate: key.predicate,
 			Object:    label(key.to),
 			SubjectID: key.from,
 			ObjectID:  key.to,
+			ValidFrom: formatEventTime(ev.from),
+			ValidTo:   formatEventTime(ev.to),
 		})
 	}
 
@@ -177,11 +191,71 @@ func (b *KnowledgeMemory) collectGraphFacts(ctx context.Context, query string, n
 	if len(facts) > maxGraphFacts {
 		facts = facts[:maxGraphFacts]
 	}
-	return facts
+	return inTimeOrder(facts)
 }
 
-// graphFactEvidence counts how many stored edges assert one triple.
-type graphFactEvidence struct{ assertions int }
+// inTimeOrder keeps a subject's facts of one predicate together, in the
+// order they became true, where the first of them ranked: "how did X's
+// employer change" reads as a sequence. Facts without a time follow the
+// timed ones of their group; the groups keep their rank order.
+func inTimeOrder(facts []KnowledgeMemoryGraphFact) []KnowledgeMemoryGraphFact {
+	type group struct{ subject, predicate string }
+	members := map[group][]KnowledgeMemoryGraphFact{}
+	var groups []group
+	for _, f := range facts {
+		g := group{f.SubjectID, f.Predicate}
+		if _, ok := members[g]; !ok {
+			groups = append(groups, g)
+		}
+		members[g] = append(members[g], f)
+	}
+	out := make([]KnowledgeMemoryGraphFact, 0, len(facts))
+	for _, g := range groups {
+		m := members[g]
+		sort.SliceStable(m, func(i, j int) bool {
+			ti, tj := m[i].ValidFrom, m[j].ValidFrom
+			if ti == "" || tj == "" {
+				return ti != "" && tj == ""
+			}
+			return ti < tj
+		})
+		out = append(out, m...)
+	}
+	return out
+}
+
+// recordedAfter reports whether the store learnt the edge after at.
+func recordedAfter(e *graph.GraphEdge, at time.Time) bool {
+	recorded := e.RecordedAt
+	if recorded.IsZero() {
+		recorded = e.CreatedAt
+	}
+	return !recorded.IsZero() && recorded.After(at)
+}
+
+func formatEventTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
+// graphFactEvidence counts how many stored edges assert one triple, and the
+// widest time they give it: one source saying 2005 and another 2008 for the
+// same fact still says it held from 2005.
+type graphFactEvidence struct {
+	assertions int
+	from, to   time.Time
+}
+
+func (e *graphFactEvidence) widen(from, to time.Time) {
+	if !from.IsZero() && (e.from.IsZero() || from.Before(e.from)) {
+		e.from = from
+	}
+	if !to.IsZero() && (e.to.IsZero() || to.After(e.to)) {
+		e.to = to
+	}
+}
 
 // weakPredicates say that two entities were near each other and nothing more.
 // They are kept — with a sparse graph they are sometimes all there is — but they
@@ -210,6 +284,35 @@ func entityLabelFromID(id string) string {
 
 // renderGraphFacts formats facts as "Subject —predicate→ Object" lines for the
 // context pack.
+// factPeriod reads a fact's interval as the pack shows it: "from 2005",
+// "2005 until 2008", "until 2008", each bound as precise as it was stated.
+func factPeriod(validFrom, validTo string) string {
+	show := func(v string) string {
+		t, err := time.Parse(time.RFC3339Nano, v)
+		if err != nil {
+			return v
+		}
+		switch {
+		case t.Month() == time.January && t.Day() == 1 && t.Hour() == 0 && t.Minute() == 0:
+			return t.Format("2006")
+		case t.Day() == 1 && t.Hour() == 0 && t.Minute() == 0:
+			return t.Format("2006-01")
+		case t.Hour() == 0 && t.Minute() == 0 && t.Second() == 0:
+			return t.Format("2006-01-02")
+		}
+		return t.Format(time.RFC3339)
+	}
+	switch {
+	case validFrom != "" && validTo != "":
+		return show(validFrom) + " until " + show(validTo)
+	case validFrom != "":
+		return "from " + show(validFrom)
+	case validTo != "":
+		return "until " + show(validTo)
+	}
+	return ""
+}
+
 func renderGraphFacts(facts []KnowledgeMemoryGraphFact) string {
 	if len(facts) == 0 {
 		return ""
@@ -224,6 +327,11 @@ func renderGraphFacts(facts []KnowledgeMemoryGraphFact) string {
 		b.WriteString(f.Predicate)
 		b.WriteString("→ ")
 		b.WriteString(f.Object)
+		if when := factPeriod(f.ValidFrom, f.ValidTo); when != "" {
+			b.WriteString(" (")
+			b.WriteString(when)
+			b.WriteString(")")
+		}
 	}
 	return b.String()
 }

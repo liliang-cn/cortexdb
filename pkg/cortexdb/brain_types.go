@@ -119,6 +119,11 @@ type KnowledgeMemoryGraphFact struct {
 	Object    string `json:"object"`
 	SubjectID string `json:"subject_id,omitempty"`
 	ObjectID  string `json:"object_id,omitempty"`
+	// ValidFrom and ValidTo are when the fact was true, as its source says
+	// (RFC 3339; ValidTo exclusive). Empty when the source states no time.
+	// A fact with a ValidTo has ended, or another replaced it (#252).
+	ValidFrom string `json:"valid_from,omitempty"`
+	ValidTo   string `json:"valid_to,omitempty"`
 }
 
 // KnowledgeMemoryBuildContextPackRequest retrieves and assembles a context pack from the KnowledgeMemory.

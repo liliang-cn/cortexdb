@@ -47,6 +47,13 @@ type ExtractionEdge struct {
 	SourceFile     string            `json:"source_file,omitempty"`
 	SourceLocation string            `json:"source_location,omitempty"`
 	Metadata       map[string]string `json:"metadata,omitempty"`
+	// ValidFrom, ValidTo and At are when the relation was true, as the source
+	// states it (RFC 3339, YYYY-MM-DD, YYYY-MM or YYYY; At names the period).
+	// Built into the edge's valid_from/valid_to properties, which
+	// QueryFactsAsOf and recall read; a time that does not parse is dropped.
+	ValidFrom string `json:"valid_from,omitempty"`
+	ValidTo   string `json:"valid_to,omitempty"`
+	At        string `json:"at,omitempty"`
 }
 
 // ExtractionResult is the canonical schema that all extractors must emit.

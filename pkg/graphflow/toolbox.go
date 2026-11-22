@@ -213,6 +213,9 @@ func gfExtractionEdgeSchema() map[string]any {
 			"source_file":     gfStringSchema("Optional source file."),
 			"source_location": gfStringSchema("Optional source location."),
 			"metadata":        gfMapSchema("Optional edge metadata."),
+			"valid_from":      gfStringSchema("When the relation began, as the text states it: YYYY, YYYY-MM, YYYY-MM-DD or RFC 3339."),
+			"valid_to":        gfStringSchema("When it ended, exclusive, in the same forms."),
+			"at":              gfStringSchema("The period it happened in, instead of valid_from/valid_to."),
 		},
 	)
 }

@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Relations carry when they were true (#252). `upsert_relations`,
+  `knowledge_save` and `knowledge_update` take `valid_from`, `valid_to` and
+  `at` on a relation (RFC 3339, `YYYY-MM-DD`, `YYYY-MM` or `YYYY`; `at` names
+  the period it happened in), and `GraphRelationship` and graphflow's
+  `ExtractionEdge` the same, which graphflow's model extractor is now asked
+  for. A relation given or extracted without a time gets the one stated in the
+  sentence naming both its ends ("from 2005 until 2008", "in February 2009",
+  "2006-03-15"), when that sentence states exactly one; a co-occurrence gets
+  none. The time is written to the edge's `valid_from`/`valid_to` properties,
+  which graphflow's temporal facts already used, so `QueryFactsAsOf` reads
+  times extracted from text too. The graph's own validity columns stay the
+  record of when the store held a row: a live row never has an end there, and
+  a fact that ended in 2008 has to stay visible to current reads.
+- Recall's graph facts carry `valid_from` and `valid_to`, the context pack
+  shows them ("Ada —worked_at→ Acme (2010 until 2014)"), and a subject's facts
+  of one relation are listed together in the order they became true.
+- `as_of` on `knowledge_memory_recall` and `knowledge_memory_build_context_pack`
+  now applies to knowledge and graph facts as it did to memories: a document
+  saved after it and a fact recorded after it are not seen. The store keeps no
+  earlier version of a document, so one saved again after `as_of` is left out.
+
 ## [2.166.0] - 2026-11-22
 
 ### Added

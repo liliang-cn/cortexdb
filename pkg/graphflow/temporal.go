@@ -30,8 +30,8 @@ import (
 
 // Metadata keys under which validity is stored on a relation edge's properties.
 const (
-	factValidFromKey  = "valid_from"
-	factValidToKey    = "valid_to"
+	factValidFromKey  = cortexdb.EventValidFromKey
+	factValidToKey    = cortexdb.EventValidToKey
 	factRecordedAtKey = "recorded_at"
 )
 
