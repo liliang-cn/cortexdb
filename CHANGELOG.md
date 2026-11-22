@@ -42,6 +42,11 @@ All notable changes to this project will be documented in this file.
   `search_chunks_by_entities` and graph expansion from them found nothing,
   and a community report over them had no passage to read. (#247)
 
+- With the recall log on, its tables are created when the brain opens instead
+  of by the first recall. Created then, the schema change could meet a search
+  already prepared on an FTS table over another connection, which failed with
+  SQLITE_SCHEMA ("vtable constructor failed: messages_fts"). (#244)
+
 ## [2.165.0] - 2026-11-22
 
 ### Changed
