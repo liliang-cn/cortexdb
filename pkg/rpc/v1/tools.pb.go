@@ -27,8 +27,17 @@ type ToolDefinition struct {
 	Description string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
 	// JSON-serialized input schema (map[string]any in Go).
 	InputSchemaJson string `protobuf:"bytes,3,opt,name=input_schema_json,json=inputSchemaJson,proto3" json:"input_schema_json,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Whether calling the tool changes the brain. Unset from a server older
+	// than this field: a client then knows nothing of the tool's effects and
+	// must not claim it is a read.
+	Mutates *bool `protobuf:"varint,4,opt,name=mutates,proto3,oneof" json:"mutates,omitempty"`
+	// For a tool that mutates: calling it again with the same arguments
+	// leaves the brain as the first call left it.
+	Idempotent bool `protobuf:"varint,5,opt,name=idempotent,proto3" json:"idempotent,omitempty"`
+	// For a tool that mutates: it may delete or overwrite stored data.
+	Destructive   bool `protobuf:"varint,6,opt,name=destructive,proto3" json:"destructive,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ToolDefinition) Reset() {
@@ -80,6 +89,27 @@ func (x *ToolDefinition) GetInputSchemaJson() string {
 		return x.InputSchemaJson
 	}
 	return ""
+}
+
+func (x *ToolDefinition) GetMutates() bool {
+	if x != nil && x.Mutates != nil {
+		return *x.Mutates
+	}
+	return false
+}
+
+func (x *ToolDefinition) GetIdempotent() bool {
+	if x != nil {
+		return x.Idempotent
+	}
+	return false
+}
+
+func (x *ToolDefinition) GetDestructive() bool {
+	if x != nil {
+		return x.Destructive
+	}
+	return false
 }
 
 type ListToolsRequest struct {
@@ -264,11 +294,18 @@ var File_cortexdb_v1_tools_proto protoreflect.FileDescriptor
 
 const file_cortexdb_v1_tools_proto_rawDesc = "" +
 	"\n" +
-	"\x17cortexdb/v1/tools.proto\x12\vcortexdb.v1\"r\n" +
+	"\x17cortexdb/v1/tools.proto\x12\vcortexdb.v1\"\xdf\x01\n" +
 	"\x0eToolDefinition\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12*\n" +
-	"\x11input_schema_json\x18\x03 \x01(\tR\x0finputSchemaJson\"\x12\n" +
+	"\x11input_schema_json\x18\x03 \x01(\tR\x0finputSchemaJson\x12\x1d\n" +
+	"\amutates\x18\x04 \x01(\bH\x00R\amutates\x88\x01\x01\x12\x1e\n" +
+	"\n" +
+	"idempotent\x18\x05 \x01(\bR\n" +
+	"idempotent\x12 \n" +
+	"\vdestructive\x18\x06 \x01(\bR\vdestructiveB\n" +
+	"\n" +
+	"\b_mutates\"\x12\n" +
 	"\x10ListToolsRequest\"F\n" +
 	"\x11ListToolsResponse\x121\n" +
 	"\x05tools\x18\x01 \x03(\v2\x1b.cortexdb.v1.ToolDefinitionR\x05tools\"B\n" +
@@ -320,6 +357,7 @@ func file_cortexdb_v1_tools_proto_init() {
 	if File_cortexdb_v1_tools_proto != nil {
 		return
 	}
+	file_cortexdb_v1_tools_proto_msgTypes[0].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

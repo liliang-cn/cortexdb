@@ -7,6 +7,15 @@ message ToolDefinition {
   string description = 2;
   // JSON-serialized input schema (map[string]any in Go).
   string input_schema_json = 3;
+  // Whether calling the tool changes the brain. Unset from a server older
+  // than this field: a client then knows nothing of the tool's effects and
+  // must not claim it is a read.
+  optional bool mutates = 4;
+  // For a tool that mutates: calling it again with the same arguments
+  // leaves the brain as the first call left it.
+  bool idempotent = 5;
+  // For a tool that mutates: it may delete or overwrite stored data.
+  bool destructive = 6;
 }
 
 message ListToolsRequest {}

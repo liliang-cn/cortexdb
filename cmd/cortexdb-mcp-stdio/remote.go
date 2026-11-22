@@ -109,6 +109,11 @@ func addRemoteTool(server *mcp.Server, client rpcv1.ToolsServiceClient, def *rpc
 		Name:        name,
 		Description: def.GetDescription(),
 	}
+	// A server older than the field says nothing of the tool's effects, and
+	// the tool is served without annotations, as before (#255).
+	if def.Mutates != nil {
+		tool.Annotations = cortexdb.ToolDefinition{Mutates: def.GetMutates(), Idempotent: def.GetIdempotent(), Destructive: def.GetDestructive()}.MCPAnnotations()
+	}
 	if schema := strings.TrimSpace(def.GetInputSchemaJson()); schema != "" {
 		var parsed any
 		if err := json.Unmarshal([]byte(schema), &parsed); err == nil {

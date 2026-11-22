@@ -13,6 +13,7 @@ func KnowledgeMemoryFacadeToolDefinitions() []ToolDefinition {
 		{
 			Name:        "knowledge_memory_remember",
 			Mutates:     true,
+			Destructive: true,
 			Description: "Store one episodic memory item in the CortexDB KnowledgeMemory facade. Prefer this over memory_save when you want to build a higher-level memory/knowledge workflow.",
 			InputSchema: toolObjectSchema(
 				[]string{"memory_id", "content"},
@@ -120,6 +121,7 @@ func KnowledgeMemoryFacadeToolDefinitions() []ToolDefinition {
 		{
 			Name:        "knowledge_memory_promote_to_knowledge",
 			Mutates:     true,
+			Destructive: true,
 			Description: "Promote one or more memory items into durable knowledge, preserving source memory provenance.",
 			InputSchema: toolObjectSchema(
 				[]string{"memory_ids"},
@@ -250,6 +252,7 @@ func KnowledgeMemoryFacadeToolDefinitions() []ToolDefinition {
 			// Reads like reflect with extra reporting; it persists a summary
 			// memory on every call and can promote that into knowledge too.
 			Mutates:     true,
+			Destructive: true,
 			Description: "Reflect over recalled KnowledgeMemory context, persist a summary memory, and optionally promote that summary into durable knowledge.",
 			InputSchema: toolObjectSchema(
 				[]string{"reflect"},

@@ -35,7 +35,8 @@ func NewToolbox(db *cortexdb.DB, detector Detector, extractor Extractor) (*Toolb
 func (t *Toolbox) Definitions() []cortexdb.ToolDefinition {
 	return append([]cortexdb.ToolDefinition{
 		{
-			Name:        "graphflow_build",
+			Name:    "graphflow_build",
+			Mutates: true, Idempotent: true, Destructive: true,
 			Description: "Persist extraction results into the graph store.",
 			InputSchema: gfObjectSchema(
 				[]string{"extractions"},
@@ -66,7 +67,8 @@ func (t *Toolbox) Definitions() []cortexdb.ToolDefinition {
 			),
 		},
 		{
-			Name:        "graphflow_export",
+			Name:    "graphflow_export",
+			Mutates: true, Idempotent: true, Destructive: true,
 			Description: "Export graphflow outputs to disk.",
 			InputSchema: gfObjectSchema(
 				[]string{"output_dir"},
@@ -78,7 +80,8 @@ func (t *Toolbox) Definitions() []cortexdb.ToolDefinition {
 			),
 		},
 		{
-			Name:        "graphflow_run",
+			Name:    "graphflow_run",
+			Mutates: true, Destructive: true,
 			Description: "Run detect, extract, build, analyze, report, and export in one call.",
 			InputSchema: gfObjectSchema(
 				[]string{"root", "output_dir"},

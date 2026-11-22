@@ -141,6 +141,7 @@ func addOntologyMCPTool[In, Out any](server *mcp.Server, definition ToolDefiniti
 		Description:  definition.Description,
 		InputSchema:  definition.InputSchema,
 		OutputSchema: map[string]any{"type": "object"},
+		Annotations:  definition.MCPAnnotations(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		output, err := handler(ctx, input)
 		if err != nil {

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	cortexdbroot "github.com/liliang-cn/cortexdb/v2"
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"github.com/liliang-cn/cortexdb/v2/pkg/importflow"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -101,6 +102,7 @@ func addConnectorMCPTool[In any](server *mcp.Server, tb *Toolbox, name string) {
 		Name:        def.Name,
 		Description: def.Description,
 		InputSchema: def.InputSchema,
+		Annotations: def.MCPAnnotations(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input In) (*mcp.CallToolResult, any, error) {
 		raw, err := json.Marshal(input)
 		if err != nil {
@@ -114,17 +116,11 @@ func addConnectorMCPTool[In any](server *mcp.Server, tb *Toolbox, name string) {
 	})
 }
 
-func lookupDefinition(tb *Toolbox, name string) (def toolDef, ok bool) {
+func lookupDefinition(tb *Toolbox, name string) (def cortexdb.ToolDefinition, ok bool) {
 	for _, d := range tb.Definitions() {
 		if d.Name == name {
-			return toolDef{Name: d.Name, Description: d.Description, InputSchema: d.InputSchema}, true
+			return d, true
 		}
 	}
-	return toolDef{}, false
-}
-
-type toolDef struct {
-	Name        string
-	Description string
-	InputSchema map[string]any
+	return cortexdb.ToolDefinition{}, false
 }

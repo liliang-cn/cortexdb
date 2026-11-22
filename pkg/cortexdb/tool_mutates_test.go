@@ -305,3 +305,61 @@ func TestEveryDefinedToolIsReachableThroughCall(t *testing.T) {
 			"registering a tool with the MCP server is not enough, add the case", unreachable)
 	}
 }
+
+// toolEffects decides, for every tool that writes, whether repeating a call
+// with the same arguments writes again (Idempotent) and whether it may delete
+// or overwrite what was stored (Destructive). Served as MCP annotations
+// (#255), so a client can resend an interrupted idempotent write and must
+// confirm a destructive one.
+var toolEffects = map[string]struct{ idempotent, destructive bool }{
+	"ingest_document": {true, true}, "ingest_media": {true, true},
+	"upsert_entities": {true, true}, "upsert_relations": {true, true},
+	"delete_entities": {true, true}, "delete_document_graph": {true, true},
+	"merge_entities": {false, true}, "unmerge_entities": {false, true},
+	"extract_conversation":    {false, true},
+	"vector_dimension_repair": {true, true},
+	"apply_inference":         {false, false}, // adds inferred edges
+	"rules_save":              {true, true}, "rules_delete": {true, true}, "rules_apply": {false, true},
+	"ontology_save":   {false, true}, // a new version per save
+	"ontology_delete": {true, true}, "ontology_action_apply": {false, true},
+	"knowledge_save": {true, true}, "knowledge_update": {true, true}, "knowledge_delete": {true, true},
+	"knowledge_graph_namespace_upsert": {true, true}, "knowledge_graph_upsert": {true, true},
+	"knowledge_graph_delete": {true, true}, "knowledge_graph_import": {true, true},
+	"knowledge_graph_infer_refresh": {true, true},
+	"knowledge_graph_query":         {false, true}, // a SPARQL update may delete
+	"knowledge_graph_shacl_rules":   {true, true},
+	"memory_save":                   {true, true}, "memory_update": {true, true}, "memory_delete": {true, true},
+	"decision_record": {false, false}, "execution_run_start": {false, false},
+	"execution_step_begin": {false, false}, "execution_step_end": {false, false},
+	"execution_step_record": {false, false}, "execution_run_finish": {false, false},
+	"recall_feedback": {false, false},
+	"vacuum_graph":    {true, true}, "sweep_expired": {true, true},
+	"knowledge_memory_remember": {false, true}, "knowledge_memory_promote_to_knowledge": {false, true},
+	"knowledge_memory_consolidate": {false, true}, "knowledge_memory_reflect": {false, false},
+}
+
+func TestEveryWritingToolDeclaresItsEffects(t *testing.T) {
+	for _, d := range ToolDefinitions() {
+		want, decided := toolEffects[d.Name]
+		if !d.Mutates {
+			if decided || d.Idempotent || d.Destructive {
+				t.Errorf("%s does not write; it has no write effects to declare", d.Name)
+			}
+			if a := d.MCPAnnotations(); !a.ReadOnlyHint || !a.IdempotentHint {
+				t.Errorf("%s is a read served as %+v", d.Name, a)
+			}
+			continue
+		}
+		if !decided {
+			t.Errorf("%s writes but toolEffects does not say whether it is idempotent or destructive", d.Name)
+			continue
+		}
+		if d.Idempotent != want.idempotent || d.Destructive != want.destructive {
+			t.Errorf("%s declares idempotent=%v destructive=%v, the table says %v %v", d.Name, d.Idempotent, d.Destructive, want.idempotent, want.destructive)
+		}
+		a := d.MCPAnnotations()
+		if a.ReadOnlyHint || a.IdempotentHint != want.idempotent || a.DestructiveHint == nil || *a.DestructiveHint != want.destructive {
+			t.Errorf("%s is served as %+v", d.Name, a)
+		}
+	}
+}

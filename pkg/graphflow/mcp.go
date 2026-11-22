@@ -93,6 +93,7 @@ func addGraphflowMCPTool[In any, Out any](server *mcp.Server, definition cortexd
 		Name:        definition.Name,
 		Description: definition.Description,
 		InputSchema: definition.InputSchema,
+		Annotations: definition.MCPAnnotations(),
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		output, err := handler(ctx, input)
 		if err != nil {

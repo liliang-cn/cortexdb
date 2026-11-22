@@ -36,7 +36,8 @@ func (t *Toolbox) Definitions() []cortexdb.ToolDefinition {
 			),
 		},
 		{
-			Name:        "memoryflow_ingest_transcript",
+			Name:    "memoryflow_ingest_transcript",
+			Mutates: true, Idempotent: true, Destructive: true,
 			Description: "Ingest a transcript as episodic exchange memories.",
 			InputSchema: mfObjectSchema(
 				[]string{"transcript"},
@@ -87,7 +88,8 @@ func (t *Toolbox) Definitions() []cortexdb.ToolDefinition {
 			),
 		},
 		{
-			Name:        "memoryflow_close_session",
+			Name:    "memoryflow_close_session",
+			Mutates: true, Destructive: true,
 			Description: "Close a session and optionally promote extracted durable knowledge.",
 			InputSchema: mfObjectSchema(
 				[]string{"transcript"},
@@ -131,6 +133,7 @@ func (t *Toolbox) Definitions() []cortexdb.ToolDefinition {
 		},
 		{
 			Name:        "memoryflow_append_diary",
+			Mutates:     true,
 			Description: "Append a workflow diary entry.",
 			InputSchema: mfObjectSchema(
 				[]string{"content"},
@@ -173,7 +176,8 @@ func (t *Toolbox) Definitions() []cortexdb.ToolDefinition {
 			),
 		},
 		{
-			Name: "memoryflow_apply_memory_edits",
+			Name:    "memoryflow_apply_memory_edits",
+			Mutates: true, Destructive: true,
 			Description: "Apply memory edits you have already decided on: add new memories, update wording, " +
 				"or supersede a memory the conversation has just made untrue. Superseding keeps the old " +
 				"memory and links it forward, so it is reversible; it must be enabled with allow_supersede " +

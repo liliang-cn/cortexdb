@@ -106,7 +106,7 @@ func (t *Toolbox) Definitions() []cortexdb.ToolDefinition {
 		},
 		{
 			Name:    runToolName,
-			Mutates: true,
+			Mutates: true, Destructive: true,
 			Description: "Import CSV or SQL-dump data into CortexDB using a MappingPlan, building RAG and/or KG. A table whose plan entry has \"table\": {} — or every table, with keep_tables — is also kept as a table with typed columns (integer, number, timestamp or text, read from the data), which imported_tables_query can then aggregate, group and join in SQL; importing it again replaces its rows. A plan may hold nothing but that: {\"tables\": {}} with keep_tables stores the tables and builds neither RAG nor KG, and needs no model. Kept tables need a SQLite store; on another backend the call fails before anything is written. " +
 				"Returns the counts of rows read, chunks indexed, triples created and tables stored, and Errors for the rows that failed. " +
 				importFlowText,

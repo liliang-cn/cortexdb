@@ -18,8 +18,10 @@ func mediaToolDefinitions() []ToolDefinition {
 	})
 	return []ToolDefinition{
 		{
-			Name:    "ingest_media",
-			Mutates: true,
+			Name:        "ingest_media",
+			Mutates:     true,
+			Idempotent:  true,
+			Destructive: true,
 			Description: "Store an image, a recording or a video as a document whose text is derived from the file: a caption and " +
 				"the text visible in an image, the transcript of audio, the transcript and frame captions of a video, on one " +
 				"timeline. The text is searched like any document (knowledge_search, recall), and a hit carries media: the " +

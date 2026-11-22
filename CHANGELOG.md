@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- MCP tools declare their effects as tool annotations: a read has
+  `readOnlyHint` and `idempotentHint`; a write has `idempotentHint` when
+  repeating it with the same arguments leaves the brain as the first call left
+  it (an upsert on a stated id, a delete) and `destructiveHint` when it may
+  delete or overwrite stored data. A client can then resend an interrupted read
+  or idempotent write, where before every tool looked like a write. This holds
+  in local mode, and in remote mode, where `ListTools` now carries `mutates`,
+  `idempotent` and `destructive`. A server older than this lists no effects,
+  and the bridge serves its tools without annotations, as before.
+  `ToolDefinition` gains `Idempotent` and `Destructive`; the memoryflow,
+  graphflow and connector writing tools are now marked `Mutates`. (#255)
+
 ### Changed
 
 - A document ingested with no `chunk_size` is split into chunks of 300 words

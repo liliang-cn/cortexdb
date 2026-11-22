@@ -75,7 +75,7 @@ func GlobalSearchToolDefinitions() []cortexdb.ToolDefinition {
 		},
 		{
 			Name:    buildHierarchyToolName,
-			Mutates: true,
+			Mutates: true, Destructive: true,
 			Description: "Detect the knowledge graph's community hierarchy (Leiden, every level kept, finest first, every community connected) over entity nodes and write a report for every community bottom-up: level-0 reports from each community's entities and relations, higher levels from the reports of the communities they merged. Replaces any previous build. " +
 				"Reports are written by the configured model, or assembled deterministically (most connected members, relations, child titles) when there is none. One model call per community above min_size, so on a large graph this is slow; call it after the graph changes substantially, not per question. Returns the level shapes (community counts, modularity, largest community), not the report bodies.",
 			InputSchema: gfObjectSchema(
