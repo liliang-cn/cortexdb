@@ -84,6 +84,10 @@ type promptRecorder struct {
 	leafPrompts      []string
 	inFlight, maxFly int
 	delay            time.Duration
+	// gather holds each call until that many are in flight at once, or a
+	// second passes, so the measure of how many ran side by side does not
+	// rest on how fast the runner starts goroutines (#263).
+	gather int
 }
 
 func (p *promptRecorder) GenerateJSON(_ context.Context, system, user string) ([]byte, error) {
@@ -94,6 +98,14 @@ func (p *promptRecorder) GenerateJSON(_ context.Context, system, user string) ([
 		p.leafPrompts = append(p.leafPrompts, user)
 	}
 	p.mu.Unlock()
+	for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); time.Sleep(time.Millisecond) {
+		p.mu.Lock()
+		done := p.gather == 0 || p.maxFly >= p.gather
+		p.mu.Unlock()
+		if done {
+			break
+		}
+	}
 	time.Sleep(p.delay)
 	p.mu.Lock()
 	p.inFlight--
@@ -143,7 +155,7 @@ func TestReportsOfALevelAreWrittenConcurrently(t *testing.T) {
 	for _, tc := range []struct{ concurrency, wantMax int }{{1, 1}, {4, 3}} {
 		t.Run(fmt.Sprint(tc.concurrency), func(t *testing.T) {
 			db := openTextCommunityDB(t)
-			llm := &promptRecorder{delay: 50 * time.Millisecond}
+			llm := &promptRecorder{delay: 50 * time.Millisecond, gather: tc.wantMax}
 			rep, err := BuildCommunityHierarchy(context.Background(), db, HierarchyOptions{LLM: llm, Concurrency: tc.concurrency})
 			if err != nil {
 				t.Fatalf("build: %v", err)
