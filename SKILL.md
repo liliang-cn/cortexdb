@@ -1096,7 +1096,7 @@ sentence per source document, or the reflector's text when one is set. Recall
 puts the profiles of the entities the query names ahead of the chunks
 (`profiles`, `[PROFILES]`; two mentioning documents needed unless the caller
 names the entity), `expand_entity_context` returns them, and a profile is
-rebuilt on read once a write changed its entity's edges.
+rebuilt on read once a write changed its entity's edges. Profiles have their own budget, `max_profile_chars` (default 1500 in total, on top of `max_context_chars`; -1 for none).
 
 **Event time** (when a relation was true in the world, as its source says) is
 not the graph's validity columns, which record when the store held a row. It

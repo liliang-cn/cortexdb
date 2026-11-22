@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Entity profiles have a budget of their own (#260). `max_profile_chars` on
+  `knowledge_memory_recall`, `knowledge_memory_build_context_pack` and
+  `knowledge_memory_expand_entity_context` caps all the profiles in a context
+  pack together, on top of `max_context_chars` rather than out of it (default
+  1500; -1 leaves them out); before, up to three profiles of 1,500 characters
+  each went in uncapped. A profile's relations now lead with those the most
+  documents state, where they were the first twelve by predicate and object
+  name, and a source line citing a chunk the pack already shows is left out.
+  On the BenchmarkQED podcast questions (setup C, 12,000-character context,
+  two judge runs each), v2.166.0 scored 96.4% local, 71.8% linked and 86.4% on
+  the temporal linked questions; v2.168.0 with its profiles on top of the
+  budget 96.4%, 73.2% and 84.1%; with this change 97.1%, 74.6% and 86.4%. A
+  caller holding the whole pack to one fixed size still loses chunks to the
+  profiles (temporal 75.0% under a fixed 12,000 characters, 61.4% before this
+  change): it lowers `max_context_chars` by `max_profile_chars`, or sets
+  `max_profile_chars` to -1.
+
 ## [2.168.0] - 2026-11-22
 
 ## [2.167.0] - 2026-11-22

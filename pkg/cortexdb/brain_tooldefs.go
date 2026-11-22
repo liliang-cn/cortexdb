@@ -61,6 +61,7 @@ func KnowledgeMemoryFacadeToolDefinitions() []ToolDefinition {
 					"max_related_chunks":     toolIntegerSchema("Maximum graph-expanded chunks."),
 					"max_context_chunks":     toolIntegerSchema("Maximum chunks in final context."),
 					"max_context_chars":      toolIntegerSchema("Maximum context character budget."),
+					"max_profile_chars":      toolIntegerSchema("Budget for the entity profiles in the context pack, in total, on top of max_context_chars (default 1500; -1 leaves them out)."),
 					"per_document_limit":     toolIntegerSchema("Maximum chunks per document."),
 					"chunk_window":           toolIntegerSchema("Widen each retrieved chunk to this many neighbouring chunks either side, in the same document, so an answer split across a chunk boundary arrives whole. 0 (default) is off. Neighbours are context, not matches: they are never scored and never displace a hit."),
 					"max_expansion_seeds":    toolIntegerSchema("Optional cap on seed chunks expanded through the graph."),
@@ -104,6 +105,7 @@ func KnowledgeMemoryFacadeToolDefinitions() []ToolDefinition {
 					"max_related_chunks":     toolIntegerSchema("Maximum graph-expanded chunks."),
 					"max_context_chunks":     toolIntegerSchema("Maximum chunks in final context."),
 					"max_context_chars":      toolIntegerSchema("Maximum context character budget."),
+					"max_profile_chars":      toolIntegerSchema("Budget for the entity profiles in the context pack, in total, on top of max_context_chars (default 1500; -1 leaves them out)."),
 					"per_document_limit":     toolIntegerSchema("Maximum chunks per document."),
 					"chunk_window":           toolIntegerSchema("Widen each retrieved chunk to this many neighbouring chunks either side, in the same document, so an answer split across a chunk boundary arrives whole. 0 (default) is off. Neighbours are context, not matches: they are never scored and never displace a hit."),
 					"max_expansion_seeds":    toolIntegerSchema("Optional cap on seed chunks expanded through the graph."),
@@ -148,6 +150,7 @@ func KnowledgeMemoryFacadeToolDefinitions() []ToolDefinition {
 				[]string{},
 				map[string]any{
 					"entity_ids":             toolStringArraySchema("Optional explicit entity node IDs."),
+					"max_profile_chars":      toolIntegerSchema("Budget for the entity profiles in the context pack, in total (default 1500; -1 leaves them out)."),
 					"entity_names":           toolStringArraySchema("Optional entity names."),
 					"max_hops":               toolIntegerSchema("Graph expansion depth."),
 					"edge_types":             toolStringArraySchema("Optional edge type filter."),
