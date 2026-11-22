@@ -36,6 +36,10 @@ const (
 	maxProfileFacts     = 12
 	maxProfileSources   = 8
 	maxProfileChars     = 1500
+	// DefaultMaxProfileChars is the profiles' budget in a recall's context
+	// pack when the caller sets none: about a chunk and a half, over all of
+	// them (#260).
+	DefaultMaxProfileChars = 1500
 	// maxRecallProfiles is how many profiles a recall puts in its pack.
 	maxRecallProfiles = 3
 )
@@ -406,6 +410,21 @@ func (b *KnowledgeMemory) entityFacts(ctx context.Context, src *profileSources) 
 		}
 		return entityLabelFromID(id)
 	}
+	// A relation more documents state leads: support is the number of
+	// documents stating it (#260).
+	support := map[string]map[string]bool{}
+	for _, e := range src.relations {
+		doc, _ := e.Properties["document_id"].(string)
+		if _, gone := src.hidden[doc]; gone {
+			continue
+		}
+		key := e.FromNodeID + "|" + e.EdgeType + "|" + e.ToNodeID
+		if support[key] == nil {
+			support[key] = map[string]bool{}
+		}
+		support[key][doc] = true
+	}
+	keyOf := func(f KnowledgeMemoryGraphFact) string { return f.SubjectID + "|" + f.Predicate + "|" + f.ObjectID }
 	seen := map[string]bool{}
 	var facts []KnowledgeMemoryGraphFact
 	for _, e := range src.relations {
@@ -426,16 +445,18 @@ func (b *KnowledgeMemory) entityFacts(ctx context.Context, src *profileSources) 
 		})
 	}
 	sort.SliceStable(facts, func(i, j int) bool {
+		if si, sj := len(support[keyOf(facts[i])]), len(support[keyOf(facts[j])]); si != sj {
+			return si > sj
+		}
 		if facts[i].Predicate != facts[j].Predicate {
 			return facts[i].Predicate < facts[j].Predicate
 		}
 		return facts[i].Object < facts[j].Object
 	})
-	facts = inTimeOrder(facts)
 	if len(facts) > maxProfileFacts {
 		facts = facts[:maxProfileFacts]
 	}
-	return facts, nil
+	return inTimeOrder(facts), nil
 }
 
 // recallProfiles are the profiles of the entities a query names, at most
@@ -488,19 +509,82 @@ func profilesServed(ctx context.Context) bool {
 	return !ok || scope.Knowledge == nil
 }
 
-// renderProfiles is the pack's profile section and the chunks it cites.
-func renderProfiles(profiles []EntityProfile) (string, []string) {
+// renderProfiles is the pack's profile section and the chunks it cites,
+// within maxChars over all the profiles (0: DefaultMaxProfileChars; below 0:
+// none). A source line citing a chunk the pack already holds (inPack) is
+// left out, since the pack shows the chunk itself; a profile is cut at a line
+// to fit what is left of the budget, and one that no longer fits is dropped
+// (#260).
+func renderProfiles(profiles []EntityProfile, maxChars int, inPack map[string]bool) (string, []string) {
+	if maxChars < 0 {
+		return "", nil
+	}
+	if maxChars == 0 {
+		maxChars = DefaultMaxProfileChars
+	}
 	var b strings.Builder
 	var ids []string
-	for i, p := range profiles {
-		if i > 0 {
+	for _, p := range profiles {
+		var kept []string
+		for _, line := range strings.Split(strings.TrimSpace(p.Content), "\n") {
+			if cited := citedChunk(line); cited != "" && inPack[cited] {
+				continue
+			}
+			kept = append(kept, line)
+		}
+		if p.Stale {
+			kept = append(kept, "(built before its latest sources)")
+		}
+		sep := 0
+		if b.Len() > 0 {
+			sep = 2
+		}
+		left := maxChars - b.Len() - sep
+		var text strings.Builder
+		for _, line := range kept {
+			add := len(line)
+			if text.Len() > 0 {
+				add++
+			}
+			if text.Len()+add > left {
+				break
+			}
+			if text.Len() > 0 {
+				text.WriteByte('\n')
+			}
+			text.WriteString(line)
+		}
+		// A profile cut to its first line alone says nothing the pack's
+		// entities do not.
+		if !strings.Contains(text.String(), "\n") && len(kept) > 1 {
+			break
+		}
+		if sep > 0 {
 			b.WriteString("\n\n")
 		}
-		b.WriteString(strings.TrimSpace(p.Content))
-		if p.Stale {
-			b.WriteString("\n(built before its latest sources)")
+		b.WriteString(text.String())
+		for _, id := range p.ChunkIDs {
+			if strings.Contains(text.String(), "["+id+"]") || !strings.Contains(p.Content, "["+id+"]") {
+				ids = append(ids, id)
+			}
 		}
-		ids = append(ids, p.ChunkIDs...)
 	}
 	return b.String(), ids
+}
+
+// citedChunk is the chunk id a profile's source line ends with, or "".
+func citedChunk(line string) string {
+	line = strings.TrimSpace(line)
+	if !strings.HasSuffix(line, "]") {
+		return ""
+	}
+	i := strings.LastIndex(line, "[")
+	if i < 0 {
+		return ""
+	}
+	id := line[i+1 : len(line)-1]
+	if !strings.HasPrefix(id, "chunk:") {
+		return ""
+	}
+	return id
 }

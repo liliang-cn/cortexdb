@@ -133,7 +133,7 @@ var (
 	pprArgs    = []string{"ppr", "ppr.damping", "ppr.fusion", "ppr.passage_seed_weight"}
 	queryArgs  = []string{"query", "keywords", "alternate_queries", "retrieval_mode", "disable_graph", "graph_light", "max_entities_per_chunk"}
 	walkArgs   = []string{"entity_names", "chunk_window", "max_context_chars", "max_context_chunks", "per_document_limit", "max_related_chunks", "max_expansion_seeds", "max_hops", "max_traversal_nodes"}
-	recallArgs = []string{"top_k_knowledge", "top_k_memories", "max_memory_chars", "max_memory_items", "session_id"}
+	recallArgs = []string{"top_k_knowledge", "top_k_memories", "max_memory_chars", "max_memory_items", "max_profile_chars", "session_id"}
 	// The review fields are data: the facade takes the calling key as the
 	// reviewer and refuses another name, so a decision names who made it.
 	reviewArgs = []string{"review_status", "reviewed_by", "reviewed_at"}
@@ -293,7 +293,7 @@ var confinedTools = map[string]toolRule{
 	"search_paths": {stores: storeKnowledge | storeMemory, facade: true,
 		args: []string{"entity_names", "node_ids", "max_depth", "direction", "edge_types", "relation_policies.*", "decay", "use_edge_weights", "max_paths", "max_expansions", "include_bookkeeping", "with_text"}},
 	"knowledge_memory_expand_entity_context": {stores: storeKnowledge | storeMemory, facade: true,
-		args: []string{"entity_ids", "entity_names", "max_hops", "edge_types", "node_types", "limit", "top_k_chunks", "max_context_chunks", "max_context_chars", "per_document_limit", "chunk_window", "retrieval_mode", "disable_graph", "graph_light", "max_entities_per_chunk"}},
+		args: []string{"entity_ids", "entity_names", "max_hops", "edge_types", "node_types", "limit", "top_k_chunks", "max_context_chunks", "max_context_chars", "max_profile_chars", "per_document_limit", "chunk_window", "retrieval_mode", "disable_graph", "graph_light", "max_entities_per_chunk"}},
 	"expand_graph": {stores: storeKnowledge | storeMemory, facade: true,
 		args: []string{"node_ids", "max_hops", "edge_types", "node_types", "limit", "relation_policies.*", "include_vectors"},
 		denied: map[string]string{

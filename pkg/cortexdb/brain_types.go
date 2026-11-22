@@ -14,28 +14,32 @@ type KnowledgeMemoryRememberResponse = MemorySaveResponse
 
 // KnowledgeMemoryRecallRequest retrieves a fused view across episodic memory and durable knowledge.
 type KnowledgeMemoryRecallRequest struct {
-	Query               string         `json:"query"`
-	UserID              string         `json:"user_id,omitempty"`
-	SessionID           string         `json:"session_id,omitempty"`
-	Scope               string         `json:"scope,omitempty"`
-	Namespace           string         `json:"namespace,omitempty"`
-	Collection          string         `json:"collection,omitempty"`
-	TopKMemories        int            `json:"top_k_memories,omitempty"`
-	TopKKnowledge       int            `json:"top_k_knowledge,omitempty"`
-	MaxMemoryItems      int            `json:"max_memory_items,omitempty"`
-	MaxMemoryChars      int            `json:"max_memory_chars,omitempty"`
-	Keywords            []string       `json:"keywords,omitempty"`
-	AlternateQueries    []string       `json:"alternate_queries,omitempty"`
-	EntityNames         []string       `json:"entity_names,omitempty"`
-	RetrievalMode       string         `json:"retrieval_mode,omitempty"`
-	DisableMemory       bool           `json:"disable_memory,omitempty"`
-	DisableKnowledge    bool           `json:"disable_knowledge,omitempty"`
-	DisableGraph        bool           `json:"disable_graph,omitempty"`
-	GraphLight          bool           `json:"graph_light,omitempty"`
-	MaxHops             int            `json:"max_hops,omitempty"`
-	MaxRelatedChunks    int            `json:"max_related_chunks,omitempty"`
-	MaxContextChunks    int            `json:"max_context_chunks,omitempty"`
-	MaxContextChars     int            `json:"max_context_chars,omitempty"`
+	Query            string   `json:"query"`
+	UserID           string   `json:"user_id,omitempty"`
+	SessionID        string   `json:"session_id,omitempty"`
+	Scope            string   `json:"scope,omitempty"`
+	Namespace        string   `json:"namespace,omitempty"`
+	Collection       string   `json:"collection,omitempty"`
+	TopKMemories     int      `json:"top_k_memories,omitempty"`
+	TopKKnowledge    int      `json:"top_k_knowledge,omitempty"`
+	MaxMemoryItems   int      `json:"max_memory_items,omitempty"`
+	MaxMemoryChars   int      `json:"max_memory_chars,omitempty"`
+	Keywords         []string `json:"keywords,omitempty"`
+	AlternateQueries []string `json:"alternate_queries,omitempty"`
+	EntityNames      []string `json:"entity_names,omitempty"`
+	RetrievalMode    string   `json:"retrieval_mode,omitempty"`
+	DisableMemory    bool     `json:"disable_memory,omitempty"`
+	DisableKnowledge bool     `json:"disable_knowledge,omitempty"`
+	DisableGraph     bool     `json:"disable_graph,omitempty"`
+	GraphLight       bool     `json:"graph_light,omitempty"`
+	MaxHops          int      `json:"max_hops,omitempty"`
+	MaxRelatedChunks int      `json:"max_related_chunks,omitempty"`
+	MaxContextChunks int      `json:"max_context_chunks,omitempty"`
+	MaxContextChars  int      `json:"max_context_chars,omitempty"`
+	// MaxProfileChars is the entity profiles' own budget in the context
+	// pack, in total, on top of MaxContextChars rather than out of it: 0 is
+	// DefaultMaxProfileChars, a negative value leaves the profiles out (#260).
+	MaxProfileChars     int            `json:"max_profile_chars,omitempty"`
 	PerDocumentLimit    int            `json:"per_document_limit,omitempty"`
 	ChunkWindow         int            `json:"chunk_window,omitempty"`
 	MaxExpansionSeeds   int            `json:"max_expansion_seeds,omitempty"`
@@ -162,6 +166,8 @@ type KnowledgeMemoryPromoteToKnowledgeResponse struct {
 
 // KnowledgeMemoryExpandEntityContextRequest expands graph context around one or more entities.
 type KnowledgeMemoryExpandEntityContextRequest struct {
+	// MaxProfileChars is as on KnowledgeMemoryRecallRequest.
+	MaxProfileChars     int      `json:"max_profile_chars,omitempty"`
 	EntityIDs           []string `json:"entity_ids,omitempty"`
 	EntityNames         []string `json:"entity_names,omitempty"`
 	MaxHops             int      `json:"max_hops,omitempty"`

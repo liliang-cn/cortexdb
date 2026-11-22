@@ -211,3 +211,68 @@ func TestEntityProfileServedWhenItCannotBeKept(t *testing.T) {
 		t.Fatalf("kept %d profiles, %v", n, err)
 	}
 }
+
+// Profiles have a budget of their own in the pack, over all of them, and a
+// source line whose chunk the pack already shows is left out (#260).
+func TestEntityProfilesKeepToTheirBudget(t *testing.T) {
+	profiles := []EntityProfile{
+		{EntityID: "entity:a", Content: "A, mentioned in 2 documents.\nRelations:\n- A —knows→ B\nSources:\n- d1: A said hello. [chunk:d1:000]\n- d2: A said goodbye. [chunk:d2:000]", ChunkIDs: []string{"chunk:d1:000", "chunk:d2:000"}},
+		{EntityID: "entity:b", Content: "B, mentioned in 2 documents.\nRelations:\n- B —knows→ A\nSources:\n- d3: " + strings.Repeat("B talks. ", 40) + "[chunk:d3:000]", ChunkIDs: []string{"chunk:d3:000"}},
+	}
+	text, ids := renderProfiles(profiles, 0, map[string]bool{"chunk:d1:000": true})
+	if strings.Contains(text, "hello") || !strings.Contains(text, "goodbye") {
+		t.Fatalf("the source line of a chunk in the pack was kept, or another dropped:\n%s", text)
+	}
+	if strings.Contains(strings.Join(ids, ","), "chunk:d1:000") {
+		t.Fatalf("cites a chunk whose line was left out: %v", ids)
+	}
+	if len(text) > DefaultMaxProfileChars {
+		t.Fatalf("%d chars over the default budget %d", len(text), DefaultMaxProfileChars)
+	}
+	small, _ := renderProfiles(profiles, 120, nil)
+	if len(small) > 120 || !strings.Contains(small, "A —knows→ B") || strings.Contains(small, "B —knows→ A") {
+		t.Fatalf("a 120-char budget gave:\n%s", small)
+	}
+	if none, _ := renderProfiles(profiles, -1, nil); none != "" {
+		t.Fatalf("-1 still rendered:\n%s", none)
+	}
+}
+
+// A recall's profiles stay within max_profile_chars, -1 leaves them out, and
+// the relation most documents state leads the profile (#260).
+func TestRecallProfilesBudgetAndRanking(t *testing.T) {
+	db := openProfileBrain(t)
+	ctx := context.Background()
+	saveProfileDoc(t, db, "b1", "Ada Lovelace worked with Charles Babbage on the Analytical Engine.",
+		ToolRelationInput{From: "Ada Lovelace", To: "Charles Babbage", Type: "worked_with"},
+		ToolRelationInput{From: "Ada Lovelace", To: "Analytical Engine", Type: "described"})
+	saveProfileDoc(t, db, "b2", "Ada Lovelace and Charles Babbage wrote letters.",
+		ToolRelationInput{From: "Ada Lovelace", To: "Charles Babbage", Type: "worked_with"})
+	saveProfileDoc(t, db, "b3", "Ada Lovelace admired Mary Somerville.",
+		ToolRelationInput{From: "Ada Lovelace", To: "Mary Somerville", Type: "admired"})
+	km := db.KnowledgeMemory()
+	p, err := km.EntityProfile(ctx, "entity:ada_lovelace", false, true)
+	if err != nil || p == nil {
+		t.Fatalf("%+v %v", p, err)
+	}
+	rel := p.Content[strings.Index(p.Content, "Relations:"):]
+	if first := strings.SplitN(rel, "\n", 3)[1]; !strings.Contains(first, "worked_with→ Charles Babbage") {
+		t.Fatalf("the relation two documents state does not lead:\n%s", p.Content)
+	}
+	resp, err := km.Recall(ctx, KnowledgeMemoryRecallRequest{Query: "Ada Lovelace", MaxProfileChars: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range resp.ContextPack.Sections {
+		if s.Kind == "profiles" && len(s.Text) > 100 {
+			t.Fatalf("profiles take %d chars of a 100-char budget", len(s.Text))
+		}
+	}
+	off, err := km.Recall(ctx, KnowledgeMemoryRecallRequest{Query: "Ada Lovelace", MaxProfileChars: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(off.Profiles) != 0 || strings.Contains(off.ContextPack.Text, "[PROFILES]") {
+		t.Fatalf("max_profile_chars -1 still gave profiles: %+v", off.Profiles)
+	}
+}
