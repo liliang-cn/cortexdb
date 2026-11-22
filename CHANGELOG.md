@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.170.0] - 2026-11-22
+
 ### Fixed
 
 - `knowledge_save` and `knowledge_update` no longer fail with a bare
