@@ -1034,6 +1034,14 @@ codex plugin add cortexdb@cortexdb
 
 Codex uses the same default global brain at `~/.cortexdb/cortexdb.db`.
 
+**Install — Antigravity** — from a clone of this repository:
+
+```bash
+agy plugin install ./plugins/cortexdb
+```
+
+Antigravity gets the skill, the MCP tools and a rule telling the agent to recall and save; the auto-recall hooks are Claude Code and Codex only for now.
+
 **Use** — just talk to Claude; it calls the MCP tools for you ("remember that I prefer …", "what do you know about X?"). Or use the slash commands: `/remember <text>`, `/recall <query>`, `/cortexdb-graph` (interactive knowledge-graph view), or `/cortexdb` for the skill. Key tools: `memory_save` / `memory_search`, `knowledge_save` / `knowledge_search`, `knowledge_graph_query`, and the unified `knowledge_memory_recall`. When enabled, a `SessionStart` directive + `UserPromptSubmit` auto-recall hook make Claude recall and save proactively (it asks once, per machine).
 
 **Where data lives** — `~/.cortexdb/cortexdb.db` by default, so memory follows you across projects (multiple sessions share it safely via SQLite WAL). Override per project:
