@@ -58,13 +58,14 @@ jobs:
           go_ver=$(sed -n 's/.*Version = "\([^"]*\)".*/\1/p' version.go)
           claude_ver=$(extract plugins/cortexdb/.claude-plugin/plugin.json)
           codex_ver=$(extract plugins/cortexdb/.codex-plugin/plugin.json)
+          agy_ver=$(extract plugins/cortexdb/.antigravity-plugin/plugin.json)
           live_ver=$(extract plugins/cortexdb-live/.claude-plugin/plugin.json)
           market_ver=$(extract .claude-plugin/marketplace.json)
           dsh_ver=$(extract plugins/dsh-cortexdb-memory/package.json)
           obsidian_ver=$(extract plugins/obsidian-cortexdb/manifest.json)
           obsidian_pkg_ver=$(extract plugins/obsidian-cortexdb/package.json)
-          echo "version.go=$go_ver claude=$claude_ver codex=$codex_ver live=$live_ver marketplace=$market_ver dsh=$dsh_ver obsidian=$obsidian_ver/$obsidian_pkg_ver"
-          for v in "$claude_ver" "$codex_ver" "$live_ver" "$market_ver" "$dsh_ver" "$obsidian_ver" "$obsidian_pkg_ver"; do
+          echo "version.go=$go_ver claude=$claude_ver codex=$codex_ver agy=$agy_ver live=$live_ver marketplace=$market_ver dsh=$dsh_ver obsidian=$obsidian_ver/$obsidian_pkg_ver"
+          for v in "$claude_ver" "$codex_ver" "$agy_ver" "$live_ver" "$market_ver" "$dsh_ver" "$obsidian_ver" "$obsidian_pkg_ver"; do
             if [ "$v" != "$go_ver" ]; then
               echo "::error::Version mismatch: version.go ($go_ver) must match all plugin manifests. The MCP launcher pins its binary download to the plugin version, so a stale manifest ships a stale server."
               exit 1

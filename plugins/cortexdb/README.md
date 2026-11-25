@@ -1,11 +1,11 @@
-# CortexDB — Claude Code & Codex plugin
+# CortexDB — Claude Code, Codex & Antigravity plugin
 
-Local-first AI memory and knowledge graph, packaged for both **Claude Code** and **Codex** from one plugin directory. It bundles:
+Local-first AI memory and knowledge graph, packaged for **Claude Code**, **Codex** and **Antigravity** (`agy`) from one plugin directory. It bundles:
 
 - **Skill** (`skills/cortexdb`) — guidance on CortexDB's layered API (`pkg/cortexdb`, `pkg/memoryflow`, `pkg/graphflow`, `pkg/importflow`, `pkg/connector`, `pkg/graph`, `pkg/core`), RAG, knowledge-graph, SPARQL/RDFS/SHACL, and MCP usage.
 - **MCP server** — runs `cmd/cortexdb-mcp-stdio`, exposing live tools: `knowledge_save`, `knowledge_search`, `memory_save`, `memory_search`, `knowledge_graph_upsert`, `knowledge_graph_query`, `knowledge_graph_shacl_validate`, `knowledge_memory_recall`, `build_context`, and more.
 
-The single directory carries two manifests — `.claude-plugin/plugin.json` (Claude Code) and `.codex-plugin/plugin.json` (Codex) — and a per-host MCP config (`.mcp.json` for Claude Code, `.mcp.codex.json` for Codex). The skill is shared.
+The single directory carries three manifests — `.claude-plugin/plugin.json` (Claude Code), `.codex-plugin/plugin.json` (Codex) and `.antigravity-plugin/plugin.json` (Antigravity) — and a per-host MCP config (`.mcp.json` for Claude Code, `.mcp.codex.json` for Codex, `mcp_config.json` for Antigravity). The skill is shared.
 
 **No Go toolchain required.** Both MCP configs invoke a launcher (`bin/cortexdb-mcp`) that, on first run, downloads the prebuilt MCP server binary for your OS/arch from the GitHub release, caches it in the plugin data dir, and execs it. Prebuilt targets: macOS (amd64, arm64), Windows (amd64, arm64), Linux (amd64, arm64).
 
@@ -37,6 +37,20 @@ In Codex, open `/hooks` and review and trust the CortexDB hooks to enable
 session directives and automatic recall. Installing the plugin enables its MCP
 tools, but does not automatically trust its hooks. Hooks that change after an
 update need review again. See the [Codex hook documentation](https://learn.chatgpt.com/docs/hooks).
+
+## Install — Antigravity
+
+From a clone of this repository:
+
+```bash
+agy plugin install ./plugins/cortexdb
+```
+
+Antigravity gets the skill, the MCP tools, and `rules/AGENTS.md`, which tells the
+agent to recall before answering and to save durable facts. The automatic-recall
+hooks are Claude Code and Codex only for now: Antigravity's hooks take a
+different input and output, and have no prompt-submit event. Its loader also
+reads only the first 24,000 bytes of the skill.
 
 ## Requirements
 

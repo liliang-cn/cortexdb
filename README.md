@@ -21,6 +21,12 @@ Codex:
 codex plugin marketplace add liliang-cn/cortexdb && codex plugin add cortexdb@cortexdb
 ```
 
+Antigravity (`agy`), from a clone of this repo:
+
+```
+agy plugin install ./plugins/cortexdb
+```
+
 Go:
 
 ```

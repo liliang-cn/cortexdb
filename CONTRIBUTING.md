@@ -43,5 +43,5 @@ CORTEXDB_GRPC_BIN=$PWD/target/cortexdb-grpc cargo test --all-features
 ## Pull requests
 
 - Target the `main` branch; CI must pass (tests, eval floors, example builds, version consistency).
-- If you bump the version, keep `version.go` in sync with `plugins/cortexdb/.claude-plugin/plugin.json`, `plugins/cortexdb/.codex-plugin/plugin.json`, `plugins/cortexdb-live/.claude-plugin/plugin.json`, `plugins/dsh-cortexdb-memory/package.json`, `plugins/obsidian-cortexdb/manifest.json` and `package.json`, and `.claude-plugin/marketplace.json` — CI rejects mismatches.
+- If you bump the version, keep `version.go` in sync with `plugins/cortexdb/.claude-plugin/plugin.json`, `plugins/cortexdb/.codex-plugin/plugin.json`, `plugins/cortexdb/.antigravity-plugin/plugin.json`, `plugins/cortexdb-live/.claude-plugin/plugin.json`, `plugins/dsh-cortexdb-memory/package.json`, `plugins/obsidian-cortexdb/manifest.json` and `package.json`, and `.claude-plugin/marketplace.json` — CI rejects mismatches.
 - Keep commits focused; conventional-commit style (`feat(scope): ...`, `fix: ...`) is used for changelog generation.
