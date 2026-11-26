@@ -95,14 +95,22 @@ func inspectBrain(ctx context.Context) (doctorReport, error) {
 		defer conn.Close()
 		rctx, cancel := context.WithTimeout(ctx, remoteDialTimeout)
 		defer cancel()
-		list, err := rpcv1.NewToolsServiceClient(conn).ListTools(rctx, &rpcv1.ListToolsRequest{})
+		// Count what serve exposes: the brain's tools plus the ones this
+		// machine handles itself, the same list `tool list` prints.
+		server, err := newRemoteMCPServer(rctx, rpcv1.NewToolsServiceClient(conn), remote)
 		if err != nil {
-			return report, fmt.Errorf("remote tool discovery failed: %w", err)
+			return report, err
 		}
-		report.Tools = len(list.GetTools())
-		if report.Tools == 0 {
-			return report, fmt.Errorf("remote server exposed no tools")
+		session, err := connectToolSession(rctx, server, func() {})
+		if err != nil {
+			return report, err
 		}
+		defer session.close()
+		tools, err := session.tools(rctx)
+		if err != nil {
+			return report, err
+		}
+		report.Tools = len(tools)
 		return report, nil
 	}
 	path := os.Getenv("CORTEXDB_PATH")

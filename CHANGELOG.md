@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- `cortexdb search` prints a list of hits in the text format: memories,
+  knowledge and profiles with their score and the start of their content,
+  and the first ten graph facts (#270). `--format json` prints the whole
+  recall result, as before.
+
+### Fixed
+
+- `cortexdb doctor` on a shared brain counts the tools `serve` exposes,
+  the brain's and the ones the client handles itself, so it agrees with
+  `cortexdb tool list` (#270).
+
 ## [2.171.0] - 2026-11-26
 
 ### Added
