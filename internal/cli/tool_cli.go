@@ -56,6 +56,12 @@ func openToolSession(ctx context.Context) (*toolSession, error) {
 		server = newLocalMCPServer(db, path)
 		release = func() { _ = db.Close() }
 	}
+	return connectToolSession(ctx, server, release)
+}
+
+// connectToolSession connects an in-memory MCP client to server; closing the
+// session also calls release.
+func connectToolSession(ctx context.Context, server *mcp.Server, release func()) (*toolSession, error) {
 	serverT, clientT := mcp.NewInMemoryTransports()
 	ss, err := server.Connect(ctx, serverT, nil)
 	if err != nil {
@@ -598,7 +604,21 @@ func runSearch(inv *invocation, args []string) int {
 		if err != nil {
 			return err
 		}
-		return callAndPrint(ctx, inv, s, t, callArgs, false)
+		if inv.json() {
+			return callAndPrint(ctx, inv, s, t, callArgs, false)
+		}
+		res, err := s.CallTool(ctx, &mcp.CallToolParams{Name: t.Name, Arguments: callArgs})
+		if err != nil {
+			return err
+		}
+		if !res.IsError && len(res.Content) == 1 {
+			if tc, ok := res.Content[0].(*mcp.TextContent); ok {
+				if printed, err := printRecall(inv.stdout, tc.Text); printed || err != nil {
+					return err
+				}
+			}
+		}
+		return printResult(inv, res)
 	})
 }
 

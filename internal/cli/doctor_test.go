@@ -158,3 +158,21 @@ func TestDoctorReportHasNoUncheckedFields(t *testing.T) {
 		t.Errorf("report still has hook_trust: %s", out)
 	}
 }
+
+func TestDoctorCountsTheToolsServeExposes(t *testing.T) {
+	doctorEnv(t)
+	addr, _ := startTestBrain(t, "doctor-secret")
+	t.Setenv("CORTEXDB_REMOTE", addr)
+	t.Setenv("CORTEXDB_GRPC_TOKEN", "doctor-secret")
+	report, err := inspectBrain(context.Background())
+	if err != nil {
+		t.Fatalf("report=%+v error=%v", report, err)
+	}
+	code, out, errOut := runCLI(t, ProgCortexDB, "tool", "list", "--format", "json")
+	if code != exitOK {
+		t.Fatalf("tool list: exit %d: %s", code, errOut)
+	}
+	if listed := len(listedNames(t, out)); report.Tools != listed {
+		t.Fatalf("doctor counts %d tools, tool list lists %d", report.Tools, listed)
+	}
+}

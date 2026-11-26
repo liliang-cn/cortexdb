@@ -703,7 +703,7 @@ cortexdb tool list [--read-only]                 # name, effect (read-only, idem
 cortexdb tool describe memory_save               # description and arguments
 cortexdb tool call knowledge_search --arg query="deploy key" --arg top_k=5
 cortexdb tool call memory_save --json '{"memory_id":"m1","content":"…"}' --yes
-cortexdb search what did we decide about the deploy key   # knowledge_memory_recall
+cortexdb search what did we decide about the deploy key   # knowledge_memory_recall: one line per hit
 cortexdb remember "the deploy key rotates weekly"           # memory_save under a new id
 cortexdb get m1 m2                                          # memory_get
 ```

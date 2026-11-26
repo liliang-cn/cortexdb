@@ -556,7 +556,7 @@ cortexdb tool list [--read-only]                 # 名字、作用（read-only�
 cortexdb tool describe memory_save               # 描述和参数
 cortexdb tool call knowledge_search --arg query="deploy key" --arg top_k=5
 cortexdb tool call memory_save --json '{"memory_id":"m1","content":"…"}' --yes
-cortexdb search 部署 key 是怎么定的                # knowledge_memory_recall
+cortexdb search 部署 key 是怎么定的                # knowledge_memory_recall，每条命中一行
 cortexdb remember "部署 key 每周轮换"              # 用新 id 调 memory_save
 cortexdb get m1 m2                                # memory_get
 ```
