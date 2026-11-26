@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.172.0] - 2026-11-26
+
 ### Changed
 
 - `cortexdb search` prints a list of hits in the text format: memories,
