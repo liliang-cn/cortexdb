@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.171.0] - 2026-11-26
+
 ### Added
 
 - `cortexdb`, a command line (#268). `cortexdb tool list|describe|call`
