@@ -53,6 +53,16 @@ rec, _ := brain.Recall(ctx, cortexdb.KnowledgeMemoryRecallRequest{Query: "what d
 fmt.Println(rec.ContextPack.Text)
 ```
 
+## From a shell
+
+```
+go install github.com/liliang-cn/cortexdb/v2/cmd/cortexdb@latest
+cortexdb search what did we decide about the deploy key
+cortexdb tool list
+```
+
+Every MCP tool is callable from a shell; see [Command line](docs/GUIDE.md#command-line).
+
 ## Docs
 
 [Guide](docs/GUIDE.md) · [Plugin](plugins/cortexdb/README.md) · [Live view](docs/GUIDE.md#the-live-view) · [Claude Code mod](docs/GUIDE.md#claude-code-mod) · [Environment variables](docs/GUIDE.md#environment) · [Integrating your agent](docs/INTEGRATION.md) · [Examples](examples/README.md) · [Changelog](CHANGELOG.md) · [中文](README_CN.md)

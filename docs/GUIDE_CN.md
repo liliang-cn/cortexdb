@@ -547,6 +547,28 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 
 工具分组（100+ 个工具，进程内与 MCP 同名）：GraphRAG（`ingest_document`、`search_text`、`build_context`、`expand_graph`、`search_paths`、`find_nodes`、`delete_document_graph`）、统一检索（`cortex_query`）、knowledge/memory（`knowledge_save`、`memory_search` …）、KnowledgeMemory（`knowledge_memory_recall`、`_reflect`、`_consolidate`、`extract_conversation`）、KG（`knowledge_graph_query`、`_shacl_validate`、`apply_inference`）、ontology（`ontology_save`、`ontology_history`、`ontology_action_apply`、`object_set_resolve`）、历史（`graph_history`、`knowledge_graph_history`）、媒体（`ingest_media`、`search_media`）、导入的表（`imported_tables_list`、`_describe`、`_query`）、维护（`vector_dimension_repair`、`sweep_expired`）。`cortexdb-mcp-stdio` 这个二进制额外提供 `render_graph_html`（交互式知识图谱视图）、`serve_graph_3d`、`side_graph_*`、`import_agent_memory`、导入工具（`importflow_plan`、`importflow_run`、`importflow_ddl_plan`、`importflow_ddl_plan_ai`；共享大脑模式下由 `cortexdb-grpc` 提供），本地模式下还有 `global_search` / `build_community_hierarchy`；`db.NewMCPServer` 只提供 facade 自己的工具。`memoryflow`/`graphflow`/`importflow`/`connector` 各自也暴露自己的 toolbox。
 
+### 命令行
+
+`cortexdb` 是命令行工具：`go install github.com/liliang-cn/cortexdb/v2/cmd/cortexdb@latest`，或者下载 release 里的 `cortexdb-<os>-<arch>`。每个 MCP 工具都能在 shell 里调用，走的就是 `cortexdb serve` 跑的那个 server，所以工具列表、schema，以及共享大脑上 key 的拒绝规则，都和 agent 拿到的一样：
+
+```bash
+cortexdb tool list [--read-only]                 # 名字、作用（read-only、idempotent、writes、destructive）、简介
+cortexdb tool describe memory_save               # 描述和参数
+cortexdb tool call knowledge_search --arg query="deploy key" --arg top_k=5
+cortexdb tool call memory_save --json '{"memory_id":"m1","content":"…"}' --yes
+cortexdb search 部署 key 是怎么定的                # knowledge_memory_recall
+cortexdb remember "部署 key 每周轮换"              # 用新 id 调 memory_save
+cortexdb get m1 m2                                # memory_get
+```
+
+`--arg key=value` 按工具的 schema 定类型（字符串还是字符串；数字、布尔、JSON 对象会解析；数组每个 `--arg` 加一个元素，或者直接给 JSON 数组），并且覆盖 `--json` 里的同名参数（`--json -` 从 stdin 读）。destructive 的工具要 `--yes`，或者在终端里回答 yes；没有终端就直接拒绝，脚本不会误删。
+
+`cortexdb-mcp-stdio` 的各个模式都成了子命令：`cortexdb doctor`、`graph html|3d|update|cleanup|resolve-entities`、`memory html|export|sync|usage|reembed`、`import agent-memory|code-graph|learning-graph`、`learn path|next|mastered`、`multi-hop`、`global-search`、`facts-as-of`、`recall-eval`、`sweep-expired`，agent 的 hook 在 `hook` 下面。`cortexdb-mcp-stdio --<模式>` 照旧能用，不带参数的 `cortexdb-mcp-stdio` 仍然是 MCP server（即 `cortexdb serve`）。
+
+所有命令都接受 `--db PATH`、`--remote HOST:PORT`、`--remote-token-file PATH`（token 不放在参数里）、`--format text|json` 和 `--quiet`；参数优先于对应的环境变量。`--format json` 只输出一个 JSON 值：工具的结构化结果，或者它返回的 JSON 文本，否则是 `{"text": …}`。每个命令都有 `-h`/`--help`；命令或参数打错了会以退出码 2 退出并给出建议，不会去启动 server。退出码：0 成功，1 失败，2 命令行有误。
+
+补全：`source <(cortexdb completion bash)`、`source <(cortexdb completion zsh)`（在 `compinit` 之后），或 `cortexdb completion fish | source`。会补全命令、参数、工具名，以及 `--arg` 后面的工具参数名。
+
 ### 实时视图
 
 `serve_graph_3d` 在大脑之上提供一个网页应用；在 shell 里用
