@@ -397,7 +397,7 @@ func (db *DB) GraphPredictEdges(ctx context.Context, opts GraphPredictEdgesOptio
 //
 // An empty graph reports zeros, not an error.
 func (db *DB) GraphStatistics(ctx context.Context) (*graph.GraphStatistics, error) {
-	stats, err := db.graph.GetGraphStatistics(ctx)
+	stats, err := cachedGraphAnswer(ctx, db, "graph_statistics", nil, func() (*graph.GraphStatistics, error) { return db.graph.GetGraphStatistics(ctx) })
 	if err != nil {
 		return nil, fmt.Errorf("graph statistics: %w", err)
 	}
