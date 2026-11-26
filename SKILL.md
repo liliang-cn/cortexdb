@@ -1187,6 +1187,16 @@ with the same arguments changes nothing more (an upsert on a stated id, a delete
 `destructiveHint` when it may delete or overwrite. Remote mode passes them through from
 `ListTools`.
 
+From a shell, `cortexdb` (`cmd/cortexdb`) reaches every tool through the same MCP server
+`cortexdb serve` runs, connected in memory: `cortexdb tool list|describe|call`, with
+`--arg key=value` typed by the tool's schema, `--json`, and `--yes` for a destructive tool;
+`search`, `remember` and `get` are shortcuts for `knowledge_memory_recall`, `memory_save` and
+`memory_get`. The modes of `cortexdb-mcp-stdio` are its subcommands (`doctor`, `graph html`,
+`memory export`, `hook recall`, …), and `cortexdb-mcp-stdio --<mode>` still works. Both
+binaries are built from `internal/cli`, whose command table drives dispatch, flag checks,
+help and completion. Common flags: `--db`, `--remote`, `--remote-token-file`,
+`--format text|json`, `--quiet`; a wrong command line exits 2.
+
 Important tools:
 
 - GraphRAG: `ingest_document`, `ingest_media`, `search_media`, `search_text`, `expand_graph`, `build_context`

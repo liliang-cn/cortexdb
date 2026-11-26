@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- `cortexdb`, a command line (#268). `cortexdb tool list|describe|call`
+  reaches every MCP tool from a shell through the server `cortexdb serve`
+  runs, connected in memory: the same tools, schemas and, on a shared
+  brain, the same refusals for a confined key. `--arg key=value` is typed by
+  the tool's schema; a destructive tool needs `--yes` or a yes at a
+  terminal. `search`, `remember` and `get` are shortcuts for
+  `knowledge_memory_recall`, `memory_save` and `memory_get`. The modes of
+  `cortexdb-mcp-stdio` are subcommands (`doctor`, `graph html`,
+  `memory export`, `hook recall`, …). Every command takes `--db`,
+  `--remote`, `--remote-token-file`, `--format text|json`, `--quiet` and
+  `-h`/`--help`; `cortexdb completion bash|zsh|fish` prints a completion
+  script. Releases carry `cortexdb-<os>-<arch>`.
+
+### Changed
+
+- `cortexdb-mcp-stdio` with a mistyped mode or flag (`--recal`) exits 2 with
+  a suggestion instead of starting the MCP server, which exited 0 once stdin
+  closed; `--help` prints its modes. With no arguments it is the MCP server,
+  as before, and every `--<mode>` it took still works. Its code moved to
+  `internal/cli`, shared with `cortexdb`.
+
 ## [2.170.0] - 2026-11-22
 
 ### Fixed

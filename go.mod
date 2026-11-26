@@ -14,6 +14,7 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/openai/openai-go/v3 v3.39.0
 	github.com/piprate/json-gold v0.8.0
+	golang.org/x/term v0.40.0
 	golang.org/x/text v0.36.0
 	google.golang.org/grpc v1.81.1
 	google.golang.org/protobuf v1.36.11

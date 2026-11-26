@@ -694,6 +694,28 @@ server := db.NewMCPServer(cortexdb.MCPServerOptions{})  // MCP server
 
 Tool groups (100+ tools, same names in-process and over MCP): GraphRAG (`ingest_document`, `search_text`, `build_context`, `expand_graph`, `search_paths`, `find_nodes`, `delete_document_graph`), unified retrieval (`cortex_query`), knowledge/memory (`knowledge_save`, `memory_search`, …), KnowledgeMemory (`knowledge_memory_recall`, `_reflect`, `_consolidate`, `extract_conversation`), KG (`knowledge_graph_query`, `_shacl_validate`, `apply_inference`), ontology (`ontology_save`, `ontology_history`, `ontology_action_apply`, `object_set_resolve`), history (`graph_history`, `knowledge_graph_history`), media (`ingest_media`, `search_media`), imported tables (`imported_tables_list`, `_describe`, `_query`), and maintenance (`vector_dimension_repair`, `sweep_expired`). The `cortexdb-mcp-stdio` binary adds `render_graph_html` (an interactive knowledge-graph view), `serve_graph_3d`, `side_graph_*`, `import_agent_memory`, the import tools (`importflow_plan`, `importflow_run`, `importflow_ddl_plan`, `importflow_ddl_plan_ai`; in shared-brain mode `cortexdb-grpc` serves them), and `global_search` / `build_community_hierarchy` (in shared-brain mode `cortexdb-grpc` serves them with no model; there `global_search` never builds, and a confined key is refused both); `db.NewMCPServer` serves the facade's tools only. `memoryflow`/`graphflow`/`importflow`/`connector` expose their own toolboxes too.
 
+### Command line
+
+`cortexdb` is the command line: `go install github.com/liliang-cn/cortexdb/v2/cmd/cortexdb@latest`, or the `cortexdb-<os>-<arch>` asset of a release. Every MCP tool is callable from a shell, through the same server `cortexdb serve` runs, so the list, the schemas and, on a shared brain, the key's refusals are the ones an agent gets:
+
+```bash
+cortexdb tool list [--read-only]                 # name, effect (read-only, idempotent, writes, destructive), summary
+cortexdb tool describe memory_save               # description and arguments
+cortexdb tool call knowledge_search --arg query="deploy key" --arg top_k=5
+cortexdb tool call memory_save --json '{"memory_id":"m1","content":"…"}' --yes
+cortexdb search what did we decide about the deploy key   # knowledge_memory_recall
+cortexdb remember "the deploy key rotates weekly"           # memory_save under a new id
+cortexdb get m1 m2                                          # memory_get
+```
+
+`--arg key=value` is typed by the tool's schema (a string stays a string; numbers, booleans and JSON objects are parsed; an array grows by one element per `--arg` or takes a JSON array) and wins over `--json` (`--json -` reads stdin). A destructive tool runs with `--yes` or after a yes at a terminal; without a terminal it is refused, so a script never deletes by accident.
+
+The modes of `cortexdb-mcp-stdio` are subcommands: `cortexdb doctor`, `graph html|3d|update|cleanup|resolve-entities`, `memory html|export|sync|usage|reembed`, `import agent-memory|code-graph|learning-graph`, `learn path|next|mastered`, `multi-hop`, `global-search`, `facts-as-of`, `recall-eval`, `sweep-expired`, and the agent hooks under `hook`. `cortexdb-mcp-stdio --<mode>` keeps working, and `cortexdb-mcp-stdio` with no arguments is still the MCP server (`cortexdb serve`).
+
+Every command takes `--db PATH`, `--remote HOST:PORT`, `--remote-token-file PATH` (the token is never an argument), `--format text|json` and `--quiet`; a flag wins over the environment variable it names. `--format json` prints one JSON value: a tool's structured result, or the JSON text it returned, or `{"text": …}`. `-h`/`--help` works on every command, and a mistyped command or flag exits 2 with a suggestion instead of starting the server. Exit codes: 0 done, 1 failed, 2 wrong command line.
+
+Completion: `source <(cortexdb completion bash)`, `source <(cortexdb completion zsh)` (after `compinit`), or `cortexdb completion fish | source`. It completes commands, flags, tool names and, after `--arg`, the tool's argument names.
+
 ### The live view
 
 `serve_graph_3d` serves a web app over the brain; so do

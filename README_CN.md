@@ -47,6 +47,16 @@ rec, _ := brain.Recall(ctx, cortexdb.KnowledgeMemoryRecallRequest{Query: "Alice 
 fmt.Println(rec.ContextPack.Text)
 ```
 
+## 在 shell 里用
+
+```
+go install github.com/liliang-cn/cortexdb/v2/cmd/cortexdb@latest
+cortexdb search 部署 key 是怎么定的
+cortexdb tool list
+```
+
+每个 MCP 工具都能在 shell 里调用，见[命令行](docs/GUIDE_CN.md#命令行)。
+
 ## 文档
 
 [指南](docs/GUIDE_CN.md) · [插件](plugins/cortexdb/README.md) · [实时视图](docs/GUIDE_CN.md#实时视图) · [Claude Code mod](docs/GUIDE_CN.md#claude-code-mod) · [环境变量](docs/GUIDE_CN.md#环境变量) · [接入你的 agent](docs/INTEGRATION_CN.md) · [示例](examples/README.md) · [更新日志](CHANGELOG.md) · [English](README.md)

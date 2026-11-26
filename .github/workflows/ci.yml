@@ -242,6 +242,9 @@ jobs:
           # MCP server binary — raw, named for the plugin launcher to download directly
           go build -trimpath -ldflags="-s -w" -o "dist/cortexdb-mcp-${GOOS}-${GOARCH}${ext}" ./cmd/cortexdb-mcp-stdio
           (cd dist && shasum -a 256 "cortexdb-mcp-${GOOS}-${GOARCH}${ext}" > "cortexdb-mcp-${GOOS}-${GOARCH}${ext}.sha256")
+          # The cortexdb command line — the same commands, for a shell
+          go build -trimpath -ldflags="-s -w" -o "dist/cortexdb-${GOOS}-${GOARCH}${ext}" ./cmd/cortexdb
+          (cd dist && shasum -a 256 "cortexdb-${GOOS}-${GOARCH}${ext}" > "cortexdb-${GOOS}-${GOARCH}${ext}.sha256")
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
@@ -251,6 +254,8 @@ jobs:
             dist/cortexdb-grpc_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz.sha256
             dist/cortexdb-mcp-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
             dist/cortexdb-mcp-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}.sha256
+            dist/cortexdb-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+            dist/cortexdb-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
