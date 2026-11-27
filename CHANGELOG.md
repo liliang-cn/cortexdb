@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.173.0] - 2026-11-27
+
 ### Changed
 
 - With an embedder, `auto` retrieval runs vector search first, walks the
