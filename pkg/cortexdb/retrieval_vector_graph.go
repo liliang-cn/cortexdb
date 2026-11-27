@@ -39,6 +39,17 @@ const (
 	// walkEntityLimit is how many of the walk's entities are handed on, best
 	// first, as the seeds of a recall's graph facts (maxGraphFactSeeds).
 	walkEntityLimit = maxGraphFactSeeds
+	// walkRerankWeight is the walk's share of the fused ranking, against the
+	// vector search's 1, for a passage the vector search also returned, and
+	// walkFindWeight for one only the walk reached. Measured on a snapshot of
+	// a live shared brain (51 labelled queries, MRR@5 0.643 for the vector
+	// search alone) and on 2WikiMultiHopQA / MuSiQue (recall@5 0.638 / 0.543
+	// alone): an equal share of both lost on the brain (0.569, 13 queries
+	// worse), because hits matching on common entities reordered the head of
+	// the list; 0.3 and 0.7 gained on the brain (0.664, 1 worse) and kept the
+	// multi-hop gain (0.775 / 0.590).
+	walkRerankWeight = 0.3
+	walkFindWeight   = 0.7
 )
 
 // walksFromHits reports whether a search under decision runs the walk: auto
@@ -623,7 +634,7 @@ func (db *DB) entitiesWithRelations(ctx context.Context, entityIDs []string) (ma
 }
 
 // fuseWalkRankings is reciprocal rank fusion of the vector ranking and the
-// walk's, equally weighted. A tie, common under RRF, goes to the vector
+// walk's, the walk weighted by walkRerankWeight or walkFindWeight. A tie, common under RRF, goes to the vector
 // search: the walk adds what the words miss, it does not overrule them
 // (on MuSiQue a tie that went to the walk cost recall@5 0.59 → 0.54).
 func fuseWalkRankings(passages map[string]*pprRankedPassage) []*pprRankedPassage {
@@ -635,7 +646,11 @@ func fuseWalkRankings(passages map[string]*pprRankedPassage) []*pprRankedPassage
 			p.fused += 1 / (pprFusionRRFK + float64(p.firstRank))
 		}
 		if p.pprRank > 0 {
-			p.fused += 1 / (pprFusionRRFK + float64(p.pprRank))
+			w := walkRerankWeight
+			if p.firstRank == 0 {
+				w = walkFindWeight
+			}
+			p.fused += w / (pprFusionRRFK + float64(p.pprRank))
 		}
 	}
 	sort.Slice(list, func(i, j int) bool {
