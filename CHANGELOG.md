@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.175.0] - 2026-11-27
+
+### Changed
+
+- `graph_schema`, `graph_property_values` and `graph_statistics` keep their
+  answers until the graph changes (#278). Each answer is kept with the state of
+  the graph it was computed on (the highest node and edge rowids, and a counter
+  that triggers in the file bump on a delete and on an update of what these
+  answers read), so a write by another process or an older binary is seen too.
+  On a brain of 411,000 nodes and a million edges a repeated `graph_schema`
+  drops from 8.7 s to under a millisecond; property rewrites cost 2–3 % more.
+  PostgreSQL is unchanged: every call reads the graph.
+
 ## [2.174.0] - 2026-11-27
 
 ### Added
