@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.174.0] - 2026-11-27
+
 ### Added
 
 - The recall log keeps `memory_search` asked by a caller, over MCP or gRPC,
