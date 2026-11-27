@@ -176,6 +176,11 @@ type GraphSchemaResponse struct {
 // deciding what to do with it should not have to distinguish that from a
 // failure.
 func (db *DB) GraphSchema(ctx context.Context, req GraphSchemaRequest) (*GraphSchemaResponse, error) {
+	return cachedGraphAnswer(ctx, db, "graph_schema", req, func() (*GraphSchemaResponse, error) { return db.graphSchemaFresh(ctx, req) })
+}
+
+// graphSchemaFresh is GraphSchema read from the graph.
+func (db *DB) graphSchemaFresh(ctx context.Context, req GraphSchemaRequest) (*GraphSchemaResponse, error) {
 	// The graph tables are created by Open, but the read paths in this package
 	// re-assert the schema so a read against a store some other writer opened
 	// cannot fail with "no such table: graph_nodes" instead of returning
@@ -578,6 +583,11 @@ func (db *DB) GraphPropertyValues(ctx context.Context, req GraphPropertyValuesRe
 	if req.Key == "" {
 		return nil, ErrNoPropertyKey
 	}
+	return cachedGraphAnswer(ctx, db, "graph_property_values", req, func() (*GraphPropertyValuesResponse, error) { return db.graphPropertyValuesFresh(ctx, req) })
+}
+
+// graphPropertyValuesFresh is GraphPropertyValues read from the graph.
+func (db *DB) graphPropertyValuesFresh(ctx context.Context, req GraphPropertyValuesRequest) (*GraphPropertyValuesResponse, error) {
 	if err := db.graph.InitGraphSchema(ctx); err != nil {
 		return nil, err
 	}
