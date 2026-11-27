@@ -576,15 +576,29 @@ func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordR
 	if len(graphHits) > 0 {
 		hits = mergeMemoryHits(graphHits, hits, req.TopK)
 	}
+	// With an embedder, auto walks the entity graph from what the vector
+	// search found and ranks by both (#272).
+	var graphEntities []string
+	if !req.skipWalk && db.walksFromHits(resolution.Decision, req.DisableGraph) && len(hits) > 0 {
+		doneWalk := observability.Time(ctx, "graph-walk")
+		hits, resolution.Decision.Reason, graphEntities, err = db.fuseMemoryWalk(ctx, hits, resolution.Plan, resolution.Decision.Reason, bucketID, req.TopK)
+		doneWalk()
+		if err != nil {
+			return nil, err
+		}
+		resolution.Decision.UseGraph = len(graphEntities) > 0
+		ex.candidates(explainMemory, explainPPR, memoryCandidates(hits, func(h MemorySearchHit) float64 { return h.Score }))
+	}
 	if recordRecalls {
 		db.recordMemoryRecalls(ctx, hits)
 	}
 	return &MemorySearchResponse{
-		Query:    resolution.Plan.Query,
-		Plan:     resolution.Plan,
-		Decision: resolution.Decision,
-		Results:  hits,
-		Degraded: degraded,
+		Query:         resolution.Plan.Query,
+		Plan:          resolution.Plan,
+		Decision:      resolution.Decision,
+		Results:       hits,
+		GraphEntities: graphEntities,
+		Degraded:      degraded,
 	}, nil
 }
 

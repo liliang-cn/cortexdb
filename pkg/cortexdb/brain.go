@@ -61,6 +61,9 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 		ctx, ex = withRecallExplainer(ctx)
 	}
 	start := time.Now()
+	// With an embedder, the two searches below are the vector stage, and the
+	// recall walks the graph once from both of their hits (recallWalk).
+	walks := b.db.recallWalks(req)
 
 	var memoryResp *MemorySearchResponse
 	if !req.DisableMemory {
@@ -78,6 +81,8 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 			RetrievalMode:    req.RetrievalMode,
 			Plan:             req.Plan,
 			PPR:              req.PPR,
+			DisableGraph:     req.DisableGraph,
+			skipWalk:         walks,
 			MinGrade:         req.MinGrade,
 			AsOf:             req.AsOf,
 		})
@@ -116,10 +121,26 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 			MaxEntitiesPerChunk: req.MaxEntitiesPerChunk,
 			Plan:                req.Plan,
 			PPR:                 req.PPR,
+			skipWalk:            walks,
 		})
 		done()
 		if err != nil {
 			return nil, err
+		}
+		if walks {
+			// Before the grade and as_of filters, so what the walk brings in
+			// is filtered like everything else.
+			doneWalk := observability.Time(ctx, "graph-walk")
+			names, err := b.recallWalk(ctx, req, query, memoryResp, knowledgeResp)
+			doneWalk()
+			if err != nil {
+				return nil, err
+			}
+			resp.GraphEntities = names
+			if memoryResp != nil {
+				resp.MemoryDecision = memoryResp.Decision
+				resp.Memories = memoryResp.Results
+			}
 		}
 		if req.MinGrade != "" {
 			ctx, _ := withMinMemoryGrade(ctx, req.MinGrade)
@@ -137,10 +158,31 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 		resp.Degraded = addDegraded(resp.Degraded, knowledgeResp.Degraded...)
 	}
 
+	if walks && req.DisableKnowledge && memoryResp != nil {
+		doneWalk := observability.Time(ctx, "graph-walk")
+		names, err := b.recallWalk(ctx, req, query, memoryResp, nil)
+		doneWalk()
+		if err != nil {
+			return nil, err
+		}
+		resp.GraphEntities = names
+		resp.MemoryDecision = memoryResp.Decision
+		resp.Memories = memoryResp.Results
+	}
+
 	resp.Entities = KnowledgeMemoryCollectEntities(req.EntityNames, resp.Memories, resp.Knowledge, resp.Chunks)
 	// Fold edge-accurate graph traversal into recall so relational questions are
 	// answered from graph edges, not just lexical chunk text.
-	graphSeeds := append(append([]string{}, req.EntityNames...), resp.Entities...)
+	// The walk's entities lead, best first, when the searches walked the
+	// graph from their hits (#272): they are what the graph ranked, where
+	// resp.Entities is every name the hits mention, in name order.
+	graphSeeds := append([]string{}, req.EntityNames...)
+	if knowledgeResp != nil {
+		graphSeeds = append(graphSeeds, knowledgeResp.GraphEntities...)
+	} else if memoryResp != nil {
+		graphSeeds = append(graphSeeds, memoryResp.GraphEntities...)
+	}
+	graphSeeds = append(graphSeeds, resp.Entities...)
 	// The graph is shared across collections and users and its edges carry
 	// no scope, so a confined caller gets no facts from it: an edge one
 	// tenant's document put there would answer another tenant's recall.
@@ -1095,4 +1137,18 @@ func keepKnowledgeAtGrade(ctx context.Context, resp *KnowledgeSearchResponse) {
 	}
 	resp.Chunks = chunks
 	resp.Context = buildGraphRAGContext(chunks)
+}
+
+// interleaveStrings appends a and b to out alternately, so neither list's
+// best entries wait behind the other's whole list.
+func interleaveStrings(out, a, b []string) []string {
+	for i := 0; i < len(a) || i < len(b); i++ {
+		if i < len(a) {
+			out = append(out, a[i])
+		}
+		if i < len(b) {
+			out = append(out, b[i])
+		}
+	}
+	return out
 }

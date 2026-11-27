@@ -266,7 +266,7 @@ var confinedTools = map[string]toolRule{
 	"knowledge_memory_remember": {scope: memoryScope, stores: storeMemory, rewritten: cortexdb.EngineMemoryKeys,
 		args: memoryArgs, ids: []idField{{"memory_id", idMemory}}},
 	"memory_search": {scope: memoryScope, stores: storeMemory,
-		args: paths(queryArgs[:4], planArgs, pprArgs, []string{"entity_names", "top_k", "session_id", "min_grade", "as_of"})},
+		args: paths(queryArgs[:5], planArgs, pprArgs, []string{"entity_names", "top_k", "session_id", "min_grade", "as_of"})},
 	// Memory, addressed by id alone. The list form of memory_get is data: the
 	// facade lists a row outside the caller's scope under missing, in the
 	// order asked, exactly as a row that does not exist (cortexdb.DB.GetMemory).

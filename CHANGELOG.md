@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- With an embedder, `auto` retrieval runs vector search first, walks the
+  entity graph from the entities its hits mention (Personalized PageRank,
+  seeded by the top hits by rank and the entities the query names), and
+  rank-fuses the vector and graph rankings (#272). A passage or memory the
+  walk reaches can come in without sharing a word with the query; the list
+  stays within `top_k`. `knowledge_search`, `memory_search` and
+  `knowledge_memory_recall` all do it. A recall walks once, from the memory
+  and the knowledge hits together, so a document hit can bring in the memory
+  about the same entity; graph facts are ordered by the walk. Responses carry
+  `graph_entities`, the entities the walk ranked highest. `disable_graph`
+  (now also on `memory_search`) keeps the vector and keyword ranking alone.
+  An entity only the hit itself mentions, with no relation, does not seed
+  the walk. recall@5 with embeddinggemma, before → after: 2WikiMultiHopQA
+  0.661 → 0.788, MuSiQue 0.587 → 0.59, MuSiQue single-hop 0.887 → 0.913.
+
 ## [2.172.0] - 2026-11-26
 
 ### Changed
