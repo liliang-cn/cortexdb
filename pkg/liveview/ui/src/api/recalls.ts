@@ -77,6 +77,15 @@ export interface RecallExplainSide {
   dropped?: RecallDrop[];
   /** How many each floor removed, counting those past the ones kept in `dropped`. */
   dropped_total?: Record<string, number>;
+  /** The entities the graph walk started from, heaviest first, with their weights. */
+  walk_seeds?: RecallWalkEntity[];
+  /** The entities the graph walk ranked highest. */
+  walk_entities?: string[];
+}
+
+export interface RecallWalkEntity {
+  name: string;
+  weight: number;
 }
 
 export interface RecallExplainHit {

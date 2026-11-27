@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Check, Orbit, ShieldCheck, TriangleAlert, Quote, X } from "lucide-react";
 import { Link } from "react-router";
-import type { RecallEntry, RecallExplainSide, RecallHit, RecallVerdict } from "@/api/recalls";
+import type { RecallCandidate, RecallEntry, RecallExplainSide, RecallHit, RecallVerdict } from "@/api/recalls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -226,6 +226,29 @@ function Hit({ hit: h, t, rule, onMark }: { hit: RecallHit; t: RecallsText; rule
   );
 }
 
+function CandidateTable({ title, list, isFinal, t }: { title: ReactNode; list: RecallCandidate[]; isFinal: (id: string) => boolean; t: RecallsText }) {
+  return (
+    <table className="mt-3 w-full table-fixed border-collapse text-xs">
+      <thead>
+        <tr className="border-b text-left text-muted-foreground">
+          <th className="py-1 pr-2 font-medium">{title}</th>
+          <th className="w-12 py-1 pr-2 text-right font-medium">{t.rank}</th>
+          <th className="w-16 py-1 text-right font-medium">{t.score}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {list.map((c) => (
+          <tr key={`${c.id}:${c.rank}`} className={cn("border-b border-border/60", isFinal(c.id) && "bg-op-added-soft")}>
+            <td className="py-1 pr-2 font-mono [overflow-wrap:anywhere]">{c.id}</td>
+            <td className="py-1 pr-2 text-right font-mono tabular-nums">{c.rank}</td>
+            <td className="py-1 text-right font-mono tabular-nums">{score(c.score)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function Side({ name, side, isFinal, t }: { name: string; side: RecallExplainSide; isFinal: (id: string) => boolean; t: RecallsText }) {
   const dropped = side.dropped ?? [];
   const more = droppedBeyond(dropped.length, side.dropped_total);
@@ -238,26 +261,27 @@ function Side({ name, side, isFinal, t }: { name: string; side: RecallExplainSid
         {requested && <span className="text-xs font-normal text-muted-foreground">{t.askedFor(requested)}</span>}
       </h4>
       {side.reason && <p className="mt-1 text-sm text-muted-foreground">{side.reason}</p>}
+      {(side.walk_seeds?.length ?? 0) > 0 && (
+        <p className="mt-2 flex flex-wrap items-center gap-1 text-xs">
+          <span className="mr-1 text-muted-foreground">{t.walkSeeds}</span>
+          {(side.walk_seeds ?? []).map((w) => (
+            <Badge key={w.name} variant="outline" className="gap-1 font-normal">
+              {w.name}
+              <span className="font-mono tabular-nums text-muted-foreground">{score(w.weight)}</span>
+            </Badge>
+          ))}
+        </p>
+      )}
+      {(side.walk_entities?.length ?? 0) > 0 && (
+        <p className="mt-1 flex flex-wrap items-center gap-1 text-xs">
+          <span className="mr-1 text-muted-foreground">{t.walkReached}</span>
+          <Chips values={side.walk_entities ?? []} />
+        </p>
+      )}
       {retrieverNames(side.candidates).map((ret) => (
-        <table key={ret} className="mt-3 w-full table-fixed border-collapse text-xs">
-          <thead>
-            <tr className="border-b text-left text-muted-foreground">
-              <th className="py-1 pr-2 font-medium">{t.retriever}: <span className="font-mono">{ret}</span></th>
-              <th className="w-12 py-1 pr-2 text-right font-medium">{t.rank}</th>
-              <th className="w-16 py-1 text-right font-medium">{t.score}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(side.candidates?.[ret] ?? []).map((c) => (
-              <tr key={`${c.id}:${c.rank}`} className={cn("border-b border-border/60", isFinal(c.id) && "bg-op-added-soft")}>
-                <td className="py-1 pr-2 font-mono [overflow-wrap:anywhere]">{c.id}</td>
-                <td className="py-1 pr-2 text-right font-mono tabular-nums">{c.rank}</td>
-                <td className="py-1 text-right font-mono tabular-nums">{score(c.score)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <CandidateTable key={ret} title={<>{t.retriever}: <span className="font-mono">{ret}</span></>} list={side.candidates?.[ret] ?? []} isFinal={isFinal} t={t} />
       ))}
+      {(side.fused?.length ?? 0) > 0 && <CandidateTable title={t.fusedList} list={side.fused ?? []} isFinal={isFinal} t={t} />}
       {dropped.length > 0 && (
         <>
           <p className="mt-4 mb-1 text-xs font-semibold text-muted-foreground">{t.dropped}</p>

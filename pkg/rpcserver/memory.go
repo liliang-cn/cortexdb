@@ -122,7 +122,7 @@ func (s *memoryService) GetMemory(ctx context.Context, req *rpcv1.GetMemoryReque
 }
 
 func (s *memoryService) SearchMemory(ctx context.Context, req *rpcv1.SearchMemoryRequest) (*rpcv1.SearchMemoryResponse, error) {
-	resp, err := s.db.SearchMemory(ctx, cortexdb.MemorySearchRequest{
+	resp, err := s.db.SearchMemoryForCaller(ctx, "memory_search", cortexdb.MemorySearchRequest{
 		Query:            req.GetQuery(),
 		UserID:           req.GetUserId(),
 		SessionID:        req.GetSessionId(),

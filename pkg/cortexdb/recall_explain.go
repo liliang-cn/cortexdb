@@ -88,6 +88,19 @@ type RecallExplainSide struct {
 	// counting those past maxExplainDrops.
 	Dropped      []RecallDrop   `json:"dropped,omitempty"`
 	DroppedTotal map[string]int `json:"dropped_total,omitempty"`
+	// WalkSeeds are the entities the graph walk started from, heaviest
+	// first, and WalkEntities the entities it ranked highest; both empty
+	// when there was no walk.
+	WalkSeeds    []RecallWalkEntity `json:"walk_seeds,omitempty"`
+	WalkEntities []string           `json:"walk_entities,omitempty"`
+}
+
+// RecallWalkEntity is an entity the graph walk started from, with the weight
+// it started with: the hits' ranks that mention it, over how many passages
+// mention it.
+type RecallWalkEntity struct {
+	Name   string  `json:"name"`
+	Weight float64 `json:"weight"`
 }
 
 // RecallCandidate is one row a retriever put forward.
@@ -189,6 +202,17 @@ func (e *recallExplainer) candidates(side, retriever string, list []RecallCandid
 		s.Candidates = map[string][]RecallCandidate{}
 	}
 	s.Candidates[retriever] = append(s.Candidates[retriever], list...)
+}
+
+// walk records where side's graph walk started and what it ranked highest.
+func (e *recallExplainer) walk(side string, seeds []RecallWalkEntity, entities []string) {
+	if e == nil {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	s := e.sideLocked(side)
+	s.WalkSeeds, s.WalkEntities = seeds, entities
 }
 
 // fused records the merged list before the floors.

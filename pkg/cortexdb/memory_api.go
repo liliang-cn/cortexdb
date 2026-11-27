@@ -587,7 +587,6 @@ func (db *DB) searchMemory(ctx context.Context, req MemorySearchRequest, recordR
 			return nil, err
 		}
 		resolution.Decision.UseGraph = len(graphEntities) > 0
-		ex.candidates(explainMemory, explainPPR, memoryCandidates(hits, func(h MemorySearchHit) float64 { return h.Score }))
 	}
 	if recordRecalls {
 		db.recordMemoryRecalls(ctx, hits)
@@ -741,9 +740,36 @@ func (t *GraphRAGToolbox) GetMemory(ctx context.Context, req MemoryGetRequest) (
 	return t.db.GetMemory(ctx, req)
 }
 
-// SearchMemory searches memory through the tool surface.
+// SearchMemory searches memory through the tool surface, as a caller's
+// recall: it goes in the recall log (SearchMemoryForCaller).
 func (t *GraphRAGToolbox) SearchMemory(ctx context.Context, req MemorySearchRequest) (*MemorySearchResponse, error) {
-	return t.db.SearchMemory(ctx, req)
+	return t.db.SearchMemoryForCaller(ctx, "memory_search", req)
+}
+
+// SearchMemoryForCaller is SearchMemory answered to a caller, a tool or an
+// RPC, and recorded in the recall log under tool with its explain record,
+// the way knowledge_memory_recall is. An agent that reads its memory this
+// way, as SuperLeo does over gRPC, is then as auditable as one that recalls.
+// The searches CortexDB makes for itself (a duplicate check before a save,
+// a supersede check) call SearchMemory and leave no record; so does one made
+// inside a recall, which the recall's own record covers.
+func (db *DB) SearchMemoryForCaller(ctx context.Context, tool string, req MemorySearchRequest) (*MemorySearchResponse, error) {
+	if recallExplainerOf(ctx) != nil || !db.recallLogOn() {
+		return db.SearchMemory(ctx, req)
+	}
+	start := time.Now()
+	ctx, ex := withRecallExplainer(ctx)
+	resp, err := db.SearchMemory(ctx, req)
+	if err != nil || resp == nil {
+		return resp, err
+	}
+	rreq := KnowledgeMemoryRecallRequest{Query: req.Query, DisableKnowledge: true}
+	rresp := &KnowledgeMemoryRecallResponse{
+		Query: resp.Query, MemoryPlan: resp.Plan, MemoryDecision: resp.Decision,
+		Memories: resp.Results, Degraded: resp.Degraded, GraphEntities: resp.GraphEntities,
+	}
+	db.logRecall(ctx, tool, rreq, rresp, ex.build(rreq, rresp), time.Since(start))
+	return resp, nil
 }
 
 // DeleteMemory deletes a memory item through the tool surface.

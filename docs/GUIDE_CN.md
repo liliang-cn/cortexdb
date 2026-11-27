@@ -909,7 +909,10 @@ trace（`CORTEXDB_TRACE=1`，或超过 `CORTEXDB_SLOW_MS` 的慢请求）是结�
 **召回日志**需要显式开启，因为它会保存查询文本：服务端（或本地大脑的 `cortexdb-mcp-stdio`）设
 `CORTEXDB_RECALL_LOG=1`，保留 `CORTEXDB_RECALL_LOG_DAYS`（30）天、最多
 `CORTEXDB_RECALL_LOG_MAX_ROWS`（100000）条。它是数据库文件里的一张表。每次召回记录提问方（key、host、
-project、agent）、延迟、命中及每条的检索方式、分数、写入者和来源，以及解释记录。工具
+project、agent）、延迟、命中及每条的检索方式、分数、写入者和来源，以及解释记录。记录的有
+`knowledge_memory_recall`，以及调用方经 MCP 或 gRPC 发起的 `memory_search`（像 SuperLeo 这样用它读记忆的
+agent）；大脑自己内部做的检索不记。跑了图遍历时，解释记录里有遍历的起点实体及其权重、排得最高的实体、
+图自己对段落的排名和融合后的列表，与向量、关键词两个排名并列。工具
 `recall_log_list`、`recall_log_get`、`recall_log_stats`、`recall_feedback`、`recall_feedback_export`
 用来读取、把命中标为有用或噪音，并把标记导出为 recall eval 的 golden 用例（`--recall-eval` 的 JSONL 格式）。
 限定范围的 key 只能看到和标记自己的召回。

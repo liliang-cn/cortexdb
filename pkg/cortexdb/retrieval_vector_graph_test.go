@@ -107,16 +107,19 @@ func TestKnowledgeSearchWithoutEmbedderDoesNotWalkFromHits(t *testing.T) {
 	}
 }
 
-func TestMemorySearchWalksTheGraphFromVectorHits(t *testing.T) {
+// incidentMemoryStore holds an incident whose root-cause change shares no
+// word with the question; only the walk from the incident reaches it.
+func incidentMemoryStore(t *testing.T, opts ...Option) (*DB, context.Context) {
+	t.Helper()
 	ctx := context.Background()
 	embedder := newKeywordEmbedder("mobile", "push", "app", "late")
 	cfg := DefaultConfig(filepath.Join(t.TempDir(), "mem.db"))
 	cfg.Dimensions = embedder.Dim()
-	db, err := Open(cfg, WithEmbedder(embedder))
+	db, err := Open(cfg, append([]Option{WithEmbedder(embedder)}, opts...)...)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(func() { db.Close() })
 
 	save := func(id, content string, ents []ToolEntityInput) {
 		t.Helper()
@@ -132,6 +135,11 @@ func TestMemorySearchWalksTheGraphFromVectorHits(t *testing.T) {
 	save("qa", "Mobile app QA moved to Thursdays.", nil)
 	save("icons", "New app icons for the mobile release.", nil)
 
+	return db, ctx
+}
+
+func TestMemorySearchWalksTheGraphFromVectorHits(t *testing.T) {
+	db, ctx := incidentMemoryStore(t)
 	const q = "why was mobile app push late"
 	vectorOnly, err := db.SearchMemory(ctx, MemorySearchRequest{Query: q, Scope: MemoryScopeGlobal, TopK: 4, DisableGraph: true})
 	if err != nil {
@@ -210,5 +218,64 @@ func TestRecallWalksOnceFromBothStores(t *testing.T) {
 	// search's, so the page both rankings agree on leads.
 	if len(rec.Knowledge) == 0 || rec.Knowledge[0].KnowledgeID != "ember" {
 		t.Fatalf("recall's knowledge should lead with Ember's page: %v", rec.Knowledge)
+	}
+}
+
+// A memory search made for a caller, as SuperLeo's over gRPC, is in the
+// recall log with the walk on its record: where the walk started, the walk's
+// own ranking and the fused list. A search CortexDB makes for itself is not.
+func TestAMemorySearchForACallerIsLoggedWithItsWalk(t *testing.T) {
+	db, ctx := incidentMemoryStore(t, WithRecallLog(RecallLogOptions{}))
+	const q = "why was mobile app push late"
+	if _, err := db.SearchMemory(ctx, MemorySearchRequest{Query: q, Scope: MemoryScopeGlobal, TopK: 4}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SearchMemoryForCaller(ctx, "memory_search", MemorySearchRequest{Query: q, Scope: MemoryScopeGlobal, TopK: 4}); err != nil {
+		t.Fatal(err)
+	}
+	list, err := db.ListRecalls(ctx, RecallLogListRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Recalls) != 1 || list.Recalls[0].Tool != "memory_search" {
+		t.Fatalf("want the caller's search alone, logged as memory_search: %+v", list.Recalls)
+	}
+	rec, err := db.GetRecall(ctx, RecallLogGetRequest{RecallID: list.Recalls[0].ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Explain == nil || rec.Explain.Memory == nil {
+		t.Fatalf("no explain record for the memory side: %+v", rec.Explain)
+	}
+	side := rec.Explain.Memory
+	var seeds []string
+	for _, w := range side.WalkSeeds {
+		seeds = append(seeds, w.Name)
+		if w.Weight <= 0 {
+			t.Fatalf("seed %s has no weight", w.Name)
+		}
+	}
+	// CHG-1042 is mentioned by two memories; INC-77 by its own alone, with
+	// no relation, so it does not seed the walk.
+	if !containsString(seeds, "CHG-1042") || containsString(seeds, "INC-77") {
+		t.Fatalf("walk seeds = %v, want CHG-1042 and not INC-77", seeds)
+	}
+	if len(side.WalkEntities) == 0 {
+		t.Fatal("the entities the walk ranked highest are missing")
+	}
+	var walked []string
+	for _, c := range side.Candidates[explainPPR] {
+		walked = append(walked, c.ID)
+	}
+	if !containsString(walked, "chg-1042") {
+		t.Fatalf("the walk's own ranking = %v, want chg-1042 in it", walked)
+	}
+	for i, c := range side.Candidates[explainPPR] {
+		if c.Rank != i+1 {
+			t.Fatalf("the walk's ranking holds another list too: %+v", side.Candidates[explainPPR])
+		}
+	}
+	if len(side.Fused) == 0 || len(side.Candidates[explainVector]) == 0 {
+		t.Fatalf("want the vector ranking and the fused list beside the walk's: %+v", side)
 	}
 }
