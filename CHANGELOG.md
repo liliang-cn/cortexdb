@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- With an embedder, the walk from the vector hits no longer makes recall
+  worse on a large brain (#274). The walk now weighs 0.3 against the vector
+  search's 1 for a passage both returned, and 0.7 for one only the walk
+  reached; at equal weight, hits that matched on common entities reordered
+  the head of the list. On 51 labelled queries against a snapshot of the
+  shared brain, MRR@5: vector alone 0.643, equal weight 0.569 (13 queries
+  worse), now 0.664 (1 worse). recall@5 with embeddinggemma: 2WikiMultiHopQA
+  0.775, MuSiQue 0.59, MuSiQue single-hop 0.91.
+
 ## [2.173.0] - 2026-11-27
 
 ### Changed
