@@ -164,6 +164,9 @@ type KnowledgeSearchRequest struct {
 	ReturnPaths  bool `json:"return_paths,omitempty"`
 	PathMaxDepth int  `json:"path_max_depth,omitempty"`
 	MaxPaths     int  `json:"max_paths,omitempty"`
+	// skipWalk leaves the walk to the caller: a recall walks the graph once
+	// from both stores' hits (#272).
+	skipWalk bool
 }
 
 // KnowledgeSearchHit is a document-shaped search result aggregated from chunk retrieval.
@@ -203,7 +206,11 @@ type KnowledgeSearchResponse struct {
 	Results  []KnowledgeSearchHit  `json:"results"`
 	Chunks   []GraphRAGChunkResult `json:"chunks,omitempty"`
 	Entities []string              `json:"entities,omitempty"`
-	Context  string                `json:"context,omitempty"`
+	// GraphEntities are the entities the graph walk ranked highest, best
+	// first: with an embedder, auto search walks the entity graph from the
+	// entities its vector hits mention and fuses the two rankings (#272).
+	GraphEntities []string `json:"graph_entities,omitempty"`
+	Context       string   `json:"context,omitempty"`
 	// Degraded names what did not run as it should have (see
 	// DegradedEmbedderUnreachable); empty when the search ran whole.
 	Degraded []string `json:"degraded,omitempty"`
@@ -370,6 +377,13 @@ type MemorySearchRequest struct {
 	Plan          *RetrievalPlan `json:"plan,omitempty"`
 	// PPR tunes retrieval_mode "ppr"; ignored by every other mode.
 	PPR *PPRRetrievalOptions `json:"ppr,omitempty"`
+	// DisableGraph keeps an auto search to the vector and keyword ranking:
+	// with an embedder it otherwise walks the entity graph from its hits and
+	// fuses the two rankings (#272).
+	DisableGraph bool `json:"disable_graph,omitempty"`
+	// skipWalk leaves the walk to the caller: a recall walks the graph once
+	// from both stores' hits (#272).
+	skipWalk bool
 	// MinGrade leaves out memories known less well than this grade
 	// (verified > self_consistent > asserted = untagged > held > refused).
 	MinGrade string `json:"min_grade,omitempty"`
@@ -410,6 +424,9 @@ type MemorySearchResponse struct {
 	Plan     RetrievalPlan     `json:"plan"`
 	Decision RetrievalDecision `json:"decision"`
 	Results  []MemorySearchHit `json:"results"`
+	// GraphEntities are the entities the graph walk ranked highest, best
+	// first (see KnowledgeSearchResponse.GraphEntities).
+	GraphEntities []string `json:"graph_entities,omitempty"`
 	// Degraded names what did not run as it should have (see
 	// DegradedEmbedderUnreachable); empty when the search ran whole.
 	Degraded []string `json:"degraded,omitempty"`

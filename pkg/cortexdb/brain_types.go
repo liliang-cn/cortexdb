@@ -104,7 +104,11 @@ type KnowledgeMemoryRecallResponse struct {
 	Chunks            []GraphRAGChunkResult      `json:"chunks,omitempty"`
 	Entities          []string                   `json:"entities,omitempty"`
 	GraphFacts        []KnowledgeMemoryGraphFact `json:"graph_facts,omitempty"`
-	ContextPack       KnowledgeMemoryContextPack `json:"context_pack"`
+	// GraphEntities are the entities the graph walk ranked highest, best
+	// first: with an embedder, recall walks the entity graph from what the
+	// vector search found and ranks by both (#272).
+	GraphEntities []string                   `json:"graph_entities,omitempty"`
+	ContextPack   KnowledgeMemoryContextPack `json:"context_pack"`
 	// Detail is "index" when the hits were cut to their first lines.
 	Detail string `json:"detail,omitempty"`
 	// Degraded names what did not run as it should have, from either half:

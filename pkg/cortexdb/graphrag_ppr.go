@@ -499,7 +499,13 @@ func (db *DB) dropHubEntities(ctx context.Context, entityIDs []string, counts ma
 		return entityIDs, nil
 	}
 	var passages int
-	if err := db.queryRow(ctx, `SELECT COUNT(*) FROM graph_nodes WHERE node_type = ?`, passageNodeType).Scan(&passages); err != nil {
+	count := `SELECT COUNT(*) FROM graph_nodes WHERE node_type = ?`
+	args := []any{passageNodeType}
+	if passageNodeType == "" {
+		// A walk over both stores (#272): chunks and memories are passages.
+		count, args = `SELECT COUNT(*) FROM graph_nodes WHERE node_type IN ('chunk', 'memory')`, nil
+	}
+	if err := db.queryRow(ctx, count, args...).Scan(&passages); err != nil {
 		return nil, fmt.Errorf("count passages: %w", err)
 	}
 	limit := max(pprHubMinMentions, int(pprHubShare*float64(passages)))
@@ -870,6 +876,13 @@ func (db *DB) searchMemoryPPR(ctx context.Context, req MemorySearchRequest, reso
 // pprModeDescription is appended to the retrieval_mode description of every
 // tool that implements the walk, so an agent learns when to reach for it.
 const pprModeDescription = ` "ppr" ranks passages by Personalized PageRank over the entity graph, seeded by the entities the query (or entity_names) names and by the first-stage hits: use it for multi-hop questions whose answer passage shares no words with the question ("where was the director of X born?"). Works without an embedder; tune it with "ppr".`
+
+// walkModeDescription is what auto does under an embedder (#272).
+const walkModeDescription = ` With an embedder, auto starts with the vector search, walks the entity graph from the entities its hits mention, and ranks by both: a passage the walk reaches can come in without sharing a word with the query.`
+
+// walkDisableDescription is disable_graph on a search that walks from its
+// hits.
+const walkDisableDescription = "Rank by the vector and keyword search alone: no walk of the entity graph from the hits, no graph-derived entities."
 
 // toolPPROptionsSchema documents PPRRetrievalOptions for the tool surface.
 func toolPPROptionsSchema() map[string]any {

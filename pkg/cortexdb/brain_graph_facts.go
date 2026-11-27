@@ -113,10 +113,18 @@ func (b *KnowledgeMemory) collectGraphFacts(ctx context.Context, query string, n
 	collected := make(map[factKey]*graphFactEvidence)
 	asOf := memoryAsOf(ctx)
 	order := make([]factKey, 0, maxGraphFacts*2)
-	for _, name := range candidates {
+	// Where each entity stands among the candidates: the named ones, then the
+	// seeds in the order given — with an embedder, the graph walk's ranking
+	// (#272). A fact between two entities near the front is about the
+	// question; one that only touches a seed in passing is not.
+	standing := make(map[string]float64, len(candidates))
+	for i, name := range candidates {
 		nodeID := resolveEntityNodeID("", name)
 		if nodeID == "" || getNode(nodeID) == nil {
 			continue
+		}
+		if _, ok := standing[nodeID]; !ok {
+			standing[nodeID] = 1 / float64(i+1)
 		}
 		edges, err := g.GetEdges(ctx, nodeID, "both")
 		if err != nil {
@@ -174,6 +182,9 @@ func (b *KnowledgeMemory) collectGraphFacts(ctx context.Context, query string, n
 		iWeak, jWeak := isWeakPredicate(facts[i].Predicate), isWeakPredicate(facts[j].Predicate)
 		if iWeak != jWeak {
 			return jWeak
+		}
+		if si, sj := standing[facts[i].SubjectID]+standing[facts[i].ObjectID], standing[facts[j].SubjectID]+standing[facts[j].ObjectID]; si != sj {
+			return si > sj
 		}
 		iN := collected[factKey{facts[i].SubjectID, facts[i].Predicate, facts[i].ObjectID}].assertions
 		jN := collected[factKey{facts[j].SubjectID, facts[j].Predicate, facts[j].ObjectID}].assertions

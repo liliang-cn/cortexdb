@@ -160,7 +160,10 @@ type GraphRAGQueryResult struct {
 	Decision RetrievalDecision
 	Chunks   []GraphRAGChunkResult
 	Entities []string
-	Context  string
+	// GraphEntities are the entities the graph walk ranked highest, best
+	// first, when auto search walked the graph from its hits (#272).
+	GraphEntities []string `json:",omitempty"`
+	Context       string
 	// Windows is populated only when GraphRAGQueryOptions.ChunkWindow asked for
 	// widening. It is the same text Context carries, but structured: one entry
 	// per contiguous run of chunks, each segment marked as the chunk that

@@ -419,6 +419,18 @@ func (db *DB) SearchKnowledge(ctx context.Context, req KnowledgeSearchRequest) (
 		}
 	}
 
+	// With an embedder, auto walks the entity graph from what the vector
+	// search found and ranks by both (#272). After the floors, so the walk
+	// starts only from hits that passed them.
+	if !req.skipWalk && db.walksFromHits(resolution.Decision, req.DisableGraph) {
+		doneWalk := observability.Time(ctx, "graph-walk")
+		err := db.fuseKnowledgeWalk(ctx, result, resolution.Plan, opts)
+		doneWalk()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// A question naming several entities gets evidence for each, and what
 	// connects them first (#251). After the floors, which judge a chunk by
 	// its score against the whole question; a chunk brought in here mentions
@@ -446,15 +458,16 @@ func (db *DB) SearchKnowledge(ctx context.Context, req KnowledgeSearchRequest) (
 	}
 
 	return &KnowledgeSearchResponse{
-		Paths:    result.Paths,
-		Query:    result.Query,
-		Plan:     result.Plan,
-		Decision: result.Decision,
-		Results:  hits,
-		Chunks:   result.Chunks,
-		Entities: result.Entities,
-		Context:  result.Context,
-		Degraded: result.Degraded,
+		Paths:         result.Paths,
+		Query:         result.Query,
+		Plan:          result.Plan,
+		Decision:      result.Decision,
+		Results:       hits,
+		Chunks:        result.Chunks,
+		Entities:      result.Entities,
+		GraphEntities: result.GraphEntities,
+		Context:       result.Context,
+		Degraded:      result.Degraded,
 	}, nil
 }
 
