@@ -75,6 +75,9 @@ type hitWalk struct {
 	// walkEntityLimit: the seeds themselves and what lies between them.
 	entities []graph.PageRankResult
 	seeds    int
+	// seedWeights are the entities the walk started from, by node id, with
+	// the weight each started with: what a recall's explain record shows.
+	seedWeights map[string]float64
 }
 
 // walkFromHits seeds a walk with the entities the first hits mention (and
@@ -96,7 +99,7 @@ func (db *DB) walkFromHits(ctx context.Context, query string, entityNames []stri
 	if err != nil {
 		return nil, fmt.Errorf("personalized pagerank: %w", err)
 	}
-	walk := &hitWalk{seeds: len(seeds)}
+	walk := &hitWalk{seeds: len(seeds), seedWeights: seeds}
 	for _, s := range res.Scores {
 		if s.Score <= 0 {
 			continue
@@ -221,6 +224,24 @@ func (db *DB) passageEntityIDs(ctx context.Context, passageIDs []string) (map[st
 
 // walkEntityNames names the walk's entities, best first.
 func (db *DB) walkEntityNames(ctx context.Context, entities []graph.PageRankResult) []string {
+	named := db.walkEntityNamesWithScores(ctx, entities)
+	if named == nil {
+		return nil
+	}
+	names := make([]string, 0, len(named))
+	for _, n := range named {
+		names = append(names, n.name)
+	}
+	return names
+}
+
+type scoredEntityName struct {
+	name  string
+	score float64
+}
+
+// walkEntityNamesWithScores is walkEntityNames keeping each entity's score.
+func (db *DB) walkEntityNamesWithScores(ctx context.Context, entities []graph.PageRankResult) []scoredEntityName {
 	if len(entities) == 0 {
 		return nil
 	}
@@ -238,14 +259,14 @@ func (db *DB) walkEntityNames(ctx context.Context, entities []graph.PageRankResu
 			byID[n.ID] = strings.TrimSpace(n.Content)
 		}
 	}
-	names := make([]string, 0, len(ids))
-	for _, id := range ids {
+	names := make([]scoredEntityName, 0, len(ids))
+	for i, id := range ids {
 		name := byID[id]
 		if name == "" {
 			name = entityLabelFromID(id)
 		}
 		if name != "" {
-			names = append(names, name)
+			names = append(names, scoredEntityName{name: name, score: entities[i].Score})
 		}
 	}
 	return names
@@ -323,6 +344,7 @@ func (db *DB) fuseKnowledgeWithWalk(ctx context.Context, result *GraphRAGQueryRe
 		}
 		p.pprRank, p.pprMass = rank, w.Score
 	}
+	db.explainWalk(ctx, explainKnowledge, walk, passages)
 
 	// The walk reorders the list and fills it to top_k; it does not make it
 	// longer than that, or than the vector stage's own list where that was
@@ -365,7 +387,7 @@ func (db *DB) fuseKnowledgeWithWalk(ctx context.Context, result *GraphRAGQueryRe
 	result.Windows = nil
 	result.Context = buildGraphRAGContext(chunks)
 	result.Decision.Reason = walkReason(result.Decision.Reason, walk, rank)
-	recallExplainerOf(ctx).candidates(explainKnowledge, explainPPR, chunkCandidates(chunks, func(c GraphRAGChunkResult) float64 { return c.Score }))
+	recallExplainerOf(ctx).fused(explainKnowledge, chunkCandidates(chunks, func(c GraphRAGChunkResult) float64 { return c.Score }))
 	return db.widenGraphRAGContext(ctx, result, opts)
 }
 
@@ -442,6 +464,7 @@ func (db *DB) fuseMemoryWithWalk(ctx context.Context, hits []MemorySearchHit, bu
 	for id, e := range entries {
 		passages[id] = e.p
 	}
+	db.explainWalk(ctx, explainMemory, walk, passages)
 	fused := fuseWalkRankings(passages)
 	out := make([]MemorySearchHit, 0, topK)
 	for _, p := range fused {
@@ -456,7 +479,61 @@ func (db *DB) fuseMemoryWithWalk(ctx context.Context, hits []MemorySearchHit, bu
 		}
 		out = append(out, h)
 	}
+	if ex := recallExplainerOf(ctx); ex != nil {
+		list := make([]RecallCandidate, 0, len(out))
+		for i, h := range out {
+			list = append(list, RecallCandidate{ID: h.Memory.ID, Score: h.Score, Rank: i + 1})
+		}
+		ex.fused(explainMemory, list)
+	}
 	return out, rank
+}
+
+// explainWalk puts a walk on side's explain record: the entities it started
+// from, with their weights, the entities it ranked highest, and its own
+// ranking of the passages, apart from the vector ranking it was fused with.
+// Without them a record cannot show what carried the walk where it went.
+func (db *DB) explainWalk(ctx context.Context, side string, walk *hitWalk, passages map[string]*pprRankedPassage) {
+	ex := recallExplainerOf(ctx)
+	if ex == nil || walk.seeds == 0 {
+		return
+	}
+	ranked := make([]*pprRankedPassage, 0, len(passages))
+	for _, p := range passages {
+		if p.pprRank > 0 {
+			ranked = append(ranked, p)
+		}
+	}
+	sort.Slice(ranked, func(i, j int) bool { return ranked[i].pprRank < ranked[j].pprRank })
+	list := make([]RecallCandidate, 0, len(ranked))
+	for _, p := range ranked {
+		id := p.id
+		if memoryID, ok := memoryIDFromGraphNode(id); ok {
+			id = memoryID
+		}
+		list = append(list, RecallCandidate{ID: id, Score: p.pprMass, Rank: p.pprRank})
+	}
+	ex.candidates(side, explainPPR, list)
+
+	seeds := make([]graph.PageRankResult, 0, len(walk.seedWeights))
+	for id, w := range walk.seedWeights {
+		seeds = append(seeds, graph.PageRankResult{NodeID: id, Score: w})
+	}
+	sort.Slice(seeds, func(i, j int) bool {
+		if seeds[i].Score != seeds[j].Score {
+			return seeds[i].Score > seeds[j].Score
+		}
+		return seeds[i].NodeID < seeds[j].NodeID
+	})
+	if len(seeds) > maxExplainCandidates {
+		seeds = seeds[:maxExplainCandidates]
+	}
+	named := db.walkEntityNamesWithScores(ctx, seeds)
+	out := make([]RecallWalkEntity, 0, len(named))
+	for _, n := range named {
+		out = append(out, RecallWalkEntity{Name: n.name, Weight: n.score})
+	}
+	ex.walk(side, out, db.walkEntityNames(ctx, walk.entities))
 }
 
 func appendVia(via []string, how string) []string {
@@ -523,7 +600,7 @@ func (b *KnowledgeMemory) recallWalk(ctx context.Context, req KnowledgeMemoryRec
 		if err != nil {
 			return nil, fmt.Errorf("personalized pagerank: %w", err)
 		}
-		walk.seeds = len(seeds)
+		walk.seeds, walk.seedWeights = len(seeds), seeds
 		for _, s := range res.Scores {
 			if s.Score <= 0 {
 				continue

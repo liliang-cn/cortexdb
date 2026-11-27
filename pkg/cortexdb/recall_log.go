@@ -306,19 +306,19 @@ func callerKeyOf(ctx context.Context) string {
 
 // logRecall records one recall. It never fails the recall: a log that
 // cannot be written is reported and skipped.
-func (db *DB) logRecall(ctx context.Context, req KnowledgeMemoryRecallRequest, resp *KnowledgeMemoryRecallResponse, explain *RecallExplain, latency time.Duration) {
+func (db *DB) logRecall(ctx context.Context, tool string, req KnowledgeMemoryRecallRequest, resp *KnowledgeMemoryRecallResponse, explain *RecallExplain, latency time.Duration) {
 	if !db.recallLogOn() || resp == nil {
 		return
 	}
 	// Detached from the caller: the recall is answered whether or not the
 	// caller is still waiting, and its record should be too.
 	ctx = context.WithoutCancel(ctx)
-	if err := db.writeRecallLog(ctx, req, resp, explain, latency); err != nil {
+	if err := db.writeRecallLog(ctx, tool, req, resp, explain, latency); err != nil {
 		slog.Warn("cortexdb: recall log not written", observability.LogArgs(ctx, "err", err)...)
 	}
 }
 
-func (db *DB) writeRecallLog(ctx context.Context, req KnowledgeMemoryRecallRequest, resp *KnowledgeMemoryRecallResponse, explain *RecallExplain, latency time.Duration) error {
+func (db *DB) writeRecallLog(ctx context.Context, tool string, req KnowledgeMemoryRecallRequest, resp *KnowledgeMemoryRecallResponse, explain *RecallExplain, latency time.Duration) error {
 	if err := db.ensureRecallLog(ctx); err != nil {
 		return err
 	}
@@ -346,7 +346,7 @@ func (db *DB) writeRecallLog(ctx context.Context, req KnowledgeMemoryRecallReque
 	if _, err := db.txExec(ctx, tx, `INSERT INTO recall_log
 		(id, request_id, trace_id, span_id, ts_ms, key_id, host, project, agent, tool, query, planner, latency_ms, hit_count, degraded, hits, explain_json)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, call.ID(), observability.TraceID(ctx), observability.SpanID(ctx), now, key, client.Host, client.Project, client.Agent, "knowledge_memory_recall",
+		id, call.ID(), observability.TraceID(ctx), observability.SpanID(ctx), now, key, client.Host, client.Project, client.Agent, tool,
 		resp.Query, req.Planner, latency.Milliseconds(), len(hits), strings.Join(resp.Degraded, ","), string(hitsJSON), explainJSON); err != nil {
 		return err
 	}

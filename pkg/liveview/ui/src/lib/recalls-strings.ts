@@ -82,6 +82,9 @@ export interface RecallsText {
   markFailed: (message: string) => string;
 
   retriever: string;
+  walkSeeds: string;
+  walkReached: string;
+  fusedList: string;
   rank: string;
   rankIn: (rank: number, kind: string) => string;
   score: string;
@@ -198,6 +201,9 @@ export const RECALLS_STRINGS: Strings<RecallsText> = {
     markFailed: (m) => `The mark was not saved: ${m}`,
 
     retriever: "Retriever",
+    walkSeeds: "Walked from",
+    walkReached: "Reached",
+    fusedList: "Fused",
     rank: "Rank",
     rankIn: (r, k) => `Rank ${r} among the ${k.toLowerCase()} hits`,
     score: "Score",
@@ -316,6 +322,9 @@ export const RECALLS_STRINGS: Strings<RecallsText> = {
     markFailed: (m) => `标注没有保存：${m}`,
 
     retriever: "检索器",
+    walkSeeds: "图遍历起点",
+    walkReached: "遍历到",
+    fusedList: "融合后",
     rank: "名次",
     rankIn: (r, k) => `在${k}命中里排第 ${r}`,
     score: "分数",

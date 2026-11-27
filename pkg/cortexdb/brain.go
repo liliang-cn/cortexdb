@@ -220,7 +220,7 @@ func (b *KnowledgeMemory) Recall(ctx context.Context, req KnowledgeMemoryRecallR
 		FloorDropped: ex.floorDrops(),
 		Explain:      explain,
 	})
-	b.db.logRecall(ctx, req, resp, explain, time.Since(start))
+	b.db.logRecall(ctx, "knowledge_memory_recall", req, resp, explain, time.Since(start))
 	if strings.EqualFold(strings.TrimSpace(req.Detail), RecallDetailIndex) {
 		indexRecall(resp)
 	}

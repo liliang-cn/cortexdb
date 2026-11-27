@@ -1206,7 +1206,12 @@ brain), kept `CORTEXDB_RECALL_LOG_DAYS` (30) and at most
 `CORTEXDB_RECALL_LOG_MAX_ROWS` (100000) recalls. It is a table in the database
 file. Each recall is kept with who asked (key, host, project, agent), latency,
 its hits with how each was found, score, writer and source, and its explain
-record. The tools `recall_log_list`, `recall_log_get`, `recall_log_stats`,
+record. `knowledge_memory_recall` is logged, and so is `memory_search` asked by a
+caller, over MCP or gRPC (an agent such as SuperLeo that reads its memory that
+way); the searches the brain makes for itself are not. When the graph walk ran,
+the explain record names the entities it started from with their weights, the
+entities it ranked highest, its own ranking of the passages and the fused list,
+beside the vector and keyword rankings. The tools `recall_log_list`, `recall_log_get`, `recall_log_stats`,
 `recall_feedback` and `recall_feedback_export` read it, mark a hit as useful or
 noise, and export the marks as recall-eval golden cases (the JSONL format of
 `--recall-eval`). A key with a scope sees and marks only its own recalls.

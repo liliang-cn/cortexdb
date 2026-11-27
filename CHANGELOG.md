@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- The recall log keeps `memory_search` asked by a caller, over MCP or gRPC,
+  as it keeps `knowledge_memory_recall`, so an agent that reads its memory
+  that way (SuperLeo) is auditable too; the searches the brain makes for
+  itself are not logged. A recall's explain record now shows the graph walk:
+  the entities it started from with their weights, the entities it ranked
+  highest, its own ranking of the passages and the fused list. The Recalls
+  page shows them beside the vector and keyword rankings.
+
 ### Fixed
 
 - With an embedder, the walk from the vector hits no longer makes recall
